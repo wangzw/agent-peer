@@ -179,6 +179,34 @@ func (l *localNode) readFile(t testing.TB, path string) []byte {
 	return data
 }
 
+// workspace creates a workspace directly on the test host, using the same
+// helpers the container's node agent uses.
+func (l *localNode) workspace(t testing.TB, kind, origin, projectYAML string) string {
+	t.Helper()
+	dir := t.TempDir()
+	env := l.env.Build(map[string]string{"GIT_CONFIG_NOSYSTEM": "1"})
+	var (
+		path string
+		err  error
+	)
+	switch kind {
+	case "git":
+		path, err = node.GitWorkspace(dir, origin, env)
+	case "project":
+		path, err = node.ProjectWorkspace(dir, projectYAML, origin, env)
+	case "plain":
+		path, err = node.PlainWorkspace(dir)
+	default:
+		t.Fatalf("harness: node %s: unknown workspace kind %q", l.name, kind)
+		return ""
+	}
+	if err != nil {
+		t.Fatalf("harness: node %s: creating a %s workspace: %v", l.name, kind, err)
+		return ""
+	}
+	return path
+}
+
 func (l *localNode) exec(t testing.TB, argv []string, env map[string]string) ExecResult {
 	t.Helper()
 	if len(argv) == 0 {

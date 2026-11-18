@@ -183,6 +183,19 @@ func (r *remoteNode) readFile(tb testing.TB, path string) []byte {
 	return data
 }
 
+// workspace creates a workspace through the node agent's workspace endpoint.
+func (r *remoteNode) workspace(tb testing.TB, kind, origin, projectYAML string) string {
+	tb.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+	res, err := r.client.Workspace(ctx, ctl.WorkspaceRequest{Kind: kind, Origin: origin, ProjectYAML: projectYAML})
+	if err != nil {
+		tb.Fatalf("harness: node %s: creating a %s workspace: %v", r.name, kind, err)
+		return ""
+	}
+	return res.Path
+}
+
 // configPath is the account's configuration file inside the container.
 func (r *remoteNode) configPath() string {
 	return r.homeDir + "/.agent-peer/config.yaml"

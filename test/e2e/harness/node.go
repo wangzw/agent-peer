@@ -204,6 +204,7 @@ type backend interface {
 	writeConfig(t testing.TB, yaml string)
 	readConfig(t testing.TB) []byte
 	readFile(t testing.TB, path string) []byte
+	workspace(t testing.TB, kind, origin, projectYAML string) string
 }
 
 // Node is one host in a scenario. Every method reports infrastructure errors
@@ -278,6 +279,15 @@ func (n *Node) ReadConfig(t testing.TB) []byte {
 func (n *Node) ReadFile(t testing.TB, path string) []byte {
 	t.Helper()
 	return n.impl.readFile(t, path)
+}
+
+// Workspace creates a workspace on the node and returns its path. kind is
+// "plain", "git" or "project"; origin is the git remote that git and project
+// workspaces use; projectYAML is the project configuration file content a
+// project workspace writes.
+func (n *Node) Workspace(t testing.TB, kind, origin, projectYAML string) string {
+	t.Helper()
+	return n.impl.workspace(t, kind, origin, projectYAML)
 }
 
 // sessionBackend is what a Session delegates to.

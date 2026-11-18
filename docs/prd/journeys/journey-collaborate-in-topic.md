@@ -54,4 +54,6 @@
 
 ## 端到端测试
 
-未实现
+`test/e2e/journey_collaborate_test.go` 的 `TestJourneyCollaborateInTopic`
+
+以上备选路径中，“B 的会话的入站策略是留待用户批准”不在本旅程的端到端测试中；它依赖真实 Claude Code 会话，相关验证留待用户批准。

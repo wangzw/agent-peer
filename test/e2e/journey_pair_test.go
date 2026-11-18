@@ -3,17 +3,14 @@
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"net"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
 	"github.com/wangzw/agent-peer/internal/mcpserver"
-	"github.com/wangzw/agent-peer/test/e2e/ctl"
 	"github.com/wangzw/agent-peer/test/e2e/harness"
 )
 
@@ -53,8 +50,8 @@ func TestJourneyPairBrokers(t *testing.T) {
 		t.Fatalf("hostB resolves hostA (%q); the displayed hostname check would not prove anything", strings.TrimSpace(result.Stdout))
 	}
 
-	wsA := pairWorkspace(t, c, "hostA", "plain", "")
-	wsB := pairWorkspace(t, c, "hostB", "plain", "")
+	wsA := hostA.Workspace(t, "plain", "", "")
+	wsB := hostB.Workspace(t, "plain", "", "")
 	alice := pairSession(t, hostA, "alice", wsA)
 	defer alice.End(t)
 	bob := pairSession(t, hostB, "bob", wsB)
@@ -170,13 +167,7 @@ func TestJourneyPairBrokers(t *testing.T) {
 		// hostB and hostC both call themselves macbook. Once hostA has paired
 		// with hostB, initiating a pairing to hostC must ask for a local alias
 		// before it records anything.
-		//
-		// TopoFlat(4) starts an idle hostD on purpose: compose substitutes the
-		// volume variables of every service it parses, including a profiled
-		// one, and Up supplies CTL_ variables only for the nodes the topology
-		// lists. TopoFlat(3) therefore fails on the unset CTL_HOSTD, and the
-		// harness is not changed here.
-		flat := harness.Up(t, harness.TopoFlat(4))
+		flat := harness.Up(t, harness.TopoFlat(3))
 		hostA := flat.Node("hostA")
 		hostB := flat.Node("hostB")
 		hostC := flat.Node("hostC")
@@ -184,9 +175,9 @@ func TestJourneyPairBrokers(t *testing.T) {
 		pairStartBroker(t, hostB, "broker:\n  alias: macbook\n")
 		pairStartBroker(t, hostC, "broker:\n  alias: macbook\n")
 
-		wsA := pairWorkspace(t, flat, "hostA", "plain", "")
-		wsB := pairWorkspace(t, flat, "hostB", "plain", "")
-		wsC := pairWorkspace(t, flat, "hostC", "plain", "")
+		wsA := hostA.Workspace(t, "plain", "", "")
+		wsB := hostB.Workspace(t, "plain", "", "")
+		wsC := hostC.Workspace(t, "plain", "", "")
 		opA := pairOperator(t, hostA, wsA)
 		defer opA.End(t)
 		opB := pairOperator(t, hostB, wsB)
@@ -256,8 +247,8 @@ func TestJourneyPairBrokers(t *testing.T) {
 		pairStartBroker(t, hostA, "")
 		pairStartBroker(t, hostB, "")
 
-		wsA := pairWorkspace(t, c, "hostA", "plain", "")
-		wsB := pairWorkspace(t, c, "hostB", "plain", "")
+		wsA := hostA.Workspace(t, "plain", "", "")
+		wsB := hostB.Workspace(t, "plain", "", "")
 		opA := pairOperator(t, hostA, wsA)
 		defer opA.End(t)
 		opB := pairOperator(t, hostB, wsB)
@@ -292,8 +283,8 @@ func TestJourneyPairBrokers(t *testing.T) {
 		pairStartBroker(t, hostA, "")
 		pairStartBroker(t, hostB, "")
 
-		wsA := pairWorkspace(t, c, "hostA", "plain", "")
-		wsB := pairWorkspace(t, c, "hostB", "plain", "")
+		wsA := hostA.Workspace(t, "plain", "", "")
+		wsB := hostB.Workspace(t, "plain", "", "")
 		opA := pairOperator(t, hostA, wsA)
 		defer opA.End(t)
 		opB := pairOperator(t, hostB, wsB)
@@ -304,12 +295,6 @@ func TestJourneyPairBrokers(t *testing.T) {
 		pairWaitOraclePeer(t, hostB, "hostA-17443", localpb.PeerRole_PEER_ROLE_DIALER, 3*time.Second)
 
 		c.Cut(t, "hostA", "hostB")
-		// Cut's socket teardown for hostB uses the router's lanb address, but
-		// hostB's socket peer is hostA's wan address, so that socket would
-		// survive until the link keepalive timeout. Complete the teardown here
-		// with the address hostB actually connected to; the harness itself is
-		// not changed.
-		pairTearDownSocket(t, c, "hostB", c.Addr("hostA", "wan"))
 		harness.Eventually(t, 3*time.Second, "both Brokers notice the cut", func() (bool, string) {
 			statusA, state := pairOracleStatus(t, hostA, "hostB-17443")
 			if state != "" {
@@ -353,22 +338,6 @@ func pairStartBroker(t *testing.T, node *harness.Node, config string) {
 	if !start.Running {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
-}
-
-// pairWorkspace creates a workspace of the given kind inside node's container
-// and returns its path. The shape helper lives in the test file because the
-// harness Node interface does not expose the workspace endpoint.
-func pairWorkspace(t *testing.T, c *harness.Cluster, node, kind, origin string) string {
-	t.Helper()
-	client := ctl.Dial(filepath.Join(c.CTLDir(t, node), "ctl.sock"))
-	defer client.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	result, err := client.Workspace(ctx, ctl.WorkspaceRequest{Kind: kind, Origin: origin})
-	if err != nil {
-		t.Fatalf("creating a %s workspace on %s: %v", kind, node, err)
-	}
-	return result.Path
 }
 
 // pairSession starts one simulated session with a real MCP server process.
@@ -586,16 +555,4 @@ func pairWaitOraclePeer(t *testing.T, node *harness.Node, alias string, role loc
 		}
 		return false, "the peer is not listed"
 	})
-}
-
-// pairTearDownSocket destroys node's established sockets to peerAddr. It
-// completes a Cut on a peer whose socket peer address differs from the
-// topology's fault-plan entry.
-func pairTearDownSocket(t *testing.T, c *harness.Cluster, node, peerAddr string) {
-	t.Helper()
-	for _, selector := range []string{"dst", "src"} {
-		if _, err := c.RootOK(t, node, "ss", "-K", selector, peerAddr); err != nil {
-			t.Logf("tearing down %s's socket to %s with %s: %v", node, peerAddr, selector, err)
-		}
-	}
 }
