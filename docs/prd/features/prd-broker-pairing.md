@@ -29,32 +29,32 @@
 每个 Broker 必须有一个指纹作为身份，指纹在 Broker 重启、别名变更和监听地址变更后保持不变。
 
 - **验收**：记录 Broker 的指纹，依次重启它、修改它的别名、更换它的监听地址，每次之后读到的指纹都与最初相同。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/aliases_test.go` 的 `TestAliases/REQ-broker-pairing-001 fingerprint stable`
 
 ### REQ-broker-pairing-002
 
 Broker 的别名在未配置时，有监听地址的必须由所在主机的系统主机名、`-` 和监听端口依次组成，没有监听地址的必须取系统主机名。这条规则对任何端口都适用。
 
 - **验收**：在主机名为 `hostA` 的主机上以默认配置启动 Broker，对端看到的它名下 Agent 的地址以 `@hostA-17443` 结尾，把对外地址配置为 `a.example:443` 后不变；改为监听 17444 端口后以 `@hostA-17444` 结尾；把监听地址配置为空后以 `@hostA` 结尾。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/aliases_test.go` 的 `TestAliases/REQ-broker-pairing-002 default alias`
 
 ### REQ-broker-pairing-003
 
 Broker 的别名必须可以经配置修改。
 
 - **验收**：把别名改为 `build-box` 后，本机 Agent 看到的自身地址以 `@build-box` 结尾，没有为它设本地别名的对端看到的地址同样如此。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/aliases_test.go` 的 `TestAliases/REQ-broker-pairing-003 configured alias`
 
 ### REQ-broker-pairing-004
 
 发起配对的一方发现对方的别名与本机别名或已有的某个对端的别名相同时，系统必须在用户为新对端指定本地别名之后才完成配对。
 
 - **验收**：已有别名为 `macbook` 的对端，再向另一台别名也是 `macbook` 的 Broker 发起配对，系统返回要求指定本地别名的结果；指定 `macbook-2` 后配对完成，两台对端分别以 `@macbook` 和 `@macbook-2` 寻址。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/aliases_test.go` 的 `TestAliases/REQ-broker-pairing-004 initiator conflict`
 
 ### REQ-broker-pairing-005
 
@@ -213,8 +213,8 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 接受配对的一方发现对方的别名与本机别名或已有的某个对端的别名相同时，系统必须为新对端生成一个不与它们重复的本地别名，并完成配对。
 
 - **验收**：A 已有别名为 `macbook` 的对端，另一台别名也是 `macbook` 的 Broker 凭有效密钥向 A 发起配对，配对成功；A 列出 Broker 的结果中两台对端的别名互不相同。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/aliases_test.go` 的 `TestAliases/REQ-broker-pairing-024 acceptor conflict`
 
 ### REQ-broker-pairing-025
 
@@ -229,8 +229,8 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 对端自报的别名变为与本机别名或其他对端的别名相同时，系统必须为它生成不重复的本地别名，已有的 Agent 地址不得因此指向另一个 Broker。
 
 - **验收**：A 有别名分别为 `hostB` 和 `hostC` 的两个对端；B 把自己的别名改为 `hostC` 之后，A 上以 `@hostC` 结尾的地址仍只指向 C 上的 Agent，B 上的 Agent 在 A 上以另一个别名出现，它们发来的消息的署名不以 `@hostC` 结尾。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/aliases_test.go` 的 `TestAliases/REQ-broker-pairing-026 peer renames into conflict`
 
 ### REQ-broker-pairing-027
 

@@ -1,0 +1,621 @@
+//go:build e2e
+
+package e2e
+
+import (
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
+	"fmt"
+	"net"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/mcpserver"
+	"github.com/wangzw/agent-peer/test/e2e/harness"
+)
+
+// alWaitBound is the bound of a wait that no product timer governs.
+const alWaitBound = 3 * time.Second
+
+// alRelinkBound is reconnect_max (400ms) + dial_timeout (500ms) + 3s.
+const alRelinkBound = 3900 * time.Millisecond
+
+// alTopic is the topic the sessions use to observe each other's addresses.
+const alTopic = "t"
+
+// TestAliases covers fingerprint stability, the default and configured alias,
+// initiator and acceptor alias conflicts, and peer renames on a flat network.
+func TestAliases(t *testing.T) {
+	alFillUnusedCTL(t)
+	c := harness.Up(t, harness.TopoFlat(3))
+	nodes := map[string]*harness.Node{}
+	for _, name := range []string{"hostA", "hostB", "hostC"} {
+		nodes[name] = c.Node(name)
+		alStartBroker(t, nodes[name], alConfig())
+	}
+	ops := map[string]*harness.Session{}
+	for _, name := range []string{"hostA", "hostB", "hostC"} {
+		ops[name] = alOperator(t, nodes[name])
+	}
+	xNode, yNode, zNode := nodes["hostA"], nodes["hostB"], nodes["hostC"]
+	opX, opY, opZ := ops["hostA"], ops["hostB"], ops["hostC"]
+
+	x1 := alSession(t, xNode, "x1")
+	y1 := alSession(t, yNode, "y1")
+	z1 := alSession(t, zNode, "z1")
+	defer func() {
+		x1.End(t)
+		y1.End(t)
+		z1.End(t)
+	}()
+
+	// X is the dialer: it pairs with Y, so changing X's own listener keeps X
+	// responsible for rebuilding the link.
+	pk := alCreateKey(t, opY)
+	alConnect(t, opX, alShownAddress(t, c, "hostB", pk.Addresses), pk.Key).MustOK(t)
+	alWaitConnected(t, xNode, "hostB-17443", alRelinkBound)
+	alWaitConnected(t, yNode, "hostA-17443", alRelinkBound)
+
+	t.Run("REQ-broker-pairing-002 default alias", func(t *testing.T) {
+		alWaitAgentSuffix(t, y1, "x1", "@hostA-17443", alWaitBound)
+
+		// broker.advertise changes what is shown to peers, never the alias.
+		alRestart(t, c, "hostA", alConfig("broker:\n  advertise: a.example:443\n"), opX, x1)
+		opX = alOperator(t, xNode)
+		x1 = alSession(t, xNode, "x1")
+		alWaitConnected(t, yNode, "hostA-17443", alRelinkBound)
+		alWaitAgentSuffix(t, y1, "x1", "@hostA-17443", alWaitBound)
+
+		// The port of the alias comes from broker.listen, not from advertise.
+		alRestart(t, c, "hostA", alConfig("broker:\n  listen: \":17444\"\n"), opX, x1)
+		opX = alOperator(t, xNode)
+		x1 = alSession(t, xNode, "x1")
+		alWaitConnected(t, yNode, "hostA-17444", alRelinkBound)
+		alWaitAgentSuffix(t, y1, "x1", "@hostA-17444", alWaitBound)
+
+		// Without a listener the alias has no port.
+		alRestart(t, c, "hostA", alConfig("broker:\n  listen: \"\"\n"), opX, x1)
+		opX = alOperator(t, xNode)
+		x1 = alSession(t, xNode, "x1")
+		alWaitConnected(t, yNode, "hostA", alRelinkBound)
+		alWaitAgentSuffix(t, y1, "x1", "@hostA", alWaitBound)
+	})
+
+	t.Run("REQ-broker-pairing-003 configured alias", func(t *testing.T) {
+		alRestart(t, c, "hostA", alConfig("broker:\n  alias: build-box\n"), opX, x1)
+		opX = alOperator(t, xNode)
+		x1 = alSession(t, xNode, "x1")
+		alWaitConnected(t, yNode, "build-box", alRelinkBound)
+
+		self := alSelfAddress(t, x1, "x1")
+		if !strings.HasSuffix(self, "@build-box") {
+			t.Fatalf("self_address = %q, want it to end with @build-box", self)
+		}
+		alWaitAgentSuffix(t, y1, "x1", "@build-box", alWaitBound)
+	})
+
+	t.Run("REQ-broker-pairing-001 fingerprint stable", func(t *testing.T) {
+		own := alIdentityFingerprint(t, xNode)
+		if got := alOnlyPeerFingerprint(t, yNode); got != own {
+			t.Fatalf("Y sees X's fingerprint as %q, want %q", got, own)
+		}
+
+		// A plain restart must not change the identity.
+		alRestart(t, c, "hostA", alConfig("broker:\n  alias: build-box\n"), opX, x1)
+		opX = alOperator(t, xNode)
+		x1 = alSession(t, xNode, "x1")
+		alWaitConnected(t, yNode, "build-box", alRelinkBound)
+		if got := alOnlyPeerFingerprint(t, yNode); got != own {
+			t.Fatalf("the fingerprint changed after a restart: %q, want %q", got, own)
+		}
+
+		// A changed alias must not change the identity either.
+		alRestart(t, c, "hostA", alConfig("broker:\n  alias: x2\n"), opX, x1)
+		opX = alOperator(t, xNode)
+		x1 = alSession(t, xNode, "x1")
+		alWaitConnected(t, yNode, "x2", alRelinkBound)
+		if got := alOnlyPeerFingerprint(t, yNode); got != own {
+			t.Fatalf("the fingerprint changed after an alias change: %q, want %q", got, own)
+		}
+
+		// A changed listen address must not change it.
+		alRestart(t, c, "hostA", alConfig("broker:\n  alias: x2\n  listen: \":17444\"\n"), opX, x1)
+		opX = alOperator(t, xNode)
+		x1 = alSession(t, xNode, "x1")
+		alWaitConnected(t, yNode, "x2", alRelinkBound)
+		if got := alOnlyPeerFingerprint(t, yNode); got != own {
+			t.Fatalf("the fingerprint changed after a listen change: %q, want %q", got, own)
+		}
+	})
+
+	t.Run("REQ-broker-pairing-004 initiator conflict", func(t *testing.T) {
+		// Start from the default alias so the observations below are exact.
+		alRestart(t, c, "hostA", alConfig(), opX, x1)
+		opX = alOperator(t, xNode)
+		x1 = alSession(t, xNode, "x1")
+
+		// Both Y and Z report the alias macbook. X pairs with Y first and then
+		// needs a local alias for Z.
+		alRestart(t, c, "hostB", alConfig("broker:\n  alias: macbook\n"), opY, y1)
+		opY = alOperator(t, yNode)
+		y1 = alSession(t, yNode, "y1")
+		alRestart(t, c, "hostC", alConfig("broker:\n  alias: macbook\n"), opZ, z1)
+		opZ = alOperator(t, zNode)
+		z1 = alSession(t, zNode, "z1")
+
+		keyY := alCreateKey(t, opY)
+		alConnect(t, opX, alShownAddress(t, c, "hostB", keyY.Addresses), keyY.Key).MustOK(t)
+		alWaitConnected(t, xNode, "macbook", alRelinkBound)
+
+		keyZ := alCreateKey(t, opZ)
+		addrZ := alShownAddress(t, c, "hostC", keyZ.Addresses)
+		alConnect(t, opX, addrZ, keyZ.Key).MustCode(t, "needs_local_alias")
+		out := alDecodeConnect(t, alConnect(t, opX, addrZ, keyZ.Key, "macbook-2"))
+		if out.Alias != "macbook-2" {
+			t.Fatalf("alias = %q, want macbook-2", out.Alias)
+		}
+		alWaitConnected(t, xNode, "macbook-2", alRelinkBound)
+
+		yAddr, zAddr := alWaitRemoteAgents(t, x1, "y1", "z1")
+		if !strings.HasSuffix(yAddr, "@macbook") {
+			t.Fatalf("Y's session is %q, want it to end with @macbook", yAddr)
+		}
+		if !strings.HasSuffix(zAddr, "@macbook-2") {
+			t.Fatalf("Z's session is %q, want it to end with @macbook-2", zAddr)
+		}
+
+		// Each address reaches only its own Broker.
+		x1.Call(t, "send_message", map[string]any{"to": yAddr, "message": "to-y"}).MustOK(t)
+		frame := y1.WaitFrame(t, alWaitBound)
+		if !strings.Contains(frame.Content, "to-y") {
+			t.Fatalf("Y received %q, want a message containing to-y", frame.Content)
+		}
+		if frames := z1.Fake().Frames(); len(frames) != 0 {
+			t.Fatalf("Z received %d frames addressed to Y", len(frames))
+		}
+
+		x1.Call(t, "send_message", map[string]any{"to": zAddr, "message": "to-z"}).MustOK(t)
+		frame = z1.WaitFrame(t, alWaitBound)
+		if !strings.Contains(frame.Content, "to-z") {
+			t.Fatalf("Z received %q, want a message containing to-z", frame.Content)
+		}
+		if frames := y1.Fake().Frames(); len(frames) != 1 {
+			t.Fatalf("Y has %d frames, want the single to-y message", len(frames))
+		}
+	})
+
+	t.Run("REQ-broker-pairing-024 acceptor conflict", func(t *testing.T) {
+		// A fresh three hosts: A already has the peer Y with the alias
+		// macbook, and Z, reporting the same alias, pairs with A.
+		alFillUnusedCTL(t)
+		conflict := harness.Up(t, harness.TopoFlat(3))
+		aNode, yNode, zNode := conflict.Node("hostA"), conflict.Node("hostB"), conflict.Node("hostC")
+		alStartBroker(t, aNode, alConfig())
+		alStartBroker(t, yNode, alConfig("broker:\n  alias: macbook\n"))
+		alStartBroker(t, zNode, alConfig("broker:\n  alias: macbook\n"))
+		aOp, yOp, zOp := alOperator(t, aNode), alOperator(t, yNode), alOperator(t, zNode)
+
+		keyY := alCreateKey(t, yOp)
+		alConnect(t, aOp, alShownAddress(t, conflict, "hostB", keyY.Addresses), keyY.Key).MustOK(t)
+		alWaitConnected(t, aNode, "macbook", alRelinkBound)
+
+		keyZ := alCreateKey(t, aOp)
+		alConnect(t, zOp, alShownAddress(t, conflict, "hostA", keyZ.Addresses), keyZ.Key).MustOK(t)
+
+		harness.Eventually(t, alWaitBound, "A lists two peers under different aliases", func() (bool, string) {
+			peers := alPeers(t, aNode)
+			if len(peers) != 2 {
+				return false, fmt.Sprintf("A has %d peers", len(peers))
+			}
+			aliases := alPeerAliases(peers)
+			if aliases[0] == aliases[1] {
+				return false, fmt.Sprintf("both peers use the alias %q", aliases[0])
+			}
+			return true, ""
+		})
+		peers := alPeers(t, aNode)
+		var assigned string
+		for _, peer := range peers {
+			if peer.GetAlias() != "macbook" {
+				assigned = peer.GetAlias()
+			}
+		}
+		if !strings.HasPrefix(assigned, "macbook-") || len(assigned) < len("macbook-")+4 || !alHexSuffix(assigned[len("macbook-"):]) {
+			t.Fatalf("the assigned alias %q is not macbook-<4+ hex digits>", assigned)
+		}
+	})
+
+	t.Run("REQ-broker-pairing-026 peer renames into conflict", func(t *testing.T) {
+		// A fresh three hosts: B (hostB) and C (hostC) both dial A. B then
+		// renames itself to hostC, the alias C already uses on A.
+		alFillUnusedCTL(t)
+		conflict := harness.Up(t, harness.TopoFlat(3))
+		aNode, bNode, cNode := conflict.Node("hostA"), conflict.Node("hostB"), conflict.Node("hostC")
+		alStartBroker(t, aNode, alConfig())
+		alStartBroker(t, bNode, alConfig("broker:\n  alias: hostB\n"))
+		alStartBroker(t, cNode, alConfig("broker:\n  alias: hostC\n"))
+		aOp, bOp, cOp := alOperator(t, aNode), alOperator(t, bNode), alOperator(t, cNode)
+
+		a1 := alSession(t, aNode, "a1")
+		b1 := alSession(t, bNode, "b1")
+		c1 := alSession(t, cNode, "c1")
+		defer func() {
+			a1.End(t)
+			b1.End(t)
+			c1.End(t)
+		}()
+
+		for _, pair := range []struct {
+			op   *harness.Session
+			node string
+		}{{bOp, "hostB"}, {cOp, "hostC"}} {
+			key := alCreateKey(t, aOp)
+			alConnect(t, pair.op, alShownAddress(t, conflict, "hostA", key.Addresses), key.Key).MustOK(t)
+			alWaitConnected(t, aNode, pair.node, alRelinkBound)
+		}
+
+		// Rename B to hostC. B is the dialer, so it reconnects to A on its
+		// own after the restart.
+		alRestart(t, conflict, "hostB", alConfig("broker:\n  alias: hostC\n"), bOp, b1)
+		bOp = alOperator(t, bNode)
+		b1 = alSession(t, bNode, "b1")
+
+		harness.Eventually(t, alRelinkBound, "A keeps C under @hostC and gives B a local alias", func() (bool, string) {
+			out := alListAgents(t, a1)
+			var cAddr, bAddr string
+			for _, agent := range out.Agents {
+				switch alAgentName(agent.Address) {
+				case "c1":
+					cAddr = agent.Address
+				case "b1":
+					bAddr = agent.Address
+				}
+			}
+			if cAddr == "" || bAddr == "" {
+				return false, fmt.Sprintf("addresses: c1=%q b1=%q", cAddr, bAddr)
+			}
+			hostC := 0
+			for _, agent := range out.Agents {
+				if strings.HasSuffix(agent.Address, "@hostC") {
+					hostC++
+				}
+			}
+			if hostC != 1 || !strings.HasSuffix(cAddr, "@hostC") {
+				return false, fmt.Sprintf("%d addresses end with @hostC; c1 is %q", hostC, cAddr)
+			}
+			if strings.HasSuffix(bAddr, "@hostC") {
+				return false, fmt.Sprintf("B's session still ends with @hostC: %q", bAddr)
+			}
+			return true, ""
+		})
+
+		// A message from B reaches A signed from A's view, which is the
+		// assigned local alias, not hostC.
+		selfA := alSelfAddress(t, a1, "a1")
+		b1.Call(t, "send_message", map[string]any{"to": selfA, "message": "renamed"}).MustOK(t)
+		frame := a1.WaitFrame(t, alWaitBound)
+		if strings.HasSuffix(frame.FromName, "@hostC") {
+			t.Fatalf("the message is signed %q, which still ends with @hostC", frame.FromName)
+		}
+	})
+}
+
+// TestLongHostnameAlias checks the default alias of a long hostname: the
+// hostname part is shortened so the alias stays at most 24 characters.
+func TestLongHostnameAlias(t *testing.T) {
+	// The compose file reads HOSTA_NAME for hostA's hostname; the harness
+	// passes the test process's environment through to docker compose.
+	t.Setenv("HOSTA_NAME", "abcdefghijklmnopqrstuvwxyz0123")
+	alFillUnusedCTL(t)
+
+	c := harness.Up(t, harness.TopoFlat(2))
+	xNode, yNode := c.Node("hostA"), c.Node("hostB")
+	alStartBroker(t, xNode, alConfig())
+	alStartBroker(t, yNode, alConfig())
+	opX, opY := alOperator(t, xNode), alOperator(t, yNode)
+
+	x1 := alSession(t, xNode, "x1")
+	y1 := alSession(t, yNode, "y1")
+	defer func() {
+		x1.End(t)
+		y1.End(t)
+	}()
+
+	key := alCreateKey(t, opY)
+	alConnect(t, opX, alShownAddress(t, c, "hostB", key.Addresses), key.Key).MustOK(t)
+	alWaitConnected(t, yNode, "abcdefghijklmnopqr-17443", alRelinkBound)
+
+	alWaitAgentSuffix(t, y1, "x1", "@abcdefghijklmnopqr-17443", alWaitBound)
+	if self := alSelfAddress(t, x1, "x1"); !strings.HasSuffix(self, "@abcdefghijklmnopqr-17443") {
+		t.Fatalf("self_address = %q, want it to end with @abcdefghijklmnopqr-17443", self)
+	}
+}
+
+// alFillUnusedCTL fills the control-directory variables of hostC and hostD.
+// flat.yaml declares all four hosts, and docker compose validates the volume
+// of a service even while a profile keeps it stopped, so a TopoFlat(2) or
+// TopoFlat(3) project fails on the blank CTL_HOSTC/CTL_HOSTD that the harness
+// leaves unset.
+func alFillUnusedCTL(t *testing.T) {
+	t.Helper()
+	t.Setenv("CTL_HOSTC", t.TempDir())
+	t.Setenv("CTL_HOSTD", t.TempDir())
+}
+
+// alConfig merges the shortened timers with the given fragments.
+func alConfig(parts ...string) string {
+	return harness.ConfigYAML(append([]string{harness.FastTimers}, parts...)...)
+}
+
+// alStartBroker starts a Broker and fails when it does not come up. Exit code 3
+// means another process started one first; the helper then waits for it.
+func alStartBroker(t *testing.T, node *harness.Node, config string) {
+	t.Helper()
+	start := node.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
+	if start.Running {
+		return
+	}
+	if start.ExitCode != 3 {
+		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
+	}
+	harness.Eventually(t, 10*time.Second, "the Broker started by another process answers", func() (bool, string) {
+		res := node.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
+		return res.ExitCode == 0, fmt.Sprintf("agent-peer status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+	})
+}
+
+// alRestart stops the Broker and starts it with config after ending every MCP
+// server process passed in stop, so none of them launches a Broker of its own
+// while the restart is in progress.
+func alRestart(t *testing.T, c *harness.Cluster, node string, config string, stop ...*harness.Session) {
+	t.Helper()
+	for _, s := range stop {
+		s.End(t)
+	}
+	n := c.Node(node)
+	n.StopBroker(t, syscall.SIGTERM)
+	alStartBroker(t, n, config)
+}
+
+// alOperator starts an operator session: an MCP server process without
+// CLAUDE_CODE_MESSAGING_SOCKET, which never registers as an agent.
+func alOperator(t *testing.T, node *harness.Node) *harness.Session {
+	t.Helper()
+	s := node.StartSession(t, harness.SessionSpec{Name: "operator", StartMCP: true, NoSocketEnv: true})
+	harness.Eventually(t, alWaitBound, "the operator session reaches its Broker", func() (bool, string) {
+		r := s.Call(t, "list_brokers", map[string]any{})
+		if r.IsError {
+			return false, r.Text
+		}
+		return true, ""
+	})
+	return s
+}
+
+// alSession starts a registered session in alTopic.
+func alSession(t *testing.T, node *harness.Node, name string) *harness.Session {
+	t.Helper()
+	s := node.StartSession(t, harness.SessionSpec{Name: name, StartMCP: true})
+	registrationWaitRegistered(t, s, name)
+	s.Call(t, "join_topic", map[string]any{"name": alTopic}).MustOK(t)
+	return s
+}
+
+// alCreateKey creates one pairing key.
+func alCreateKey(t *testing.T, op *harness.Session) mcpserver.CreatePairingKeyOut {
+	t.Helper()
+	r := op.Call(t, "create_pairing_key", map[string]any{})
+	r.MustOK(t)
+	out, err := harness.Decode[mcpserver.CreatePairingKeyOut](string(r.Structured))
+	if err != nil {
+		t.Fatalf("decoding create_pairing_key: %v", err)
+	}
+	return out
+}
+
+// alConnect calls connect_broker.
+func alConnect(t *testing.T, op *harness.Session, address, key string, localAlias ...string) harness.Result {
+	t.Helper()
+	args := map[string]any{"address": address, "key": key}
+	if len(localAlias) > 0 && localAlias[0] != "" {
+		args["local_alias"] = localAlias[0]
+	}
+	return op.Call(t, "connect_broker", args)
+}
+
+// alDecodeConnect decodes a successful connect_broker result.
+func alDecodeConnect(t *testing.T, r harness.Result) mcpserver.ConnectBrokerOut {
+	t.Helper()
+	out, err := harness.Decode[mcpserver.ConnectBrokerOut](string(r.Structured))
+	if err != nil {
+		t.Fatalf("decoding connect_broker: %v", err)
+	}
+	return out
+}
+
+// alShownAddress picks the shown address of node on the flat network.
+func alShownAddress(t *testing.T, c *harness.Cluster, node string, shown []string) string {
+	t.Helper()
+	want := net.JoinHostPort(c.Addr(node, "net"), "17443")
+	for _, address := range shown {
+		if address == want {
+			return address
+		}
+	}
+	if len(shown) > 0 {
+		return shown[0]
+	}
+	t.Fatalf("create_pairing_key returned no shown address")
+	return ""
+}
+
+// alPeers lists node's peers through the local interface probe.
+func alPeers(t *testing.T, node *harness.Node) []*localpb.BrokerInfo {
+	t.Helper()
+	resp, detail := node.Oracle().ListBrokers(t)
+	if detail != nil {
+		t.Fatalf("list_brokers: %s", detail.GetMessage())
+	}
+	return resp.GetBrokers()
+}
+
+// alPeerAliases renders peer aliases for failure messages.
+func alPeerAliases(peers []*localpb.BrokerInfo) []string {
+	out := make([]string, 0, len(peers))
+	for _, peer := range peers {
+		out = append(out, peer.GetAlias())
+	}
+	return out
+}
+
+// alWaitConnected waits until node lists alias as connected.
+func alWaitConnected(t *testing.T, node *harness.Node, alias string, bound time.Duration) {
+	t.Helper()
+	harness.Eventually(t, bound, "the link to "+alias+" is connected", func() (bool, string) {
+		resp, detail := node.Oracle().ListBrokers(t)
+		if detail != nil {
+			return false, detail.GetMessage()
+		}
+		for _, peer := range resp.GetBrokers() {
+			if peer.GetAlias() != alias {
+				continue
+			}
+			if peer.GetStatus() != localpb.BrokerStatus_BROKER_STATUS_CONNECTED {
+				return false, fmt.Sprintf("status is %s", peer.GetStatus())
+			}
+			return true, ""
+		}
+		return false, "the peer is not listed"
+	})
+}
+
+// alOnlyPeerFingerprint returns the hex fingerprint of node's only peer.
+func alOnlyPeerFingerprint(t *testing.T, node *harness.Node) string {
+	t.Helper()
+	peers := alPeers(t, node)
+	if len(peers) != 1 {
+		t.Fatalf("node has %d peers, want exactly one", len(peers))
+	}
+	return hex.EncodeToString(peers[0].GetFingerprint())
+}
+
+// alIdentityFingerprint derives a node's fingerprint from its certificate.
+func alIdentityFingerprint(t *testing.T, node *harness.Node) string {
+	t.Helper()
+	path := filepath.Join(node.AccountHome(), ".agent-peer", "identity.crt")
+	data := node.ReadFile(t, path)
+	block, _ := pem.Decode(data)
+	if block == nil {
+		t.Fatalf("%s is not a PEM certificate", path)
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("parsing %s: %v", path, err)
+	}
+	sum := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	return hex.EncodeToString(sum[:])
+}
+
+// alListAgents calls list_agents on s.
+func alListAgents(t *testing.T, s *harness.Session) mcpserver.ListAgentsOut {
+	t.Helper()
+	r := s.Call(t, "list_agents", map[string]any{})
+	r.MustOK(t)
+	out, err := harness.Decode[mcpserver.ListAgentsOut](string(r.Structured))
+	if err != nil {
+		t.Fatalf("decoding list_agents: %v", err)
+	}
+	return out
+}
+
+// alWaitAgentSuffix waits until s lists name with an address ending in suffix.
+func alWaitAgentSuffix(t *testing.T, s *harness.Session, name, suffix string, bound time.Duration) {
+	t.Helper()
+	harness.Eventually(t, bound, "the address of "+name+" ends with "+suffix, func() (bool, string) {
+		r := s.Call(t, "list_agents", map[string]any{})
+		if r.IsError {
+			return false, r.Text
+		}
+		out, err := harness.Decode[mcpserver.ListAgentsOut](string(r.Structured))
+		if err != nil {
+			return false, err.Error()
+		}
+		for _, agent := range out.Agents {
+			if alAgentName(agent.Address) != name {
+				continue
+			}
+			if strings.HasSuffix(agent.Address, suffix) {
+				return true, ""
+			}
+			return false, fmt.Sprintf("address is %q", agent.Address)
+		}
+		return false, "the agent is not listed"
+	})
+}
+
+// alSelfAddress returns the session's own address, after waiting for it to be
+// registered under name.
+func alSelfAddress(t *testing.T, s *harness.Session, name string) string {
+	t.Helper()
+	return registrationWaitRegistered(t, s, name).Self
+}
+
+// alWaitRemoteAgents waits until s lists both names and returns their
+// addresses.
+func alWaitRemoteAgents(t *testing.T, s *harness.Session, firstName, secondName string) (string, string) {
+	t.Helper()
+	var first, second string
+	harness.Eventually(t, alRelinkBound, "both remote agents are listed", func() (bool, string) {
+		r := s.Call(t, "list_agents", map[string]any{})
+		if r.IsError {
+			return false, r.Text
+		}
+		out, err := harness.Decode[mcpserver.ListAgentsOut](string(r.Structured))
+		if err != nil {
+			return false, err.Error()
+		}
+		first, second = "", ""
+		for _, agent := range out.Agents {
+			switch alAgentName(agent.Address) {
+			case firstName:
+				first = agent.Address
+			case secondName:
+				second = agent.Address
+			}
+		}
+		if first == "" || second == "" {
+			return false, fmt.Sprintf("%s=%q %s=%q", firstName, first, secondName, second)
+		}
+		return true, ""
+	})
+	return first, second
+}
+
+// alAgentName returns the name part of an agent address. The address is
+// "<name> [ref]@<alias>"; the ref exists only while two agents share a name.
+func alAgentName(address string) string {
+	before, _, _ := strings.Cut(address, "@")
+	if i := strings.Index(before, " ["); i >= 0 {
+		before = before[:i]
+	}
+	return strings.TrimSpace(before)
+}
+
+// alHexSuffix reports whether s is a non-empty run of lowercase hex digits.
+func alHexSuffix(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= '0' && r <= '9') && !(r >= 'a' && r <= 'f') {
+			return false
+		}
+	}
+	return true
+}
