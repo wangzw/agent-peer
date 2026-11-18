@@ -233,6 +233,26 @@ func TestRemoteSendFaults(t *testing.T) {
 		}
 	})
 
+	t.Run("REQ-agent-messaging-018 inbox unwritable across hosts", func(t *testing.T) {
+		// The receiving Broker still holds the Agent's record; only its inbox
+		// socket is gone, so the failure has to come from over the link.
+		gone := srSession(t, bNode, "gone")
+		defer gone.End(t)
+		srWaitSessionVisible(t, a1, "gone")
+
+		gone.Fake().RemoveSocket()
+		start := time.Now()
+		r := a1.Call(t, "send_message", map[string]any{"to": "gone@hostB-17443", "message": srMark("gone-")})
+		elapsed := time.Since(start)
+		r.MustCode(t, "inbox_unwritable")
+		if !r.HasPrefix("Not sent") {
+			t.Fatalf("the inbox_unwritable error is %q, want it to start with Not sent", r.Text)
+		}
+		if elapsed > srSendBudget {
+			t.Fatalf("the send returned after %s, want at most %s", elapsed, srSendBudget)
+		}
+	})
+
 	t.Run("REQ-agent-messaging-026 size limit", func(t *testing.T) {
 		// A second session named b1 makes b1's own address carry its ref, which
 		// is the value the sender uses when it computes the frame size. The

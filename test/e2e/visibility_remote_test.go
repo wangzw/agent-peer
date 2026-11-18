@@ -235,6 +235,21 @@ func TestRemoteVisibility(t *testing.T) {
 			return true, ""
 		})
 
+		// A bare name shared by two remote sessions is ambiguous, and the refused
+		// request reaches neither of them: the same code the local path returns
+		// (REQ-agent-messaging-028).
+		ambiguousMark := vrMark("ambiguous-")
+		r := a1.Call(t, "send_message", map[string]any{"to": "api-worker@hostB-17443", "message": ambiguousMark})
+		r.MustCode(t, "ambiguous")
+		if !r.HasPrefix("Not sent") {
+			t.Fatalf("the ambiguous error is %q, want it to start with Not sent", r.Text)
+		}
+		for _, session := range []*harness.Session{w1, w2} {
+			if got := vrCountMark(session.Fake().Frames(), ambiguousMark); got != 0 {
+				t.Fatalf("an ambiguous send reached a session %d time(s)", got)
+			}
+		}
+
 		// Each ref-addressed message reaches only the session it names.
 		markOne := vrMark("to-first-")
 		a1.Call(t, "send_message", map[string]any{"to": addr1, "message": markOne}).MustOK(t)

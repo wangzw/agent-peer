@@ -368,9 +368,9 @@ func TestLocalSend(t *testing.T) {
 		//
 		//   case              local subtest                    cross-host counterpart
 		//   success           REQ-agent-messaging-013          REQ-broker-pairing-020 both directions behind NAT
-		//   ambiguous         REQ-agent-messaging-007          REQ-agent-messaging-004 remote refs (a ref picks one)
+		//   ambiguous         REQ-agent-messaging-007          REQ-agent-messaging-004 remote refs (a bare name is ambiguous)
 		//   not_visible       REQ-agent-messaging-014          REQ-topics-005 iff shared and connected
-		//   inbox_unwritable  REQ-agent-messaging-018          the remote receive path returns the same code
+		//   inbox_unwritable  REQ-agent-messaging-018          REQ-agent-messaging-018 inbox unwritable across hosts
 		//
 		// Only the signature spelling differs by topology: on this host the
 		// alias is the local Broker's own alias, which is also the alias part
