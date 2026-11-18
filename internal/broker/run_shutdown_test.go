@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/link"
 )
 
 // orderedSessions records when a registration handler releases its session
@@ -33,6 +34,132 @@ func (s *orderedSessions) Acquire(ctx context.Context, uid uint32) (SessionBacke
 		s.once.Do(func() { close(s.released) })
 		release()
 	}, nil
+}
+
+// waitingRunner is a LinkRunner whose Close waits for a frame handler the test
+// started, the way link.Close waits for its own handlers. It never waits longer
+// than closeWait, so an unfixed shutdown fails the elapsed-time assertion
+// instead of hanging the test binary.
+type waitingRunner struct {
+	order       *orderLog
+	handlerDone <-chan struct{}
+}
+
+const closeWait = 2 * time.Second
+
+func (*waitingRunner) Listen(string) error { return nil }
+func (r *waitingRunner) Start()            { r.order.add("Start") }
+func (r *waitingRunner) Close() {
+	r.order.add("Close")
+	select {
+	case <-r.handlerDone:
+	case <-time.After(closeWait):
+		r.order.add("CloseTimedOut")
+	}
+}
+
+// TestRunShutdownStopsBlockedDelivery checks that shutdown is not held up by a
+// delivery handler blocked in an inbox write. Run must cancel the delivery
+// lifecycle before link Close waits for its handlers, so the write ends and Run
+// returns within a second of cancellation.
+func TestRunShutdownStopsBlockedDelivery(t *testing.T) {
+	peer := fakenetPeer(20)
+	sender := remoteMember{Name: "api-worker", Ref: "1a2b3c"}
+	target := testAgent("frontend", "/tmp/ap-run-shutdown-delivery.sock")
+	view := target
+	block := newBlockingInbox()
+	view.Inbox = block
+
+	agents := newFakeAgents(view)
+	agents.mu.Lock()
+	agents.rereadErr = map[string]error{target.ID: nil}
+	agents.mu.Unlock()
+
+	topics := &deliveryTopics{
+		local:  map[string][]string{target.ID: {"t1"}},
+		remote: map[peerID][]deliveryRemoteEntry{peer: {{Member: sender, Topics: []string{"t1"}}}},
+	}
+	peers := &deliveryPeers{
+		aliases:   map[string]peerID{},
+		effective: map[peerID]string{peer: "hostA"},
+	}
+	settings := newFakeSettings(sendSettings{
+		RequestTimeout: time.Hour,
+		InboxBackoff:   time.Millisecond,
+		InboxTimeout:   time.Hour,
+		DedupeWindow:   time.Minute,
+		InboxRetries:   0,
+	}, "hostA")
+	d := newDelivery(deliveryDeps{
+		Agents:   agents,
+		Topics:   topics,
+		Peers:    peers,
+		Link:     newFakeNet(t).end(fakenetPeer(10)),
+		Settings: settings,
+		Log:      quietLogger(),
+	})
+
+	frame, err := encodeDeliverRequest(deliverRequest{
+		MessageID:  receiveMsgID,
+		SenderName: sender.Name,
+		SenderRef:  sender.Ref,
+		TargetName: target.Name,
+		TargetRef:  target.Ref,
+		Remaining:  time.Hour,
+		Text:       "hello",
+	})
+	if err != nil {
+		t.Fatalf("encodeDeliverRequest: %v", err)
+	}
+
+	handlerDone := make(chan struct{})
+	runner := &waitingRunner{order: &orderLog{}, handlerDone: handlerDone}
+	rt := newRunTest(t, func(rt *runTest) {
+		rt.opts.Assemblers = []Assembler{&fakeAssembler{
+			name: "delivery-test",
+			fn: func(_ context.Context, _ ConfigSource, deps *Deps, asm *Assembly) ([]Component, error) {
+				deps.Delivery = d
+				asm.Runner = runner
+				return nil, nil
+			},
+		}}
+	})
+	rt.start()
+	if got := rt.readyLine(); got != "ok\n" {
+		t.Fatalf("readiness line = %q, want %q", got, "ok\n")
+	}
+
+	replies := make(chan link.Frame, 1)
+	go func() {
+		replies <- d.handleDeliver(context.Background(), peer, frame)
+		close(handlerDone)
+	}()
+	select {
+	case <-block.entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the delivery handler never reached the inbox write")
+	}
+	// Release a handler the fix did not stop, so no goroutine outlives the test.
+	t.Cleanup(func() { close(block.release) })
+
+	start := time.Now()
+	rt.cancel()
+	if err := rt.waitErr(); err != nil {
+		t.Fatalf("Run error = %v, want nil", err)
+	}
+	if elapsed := time.Since(start); elapsed >= time.Second {
+		t.Fatalf("Run took %v after cancel, want under 1s: shutdown waited for the inbox write", elapsed)
+	}
+
+	// The canceled write is not proof that nothing reached the session: the
+	// frame may already be on the wire when the context ends. The request must
+	// report delivery_unknown, never "not sent" or a success.
+	select {
+	case reply := <-replies:
+		wantReceiveError(t, reply, localpb.ErrorCode_ERROR_CODE_DELIVERY_UNKNOWN, "Delivery unknown:")
+	case <-time.After(time.Second):
+		t.Fatal("the delivery handler did not return after shutdown")
+	}
 }
 
 // dialRunLocal opens a client connection to a Broker that Run serves.

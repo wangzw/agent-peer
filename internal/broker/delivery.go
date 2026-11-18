@@ -111,6 +111,12 @@ type delivery struct {
 
 	dedupe *dedupeTable
 	waiter *linkWaiter
+
+	// lifecycle is canceled by Run before link Close. A receive handler
+	// processes on a child of it, so a blocked inbox write cannot hold link
+	// Close open past shutdown.
+	lifecycle context.Context
+	stopFunc  context.CancelFunc
 }
 
 // newDelivery builds a delivery around deps. It only stores the dependencies;
@@ -120,13 +126,41 @@ func newDelivery(deps deliveryDeps) *delivery {
 	if clock == nil {
 		clock = time.Now
 	}
-	d := &delivery{deps: deps}
+	lifecycle, stop := context.WithCancel(context.Background())
+	d := &delivery{deps: deps, lifecycle: lifecycle, stopFunc: stop}
 	d.dedupe = newDedupeTable(clock, func() time.Duration {
 		return d.deps.Settings.Send().DedupeWindow
 	})
 	d.waiter = newLinkWaiter(deps.Link)
 	d.toPeer = d.sendToPeer
 	return d
+}
+
+// stop cancels the delivery lifecycle. Run calls it before link Close; it may
+// be called more than once.
+func (d *delivery) stop() {
+	if d.stopFunc != nil {
+		d.stopFunc()
+	}
+}
+
+// processContext returns the context one received request is processed on. It
+// is detached from the link, so a link drop cannot interrupt a write the sender
+// may retry, but it follows the delivery lifecycle, so stopping the delivery
+// cancels a write that would otherwise hold link Close open.
+func (d *delivery) processContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if d.lifecycle == nil {
+		return context.WithoutCancel(ctx), func() {}
+	}
+	pctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	if d.lifecycle.Err() != nil {
+		cancel()
+	}
+	stop := context.AfterFunc(d.lifecycle, cancel)
+	return pctx, func() {
+		stop()
+		cancel()
+	}
 }
 
 // notSent returns an error for a message that was certainly not delivered. The

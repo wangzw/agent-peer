@@ -110,6 +110,11 @@ func Run(ctx context.Context, opts RunOptions) error {
 	fail := func(err error) error {
 		deps.Logger.Error(EvStartupFailed, "error", err.Error())
 		writeReadyLine(opts.Ready, err.Error())
+		// Cancel received-request processing before link Close waits for its
+		// handlers; a blocked inbox write must not hold shutdown open.
+		if deps.Delivery != nil {
+			deps.Delivery.stop()
+		}
 		if asm.Runner != nil && runnerRan {
 			asm.Runner.Close()
 		}
@@ -251,6 +256,11 @@ func Run(ctx context.Context, opts RunOptions) error {
 
 	shutdown := func() {
 		deps.Logger.Info(EvBrokerStopping)
+		// Cancel received-request processing before link Close waits for its
+		// handlers; a blocked inbox write must not hold shutdown open.
+		if deps.Delivery != nil {
+			deps.Delivery.stop()
+		}
 		if asm.Runner != nil {
 			asm.Runner.Close()
 		}

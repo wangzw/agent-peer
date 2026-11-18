@@ -105,7 +105,7 @@ func TestDedupeConcurrentSingleOwner(t *testing.T) {
 	}
 
 	res := deliveredResult()
-	tbl.complete(entry, res)
+	tbl.complete(entry, res, time.Time{})
 	for i := 0; i < callers-1; i++ {
 		got, ok := entry.wait(context.Background())
 		if !ok {
@@ -127,9 +127,9 @@ func TestDedupeExpiry(t *testing.T) {
 	k2 := dedupeKey{MessageID: "m2"}
 
 	e1, _ := tbl.acquire(k1)
-	tbl.complete(e1, deliveredResult())
+	tbl.complete(e1, deliveredResult(), time.Time{})
 	e2, _ := tbl.acquire(k2)
-	tbl.complete(e2, deliveredResult())
+	tbl.complete(e2, deliveredResult(), time.Time{})
 
 	clock.Advance(time.Minute - time.Nanosecond)
 	if got, owner := tbl.acquire(k1); owner || got != e1 {
@@ -182,7 +182,7 @@ func TestDedupeWindowReadAtCompletion(t *testing.T) {
 
 	e, _ := tbl.acquire(dedupeKey{MessageID: "m1"})
 	window = 10 * time.Minute
-	tbl.complete(e, deliveredResult())
+	tbl.complete(e, deliveredResult(), time.Time{})
 
 	clock.Advance(5 * time.Minute)
 	if got, owner := tbl.acquire(dedupeKey{MessageID: "m1"}); owner || got != e {
@@ -203,7 +203,7 @@ func TestDedupeWaitPrefersResult(t *testing.T) {
 	tbl := newDedupeTable(clock.Now, func() time.Duration { return time.Minute })
 	e, _ := tbl.acquire(dedupeKey{MessageID: "m1"})
 	res := deliveredResult()
-	tbl.complete(e, res)
+	tbl.complete(e, res, time.Time{})
 
 	for i := 0; i < 100; i++ {
 		ctx, cancel := context.WithCancel(context.Background())
