@@ -1,0 +1,167 @@
+//go:build e2e
+
+package e2e
+
+import (
+	"fmt"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/mcpserver"
+	"github.com/wangzw/agent-peer/test/e2e/harness"
+)
+
+// vlRelinkBound is reconnect_max (400ms) plus the three-second test allowance.
+const vlRelinkBound = 3400 * time.Millisecond
+
+// vlVersionDetail is the status_detail an acceptor at link protocol version 2
+// reports for a dialer at version 1.
+const vlVersionDetail = "link protocol version incompatible with this peer; upgrade the older Broker: peer speaks link protocol version 1"
+
+// vlStartBroker starts the node's Broker from config and fails when it does not
+// come up.
+func vlStartBroker(t *testing.T, n *harness.Node, spec harness.BrokerSpec) harness.BrokerStart {
+	t.Helper()
+	st := n.StartBroker(t, spec)
+	if !st.Running {
+		t.Fatalf("the Broker did not start: exit code %d: %s", st.ExitCode, strings.TrimSpace(st.StderrLast))
+	}
+	return st
+}
+
+// vlOperator starts an operator session that never registers as an agent and
+// waits until it reaches its Broker.
+func vlOperator(t *testing.T, n *harness.Node, name string) *harness.Session {
+	t.Helper()
+	s := n.StartSession(t, harness.SessionSpec{Name: name, StartMCP: true, NoSocketEnv: true})
+	harness.Eventually(t, 3*time.Second, "the operator session reaches its Broker", func() (bool, string) {
+		r := s.Call(t, "list_brokers", map[string]any{})
+		if r.IsError {
+			return false, r.Text
+		}
+		return true, ""
+	})
+	return s
+}
+
+// vlPeer returns the node's only peer from Status, or a state string naming
+// why it is not exactly one.
+func vlPeer(t *testing.T, n *harness.Node) (*localpb.BrokerInfo, string) {
+	t.Helper()
+	resp, detail := n.Oracle().Status(t)
+	if detail != nil {
+		return nil, detail.GetMessage()
+	}
+	peers := resp.GetPeers()
+	if len(peers) != 1 {
+		return nil, fmt.Sprintf("Status lists %d peers, want 1", len(peers))
+	}
+	return peers[0], ""
+}
+
+// TestLinkVersionMismatchAndRecovery checks the link side of the version
+// handshake between two real Brokers: a dialer at the default link protocol
+// version is rejected by an acceptor at version 2, both sides report why, both
+// keep the pair listed, and the link recovers when the acceptor returns at the
+// default version.
+func TestLinkVersionMismatchAndRecovery(t *testing.T) {
+	a := harness.NewLocalHost(t, harness.LocalOptions{Name: "a"})
+	b := harness.NewLocalHost(t, harness.LocalOptions{Name: "b"})
+	addrB := b.FreeAddr(t)
+	a.WriteConfig(t, harness.ConfigYAML(harness.FastTimers, "broker:\n  listen: "+a.FreeAddr(t)+"\n"))
+	b.WriteConfig(t, harness.ConfigYAML(harness.FastTimers, "broker:\n  listen: "+addrB+"\n"))
+	vlStartBroker(t, a, harness.BrokerSpec{})
+	vlStartBroker(t, b, harness.BrokerSpec{})
+
+	// Pair A, the dialer, with B, the acceptor.
+	sb := vlOperator(t, b, "operator-b")
+	sa := vlOperator(t, a, "operator-a")
+	r := sb.Call(t, "create_pairing_key", nil)
+	r.MustOK(t)
+	key, err := harness.Decode[mcpserver.CreatePairingKeyOut](string(r.Structured))
+	if err != nil {
+		t.Fatalf("decoding create_pairing_key: %v", err)
+	}
+	sa.Call(t, "connect_broker", map[string]any{"address": addrB, "key": key.Key}).MustOK(t)
+	harness.Eventually(t, 3*time.Second, "A reports B connected", func() (bool, string) {
+		peer, state := vlPeer(t, a)
+		if peer == nil {
+			return false, state
+		}
+		return peer.GetStatus() == localpb.BrokerStatus_BROKER_STATUS_CONNECTED,
+			fmt.Sprintf("status is %s", peer.GetStatus())
+	})
+
+	// The sessions are not needed after pairing, and ending them keeps their
+	// MCP server processes from racing the Broker restarts below.
+	sb.End(t)
+	sa.End(t)
+
+	// Restart B at link protocol version 2; its data directory and the pair
+	// survive.
+	if code := b.StopBroker(t, syscall.SIGTERM); code != 0 {
+		t.Fatalf("B's Broker exited %d on SIGTERM, want 0", code)
+	}
+	vlStartBroker(t, b, harness.BrokerSpec{Env: map[string]string{"AGENT_PEER_TEST_LINK_PROTOCOL_VERSION": "2"}})
+
+	harness.Eventually(t, vlRelinkBound, "A reports the link version mismatch", func() (bool, string) {
+		peer, state := vlPeer(t, a)
+		if peer == nil {
+			return false, state
+		}
+		if peer.GetLinkState() == localpb.LinkState_LINK_STATE_ESTABLISHED {
+			return false, "link_state is ESTABLISHED"
+		}
+		if !strings.HasPrefix(peer.GetStatusDetail(), "link protocol version incompatible with this peer") {
+			return false, fmt.Sprintf("status_detail is %q", peer.GetStatusDetail())
+		}
+		return true, ""
+	})
+	harness.Eventually(t, vlRelinkBound, "B names the peer's link protocol version", func() (bool, string) {
+		peer, state := vlPeer(t, b)
+		if peer == nil {
+			return false, state
+		}
+		return peer.GetStatusDetail() == vlVersionDetail,
+			fmt.Sprintf("status_detail is %q", peer.GetStatusDetail())
+	})
+
+	// A version mismatch is not an unpairing: both sides still list the other
+	// as a peer.
+	for _, n := range []*harness.Node{a, b} {
+		resp, detail := n.Oracle().ListBrokers(t)
+		if detail != nil {
+			t.Fatalf("list_brokers: %s", detail.GetMessage())
+		}
+		if got := len(resp.GetBrokers()); got != 1 {
+			t.Fatalf("a Broker lists %d brokers after the version mismatch, want 1", got)
+		}
+		if !resp.GetBrokers()[0].GetIsPeer() {
+			t.Fatal("the listed Broker is no longer a peer after the version mismatch")
+		}
+	}
+
+	// Restart B at the default version; A's dialer redials and the link comes
+	// back without another connect_broker.
+	if code := b.StopBroker(t, syscall.SIGTERM); code != 0 {
+		t.Fatalf("B's Broker exited %d on SIGTERM, want 0", code)
+	}
+	vlStartBroker(t, b, harness.BrokerSpec{})
+
+	harness.Eventually(t, vlRelinkBound, "A reconnects after B returns at the default version", func() (bool, string) {
+		peer, state := vlPeer(t, a)
+		if peer == nil {
+			return false, state
+		}
+		if peer.GetStatus() != localpb.BrokerStatus_BROKER_STATUS_CONNECTED {
+			return false, fmt.Sprintf("status is %s", peer.GetStatus())
+		}
+		if detail := peer.GetStatusDetail(); detail != "" {
+			return false, fmt.Sprintf("status_detail is %q", detail)
+		}
+		return true, ""
+	})
+}
