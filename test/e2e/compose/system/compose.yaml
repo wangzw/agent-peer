@@ -9,6 +9,8 @@ services:
       AGENT_PEER_E2E_IN_CONTAINER: "1"
     volumes:
       - ${AGENT_PEER_E2E_BIN:?}:/opt/agent-peer-test:ro
+    networks:
+      - system
   systemd:
     image: ${AGENT_PEER_E2E_SYSTEM_IMAGE:?}
     privileged: true
@@ -21,3 +23,19 @@ services:
     volumes:
       - ${AGENT_PEER_E2E_BIN:?}:/opt/agent-peer-test:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    networks:
+      - system
+
+networks:
+  # Explicitly declared and internal so the containers have no way out. The
+  # network is pinned inside 198.18.0.0/15, the range the routed topologies and
+  # the tests' address allocator already use, at its high end: Docker then
+  # never picks an address from the host's own networks for a bridge route.
+  # syscontainer.Run overrides the subnet per compose project because Docker
+  # refuses two live networks with overlapping subnets and system tests run in
+  # parallel; the default is what a manual compose invocation uses.
+  system:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${AGENT_PEER_E2E_SYSTEM_SUBNET:-198.19.240.0/24}

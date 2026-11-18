@@ -4,13 +4,30 @@ package e2e
 
 import (
 	"errors"
+	"net"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
+)
+
+const (
+	// externalProbeIP is in the TEST-NET-2 documentation range. It can never be
+	// a real service, so a successful connection would mean the container
+	// found a way out.
+	externalProbeIP      = "198.51.100.1"
+	externalProbeAddress = externalProbeIP + ":443"
+	// gatewayProbePorts are ports likely to be open on a host that the
+	// container must not reach.
+	gatewayProbePort22   = "22"
+	gatewayProbePort6443 = "6443"
+	// hostGatewayEnv carries the host's default gateway, passed in by
+	// syscontainer.Run.
+	hostGatewayEnv = "AGENT_PEER_E2E_HOST_GATEWAY"
 )
 
 // TestHarnessAccountsAndBinary checks that the container provides the release
@@ -46,6 +63,79 @@ func TestHarnessAccountsAndBinary(t *testing.T) {
 	}
 	if groups := runID(t, "other", "-G"); hasGroup(groups, "2001") {
 		t.Errorf("id -G as other = %q, want it not to contain 2001", groups)
+	}
+}
+
+// TestHarnessNoEgress checks that the network declared in
+// compose/system/compose.yaml gives the container no way out: there is no
+// default route, or an external address has no route, and both an external
+// address and the network gateway's usual service ports are unreachable.
+func TestHarnessNoEgress(t *testing.T) {
+	if !syscontainer.InContainer() {
+		syscontainer.Run(t, syscontainer.Plain)
+		return
+	}
+
+	routes := runCommandAs(t, "root", "ip", "-4", "route", "show")
+	if routes.ExitCode != 0 {
+		t.Fatalf("ip -4 route show: exit %d\nstderr: %s", routes.ExitCode, strings.TrimSpace(routes.Stderr))
+	}
+
+	hasDefault, _ := parseDefaultRoute(routes.Stdout)
+	lookup := runCommandAs(t, "root", "ip", "route", "get", externalProbeIP)
+	unreachable := lookup.ExitCode != 0 &&
+		strings.Contains(strings.ToLower(lookup.Stdout+lookup.Stderr), "unreachable")
+	if hasDefault && !unreachable {
+		t.Errorf("the container has a default route and %s is still routable:\nroutes:\n%s\nroute get: exit %d\n%s",
+			externalProbeIP, strings.TrimSpace(routes.Stdout), lookup.ExitCode,
+			strings.TrimSpace(lookup.Stdout+lookup.Stderr))
+	}
+	if !hasDefault && !unreachable {
+		t.Logf("no default route; route get %s: exit %d, %s", externalProbeIP, lookup.ExitCode,
+			strings.TrimSpace(lookup.Stdout+lookup.Stderr))
+	}
+
+	assertDialFails(t, externalProbeAddress)
+
+	// The host's own default gateway is the address an egress path would run
+	// through first. The host test process passes it in; a host without one,
+	// such as a non-Linux host, leaves it empty.
+	gateway := os.Getenv(hostGatewayEnv)
+	if gateway == "" {
+		t.Logf("the host reported no default gateway to probe; routes in the container:\n%s",
+			strings.TrimSpace(routes.Stdout))
+		return
+	}
+	assertDialFails(t, net.JoinHostPort(gateway, gatewayProbePort22))
+	assertDialFails(t, net.JoinHostPort(gateway, gatewayProbePort6443))
+}
+
+// parseDefaultRoute reports whether routes has a default route and returns the
+// gateway it names.
+func parseDefaultRoute(routes string) (bool, string) {
+	for _, line := range strings.Split(routes, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[0] != "default" {
+			continue
+		}
+		for i, field := range fields {
+			if field == "via" && i+1 < len(fields) {
+				return true, fields[i+1]
+			}
+		}
+		return true, ""
+	}
+	return false, ""
+}
+
+// assertDialFails checks that a TCP connection to addr cannot be opened.
+func assertDialFails(t *testing.T, addr string) {
+	t.Helper()
+
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err == nil {
+		_ = conn.Close()
+		t.Errorf("dialing %s succeeded, want the container to have no egress", addr)
 	}
 }
 

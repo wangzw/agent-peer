@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/wangzw/agent-peer/test/e2e/node"
 )
 
 const (
@@ -296,75 +298,28 @@ func writeSystemConfig(t *testing.T, configYAML string) {
 	}
 }
 
-// Pids returns the processes whose command line contains every word.
+// Pids returns the processes whose command line contains every word. The scan
+// is node.ListProcs, so this package does not read /proc itself.
 func Pids(words ...string) []ProcInfo {
-	entries, err := os.ReadDir("/proc")
+	procs, err := node.ListProcs(func(p node.Proc) bool {
+		cmdline := strings.Join(p.Args, " ")
+		for _, word := range words {
+			if !strings.Contains(cmdline, word) {
+				return false
+			}
+		}
+		return true
+	})
 	if err != nil {
 		return nil
 	}
-	var procs []ProcInfo
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil || pid <= 0 {
-			continue
+	out := make([]ProcInfo, 0, len(procs))
+	for _, p := range procs {
+		uid := uint32(0)
+		if p.UID >= 0 {
+			uid = uint32(p.UID)
 		}
-		data, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "cmdline"))
-		if err != nil || len(data) == 0 {
-			continue
-		}
-		cmdline := strings.ReplaceAll(string(data), "\x00", " ")
-		matched := true
-		for _, word := range words {
-			if !strings.Contains(cmdline, word) {
-				matched = false
-				break
-			}
-		}
-		if !matched {
-			continue
-		}
-		ppid, ok := parentPID(pid)
-		if !ok {
-			continue
-		}
-		procs = append(procs, ProcInfo{PID: pid, PPID: ppid, UID: processUID(pid)})
+		out = append(out, ProcInfo{PID: p.PID, PPID: p.PPID, UID: uid})
 	}
-	return procs
-}
-
-// parentPID reads the parent PID from /proc/<pid>/stat.
-func parentPID(pid int) (int, bool) {
-	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
-	if err != nil {
-		return 0, false
-	}
-	// The command name is parenthesised and may contain spaces and parentheses,
-	// so the fields that matter start after the last ')'.
-	i := bytes.LastIndexByte(data, ')')
-	if i < 0 {
-		return 0, false
-	}
-	fields := strings.Fields(string(data[i+1:]))
-	// fields[0] is the state and fields[1] the parent PID.
-	if len(fields) < 2 {
-		return 0, false
-	}
-	ppid, err := strconv.Atoi(fields[1])
-	if err != nil {
-		return 0, false
-	}
-	return ppid, true
-}
-
-// processUID returns the effective uid of pid from its /proc directory.
-func processUID(pid int) uint32 {
-	info, err := os.Stat(filepath.Join("/proc", strconv.Itoa(pid)))
-	if err != nil {
-		return 0
-	}
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0
-	}
-	return st.Uid
+	return out
 }
