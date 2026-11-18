@@ -85,6 +85,28 @@ func TestHarnessSystemBrokerAndSessions(t *testing.T) {
 	}
 }
 
+// TestHarnessSystemService installs the system service through systemd and
+// starts it, so the tests downstream that exercise a managed system Broker can
+// rely on StartSystemService. It checks the unit is active and that the Broker
+// created its socket under /run/agent-peer.
+func TestHarnessSystemService(t *testing.T) {
+	if !syscontainer.InContainer() {
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	syscontainer.StartSystemService(t, "")
+
+	if _, err := os.Stat("/run/agent-peer/broker.sock"); err != nil {
+		t.Fatalf("the system service socket is not at /run/agent-peer/broker.sock: %v", err)
+	}
+	active := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	if state := strings.TrimSpace(active.Stdout); state != "active" {
+		t.Errorf("systemctl is-active agent-peer.service = %q (exit %d), want %q\nstderr: %s",
+			state, active.ExitCode, "active", strings.TrimSpace(active.Stderr))
+	}
+}
+
 // waitRegistered waits until the MCP server has registered the session with the
 // Broker. Registration happens in the background after the MCP handshake.
 func waitRegistered(t *testing.T, session *syscontainer.Session) {
