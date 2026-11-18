@@ -197,7 +197,7 @@ func TestClientKeepaliveFromSettings(t *testing.T) {
 	tl := newTransportTestLink(t)
 	tl.settings.SetKeepalive(20*time.Second, 7*time.Second)
 
-	got := tl.Link.clientKeepalive()
+	got := tl.clientKeepalive()
 	want := keepalive.ClientParameters{
 		Time:                20 * time.Second,
 		Timeout:             7 * time.Second,

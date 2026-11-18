@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -876,12 +877,14 @@ func TestTopicStyleLockingDoesNotDeadlock(t *testing.T) {
 	fpDialer := dialer.Peers.Fingerprint()
 
 	var lock sync.Mutex
+	var upHits, downHits, stateHits atomic.Int64
 	acceptor.Subscribe(
-		func(link.Fingerprint, []byte) { lock.Lock(); lock.Unlock() },
-		func(link.Fingerprint) { lock.Lock(); lock.Unlock() },
+		func(link.Fingerprint, []byte) { lock.Lock(); upHits.Add(1); lock.Unlock() },
+		func(link.Fingerprint) { lock.Lock(); downHits.Add(1); lock.Unlock() },
 	)
 	acceptor.HandleState(200, func(link.Fingerprint, link.Frame) {
 		lock.Lock()
+		stateHits.Add(1)
 		lock.Unlock()
 	})
 	dialer.HandleState(200, func(link.Fingerprint, link.Frame) {})

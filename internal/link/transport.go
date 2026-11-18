@@ -90,7 +90,7 @@ func (l *Link) openClientStream(tc *tls.Conn, id peerIdentity, address string) (
 					closeConn = func() error { return l.closeClientConn(cc) }
 				}
 				// ClientConn.Close can block briefly; callers may hold locks.
-				go closeConn()
+				go func() { _ = closeConn() }()
 			}
 		})
 	}

@@ -90,14 +90,6 @@ func (h *recordHarness) waitCount(t *testing.T, n int) []recordedEvent {
 	}
 }
 
-// noEvents asserts that no callback has been recorded yet.
-func (h *recordHarness) noEvents(t *testing.T) {
-	t.Helper()
-	if evs := h.snapshot(); len(evs) != 0 {
-		t.Fatalf("unexpected callbacks: %+v", evs)
-	}
-}
-
 // kickChan returns the kick channel of peer's record, or nil.
 func (h *recordHarness) kickChan(peer Fingerprint) chan struct{} {
 	h.l.mu.Lock()
@@ -394,8 +386,8 @@ func TestOnDownCallbackMayTakeLockHeldBySender(t *testing.T) {
 		func(Fingerprint, []byte) {},
 		func(Fingerprint) {
 			m.Lock()
-			m.Unlock()
 			close(entered)
+			m.Unlock()
 		},
 	)
 

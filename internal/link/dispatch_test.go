@@ -607,8 +607,8 @@ func TestSendDoesNotBlockUnderTopicLock(t *testing.T) {
 		func(Fingerprint, []byte) {},
 		func(Fingerprint) {
 			m.Lock()
-			m.Unlock()
 			downCalled <- struct{}{}
+			m.Unlock()
 		},
 	)
 

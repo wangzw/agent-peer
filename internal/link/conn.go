@@ -379,10 +379,7 @@ func (c *conn) cancelRequest(p *pendingReq) (sent bool) {
 	c.pendMu.Lock()
 	delete(c.pending, p.id)
 	c.pendMu.Unlock()
-	if p.state.CompareAndSwap(reqQueued, reqCanceled) {
-		return false
-	}
-	return true
+	return !p.state.CompareAndSwap(reqQueued, reqCanceled)
 }
 
 // closeAsync closes the connection once. It records the reason, cancels the

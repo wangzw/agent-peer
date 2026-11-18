@@ -337,7 +337,7 @@ func TestDialTimeoutUsesClock(t *testing.T) {
 
 	result := make(chan error, 1)
 	go func() {
-		_, _, err := client.Link.dialTLS(context.Background(), ln.Addr().String())
+		_, _, err := client.dialTLS(context.Background(), ln.Addr().String())
 		result <- err
 	}()
 
@@ -478,7 +478,7 @@ func TestAbortDoesNotBlock(t *testing.T) {
 
 	closeStarted := make(chan struct{})
 	release := make(chan struct{})
-	client.Link.closeClientConn = func(*grpc.ClientConn) error {
+	client.closeClientConn = func(*grpc.ClientConn) error {
 		close(closeStarted)
 		select {
 		case <-release:
@@ -524,7 +524,7 @@ func TestConnectDoesNotStartAfterClose(t *testing.T) {
 	server := newTransportTestLink(t)
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	server.Link.onConnect = func() {
+	server.onConnect = func() {
 		close(entered)
 		<-release
 	}
@@ -555,7 +555,7 @@ func TestConnectDoesNotStartAfterClose(t *testing.T) {
 
 	closed := make(chan struct{})
 	go func() {
-		server.Link.Close()
+		server.Close()
 		close(closed)
 	}()
 	select {
