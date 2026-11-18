@@ -64,7 +64,10 @@ Agent 地址是相对于看到它的 Broker 而言的。同一个 Agent 在两�
 graph TD
     cmd[cmd/agent-peer] --> broker
     cmd --> mcpserver
-    mcpserver --> broker
+    mcpserver --> localpb
+    broker --> localpb
+    broker --> deliverpb
+    deliverpb --> localpb
     broker --> topic
     broker --> directory
     broker --> link
@@ -82,9 +85,11 @@ graph TD
 
 箭头从使用方指向被使用方。本项目自己的包之间只沿箭头引用；标准库、外部依赖和 `third_party` 下纳入的源码不在此列。`config` 与 `inbox` 不引用本项目自己的任何其他包。`link` 只提供带身份认证的帧通道，不解析 topic 和名录的帧；`topic` 与 `directory` 各自在 `link` 上注册自己的帧类型。
 
+`localpb` 与 `deliverpb` 是 `broker` 的 proto 包，在图中单列为节点。`mcpserver` 只引用 `localpb`，不引用 `broker` 包本身；`deliverpb` 承载跨 Broker 的投递帧，只由 `broker` 引用。
+
 图中没有箭头而运行时需要的协作，由 `broker` 以接口注入或转调完成。接口注入用于 `pairing`：它发起握手要拨号，解除配对要关闭链路，拨号与关闭链路由 `link` 实现，`broker` 在装配时以接口的形式交给 `pairing`。其余的协作是转调：配置变更由 `broker` 订阅后分别通知 `link`、`directory`；名片带来的对外地址列表由 `broker` 交给 `pairing` 记入候选地址，本机对外地址列表的变化由 `broker` 通知 `link` 与 `directory`；配对结果与名录的比对、公开 topic 的声明都由 `broker` 依次调用相关的包。
 
-`mcpserver` 对 `broker` 的依赖仅限本机接口的客户端与消息定义，两者运行在不同进程里。`cmd/agent-peer` 是装配入口，没有自己的设计文档，终端命令的行为记在 [broker](modules/design-broker.md) 的外部接口契约一节。
+`mcpserver` 只引用 `internal/broker/localpb`，即本机接口的客户端与消息定义所在的 proto 包，从不引用 `broker` 包本身；两者运行在不同进程里。`cmd/agent-peer` 是装配入口，没有自己的设计文档，终端命令的行为记在 [broker](modules/design-broker.md) 的外部接口契约一节。
 
 ## 逻辑部署架构
 

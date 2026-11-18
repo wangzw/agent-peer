@@ -1,0 +1,12 @@
+version: v2
+plugins:
+  # Both plugins are the versions fixed in go.mod's tool block, so generation
+  # does not depend on whatever binaries happen to be on PATH.
+  - local: ["go", "tool", "protoc-gen-go"]
+    out: .
+    opt:
+      - paths=source_relative
+  - local: ["go", "tool", "protoc-gen-go-grpc"]
+    out: .
+    opt:
+      - paths=source_relative

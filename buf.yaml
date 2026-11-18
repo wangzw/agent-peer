@@ -1,0 +1,38 @@
+version: v2
+modules:
+  - path: .
+    # Claude Code keeps git worktrees under .claude/worktrees. Each one holds a
+    # full copy of the repository, including its .proto files, and a buf run
+    # from the main repository root must not scan them.
+    excludes:
+      - .claude/worktrees
+lint:
+  use:
+    - STANDARD
+  ignore_only:
+    # The design fixes the proto package names without a .v1 suffix so that
+    # the proto package matches the directory under the repository root.
+    PACKAGE_VERSION_SUFFIX:
+      - internal/broker/localpb/local.proto
+      - internal/broker/deliverpb/deliver.proto
+      - internal/link/linkpb/link.proto
+      - internal/pairing/pairingpb/pairing.proto
+      - internal/topic/topicpb/topic.proto
+      - internal/directory/directorypb/directory.proto
+    # The design keeps the service names Local and Link.
+    SERVICE_SUFFIX:
+      - internal/broker/localpb/local.proto
+      - internal/link/linkpb/link.proto
+    # service Link streams one Frame type both ways: Connect(stream Frame)
+    # returns (stream Frame). A bidirectional frame stream reuses its single
+    # message type, which these three rules forbid in general.
+    RPC_REQUEST_STANDARD_NAME:
+      - internal/link/linkpb/link.proto
+    RPC_RESPONSE_STANDARD_NAME:
+      # Audit streams one AuditEvent per message so the caller sees events as
+      # they arrive. The contract names the streamed message AuditEvent rather
+      # than wrapping each one in an AuditResponse.
+      - internal/broker/localpb/local.proto
+      - internal/link/linkpb/link.proto
+    RPC_REQUEST_RESPONSE_UNIQUE:
+      - internal/link/linkpb/link.proto
