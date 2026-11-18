@@ -47,13 +47,17 @@ type sendHalfCloser interface {
 	CloseSend() error
 }
 
-// rejectAndLinger sends a Reject and keeps the connection open for at most
+// lingerAfterSend sends one frame and keeps the connection open for at most
 // rejectLinger after which it is closed. The same deadline bounds the write, so
 // a peer that stops reading cannot keep the connection alive. A write failure
 // closes at once. The linger also ends when the connection closes or the Link
 // closes: its goroutine must not outlive either, and it stops the timer when it
 // exits instead of leaving it scheduled.
-func (l *Link) rejectAndLinger(c *conn, reason linkpb.RejectReason) {
+//
+// This is the shared mechanism behind link's own Reject and pairing's
+// PairReject; pairing reaches it through pairConn.SendAndLinger. The send
+// callback writes exactly one frame.
+func (l *Link) lingerAfterSend(c *conn, send func(context.Context) error) error {
 	c.lingering.Store(true)
 	ctx, cancel := context.WithCancel(l.rootCtx)
 	stop := l.clock.AfterFunc(l.rejectLinger, cancel)
@@ -71,9 +75,9 @@ func (l *Link) rejectAndLinger(c *conn, reason linkpb.RejectReason) {
 			l.onRejectLingerExit()
 		}
 	}()
-	if err := c.sendDirect(ctx, encodeReject(reason)); err != nil {
+	if err := send(ctx); err != nil {
 		cancel()
-		return
+		return err
 	}
 	// A dialer is done sending once it has rejected the peer. Half-close the
 	// stream so the Reject is followed by an orderly end, not by the abrupt
@@ -82,6 +86,14 @@ func (l *Link) rejectAndLinger(c *conn, reason linkpb.RejectReason) {
 	if hc, ok := c.stream.(sendHalfCloser); ok {
 		_ = hc.CloseSend()
 	}
+	return nil
+}
+
+// rejectAndLinger sends a Reject and lingers before closing the connection.
+func (l *Link) rejectAndLinger(c *conn, reason linkpb.RejectReason) {
+	_ = l.lingerAfterSend(c, func(ctx context.Context) error {
+		return c.sendDirect(ctx, encodeReject(reason))
+	})
 }
 
 // rejectUnknown refuses a connection whose peer is not in the peer table and
@@ -163,8 +175,10 @@ func (l *Link) serveInbound(c *conn, t *trackedConn) (<-chan struct{}, bool) {
 	// pushes the following Hello back, so the normal path below sees it.
 	if f.GetKind() == pairingpb.KindPairRequest && classify(f) == classState {
 		c.unread(f)
-		if err := l.peers.Accept(newPairConn(c)); err != nil {
-			c.closeAsync(FailProtocol)
+		if err := l.peers.Accept(newPairConn(c, l.lingerAfterSend)); err != nil {
+			// A pairing rejection starts its own linger and owns the close; a
+			// plain handshake failure has no linger and closes here.
+			c.closeAfterFailedHandshake(FailProtocol)
 			return nil, false
 		}
 		if t != nil {

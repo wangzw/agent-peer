@@ -41,6 +41,15 @@ type PairConn interface {
 	Close() error
 }
 
+// finalSender is implemented by a PairConn whose transport writes
+// asynchronously and therefore has to keep the connection open after its last
+// frame. link's PairConn adapter implements it with the same linger it uses
+// for its own Reject. A transport that delivers synchronously needs no linger
+// and falls back to Send followed by Close.
+type finalSender interface {
+	SendAndLinger(ctx context.Context, kind uint32, payload []byte) error
+}
+
 // Frame kinds used during a pairing handshake. Only kindHello belongs to the
 // link protocol: pairing checks it to recognise the frame that hands the
 // connection to link, and never interprets its payload. The other values

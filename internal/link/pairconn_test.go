@@ -7,6 +7,17 @@ import (
 	"time"
 )
 
+// noLinger is a synchronous rejection send for the contract test: the frame is
+// handed to the pipe and the connection closes at once. The contract test does
+// not exercise the linger itself.
+func noLinger(c *conn, send func(context.Context) error) error {
+	if err := send(context.Background()); err != nil {
+		return err
+	}
+	c.closeAsync(FailProtocol)
+	return nil
+}
+
 // TestPairConnContract checks the pairing.PairConn behaviours pairing relies
 // on: identity accessors, a frame pushed back being received first, Send
 // producing an unprompted frame, ctx cancellation, and repeated Close.
@@ -20,7 +31,7 @@ func TestPairConnContract(t *testing.T) {
 	id := peerIdentity{fp: fp, pub: pub, remote: "192.0.2.7:17443"}
 	c := newConn(a, a.closeBoth, id, 4)
 	c.start()
-	pc := newPairConn(c)
+	pc := newPairConn(c, noLinger)
 
 	if got := pc.PeerFingerprint(); got != fp {
 		t.Fatalf("PeerFingerprint() = %v, want %v", got, fp)

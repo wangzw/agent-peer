@@ -410,8 +410,7 @@ func (p *Pairing) rejectAcceptor(conn PairConn, ctx context.Context, fp Fingerpr
 	default:
 		auditPairingFailed(p.settings, now, fp, alias, auditReasonKeyInvalid, "")
 	}
-	_ = sendReject(ctx, conn, reason)
-	_ = conn.Close()
+	_ = sendRejectAndLinger(ctx, conn, reason)
 	return &PairingError{Reason: reason, Detail: rejectDetail(reason)}
 }
 
@@ -530,14 +529,28 @@ func (p *Pairing) dialerEntry(fp Fingerprint, pub []byte, alias, localAlias, dia
 	return entry
 }
 
-// sendReject writes a PairReject frame. Local-only reasons never travel on the
-// wire and are silently dropped.
-func sendReject(ctx context.Context, conn PairConn, reason RejectReason) error {
+// sendRejectAndLinger writes a PairReject frame and lets the connection stay
+// open briefly, so the frame can leave the transport's write buffer before the
+// close. Local-only reasons never travel on the wire; they close the
+// connection at once.
+func sendRejectAndLinger(ctx context.Context, conn PairConn, reason RejectReason) error {
 	pbReason, ok := rejectReasonToPB(reason)
 	if !ok {
-		return nil
+		return conn.Close()
 	}
-	return sendMessage(ctx, conn, kindPairReject, &pairingpb.PairReject{Reason: pbReason})
+	payload, err := proto.Marshal(&pairingpb.PairReject{Reason: pbReason})
+	if err != nil {
+		_ = conn.Close()
+		return err
+	}
+	if sender, ok := conn.(finalSender); ok {
+		return sender.SendAndLinger(ctx, kindPairReject, payload)
+	}
+	if err := conn.Send(ctx, kindPairReject, payload); err != nil {
+		_ = conn.Close()
+		return err
+	}
+	return conn.Close()
 }
 
 // rejectError turns a PairReject payload into a PairingError. An unrecognised

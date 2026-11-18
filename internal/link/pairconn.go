@@ -12,13 +12,18 @@ import (
 // frames.
 type pairConn struct {
 	c *conn
+	// linger is link's rejection linger, shared with rejectAndLinger. It sends
+	// the pairing reject frame and keeps the connection open until the frame
+	// has had time to leave the transport's write buffer.
+	linger func(*conn, func(context.Context) error) error
 }
 
 var _ pairing.PairConn = (*pairConn)(nil)
 
-// newPairConn wraps c for pairing.
-func newPairConn(c *conn) pairing.PairConn {
-	return &pairConn{c: c}
+// newPairConn wraps c for pairing. linger must be the containing Link's
+// lingerAfterSend.
+func newPairConn(c *conn, linger func(*conn, func(context.Context) error) error) pairing.PairConn {
+	return &pairConn{c: c, linger: linger}
 }
 
 // PeerFingerprint returns the certificate fingerprint the peer presented.
@@ -40,6 +45,16 @@ func (p *pairConn) RemoteAddr() string {
 // not replies.
 func (p *pairConn) Send(ctx context.Context, kind uint32, payload []byte) error {
 	return p.c.sendDirect(ctx, &linkpb.Frame{Kind: kind, Payload: payload})
+}
+
+// SendAndLinger sends one unprompted frame and uses link's rejection linger:
+// the connection stays open until the frame has left the transport's write
+// buffer, and at most rejectLinger in any case. Pairing uses it for PairReject,
+// which the peer must read instead of an abrupt close.
+func (p *pairConn) SendAndLinger(ctx context.Context, kind uint32, payload []byte) error {
+	return p.linger(p.c, func(sendCtx context.Context) error {
+		return p.c.sendDirect(sendCtx, &linkpb.Frame{Kind: kind, Payload: payload})
+	})
 }
 
 // Receive returns the next frame in stream order.
