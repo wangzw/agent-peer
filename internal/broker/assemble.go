@@ -27,11 +27,13 @@ type Assembler interface {
 }
 
 // DefaultAssemblers is used when RunOptions.Assemblers is nil. It builds pairing
-// and link first, then the topic registry, then the delivery; the directory
-// assembler, when it exists, sits between the topic and the delivery.
-// configWiring is last: it sees the link and the card issuer the earlier
-// assemblers built, and its subscriptions are registered after pairing's own
-// broker.alias subscription.
+// and link first, then the topic registry, then the directory, then the
+// delivery. configWiring is last: it sees the link and the card issuer the
+// earlier assemblers built, and its subscriptions are registered after
+// pairing's own broker.alias subscription. The directory sits after the topic
+// registry because it reads the registry's public topic set on a public switch
+// change, and before configWiring because that one uses the card issuer hook
+// the directory adapter installs.
 func DefaultAssemblers() []Assembler {
-	return []Assembler{newPeerAssembler(), topicAssembler{}, newDeliveryAssembler(), &configWiring{}}
+	return []Assembler{newPeerAssembler(), topicAssembler{}, &directoryAssembler{}, newDeliveryAssembler(), &configWiring{}}
 }

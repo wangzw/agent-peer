@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/agent-peer/internal/directory"
 	"github.com/wangzw/agent-peer/internal/pairing"
 )
 
@@ -69,7 +70,7 @@ func (p *discoveryPairing) UpdateCardAddresses(fp pairing.Fingerprint, addrs []c
 func relayTestLogger(t *testing.T) (*slog.Logger, *bytes.Buffer) {
 	t.Helper()
 	var buf bytes.Buffer
-	return slog.New(slog.NewJSONHandler(&buf, nil)), &buf
+	return slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})), &buf
 }
 
 func discardLogger() *slog.Logger {
@@ -103,6 +104,21 @@ func findLogRecord(t *testing.T, records []map[string]any, want string) map[stri
 	}
 	t.Fatalf("no log record with msg %q in %v", want, records)
 	return nil
+}
+
+// assertDebugNotWarn requires a debug record with msg and no warning at all.
+func assertDebugNotWarn(t *testing.T, buf *bytes.Buffer, msg string) {
+	t.Helper()
+	records := logRecords(t, buf)
+	for _, rec := range records {
+		if rec["level"] == "WARN" {
+			t.Errorf("a closed-directory SetPublic was logged at WARN: %v", rec)
+		}
+	}
+	rec := findLogRecord(t, records, msg)
+	if rec["level"] != "DEBUG" {
+		t.Errorf("log level for %q = %v, want DEBUG", msg, rec["level"])
+	}
 }
 
 func relayTestFP(b byte) pairing.Fingerprint {
@@ -158,6 +174,18 @@ func TestPublicChangedSetPublicErrorStops(t *testing.T) {
 	if errText, _ := rec["error"].(string); errText != "directory closed" {
 		t.Errorf("logged error = %v, want %q", rec["error"], "directory closed")
 	}
+}
+
+// TestPublicChangedClosedDirectoryLogsDebug covers a notification delivered
+// while the directory is closing: SetPublic returns ErrClosed, which is not a
+// warning.
+func TestPublicChangedClosedDirectoryLogsDebug(t *testing.T) {
+	sw := &relaySwitch{setPublicErr: directory.ErrClosed}
+	logger, buf := relayTestLogger(t)
+
+	publicChanged(sw, func() map[string]string { return map[string]string{"x": "hx"} }, true, logger)
+
+	assertDebugNotWarn(t, buf, "set_public_closed")
 }
 
 func TestPublicChangedOneDeclareFailureContinues(t *testing.T) {

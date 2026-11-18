@@ -1,10 +1,12 @@
 package broker
 
 import (
+	"errors"
 	"log/slog"
 	"sort"
 
 	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/agent-peer/internal/directory"
 	"github.com/wangzw/agent-peer/internal/pairing"
 )
 
@@ -36,7 +38,7 @@ func publicChanged(sw publicSwitch, topics func() map[string]string, public bool
 		log = slog.Default()
 	}
 	if err := sw.SetPublic(public); err != nil {
-		log.Warn("set_public_failed", "public", public, "error", err)
+		logSetPublicFailure(log, public, err)
 		return
 	}
 	if !public {
@@ -66,6 +68,17 @@ func publicChanged(sw publicSwitch, topics func() map[string]string, public bool
 	for _, name := range retired {
 		sw.RetirePublicTopic(name)
 	}
+}
+
+// logSetPublicFailure reports a failed SetPublic. ErrClosed means the directory
+// was already closed, which happens when a queued configuration notification
+// arrives during shutdown; that is expected and logged at debug level.
+func logSetPublicFailure(log *slog.Logger, public bool, err error) {
+	if errors.Is(err, directory.ErrClosed) {
+		log.Debug("set_public_closed", "public", public, "error", err)
+		return
+	}
+	log.Warn("set_public_failed", "public", public, "error", err)
 }
 
 // relayCard hands the addresses carried by a directory card to the peer table.
