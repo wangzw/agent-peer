@@ -280,12 +280,12 @@ func TestLocalRegistration(t *testing.T) {
 			mention string
 		}{
 			{"a@b", func(addr string) bool { return strings.Contains(addr, "a@b") }, "@"},
-			{"a*b", func(addr string) bool { return strings.Contains(addr, "a*b") }, ""},
-			{"<>", func(addr string) bool { return registrationAddressName(addr) == "" }, ""},
+			{"a*b", func(addr string) bool { return strings.Contains(addr, "a*b") }, "*"},
+			{"<>", func(addr string) bool { return registrationAddressName(addr) == "" }, "empty"},
 		}
 		for _, tc := range unusable {
 			s := registrationSession(t, host, tc.name, workspace)
-			harness.Eventually(t, 3*time.Second, fmt.Sprintf("session name %q is reported unusable", tc.name), func() (bool, string) {
+			harness.Eventually(t, harness.RegistrationReportBound, fmt.Sprintf("session name %q is reported unusable", tc.name), func() (bool, string) {
 				r := s.Call(t, "list_agents", nil)
 				if !r.IsError {
 					return false, "list_agents succeeded"
@@ -293,7 +293,7 @@ func TestLocalRegistration(t *testing.T) {
 				if code := r.Code(); code != "not_registered" {
 					return false, "error code is " + code
 				}
-				if tc.mention != "" && !strings.Contains(r.Text, tc.mention) {
+				if !strings.Contains(r.Text, tc.mention) {
 					return false, "the error does not mention " + tc.mention + ": " + r.Text
 				}
 				return true, ""

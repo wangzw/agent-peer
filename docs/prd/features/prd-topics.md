@@ -196,8 +196,8 @@ Broker 配置中关闭自动加入后，该 Broker 上新登记的 Agent 不得�
 Agent 的 topic 成员关系必须在所在会话结束时全部消失。Broker 重启后，各 Agent 的 topic 成员关系由 MCP 服务进程重新登记后恢复。
 
 - **验收**：Agent 手动加入 `t1` 后结束会话；在同一工作区重新启动会话，新 Agent 所在的 topic 只有自动加入的那些，不含 `t1`。重启 Broker 后，重启前已加入 topic 的 Agent 在其 MCP 服务进程重新登记后恢复原来的成员关系。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/session_lifecycle_test.go` 的 `TestLocalSessionChanges/REQ-topics-022 membership ends with session and returns after broker restart`
 
 ### REQ-topics-023
 

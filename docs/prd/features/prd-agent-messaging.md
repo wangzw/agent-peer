@@ -267,16 +267,16 @@ Agent 的名字经接收方会话对署名的清洗后与原名不同时，该 A
 以一个 Agent 的曾用名为目标的发送失败时，错误必须给出该 Agent 现在的名字。
 
 - **验收**：把 Agent `api-worker` 的会话改名为 `api-v2`，随即以 `api-worker@hostA` 为目标发送，返回的错误中给出 `api-v2`，消息不进入该会话。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/session_lifecycle_test.go` 的 `TestLocalSessionChanges/REQ-agent-messaging-031 old name error`
 
 ### REQ-agent-messaging-032
 
 列出 Agent 时，改名后 10 分钟内的 Agent 必须注明其曾用名。
 
 - **验收**：把一个 Agent 的会话从 `api-worker` 改名为 `api-v2`，另一个与它可见的 Agent 随即列出 Agent，该项的名字是 `api-v2`，并注明曾用名 `api-worker`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/session_lifecycle_test.go` 的 `TestLocalSessionChanges/REQ-agent-messaging-032 previous name`
 
 ### REQ-agent-messaging-033
 

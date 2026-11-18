@@ -10,6 +10,15 @@ import (
 // total wait against the timers under test instead.
 const pollInterval = 50 * time.Millisecond
 
+// RegistrationReportBound is how long a test waits for the Broker's
+// not_registered event when a session name is unusable. The Broker reports a
+// registration that has not completed after registrationWait, which is 10
+// seconds (internal/broker/register.go; design-broker.md:78); the two extra
+// seconds let the event reach the MCP server process before the test gives up.
+// This is the one wait that exceeds the three-second bound, because the bound
+// is set by the product's own timer.
+const RegistrationReportBound = 12 * time.Second
+
 // Eventually calls cond immediately and then every 50ms until cond reports
 // success or bound elapses. The first success returns. If the bound expires
 // the test fails with the last state cond reported, which the caller uses to
