@@ -370,10 +370,13 @@ func TestLaunchTimeout(t *testing.T) {
 	if !errors.As(err, &le) {
 		t.Fatalf("Launch error = %v, want *launchError", err)
 	}
-	if !strings.Contains(le.Reason, "did not report readiness") {
-		t.Fatalf("reason = %q, want a timeout reason", le.Reason)
+	const wantReason = "the Broker did not report readiness within 200ms"
+	if le.Reason != wantReason {
+		t.Fatalf("reason = %q, want %q", le.Reason, wantReason)
 	}
-	facts := launchReadFacts(t, factsPath)
+	// The 200ms readiness timeout can expire before the launched Broker has
+	// started, so the facts file it writes first may not exist yet.
+	facts := launchWaitFacts(t, factsPath)
 	t.Cleanup(func() { _ = syscall.Kill(facts.PID, syscall.SIGKILL) })
 }
 
@@ -435,6 +438,13 @@ func TestLaunchKillsStuckLauncher(t *testing.T) {
 			_ = syscall.Kill(pid, syscall.SIGKILL)
 		}
 	})
+	// The readiness timeout is only long enough for the helper to start and
+	// write its line; the grace is injected so the whole case stays well under
+	// the three-second bound for a single test.
+	const (
+		readyTimeout = 2 * time.Second
+		exitGrace    = 300 * time.Millisecond
+	)
 	l := &execLauncher{
 		Executable: os.Args[0],
 		Env: []string{
@@ -443,9 +453,11 @@ func TestLaunchKillsStuckLauncher(t *testing.T) {
 			"AGENT_PEER_TEST_ROLE=launcher-hang",
 			"FAKE_LAUNCHER_PID=" + pidPath,
 		},
-		ReadyTimeout: 200 * time.Millisecond,
+		ReadyTimeout: readyTimeout,
+		ExitGrace:    exitGrace,
 	}
 
+	bound := readyTimeout + exitGrace + 500*time.Millisecond
 	start := time.Now()
 	errc := make(chan error, 1)
 	go func() { errc <- l.Launch(context.Background()) }()
@@ -453,11 +465,11 @@ func TestLaunchKillsStuckLauncher(t *testing.T) {
 	var err error
 	select {
 	case err = <-errc:
-	case <-time.After(3 * time.Second):
-		t.Fatal("Launch did not return within the readiness timeout plus the 2s grace")
+	case <-time.After(bound):
+		t.Fatalf("Launch did not return within ReadyTimeout %v plus the exit grace %v plus 500ms", readyTimeout, exitGrace)
 	}
-	if elapsed := time.Since(start); elapsed > 3*time.Second {
-		t.Fatalf("Launch took %v, want ReadyTimeout plus the 2s grace", elapsed)
+	if elapsed := time.Since(start); elapsed > bound {
+		t.Fatalf("Launch took %v, want ReadyTimeout %v plus the exit grace %v plus 500ms", elapsed, readyTimeout, exitGrace)
 	}
 	var le *launchError
 	if !errors.As(err, &le) {

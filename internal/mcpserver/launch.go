@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -23,7 +24,6 @@ func (e *launchError) Error() string { return e.Reason }
 
 const (
 	readyTimeoutDefault = 10 * time.Second
-	readyTimeoutText    = "the Broker did not report readiness within 10s"
 	readyEOFText        = "the Broker exited before reporting whether it started"
 
 	// launcherExitGrace bounds how long the intermediate process may take to
@@ -33,6 +33,12 @@ const (
 	launcherStuckText = "the Broker launcher did not exit after starting the Broker"
 )
 
+// readyTimeoutText returns the reason for a readiness timeout of the given
+// length, so the text the model sees matches the timeout that actually applied.
+func readyTimeoutText(timeout time.Duration) string {
+	return fmt.Sprintf("the Broker did not report readiness within %s", timeout)
+}
+
 // execLauncher starts the intermediate process of the two-level re-exec and
 // waits for the Broker's readiness line on the pipe passed through fd 3.
 type execLauncher struct {
@@ -40,7 +46,10 @@ type execLauncher struct {
 	LauncherArgs []string      // production: LauncherArgs ("internal", "broker-launcher")
 	Env          []string      // production: brokerEnv(os.Environ())
 	ReadyTimeout time.Duration // production: 10 * time.Second
-	after        func(time.Duration) <-chan time.Time
+	// ExitGrace overrides launcherExitGrace. Tests shorten it so a stuck
+	// launcher case does not have to wait the production grace.
+	ExitGrace time.Duration
+	after     func(time.Duration) <-chan time.Time
 }
 
 // Launch re-executes the agent-peer binary with LauncherArgs, hands it the
@@ -108,7 +117,7 @@ func (l *execLauncher) Launch(ctx context.Context) error {
 			reason = res.line
 		}
 	case <-after(timeout):
-		reason = readyTimeoutText
+		reason = readyTimeoutText(timeout)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -117,7 +126,11 @@ func (l *execLauncher) Launch(ctx context.Context) error {
 	// before returning so a detached Broker is not left parented to a zombie.
 	// A stuck launcher is killed after a short grace period: it has already
 	// done its job (or failed to), and waiting for it would hang the MCP server.
-	exit := time.NewTimer(launcherExitGrace)
+	exitGrace := l.ExitGrace
+	if exitGrace <= 0 {
+		exitGrace = launcherExitGrace
+	}
+	exit := time.NewTimer(exitGrace)
 	defer exit.Stop()
 	select {
 	case <-waitDone:

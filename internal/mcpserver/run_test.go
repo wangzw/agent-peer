@@ -237,6 +237,26 @@ func TestRunHandshakeWithoutBroker(t *testing.T) {
 	}
 }
 
+// runWaitUnavailableError calls list_agents until the connection loop has left
+// PhaseStarting and reports why the Broker is unusable. The loop runs in a
+// background goroutine, so the first tool call may legitimately arrive before
+// the first Broker selection has finished; PhaseStarting answers "still being
+// set up" and asks the caller to retry.
+func runWaitUnavailableError(t *testing.T, cs *mcp.ClientSession) *mcp.CallToolResult {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		res := callTool(t, cs, "list_agents", nil)
+		if res.IsError && !strings.Contains(textContent(t, res), textStarting) {
+			return res
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("list_agents kept reporting that the Broker is still being set up: %s", textContent(t, res))
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
 // REQ-agent-messaging-038
 func TestRunToolErrorsWhenBrokerIsUnavailable(t *testing.T) {
 	clock := newLoopClock()
@@ -247,7 +267,7 @@ func TestRunToolErrorsWhenBrokerIsUnavailable(t *testing.T) {
 	})
 	h := startRunClient(t, opts)
 
-	res := callTool(t, h.cs, "list_agents", nil)
+	res := runWaitUnavailableError(t, h.cs)
 	if !res.IsError {
 		t.Fatal("list_agents succeeded without a Broker")
 	}
