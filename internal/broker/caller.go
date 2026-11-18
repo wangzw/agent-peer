@@ -44,9 +44,15 @@ func usernameFor(uid uint32) string {
 type callerAuthInfo struct {
 	credentials.CommonAuthInfo
 	caller Caller
-	// rejected is reserved for the version-compat unit: set after a Hello
-	// version mismatch; this unit never reads or writes it.
+	// rejected is set by Hello after a version mismatch; checked by the
+	// version interceptors.
 	rejected atomic.Bool
+	// rejectedClientVersion is the client version of the rejected Hello; valid
+	// when rejected is set.
+	rejectedClientVersion atomic.Uint32
+	// rejectedBrokerVersion is this Broker's version at that Hello; valid when
+	// rejected is set.
+	rejectedBrokerVersion atomic.Uint32
 }
 
 // AuthType implements credentials.AuthInfo.
