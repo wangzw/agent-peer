@@ -23,11 +23,14 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/wangzw/agent-peer/internal/config"
 	"github.com/wangzw/agent-peer/internal/directory/directorypb"
 	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/agent-peer/internal/link/linkpb"
 	"github.com/wangzw/agent-peer/internal/pairing"
 )
 
@@ -95,6 +98,11 @@ type pairedEvent struct {
 type recordsSetEvent struct {
 	Event string `json:"event"`
 	Count int    `json:"count"`
+}
+
+type closedEvent struct {
+	Event  string `json:"event"`
+	Reason string `json:"reason"`
 }
 
 type errorEvent struct {
@@ -263,6 +271,24 @@ func handleCommand(line []byte, p *pairing.Pairing, l *link.Link, set *recordSet
 			_ = l.Send(peer, link.Frame{Kind: directorypb.KindRecordList, Payload: payload})
 		}
 		e.emit(recordsSetEvent{Event: "records_set", Count: len(recs)})
+	case "dial_unpaired":
+		ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+		defer cancel()
+		var conn *grpc.ClientConn
+		open := func(ctx context.Context) (linkpb.Link_ConnectClient, error) {
+			tc := p.TLSConfig().Clone()
+			c, err := grpc.NewClient(cmd.Address, grpc.WithTransportCredentials(credentials.NewTLS(tc)))
+			if err != nil {
+				return nil, err
+			}
+			conn = c
+			return linkpb.NewLinkClient(c).Connect(ctx)
+		}
+		reason := dialUnpaired(ctx, open, set)
+		if conn != nil {
+			_ = conn.Close()
+		}
+		e.emit(closedEvent{Event: "closed", Reason: reason})
 	default:
 		e.emit(errorEvent{Event: "error", Message: "unknown command"})
 	}

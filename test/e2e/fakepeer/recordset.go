@@ -26,6 +26,13 @@ func (s *recordSet) set(recs []*directorypb.Record) {
 	s.recs = append([]*directorypb.Record(nil), recs...)
 }
 
+// all returns the whole record set, without the body parse that list performs.
+func (s *recordSet) all() []*directorypb.Record {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]*directorypb.Record(nil), s.recs...)
+}
+
 // list returns the version list a peer uses to find the records it is missing.
 // A record whose raw body does not parse is skipped.
 func (s *recordSet) list() *directorypb.RecordList {
