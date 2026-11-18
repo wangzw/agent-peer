@@ -34,12 +34,21 @@ type Session struct {
 
 // sessionConfig collects the options of NewSession.
 type sessionConfig struct {
-	env    []string
-	socket string
+	env              []string
+	socket           string
+	withoutConfigDir bool
 }
 
 // SessionOption changes how NewSession builds the session.
 type SessionOption func(*sessionConfig)
+
+// WithoutConfigDir leaves CLAUDE_CONFIG_DIR unset, so the MCP server resolves
+// the default $HOME/.claude directory, where NewSession placed the record.
+func WithoutConfigDir() SessionOption {
+	return func(c *sessionConfig) {
+		c.withoutConfigDir = true
+	}
+}
 
 // WithEnv adds environment entries ("NAME=value") to the MCP server process.
 func WithEnv(kv ...string) SessionOption {
@@ -107,7 +116,9 @@ func NewSession(t *testing.T, account, name string, opts ...SessionOption) *Sess
 
 	env := []string{
 		"CLAUDE_CODE_MESSAGING_SOCKET=" + socket,
-		"CLAUDE_CONFIG_DIR=" + configDir,
+	}
+	if !cfg.withoutConfigDir {
+		env = append(env, "CLAUDE_CONFIG_DIR="+configDir)
 	}
 	env = append(env, cfg.env...)
 	cmd := Command(account, env, agentPeerBinary, "mcp")

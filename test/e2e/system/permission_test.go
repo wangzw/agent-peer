@@ -39,7 +39,9 @@ func TestREQBrokerConfig023_NoPermissionStillWorksOnSystemBroker(t *testing.T) {
 
 	peer := syscontainer.NewSession(t, "peer", "peeragent")
 	permWaitRegistered(t, peer)
-	other := syscontainer.NewSession(t, "other", "otheragent")
+	// other leaves CLAUDE_CONFIG_DIR unset so this test also covers the
+	// account's default configuration directory.
+	other := syscontainer.NewSession(t, "other", "otheragent", syscontainer.WithoutConfigDir())
 	permWaitRegistered(t, other)
 
 	for _, call := range []struct {
@@ -92,8 +94,9 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 	permWaitRegistered(t, peer)
 	other := syscontainer.NewSession(t, "other", "otheragent")
 	permWaitConnected(t, other)
+	root := syscontainer.NewSession(t, "root", "admin")
+	permWaitConnected(t, root)
 
-	peerAlias := permConfigValue(t, peer, "broker.alias")
 	deniedKey := permPairingKey(t, peer)
 	hashBefore := permFileSHA256(t, permConfigPath)
 
@@ -104,7 +107,7 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 		{"set_config", map[string]any{"key": "broker.alias", "value": "c-alias"}},
 		{"create_pairing_key", map[string]any{}},
 		{"connect_broker", map[string]any{"address": permPeerListen, "key": deniedKey}},
-		{"disconnect_broker", map[string]any{"broker": peerAlias}},
+		{"disconnect_broker", map[string]any{"broker": "peer-user"}},
 	} {
 		text, isError := other.Call(t, call.tool, call.args)
 		if !isError {
@@ -120,8 +123,6 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 		t.Errorf("the refused calls changed the configuration file:\nbefore %s\nafter  %s", hashBefore, hashAfter)
 	}
 
-	root := syscontainer.NewSession(t, "root", "admin")
-	permWaitConnected(t, root)
 	text, isError := root.Call(t, "list_brokers", map[string]any{})
 	if isError {
 		t.Fatalf("list_brokers as root: %s", text)
@@ -139,6 +140,58 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 		if broker.IsPeer {
 			t.Errorf("the system Broker lists peer %q after the refused connect", broker.Alias)
 		}
+	}
+
+	// Pair the system Broker with peer's user-level Broker as root first, so a
+	// refused unpair from other has a visible pair to preserve.
+	text, isError = root.Call(t, "connect_broker",
+		map[string]any{"address": permPeerListen, "key": permPairingKey(t, peer)})
+	if isError {
+		t.Fatalf("connect_broker as root: %s", text)
+	}
+	var paired struct {
+		Alias string `json:"alias"`
+	}
+	if err := json.Unmarshal([]byte(text), &paired); err != nil {
+		t.Fatalf("decoding connect_broker result %q: %v", text, err)
+	}
+	if paired.Alias == "" {
+		t.Fatalf("connect_broker as root returned no peer alias: %s", text)
+	}
+	harness.Eventually(t, 3*time.Second, "the system Broker to report the paired peer as connected",
+		func() (bool, string) {
+			status, isPeer, ok := permBrokerStatus(t, root, paired.Alias)
+			return ok && isPeer && status == "connected", status
+		})
+
+	// A refused unpair must leave the peer connected, the Broker's alias
+	// unchanged and no pairing key in the audit log.
+	text, isError = other.Call(t, "disconnect_broker", map[string]any{"broker": paired.Alias})
+	if !isError {
+		t.Fatalf("disconnect_broker as other without write permission succeeded: %s", text)
+	}
+	if !strings.Contains(text, "(code: permission_denied)") {
+		t.Errorf("disconnect_broker error = %q, want (code: permission_denied)", text)
+	}
+	if status, isPeer, ok := permBrokerStatus(t, root, paired.Alias); !ok || !isPeer || status != "connected" {
+		t.Errorf("after the refused disconnect, peer %q has status %q (is_peer %v, found %v), want connected",
+			paired.Alias, status, isPeer, ok)
+	}
+	if got := permConfigValue(t, root, "broker.alias"); got != "sys" {
+		t.Errorf("broker.alias after the refused disconnect = %q, want %q", got, "sys")
+	}
+
+	var audit string
+	harness.Eventually(t, 3*time.Second, "the system Broker's audit log to record the pairing", func() (bool, string) {
+		res := syscontainer.RunAs(t, "root", nil, "audit")
+		if res.ExitCode != 0 {
+			return false, res.Stderr
+		}
+		audit = res.Stdout
+		return strings.Contains(audit, "pairing_succeeded"), audit
+	})
+	if strings.Contains(audit, "pairing_key_created") {
+		t.Errorf("the system Broker's audit log records pairing_key_created:\n%s", audit)
 	}
 
 	// other's account is added to agentpeer-admins in the account database; the
@@ -173,6 +226,19 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 		map[string]any{"broker": connected.Alias}); isError {
 		t.Fatalf("disconnect_broker as other after the grant: %s", text)
 	}
+
+	// The grant belongs to other's account. peer is not in agentpeer-admins, so
+	// a fresh call from peer against the system Broker is still refused.
+	sysPeer := syscontainer.NewSession(t, "peer", "syspeer",
+		syscontainer.WithEnv("AGENT_PEER_SOCKET="+permSocketPath))
+	permWaitConnected(t, sysPeer)
+	text, isError = sysPeer.Call(t, "set_config",
+		map[string]any{"key": "broker.alias", "value": "peer-alias"})
+	if !isError {
+		t.Errorf("set_config as peer after the grant to other succeeded: %s", text)
+	} else if !strings.Contains(text, "(code: permission_denied)") {
+		t.Errorf("set_config as peer after the grant to other = %q, want (code: permission_denied)", text)
+	}
 }
 
 // TestREQBrokerConfig022_ReadNeedsConfigReadPermission checks that get_config
@@ -194,6 +260,9 @@ func TestREQBrokerConfig022_ReadNeedsConfigReadPermission(t *testing.T) {
 	if !isError {
 		t.Fatalf("get_config as other without read permission succeeded: %s", text)
 	}
+	if !strings.Contains(text, "(code: permission_denied)") {
+		t.Errorf("get_config as other without read permission = %q, want (code: permission_denied)", text)
+	}
 	if strings.Contains(text, "broker.alias") || strings.Contains(text, "entries") {
 		t.Errorf("the refused get_config result names configuration values: %s", text)
 	}
@@ -208,8 +277,20 @@ func TestREQBrokerConfig022_ReadNeedsConfigReadPermission(t *testing.T) {
 		t.Errorf("get_config as other after the grant does not name broker.alias: %s", text)
 	}
 
-	// peer is not in agentpeer-admins and the mode stays 0640; only the ACL
-	// grants it read access.
+	// peer is not in agentpeer-admins and the mode stays 0640, so the read is
+	// refused until the ACL entry below grants it.
+	peer := syscontainer.NewSession(t, "peer", "peeragent")
+	permWaitConnected(t, peer)
+	text, isError = peer.Call(t, "get_config", map[string]any{})
+	if !isError {
+		t.Fatalf("get_config as peer before the ACL entry succeeded: %s", text)
+	}
+	if !strings.Contains(text, "(code: permission_denied)") {
+		t.Errorf("get_config as peer before the ACL entry = %q, want (code: permission_denied)", text)
+	}
+
+	// The ACL grants peer read access while the mode stays 0640; only the ACL
+	// decides the outcome.
 	permRunRoot(t, "setfacl", "-m", "u:peer:r", permConfigPath)
 	if info, err := os.Stat(permConfigPath); err != nil {
 		t.Fatalf("syscontainer: stat %s: %v", permConfigPath, err)
@@ -217,8 +298,6 @@ func TestREQBrokerConfig022_ReadNeedsConfigReadPermission(t *testing.T) {
 		t.Errorf("the configuration file mode = %04o after setfacl, want 0640", got)
 	}
 
-	peer := syscontainer.NewSession(t, "peer", "peeragent")
-	permWaitConnected(t, peer)
 	text, isError = peer.Call(t, "get_config", map[string]any{})
 	if isError {
 		t.Fatalf("get_config as peer after the ACL entry: %s", text)
@@ -230,7 +309,8 @@ func TestREQBrokerConfig022_ReadNeedsConfigReadPermission(t *testing.T) {
 
 // TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents checks that
 // status without read permission returns only the caller's own agents and no
-// peers, instead of the full status or a refusal.
+// peers, while an account that may read the configuration sees both the agents
+// and the paired peer.
 func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing.T) {
 	if !syscontainer.InContainer() {
 		syscontainer.Run(t, syscontainer.Plain)
@@ -238,11 +318,16 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 	}
 
 	syscontainer.StartSystemBroker(t, "broker:\n  alias: sys\n")
+	// A user-level Broker gives the system Broker a peer to show in status.
+	peerBroker := syscontainer.StartUserBroker(t, "peer", "--listen", ":17444")
 
-	peer := syscontainer.NewSession(t, "peer", "peeragent")
+	peer := syscontainer.NewSession(t, "peer", "peeragent",
+		syscontainer.WithEnv("AGENT_PEER_SOCKET="+permSocketPath))
 	permWaitRegistered(t, peer)
 	other := syscontainer.NewSession(t, "other", "otheragent")
 	permWaitRegistered(t, other)
+	pairing := syscontainer.NewSession(t, "peer", "pairing")
+	permWaitRegistered(t, pairing)
 	for _, call := range []struct {
 		session *syscontainer.Session
 		topic   string
@@ -256,11 +341,38 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 		}
 	}
 
-	harness.Eventually(t, 3*time.Second, "the root status to list both agents", func() (bool, string) {
+	root := syscontainer.NewSession(t, "root", "admin")
+	permWaitConnected(t, root)
+	text, isError := root.Call(t, "connect_broker",
+		map[string]any{"address": permPeerListen, "key": permPairingKey(t, pairing)})
+	if isError {
+		t.Fatalf("connect_broker as root: %s", text)
+	}
+	var connected struct {
+		Alias string `json:"alias"`
+	}
+	if err := json.Unmarshal([]byte(text), &connected); err != nil {
+		t.Fatalf("decoding connect_broker result %q: %v", text, err)
+	}
+	if connected.Alias == "" {
+		t.Fatalf("connect_broker as root returned no peer alias: %s", text)
+	}
+
+	// root may read the configuration file, so its status lists both agents
+	// with their topics and the paired peer, connected. other may not, and its
+	// status must keep the peer list empty below.
+	harness.Eventually(t, 3*time.Second, "the root status to list both agents, their topics and the connected peer", func() (bool, string) {
 		res := syscontainer.RunAs(t, "root", nil, "status")
+		line, found := permStatusPeerLine(res.Stdout, connected.Alias)
 		ok := res.ExitCode == 0 &&
 			strings.Contains(res.Stdout, "peeragent@sys") &&
-			strings.Contains(res.Stdout, "otheragent@sys")
+			strings.Contains(res.Stdout, "otheragent@sys") &&
+			strings.Contains(res.Stdout, "e2e/peer") &&
+			strings.Contains(res.Stdout, "e2e/other") &&
+			strings.Contains(res.Stdout, "Peers (") &&
+			found &&
+			strings.Contains(line, "connected") &&
+			strings.Contains(line, "established")
 		return ok, res.Stdout + res.Stderr
 	})
 
@@ -287,6 +399,28 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 			return false, res.Stdout
 		}
 		return true, res.Stdout
+	})
+
+	// Grant other read permission through the configuration file's group, then
+	// break the peer's network. other's status must list both agents with their
+	// topics and the paired peer, with the peer no longer connected.
+	permGrantAdmins(t, "0640")
+	peerBroker.Stop(t)
+	harness.Eventually(t, 3*time.Second, "other's status to list both agents, their topics and the disconnected peer", func() (bool, string) {
+		res := syscontainer.RunAs(t, "other", nil, "status")
+		if res.ExitCode != 0 {
+			return false, res.Stderr
+		}
+		line, found := permStatusPeerLine(res.Stdout, connected.Alias)
+		ok := strings.Contains(res.Stdout, "peeragent@sys") &&
+			strings.Contains(res.Stdout, "otheragent@sys") &&
+			strings.Contains(res.Stdout, "e2e/peer") &&
+			strings.Contains(res.Stdout, "e2e/other") &&
+			strings.Contains(res.Stdout, "Peers (") &&
+			found &&
+			!strings.Contains(line, "connected") &&
+			!strings.Contains(line, "established")
+		return ok, res.Stdout + res.Stderr
 	})
 }
 
@@ -327,6 +461,16 @@ func TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker(t *testing.T)
 		ok := strings.Contains(res.Stdout, "config_set") && strings.Contains(res.Stdout, "key=broker.alias")
 		return ok, res.Stdout
 	})
+
+	// The grant goes to other's account. peer is not a member, so its audit
+	// read is still refused and the reason names the missing permission.
+	peerDenied := syscontainer.RunAs(t, "peer", nil, "audit")
+	if peerDenied.ExitCode == 0 {
+		t.Errorf("audit as peer without read permission succeeded:\n%s", peerDenied.Stdout)
+	}
+	if !strings.Contains(peerDenied.Stderr, "permission_denied") {
+		t.Errorf("audit as peer without read permission does not explain the denial:\n%s", peerDenied.Stderr)
+	}
 }
 
 // permWaitRegistered waits until the session's MCP server has registered it.
@@ -388,6 +532,42 @@ func permConfigValue(t *testing.T, session *syscontainer.Session, key string) st
 		t.Fatalf("get_config %s as %s returned %s", key, session.Account, text)
 	}
 	return out.Entries[0].Value
+}
+
+// permStatusPeerLine returns the status table line naming alias.
+func permStatusPeerLine(stdout, alias string) (string, bool) {
+	for _, line := range strings.Split(stdout, "\n") {
+		if strings.Contains(line, alias) {
+			return line, true
+		}
+	}
+	return "", false
+}
+
+// permBrokerStatus returns the status of the peer named alias in the session's
+// list_brokers result.
+func permBrokerStatus(t *testing.T, session *syscontainer.Session, alias string) (status string, isPeer, found bool) {
+	t.Helper()
+	text, isError := session.Call(t, "list_brokers", map[string]any{})
+	if isError {
+		t.Fatalf("list_brokers as %s: %s", session.Account, text)
+	}
+	var out struct {
+		Brokers []struct {
+			Alias  string `json:"alias"`
+			IsPeer bool   `json:"is_peer"`
+			Status string `json:"status"`
+		} `json:"brokers"`
+	}
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		t.Fatalf("decoding list_brokers result %q: %v", text, err)
+	}
+	for _, broker := range out.Brokers {
+		if broker.Alias == alias {
+			return broker.Status, broker.IsPeer, true
+		}
+	}
+	return "", false, false
 }
 
 // permPairingKey creates a one-time pairing key at the session's Broker.
