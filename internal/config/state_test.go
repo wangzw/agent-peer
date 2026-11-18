@@ -75,6 +75,12 @@ func TestReloadListenValidatesDerivedAlias(t *testing.T) {
 	if got := aliasOf(t, c); got != "hostA-17443" {
 		t.Fatalf("broker.alias = %q after a rejected reload, want the old derived value hostA-17443", got)
 	}
+	// The derived alias follows broker.listen. Keeping the old alias requires
+	// keeping the old listen address too; otherwise the next Load would derive
+	// the rejected alias again, before any validators are registered.
+	if v, _ := Get("broker.listen"); v.String != ":17443" {
+		t.Fatalf("broker.listen = %q after a rejected reload, want the old value", v.String)
+	}
 	if !strings.Contains(logs.String(), "validator rejected the derived alias") {
 		t.Fatalf("the rejected derived alias was not logged; log = %q", logs.String())
 	}

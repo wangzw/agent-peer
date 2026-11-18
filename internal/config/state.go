@@ -630,6 +630,16 @@ func (c *core) reloadLocked() (configBytes, error) {
 				aliasNew = newAlias
 				candidate["broker.alias"] = newAlias
 				adoptions = append(adoptions, adoption{key: "broker.alias", old: aliasOld, new: aliasNew, audit: wasExplicit})
+			} else {
+				// Keeping the old alias means the listen address group must keep
+				// its old values too: the alias is derived from the listen
+				// address, so a later Load would otherwise derive the rejected
+				// alias again, before any validator is registered.
+				for _, name := range group {
+					candidate[name] = values[name]
+				}
+				effective = c.effectiveListen
+				groupValid = false
 			}
 		}
 		// A rejected derivation leaves the previous value in effect, so keep
