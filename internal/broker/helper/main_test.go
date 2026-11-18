@@ -7,9 +7,13 @@ import (
 	"testing"
 )
 
+// testRoleHooks lets a platform-specific test file add roles to TestMain.
+var testRoleHooks = map[string]func() int{}
+
 // TestMain lets this test binary act as a real helper child. Tests that need a
 // child spawn os.Args[0] with AGENT_PEER_TEST_HELPER_ROLE set; see
-// testExecStart.
+// testExecStart. It also runs the access-check body when invoked with the
+// production argument list, so a test can start the real command path.
 func TestMain(m *testing.M) {
 	switch role := os.Getenv("AGENT_PEER_TEST_HELPER_ROLE"); role {
 	case "account-helper":
@@ -23,10 +27,25 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	case "":
+		if isAccessCheckArgs(os.Args) {
+			if err := RunAccessCheck(os.Stdin, os.Stdout); err != nil {
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
 		os.Exit(m.Run())
 	default:
+		if hook := testRoleHooks[role]; hook != nil {
+			os.Exit(hook())
+		}
 		os.Exit(2)
 	}
+}
+
+// isAccessCheckArgs reports whether args are the production access-check
+// command line.
+func isAccessCheckArgs(args []string) bool {
+	return len(args) == 3 && args[1] == "internal" && args[2] == "access-check"
 }
 
 // testExecStart returns a Start function for PoolOptions or AccessChecker that

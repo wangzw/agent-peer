@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -321,7 +322,9 @@ func TestStatusDeniedIsFiltered(t *testing.T) {
 }
 
 func TestCheckerErrorIsInternal(t *testing.T) {
-	checker := &fakeAccessChecker{err: errors.New("stat failed")}
+	// A refused faccessat2 (EPERM) is a broken check, not a denial: the
+	// interceptor must answer internal instead of permission_denied.
+	checker := &fakeAccessChecker{err: fmt.Errorf("helper: access check: %w", unix.EPERM)}
 	handled := 0
 	err := runAccessUnary(accessUnaryInterceptor(checker, accessPath),
 		accessCallerContext(1000, "alice"),
