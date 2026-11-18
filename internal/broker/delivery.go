@@ -97,6 +97,7 @@ type deliveryDeps struct {
 type peerSend struct {
 	Caller    agentView
 	Peer      peerID
+	Addr      parsedAddress
 	MessageID string
 	Text      string
 	Deadline  time.Time
