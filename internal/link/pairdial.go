@@ -54,7 +54,7 @@ func (l *Link) PairDial(ctx context.Context, address string, run func(pairing.Pa
 		if reason == FailNone {
 			reason = FailConnectionLost
 		}
-		c.closeAsync(reason)
+		c.closeAfterFailedHandshake(reason)
 
 		l.mu.Lock()
 		if !l.closed && l.dropGen[fp] == gen {

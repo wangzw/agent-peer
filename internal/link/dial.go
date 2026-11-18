@@ -228,7 +228,7 @@ func (l *Link) dialRound(ctx context.Context, rec *record) dialOutcome {
 			if reason == FailNone {
 				reason = FailConnectionLost
 			}
-			c.closeAsync(reason)
+			c.closeAfterFailedHandshake(reason)
 
 			if failure == FailNotAPeer {
 				l.mu.Lock()

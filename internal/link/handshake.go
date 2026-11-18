@@ -39,6 +39,14 @@ func (l *Link) timerCtx(d time.Duration) (context.Context, func()) {
 	}
 }
 
+// sendHalfCloser is the send half of a gRPC client stream. Closing it after
+// the Reject tells the peer no more frames follow; the transport writes frames
+// still in its buffer before the half-close. Server streams have no send-side
+// half-close.
+type sendHalfCloser interface {
+	CloseSend() error
+}
+
 // rejectAndLinger sends a Reject and keeps the connection open for at most
 // rejectLinger after which it is closed. The same deadline bounds the write, so
 // a peer that stops reading cannot keep the connection alive. A write failure
@@ -46,6 +54,7 @@ func (l *Link) timerCtx(d time.Duration) (context.Context, func()) {
 // closes: its goroutine must not outlive either, and it stops the timer when it
 // exits instead of leaving it scheduled.
 func (l *Link) rejectAndLinger(c *conn, reason linkpb.RejectReason) {
+	c.lingering.Store(true)
 	ctx, cancel := context.WithCancel(l.rootCtx)
 	stop := l.clock.AfterFunc(l.rejectLinger, cancel)
 	go func() {
@@ -64,6 +73,14 @@ func (l *Link) rejectAndLinger(c *conn, reason linkpb.RejectReason) {
 	}()
 	if err := c.sendDirect(ctx, encodeReject(reason)); err != nil {
 		cancel()
+		return
+	}
+	// A dialer is done sending once it has rejected the peer. Half-close the
+	// stream so the Reject is followed by an orderly end, not by the abrupt
+	// close at the end of the linger. The connection itself stays up until the
+	// linger ends.
+	if hc, ok := c.stream.(sendHalfCloser); ok {
+		_ = hc.CloseSend()
 	}
 }
 
@@ -77,6 +94,16 @@ func (l *Link) rejectUnknown(c *conn, fp Fingerprint) {
 		Peer:   &config.PeerRef{Fingerprint: fp},
 		Detail: "not a peer",
 	})
+}
+
+// closeAfterFailedHandshake closes a connection whose dialer handshake failed.
+// The handshake itself may already have started a rejection linger that owns
+// the close; in that case this is a no-op.
+func (c *conn) closeAfterFailedHandshake(reason FailReason) {
+	if c.lingering.Load() {
+		return
+	}
+	c.closeAsync(reason)
 }
 
 // failFromReject maps a peer's reject reason to the local failure reason.
@@ -236,8 +263,9 @@ func (l *Link) serveInbound(c *conn, t *trackedConn) (<-chan struct{}, bool) {
 
 // dialerHandshake exchanges Hello frames on a dialed connection whose
 // fingerprint was already checked. It returns the salt on success and the
-// failure reason otherwise. A failed handshake does not close the connection;
-// the caller does.
+// failure reason otherwise. On a version mismatch it sends Reject through
+// rejectAndLinger, which owns the close; on every other failure the caller
+// closes the connection.
 func (l *Link) dialerHandshake(c *conn) (salt []byte, failure FailReason, peerVersion uint32, err error) {
 	fp := c.id.fp
 
@@ -274,8 +302,10 @@ func (l *Link) dialerHandshake(c *conn) (salt []byte, failure FailReason, peerVe
 		if hello.GetProtocolVersion() != l.protocolVersion {
 			l.logger.Warn("link: protocol version mismatch", "peer", fp,
 				"local", l.protocolVersion, "peer_version", hello.GetProtocolVersion())
-			// Both roles send Reject when the versions differ.
-			_ = c.sendDirect(ctx, encodeReject(linkpb.RejectReason_REJECT_REASON_PROTOCOL_VERSION_INCOMPATIBLE))
+			// Both roles send Reject when the versions differ. Go through the
+			// linger: SendMsg returns once the frame is buffered, not when it
+			// reaches the wire, so closing right away can drop the Reject.
+			l.rejectAndLinger(c, linkpb.RejectReason_REJECT_REASON_PROTOCOL_VERSION_INCOMPATIBLE)
 			return nil, FailVersionIncompatible, hello.GetProtocolVersion(),
 				fmt.Errorf("link: peer protocol version %d, want %d", hello.GetProtocolVersion(), l.protocolVersion)
 		}

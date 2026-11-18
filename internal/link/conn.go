@@ -68,6 +68,10 @@ type conn struct {
 	closed    chan struct{}
 	closeOnce sync.Once
 	failure   atomic.Uint32 // FailReason
+	// lingering is set by rejectAndLinger, which then owns the close after the
+	// linger. A failed handshake must not close the connection out from under
+	// a Reject that is still in the transport's write buffer.
+	lingering atomic.Bool
 
 	stateDone chan struct{}
 	stateOnce sync.Once
