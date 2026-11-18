@@ -47,6 +47,52 @@ func TestCandidateMergeOrderAndDedup(t *testing.T) {
 	}
 }
 
+// TestRePairAddressStaysCardSourced covers a re-pair to an address the card
+// already advertises: the table keeps the card source, drops the pairing
+// source, and LastConnected still names the address.
+func TestRePairAddressStaysCardSourced(t *testing.T) {
+	t.Parallel()
+	const addr = "10.0.0.1:17443"
+	table, _, _ := newPeerTestTable(t)
+	fp, pub := peerTestKey(t)
+
+	first := peerTestEntry(fp, pub, "hostB", RoleDialer)
+	first.acceptor = []config.AdvertisedAddr{direct("10.0.0.2:17443")}
+	first.card = []config.AdvertisedAddr{direct(addr)}
+	first.pairingAddr = addr
+	if mustPut(t, table, first) {
+		t.Fatal("the first pairing replaced an entry")
+	}
+
+	rePair := peerTestEntry(fp, pub, "hostB", RoleDialer)
+	rePair.acceptor = []config.AdvertisedAddr{direct("10.0.0.9:17443")}
+	rePair.pairingAddr = addr
+	if !mustPut(t, table, rePair) {
+		t.Fatal("the re-pairing did not replace the entry")
+	}
+
+	entry, ok := table.get(fp)
+	if !ok {
+		t.Fatal("the re-paired entry is missing from the table")
+	}
+	peer := entry.toPeer()
+	want := []Candidate{
+		{Source: SourceAcceptor, Addr: "10.0.0.9:17443"},
+		{Source: SourceCard, Addr: addr},
+	}
+	if len(peer.Candidates) != len(want) {
+		t.Fatalf("candidates = %v, want %v", peer.Candidates, want)
+	}
+	for i := range want {
+		if peer.Candidates[i] != want[i] {
+			t.Fatalf("candidate %d = %+v, want %+v", i, peer.Candidates[i], want[i])
+		}
+	}
+	if peer.LastConnected != addr {
+		t.Errorf("last connected = %q, want %q", peer.LastConnected, addr)
+	}
+}
+
 func TestCandidatesSkipUnknownKinds(t *testing.T) {
 	t.Parallel()
 	e := &peerEntry{

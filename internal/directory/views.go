@@ -137,7 +137,9 @@ func (d *Directory) PublicTopics() []PublicTopic {
 // advertises address, in ascending fingerprint byte order and without
 // duplicates. It returns nil when no card matches. Addresses advertised with a
 // kind this version does not know and the local Broker's own card are ignored.
-// The caller normalizes the address before the lookup.
+// The lookup address and the advertised addresses are compared in canonical
+// form, so host case, port leading zeros and IPv6 spelling do not hide a
+// match.
 //
 // The version is chosen by each publisher, so a single winner must not be
 // picked by version: any public publisher could set MaxUint64 and claim another
@@ -146,6 +148,7 @@ func (d *Directory) CardsByAddress(address string) []Fingerprint {
 	now := d.now()
 	self := d.viewSelf()
 	cards := d.viewCards(now)
+	address = pairing.CanonicalAddress(address)
 
 	var out []Fingerprint
 	seen := make(map[Fingerprint]bool, len(cards))
@@ -154,7 +157,7 @@ func (d *Directory) CardsByAddress(address string) []Fingerprint {
 			continue
 		}
 		for _, a := range c.addresses {
-			if a.Addr != address {
+			if pairing.CanonicalAddress(a.Addr) != address {
 				continue
 			}
 			seen[c.publisher] = true

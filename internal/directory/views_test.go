@@ -376,6 +376,33 @@ func TestCardsByAddress(t *testing.T) {
 	}
 }
 
+// TestCardsByAddressCanonicalForm covers a card address that differs only in
+// host case, port leading zeros or IPv6 compression from the lookup address.
+func TestCardsByAddressCanonicalForm(t *testing.T) {
+	now := dirTestNow()
+	d, _, _, _ := newViewDirectory(t, 1, now)
+	expires := now.Add(recordTTL)
+	fpMixedCase := newTestIdentity(2).Fingerprint()
+	fpIPv6 := newTestIdentity(3).Fingerprint()
+
+	viewCard(t, d, 2, "mixed", 1, expires, advAddr("direct", "SERVICE.Example:017443"))
+	viewCard(t, d, 3, "v6", 1, expires, advAddr("direct", "[2001:0DB8:0:0:0:0:0:1]:443"))
+
+	for _, tc := range []struct {
+		lookup string
+		want   []Fingerprint
+	}{
+		{"service.example:17443", []Fingerprint{fpMixedCase}},
+		{"Service.Example:17443", []Fingerprint{fpMixedCase}},
+		{"[2001:db8::1]:443", []Fingerprint{fpIPv6}},
+		{"[2001:0db8:0:0:0:0:0:1]:0443", []Fingerprint{fpIPv6}},
+	} {
+		if got := d.CardsByAddress(tc.lookup); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("CardsByAddress(%q) = %v, want %v", tc.lookup, got, tc.want)
+		}
+	}
+}
+
 // reentrantPeers calls back into the directory from Peers, as a callback could.
 type reentrantPeers struct {
 	*fakePeers
