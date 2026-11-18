@@ -21,8 +21,11 @@ import (
 )
 
 // agentSocketBound bounds the wait for a node agent's control socket after
-// compose up returns.
-const agentSocketBound = 10 * time.Second
+// compose up returns. Compose starts the entrypoint as soon as the container
+// runs; binding a Unix socket is the first thing the node agent does, so the
+// project-wide three-second bound is enough. No product timer governs a
+// test-only process.
+const agentSocketBound = 3 * time.Second
 
 // Topology describes one compose project: which file to start, which services
 // it has, which network each service is addressed on, and what to do once the

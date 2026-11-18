@@ -17,8 +17,10 @@ import (
 // is a variable so a test can shorten it before starting a session.
 var testWaitBound = 3 * time.Second
 
-// oracleBound bounds each OracleClient call.
-const oracleBound = 10 * time.Second
+// oracleBound bounds each OracleClient call. The local interface is a Unix
+// socket served in-process by the Broker, so it answers at once; no product
+// timer longer than the project-wide three-second bound governs it.
+const oracleBound = 3 * time.Second
 
 // sessionCallBound bounds one MCP tool call. It is larger than the default
 // send budget of 20 seconds so a send that is waiting for its own deadline
