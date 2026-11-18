@@ -700,12 +700,18 @@ func TestRunAssemblerFailureStopsEarlier(t *testing.T) {
 func TestRunNilAssemblersUsesDefaults(t *testing.T) {
 	rt := newRunTest(t, func(rt *runTest) { rt.opts.Assemblers = nil })
 	rt.start()
-	if got := rt.readyLine(); got != "ok\n" {
-		t.Fatalf("readiness line = %q, want ok", got)
+	// A nil list selects DefaultAssemblers. Its first entry is the peer
+	// assembler, which opens the real pairing identity; that needs the real
+	// config singleton, which the fake ConfigSource does not provide. The
+	// readiness line naming the assembler proves Run used the defaults rather
+	// than starting with none.
+	got := rt.readyLine()
+	if !strings.HasPrefix(got, "pairing and link: ") {
+		t.Fatalf("readiness line = %q, want the default assembler's failure", got)
 	}
 	rt.cancel()
-	if err := rt.waitErr(); err != nil {
-		t.Fatalf("Run error = %v, want nil", err)
+	if err := rt.waitErr(); err == nil {
+		t.Fatal("Run error = nil, want the default assembler's failure")
 	}
 }
 

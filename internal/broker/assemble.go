@@ -3,14 +3,16 @@ package broker
 import (
 	"context"
 
+	"github.com/wangzw/agent-peer/internal/link"
 	"github.com/wangzw/agent-peer/internal/pairing"
 )
 
 // Assembly carries the concrete upstream instances built by earlier
-// assemblers. The Link *link.Link field is added by the broker-peers unit once
-// link is on main.
+// assemblers. Later assemblers (topic, directory, delivery) read Link and
+// Pairing instead of constructing their own.
 type Assembly struct {
 	Pairing             *pairing.Pairing
+	Link                *link.Link
 	Runner              LinkRunner
 	LinkProtocolVersion uint32 // 0: linkpb.ProtocolVersion
 }
@@ -25,5 +27,5 @@ type Assembler interface {
 }
 
 // DefaultAssemblers is used when RunOptions.Assemblers is nil. Later units add,
-// in order: pairing and link, topic, directory, delivery, config subscriptions.
-func DefaultAssemblers() []Assembler { return nil }
+// in order: topic, directory, delivery, config subscriptions.
+func DefaultAssemblers() []Assembler { return []Assembler{newPeerAssembler()} }
