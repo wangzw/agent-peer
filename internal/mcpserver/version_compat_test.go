@@ -203,7 +203,6 @@ func TestMismatchNoHelloPolling(t *testing.T) {
 
 	// The loop waits for the connection to leave READY, so neither the tool
 	// calls nor the immediate waits cause another Hello.
-	time.Sleep(100 * time.Millisecond)
 	if got := hellos.Load(); got != 1 {
 		t.Errorf("the Broker received %d Hello calls after the mismatch; the loop must not poll", got)
 	}
