@@ -52,18 +52,18 @@ func (l *execLauncher) Launch(ctx context.Context) error {
 	if err != nil {
 		return &launchError{Reason: "cannot create the readiness pipe: " + err.Error()}
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	cmd := exec.Command(l.Executable, l.LauncherArgs...)
 	cmd.ExtraFiles = []*os.File{w}
 	cmd.Env = l.Env
 	if err := cmd.Start(); err != nil {
-		w.Close()
+		_ = w.Close()
 		return &launchError{Reason: "cannot start the Broker launcher: " + err.Error()}
 	}
 	// Closing the parent's copy of the write end is what lets the reader see
 	// EOF once every process that inherited the pipe has exited.
-	w.Close()
+	_ = w.Close()
 
 	waitDone := make(chan struct{})
 	go func() {

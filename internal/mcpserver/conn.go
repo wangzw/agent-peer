@@ -79,7 +79,7 @@ func inspectSocket(ctx context.Context, path string) probeInfo {
 	if err != nil {
 		return probeInfo{Outcome: classifyDialError(err)}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	uid, err := peerUID(conn)
 	if err != nil {

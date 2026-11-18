@@ -48,10 +48,10 @@ func runLauncherWith(exe string) int {
 	cmd.Env = brokerEnv(os.Environ())
 	if err := cmd.Start(); err != nil {
 		_, _ = io.WriteString(ready, "cannot start the Broker: "+err.Error()+"\n")
-		ready.Close()
+		_ = ready.Close()
 		return 1
 	}
-	ready.Close()
+	_ = ready.Close()
 	return 0
 }
 
@@ -63,5 +63,5 @@ func reportLaunchFailure(reason string) {
 		return
 	}
 	_, _ = io.WriteString(ready, reason+"\n")
-	ready.Close()
+	_ = ready.Close()
 }

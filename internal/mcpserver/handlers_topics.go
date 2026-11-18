@@ -63,11 +63,7 @@ func (h *handlers) JoinTopic(ctx context.Context, in JoinTopicIn) (TopicsOut, er
 	if err != nil {
 		return TopicsOut{}, rpcError("join_topic", callGeneric, permNone, err)
 	}
-	h.topics.Remember(rememberedTopic{
-		Name:        in.Name,
-		Public:      in.Public,
-		Description: in.Description,
-	})
+	h.topics.Remember(rememberedTopic(in))
 	return TopicsOut{Topics: resp.GetTopics()}, nil
 }
 

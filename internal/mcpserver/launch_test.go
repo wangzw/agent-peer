@@ -30,7 +30,7 @@ func init() {
 func launchHangRole() int {
 	if ready := os.NewFile(ReadyFD, "ready"); ready != nil {
 		_, _ = io.WriteString(ready, "ok\n")
-		ready.Close()
+		_ = ready.Close()
 	}
 	if path := os.Getenv("FAKE_LAUNCHER_PID"); path != "" {
 		_ = os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600)
@@ -44,7 +44,7 @@ func launchHangRole() int {
 // it must start the Broker directly: it switches the role first, then calls
 // runLauncherWith on the test binary itself.
 func launchEnvRole() int {
-	os.Setenv("AGENT_PEER_TEST_ROLE", "broker")
+	_ = os.Setenv("AGENT_PEER_TEST_ROLE", "broker")
 	return runLauncherWith(os.Args[0])
 }
 
@@ -56,7 +56,7 @@ func launchRole() int {
 	}
 	// The Broker started by RunLauncher inherits this environment, so the
 	// second-level process must see the broker role instead of launcher.
-	os.Setenv("AGENT_PEER_TEST_ROLE", "broker")
+	_ = os.Setenv("AGENT_PEER_TEST_ROLE", "broker")
 	return RunLauncher()
 }
 
@@ -109,10 +109,10 @@ func launchBrokerRole() int {
 		// Keep the pipe open and write nothing so the reader waits.
 	case "ok":
 		_, _ = io.WriteString(ready, "ok\n")
-		ready.Close()
+		_ = ready.Close()
 	default:
 		_, _ = io.WriteString(ready, readyText+"\n")
-		ready.Close()
+		_ = ready.Close()
 	}
 
 	lifetime := 5 * time.Second
@@ -233,7 +233,7 @@ func TestLauncherDropsSessionVariables(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)
 	}
-	defer readyR.Close()
+	defer func() { _ = readyR.Close() }()
 
 	cmd := exec.Command(os.Args[0])
 	cmd.Env = []string{
@@ -249,10 +249,10 @@ func TestLauncherDropsSessionVariables(t *testing.T) {
 	}
 	cmd.ExtraFiles = []*os.File{readyW}
 	if err := cmd.Start(); err != nil {
-		readyW.Close()
+		_ = readyW.Close()
 		t.Fatalf("start launcher helper: %v", err)
 	}
-	readyW.Close()
+	_ = readyW.Close()
 	if err := cmd.Wait(); err != nil {
 		t.Fatalf("launcher helper: %v", err)
 	}

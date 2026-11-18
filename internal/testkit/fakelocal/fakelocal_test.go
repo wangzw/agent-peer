@@ -150,7 +150,7 @@ func TestStopRemovesSocketAndRestartWorks(t *testing.T) {
 	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("socket file after Stop: stat error = %v, want a not-exist error", err)
 	}
-	waitStreamError(t, stream)
+	_ = waitStreamError(t, stream)
 
 	Start(t, path, Handlers{})
 	reconnected := localpb.NewLocalClient(dial(t, path))
@@ -225,7 +225,7 @@ func TestRestart(t *testing.T) {
 	}
 
 	s.Restart()
-	waitStreamError(t, stream)
+	_ = waitStreamError(t, stream)
 
 	helloCtx, helloCancel := waitContext(t)
 	defer helloCancel()

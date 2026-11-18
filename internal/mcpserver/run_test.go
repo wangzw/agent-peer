@@ -216,7 +216,8 @@ func TestRunHandshakeWithoutBroker(t *testing.T) {
 	t.Cleanup(func() {
 		cancel()
 		select {
-		case <-done:
+		case err := <-done:
+			_ = err
 		case <-time.After(2 * time.Second):
 			t.Error("Run did not return at cleanup")
 		}
