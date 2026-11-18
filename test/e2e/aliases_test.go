@@ -32,7 +32,6 @@ const alTopic = "t"
 // TestAliases covers fingerprint stability, the default and configured alias,
 // initiator and acceptor alias conflicts, and peer renames on a flat network.
 func TestAliases(t *testing.T) {
-	alFillUnusedCTL(t)
 	c := harness.Up(t, harness.TopoFlat(3))
 	nodes := map[string]*harness.Node{}
 	for _, name := range []string{"hostA", "hostB", "hostC"} {
@@ -193,7 +192,6 @@ func TestAliases(t *testing.T) {
 	t.Run("REQ-broker-pairing-024 acceptor conflict", func(t *testing.T) {
 		// A fresh three hosts: A already has the peer Y with the alias
 		// macbook, and Z, reporting the same alias, pairs with A.
-		alFillUnusedCTL(t)
 		conflict := harness.Up(t, harness.TopoFlat(3))
 		aNode, yNode, zNode := conflict.Node("hostA"), conflict.Node("hostB"), conflict.Node("hostC")
 		alStartBroker(t, aNode, alConfig())
@@ -234,7 +232,6 @@ func TestAliases(t *testing.T) {
 	t.Run("REQ-broker-pairing-026 peer renames into conflict", func(t *testing.T) {
 		// A fresh three hosts: B (hostB) and C (hostC) both dial A. B then
 		// renames itself to hostC, the alias C already uses on A.
-		alFillUnusedCTL(t)
 		conflict := harness.Up(t, harness.TopoFlat(3))
 		aNode, bNode, cNode := conflict.Node("hostA"), conflict.Node("hostB"), conflict.Node("hostC")
 		alStartBroker(t, aNode, alConfig())
@@ -312,7 +309,6 @@ func TestLongHostnameAlias(t *testing.T) {
 	// The compose file reads HOSTA_NAME for hostA's hostname; the harness
 	// passes the test process's environment through to docker compose.
 	t.Setenv("HOSTA_NAME", "abcdefghijklmnopqrstuvwxyz0123")
-	alFillUnusedCTL(t)
 
 	c := harness.Up(t, harness.TopoFlat(2))
 	xNode, yNode := c.Node("hostA"), c.Node("hostB")
@@ -335,17 +331,6 @@ func TestLongHostnameAlias(t *testing.T) {
 	if self := alSelfAddress(t, x1, "x1"); !strings.HasSuffix(self, "@abcdefghijklmnopqr-17443") {
 		t.Fatalf("self_address = %q, want it to end with @abcdefghijklmnopqr-17443", self)
 	}
-}
-
-// alFillUnusedCTL fills the control-directory variables of hostC and hostD.
-// flat.yaml declares all four hosts, and docker compose validates the volume
-// of a service even while a profile keeps it stopped, so a TopoFlat(2) or
-// TopoFlat(3) project fails on the blank CTL_HOSTC/CTL_HOSTD that the harness
-// leaves unset.
-func alFillUnusedCTL(t *testing.T) {
-	t.Helper()
-	t.Setenv("CTL_HOSTC", t.TempDir())
-	t.Setenv("CTL_HOSTD", t.TempDir())
 }
 
 // alConfig merges the shortened timers with the given fragments.

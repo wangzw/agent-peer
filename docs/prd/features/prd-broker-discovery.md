@@ -117,24 +117,24 @@ Broker 不得接受对端以外的来源传来的名片。
 Agent 必须能列出本机 Broker 已知的全部 Broker，包括全部对端，以及本 Broker 持有其名片的非对端。每一项给出该 Broker 的对外地址列表；是对端的，另标明本方是它的拨号方还是接受方。
 
 - **验收**：本 Broker 有两个不公开的对端，一个由本方发起配对，另一个向本方发起配对；本 Broker 另持有一张非对端的名片。结果同时包含这三个 Broker，每一项都带有该 Broker 的对外地址列表，不知道其对外地址的，列表为空；由本方发起配对的对端标明本方是拨号方，向本方发起配对的对端标明本方是接受方。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-discovery-012 peers listed`
 
 ### REQ-broker-discovery-013
 
 列出的每个 Broker 必须标明且只标明一种状态：已连接、可连接或不可直达。已连接指当前与它之间有链路；可连接指当前没有链路且知道它至少有一个对外地址；不可直达指当前没有链路且不知道它的任何对外地址。
 
 - **验收**：分别构造这几种情形的 Broker，结果中的状态与情形一一对应。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-discovery-013 three statuses`
 
 ### REQ-broker-discovery-014
 
 列出的每个 Broker 必须标明它是否为本 Broker 当前的对端。
 
 - **验收**：结果中标为对端的 Broker 与本 Broker 当前的对端完全一致；解除配对后，该 Broker 不再标为对端。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-discovery-014 peer flag`
 
 ### REQ-broker-discovery-015
 

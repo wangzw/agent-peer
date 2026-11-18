@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/wangzw/agent-peer/test/e2e/ctl"
+	"gopkg.in/yaml.v3"
 )
 
 // agentSocketBound bounds the wait for a node agent's control socket after
@@ -91,6 +93,10 @@ func Up(t *testing.T, topo Topology) *Cluster {
 	if err != nil {
 		t.Fatalf("harness: reading compose file %s: %v", topo.file, err)
 	}
+	services, err := composeServices(composeData)
+	if err != nil {
+		t.Fatalf("harness: parsing compose file %s: %v", topo.file, err)
+	}
 	composePath := filepath.Join(dir, "compose.yaml")
 	if err := os.WriteFile(composePath, composeData, 0o644); err != nil {
 		t.Fatalf("harness: writing %s: %v", composePath, err)
@@ -116,6 +122,15 @@ func Up(t *testing.T, topo Topology) *Cluster {
 		dir := t.TempDir()
 		c.ctlDirs[node] = dir
 		env = append(env, "CTL_"+strings.ToUpper(node)+"="+dir)
+	}
+	// Compose substitutes the variables of every declared service, including
+	// one a profile keeps stopped, so a service the topology does not start
+	// still needs a control-directory variable.
+	for _, service := range services {
+		if _, ok := c.ctlDirs[service]; ok {
+			continue
+		}
+		env = append(env, "CTL_"+strings.ToUpper(service)+"="+t.TempDir())
 	}
 	for name, value := range topo.env {
 		env = append(env, name+"="+value)
@@ -155,6 +170,24 @@ func Up(t *testing.T, topo Topology) *Cluster {
 		topo.init(t, c)
 	}
 	return c
+}
+
+// composeServices returns the service names a compose file declares, sorted.
+// Compose parses and substitutes every declared service even when a profile
+// keeps it stopped, so Up needs the full list and not only the started nodes.
+func composeServices(data []byte) ([]string, error) {
+	var doc struct {
+		Services map[string]any `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(doc.Services))
+	for name := range doc.Services {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 // Node returns the node named name. The same Node is returned on every call.

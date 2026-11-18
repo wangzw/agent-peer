@@ -140,8 +140,8 @@ Broker 必须以结构化格式输出运行日志。
 该 Broker 上的最后一个 Agent 的会话结束后，Broker 必须继续运行并保持与对端的链路。
 
 - **验收**：结束主机上全部会话，Broker 进程仍在，对端列出 Broker 的结果仍显示它已连接。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-config-014 broker outlives last session`
 
 ### REQ-broker-config-015
 

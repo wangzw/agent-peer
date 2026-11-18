@@ -1,7 +1,9 @@
 package harness
 
 import (
+	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -18,6 +20,29 @@ func TestProjectName(t *testing.T) {
 	second := projectName("TestJourneyPairBrokers/alias conflict")
 	if first == second {
 		t.Fatalf("projectName returned %q twice; the names must differ", first)
+	}
+}
+
+// TestComposeServices checks that every service of flat.yaml is reported,
+// including the profiled hosts a TopoFlat with fewer hosts does not start.
+// Compose substitutes the variables of every declared service, so Up must fill
+// the control directory of each one.
+func TestComposeServices(t *testing.T) {
+	path, err := composeSourcePath("flat.yaml")
+	if err != nil {
+		t.Fatalf("locating flat.yaml: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading flat.yaml: %v", err)
+	}
+	got, err := composeServices(data)
+	if err != nil {
+		t.Fatalf("composeServices: %v", err)
+	}
+	want := []string{"hostA", "hostB", "hostC", "hostD"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("composeServices = %v, want %v", got, want)
 	}
 }
 

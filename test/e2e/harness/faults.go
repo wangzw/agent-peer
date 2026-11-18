@@ -26,8 +26,11 @@ const (
 
 // faultPlan describes how a topology is cut. A router topology inserts the
 // reject rules on the router's FORWARD chain; a flat topology inserts them on
-// both endpoints. peer maps each endpoint to the address the other side sees
-// for it, which is the router's address when the topology has one.
+// both endpoints. peer maps each endpoint to the far end of its established
+// connection as that endpoint sees it, so ss -K can tear the socket down.
+// Masquerading and DNAT make that address differ from either host's own
+// address: the dialer sees the destination it dialed, the acceptor sees the
+// address the router rewrote the source to.
 type faultPlan struct {
 	router  string
 	network string

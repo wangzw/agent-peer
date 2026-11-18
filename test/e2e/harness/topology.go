@@ -45,8 +45,10 @@ var TopoNAT = Topology{
 		registerFaults(c, faultPlan{
 			router: "router",
 			peer: map[string]string{
+				// hostA accepts connections whose source the router
+				// masquerades; hostB dialed hostA's own WAN address.
 				"hostA": c.Addr("router", "wan"),
-				"hostB": c.Addr("router", "lanb"),
+				"hostB": c.Addr("hostA", "wan"),
 			},
 		})
 	},
@@ -89,8 +91,10 @@ var TopoMITM = Topology{
 		registerFaults(c, faultPlan{
 			router: "router",
 			peer: map[string]string{
+				// hostA sees the relay's upstream connection from the
+				// router; hostB dialed hostA's own WAN address.
 				"hostA": c.Addr("router", "wan"),
-				"hostB": c.Addr("router", "lanb"),
+				"hostB": c.Addr("hostA", "wan"),
 			},
 		})
 	},
@@ -132,7 +136,10 @@ var TopoPortForward = Topology{
 		registerFaults(c, faultPlan{
 			router: "router",
 			peer: map[string]string{
-				"hostA": c.Addr("router", "lana"),
+				// hostA accepts the DNATed connection from hostB; hostB
+				// dialed the router's forwarded port, whose replies are
+				// masqueraded back to the router's WAN address.
+				"hostA": c.Addr("hostB", "wan"),
 				"hostB": c.Addr("router", "wan"),
 			},
 		})

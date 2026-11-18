@@ -149,32 +149,32 @@ Broker 之间传输的全部内容必须加密。
 配对完成后，两个对端之间再次建立链路不得需要配对密钥。
 
 - **验收**：配对成功后断开网络再恢复，链路重新建立，期间没有任何一方提供配对密钥，且原一次性配对密钥已失效。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-pairing-016 relink without key`
 
 ### REQ-broker-pairing-017
 
 配对关系必须在 Broker 重启后保留。
 
 - **验收**：配对后重启其中一个 Broker，重启后它列出对端的结果仍包含对方。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-pairing-017 survives restart`
 
 ### REQ-broker-pairing-018
 
 对端之间的链路断开后，拨号方必须在没有用户操作的情况下自网络恢复起 120 秒内重新建立链路。
 
 - **验收**：断开两台主机之间的网络再恢复，无任何用户操作，恢复后 120 秒内双方列出对端的结果重新显示已连接。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-pairing-018 redial after restore`
 
 ### REQ-broker-pairing-019
 
 Broker 重启后，系统必须在没有用户操作的情况下在重启后 60 秒内恢复与全部对端的链路。
 
 - **验收**：重启一个有两个对端的 Broker，其中一个对端由它发起配对，另一个向它发起配对；无任何用户操作，重启后 60 秒内它与两个对端的链路都恢复。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinksRestartWithTwoPeers`
 
 ### REQ-broker-pairing-020
 
@@ -189,16 +189,16 @@ Broker 重启后，系统必须在没有用户操作的情况下在重启后 60 
 Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路断开，该 Broker 不再是本机的对端。
 
 - **验收**：解除配对后，本机列出对端的结果不含对方，对方 Broker 上的 Agent 从本机 Agent 的列表中消失。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-pairing-021 disconnect`
 
 ### REQ-broker-pairing-022
 
 解除配对后，被解除配对的 Broker 再次连接时必须被拒绝，直到重新配对。
 
 - **验收**：B 凭 A 的地址和配对密钥向 A 发起配对。A 解除与 B 的配对后，B 的自动重连被 A 拒绝；B 凭新的有效配对密钥重新配对后，链路恢复。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-pairing-022 re-pair after unpair`
 
 ### REQ-broker-pairing-023
 
@@ -237,8 +237,8 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 接受方不得主动连接对方。
 
 - **验收**：两台主机都以默认配置运行，A 生成配对密钥，B 凭 A 的地址和这个密钥发起配对。断开再恢复两台主机之间的网络，链路重新建立，期间 A 没有向 B 发起任何连接。用防火墙禁止 B 主动连接 A 后再断开并恢复网络，链路不再恢复，期间 A 仍没有向 B 发起任何连接。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-pairing-027 acceptor never dials`
 
 ### REQ-broker-pairing-028
 
@@ -293,16 +293,16 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 接受方的对外地址列表在链路存续期间变化后，拨号方必须在链路断开后凭变化后的列表重新建立链路。
 
 - **验收**：B 凭 A 的地址和 A 生成的配对密钥发起配对，A 的对外地址列表只有 `192.0.2.10:17443`。链路存续期间为 A 追加对外地址 `198.51.100.7`，B 列出 Broker 的结果中 A 的对外地址列表随之含这两项；随后用防火墙禁止 B 连接 `192.0.2.10`，再断开并恢复两台主机之间的网络，无任何用户操作，链路经 `198.51.100.7:17443` 重新建立。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-pairing-034 acceptor addresses change`
 
 ### REQ-broker-pairing-035
 
 被对端解除配对的拨号方，在重新建立链路遭对方拒绝后，必须停止重新建立链路，并在列出 Broker 时标明对方已解除配对。
 
 - **验收**：B 凭 A 的地址和配对密钥发起配对。A 解除与 B 的配对后，B 的下一次重新建立链路遭 A 拒绝；此后 10 分钟内 B 没有再向 A 发起任何连接，B 列出 Broker 的结果中 A 一项标明已被对方解除配对。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-pairing-035 rejected dialer stops`；“10 分钟内不再发起连接”由 `internal/link/dial_test.go` 的 `TestREQBrokerPairing035_RejectedStopsRedialing` 覆盖
 
 ### REQ-broker-pairing-036
 
