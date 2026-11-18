@@ -107,9 +107,9 @@ func TestLeaveAllRemovesAgent(t *testing.T) {
 	lt := newLocalTable()
 	lt.setInfo("a", Member{Name: "api-worker", Ref: "aaaaaa"})
 	lt.setInfo("b", Member{Name: "frontend", Ref: "bbbbbb"})
-	lt.join("a", "t1") // only a
-	lt.join("a", "t2") // a and b
-	lt.join("b", "t2")
+	_, _, _ = lt.join("a", "t1") // only a
+	_, _, _ = lt.join("a", "t2") // a and b
+	_, _, _ = lt.join("b", "t2")
 
 	info, emptied, remaining, existed := lt.leaveAll("a")
 	if !existed {
@@ -151,8 +151,8 @@ func TestMembersReflectInfo(t *testing.T) {
 	lt := newLocalTable()
 	lt.setInfo("a", Member{Name: "api-worker", Ref: "rb"})
 	lt.setInfo("b", Member{Name: "frontend", Ref: "ra"})
-	lt.join("a", "t1")
-	lt.join("b", "t1")
+	_, _, _ = lt.join("a", "t1")
+	_, _, _ = lt.join("b", "t1")
 
 	got := lt.members("t1")
 	want := []Member{
