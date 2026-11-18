@@ -114,6 +114,21 @@ func (c *core) setLocked(actor Actor, key string, v Value) (Value, error) {
 			return Value{}, wrapInvalid(key, err.Error())
 		}
 	}
+	// Without a configured broker.alias the effective alias follows the listen
+	// address, so this change derives a new alias. The checks registered for
+	// broker.alias must see that derived value too; otherwise it could become
+	// equal to a peer's effective alias. A refusal leaves every value and the
+	// file unchanged.
+	if key == "broker.listen" && !c.explicitAlias {
+		derived := stringValue(defaultAlias(c.hostnameString(), effective))
+		if !valueEqual(derived, c.values["broker.alias"]) {
+			for _, check := range c.validators["broker.alias"] {
+				if err := check(c.values["broker.alias"], derived); err != nil {
+					return Value{}, wrapInvalid("broker.alias", err.Error())
+				}
+			}
+		}
+	}
 
 	// The raw bytes that the reload above read are both the input to
 	// parseConfigFile and the content restored if the in-place rewrite
@@ -598,26 +613,67 @@ func (c *core) reloadLocked() (configBytes, error) {
 		c.logger.Error("config: keeping the current alias; the file value is invalid", "error", bad)
 	} else if !doc.present["broker.alias"] {
 		newAlias := stringValue(defaultAlias(c.hostnameString(), effective))
+		accepted := true
 		if !valueEqual(newAlias, values["broker.alias"]) {
-			aliasOld = values["broker.alias"]
-			aliasNew = newAlias
-			candidate["broker.alias"] = newAlias
-			adoptions = append(adoptions, adoption{key: "broker.alias", old: aliasOld, new: aliasNew, audit: wasExplicit})
+			// The effective alias was derived from the reloaded listen address.
+			// Run the broker.alias checks on it before adopting it; a rejected
+			// derived alias keeps the previous value.
+			for _, check := range c.validators["broker.alias"] {
+				if err := check(values["broker.alias"], newAlias); err != nil {
+					c.logger.Error("config: keeping the current alias; a validator rejected the derived alias", "key", "broker.alias", "error", err)
+					accepted = false
+					break
+				}
+			}
+			if accepted {
+				aliasOld = values["broker.alias"]
+				aliasNew = newAlias
+				candidate["broker.alias"] = newAlias
+				adoptions = append(adoptions, adoption{key: "broker.alias", old: aliasOld, new: aliasNew, audit: wasExplicit})
+			}
 		}
-		c.explicitAlias = false
+		// A rejected derivation leaves the previous value in effect, so keep
+		// the explicit flag as it was; only an adopted or unchanged
+		// derivation makes the alias derived again.
+		if accepted {
+			c.explicitAlias = false
+		}
 	} else {
 		newAlias := copyValue(doc.values["broker.alias"])
 		spec, _ := lookupKey("broker.alias")
 		if err := validateValue(spec, newAlias); err != nil {
 			c.logger.Error("config: keeping the current alias; the file value is invalid", "key", "broker.alias", "error", err)
 		} else {
+			// The file configures broker.alias explicitly. Run the checks
+			// registered for broker.alias on a changed value before adopting
+			// it; a rejection keeps the previous alias.
+			accepted := true
 			if !valueEqual(newAlias, values["broker.alias"]) {
-				aliasOld = values["broker.alias"]
-				aliasNew = newAlias
-				candidate["broker.alias"] = newAlias
-				adoptions = append(adoptions, adoption{key: "broker.alias", old: aliasOld, new: aliasNew, audit: true})
+				for _, check := range c.validators["broker.alias"] {
+					if err := check(values["broker.alias"], newAlias); err != nil {
+						c.logger.Error("config: keeping the current alias; a validator rejected the reloaded alias", "key", "broker.alias", "error", err)
+						accepted = false
+						break
+					}
+				}
 			}
-			c.explicitAlias = true
+			if accepted {
+				if !valueEqual(newAlias, values["broker.alias"]) {
+					aliasOld = values["broker.alias"]
+					aliasNew = newAlias
+					candidate["broker.alias"] = newAlias
+					adoptions = append(adoptions, adoption{key: "broker.alias", old: aliasOld, new: aliasNew, audit: true})
+				}
+				c.explicitAlias = true
+			} else {
+				// Keeping the old alias means the listen address group must
+				// keep its old values too, as on the derived-alias path.
+				for _, name := range group {
+					candidate[name] = values[name]
+				}
+				effective = c.effectiveListen
+				groupValid = false
+			}
 		}
 	}
 
