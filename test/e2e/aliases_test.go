@@ -273,9 +273,11 @@ func TestAliases(t *testing.T) {
 		bOp = alOperator(t, bNode)
 		b1 = alSession(t, bNode, "b1")
 
+		var bAddr string
 		harness.Eventually(t, alRelinkBound, "A keeps C under @hostC and gives B a local alias", func() (bool, string) {
 			out := alListAgents(t, a1)
-			var cAddr, bAddr string
+			var cAddr string
+			bAddr = ""
 			for _, agent := range out.Agents {
 				switch alAgentName(agent.Address) {
 				case "c1":
@@ -299,6 +301,14 @@ func TestAliases(t *testing.T) {
 			if strings.HasSuffix(bAddr, "@hostC") {
 				return false, fmt.Sprintf("B's session still ends with @hostC: %q", bAddr)
 			}
+			at := strings.LastIndexByte(bAddr, '@')
+			if at < 0 {
+				return false, fmt.Sprintf("B's address %q has no alias", bAddr)
+			}
+			bAlias := bAddr[at+1:]
+			if !strings.HasPrefix(bAlias, "hostC-") || len(bAlias) < len("hostC-")+4 || !alHexSuffix(bAlias[len("hostC-"):]) {
+				return false, fmt.Sprintf("B's alias is %q, want hostC-<4+ hex digits>", bAlias)
+			}
 			return true, ""
 		})
 
@@ -307,8 +317,8 @@ func TestAliases(t *testing.T) {
 		selfA := alSelfAddress(t, a1, "a1")
 		b1.Call(t, "send_message", map[string]any{"to": selfA, "message": "renamed"}).MustOK(t)
 		frame := a1.WaitFrame(t, alWaitBound)
-		if strings.HasSuffix(frame.FromName, "@hostC") {
-			t.Fatalf("the message is signed %q, which still ends with @hostC", frame.FromName)
+		if frame.FromName != bAddr {
+			t.Fatalf("the message is signed %q, want B's address %q", frame.FromName, bAddr)
 		}
 	})
 }
