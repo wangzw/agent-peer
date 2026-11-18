@@ -114,4 +114,6 @@ type Deps struct {
 	PeerLinks PeerLinks     // nil: peer management RPCs return internal; ListBrokers lists only the catalog's non-peers
 	Catalog   BrokerCatalog // nil: no directory
 	Warner    ConnectWarner // nil: no warnings
+
+	Delivery *delivery // nil: Send returns internal
 }

@@ -27,6 +27,9 @@ type Assembler interface {
 }
 
 // DefaultAssemblers is used when RunOptions.Assemblers is nil. It builds pairing
-// and link first, then the topic registry; the directory, delivery and
-// config-subscription assemblers follow them.
-func DefaultAssemblers() []Assembler { return []Assembler{newPeerAssembler(), topicAssembler{}} }
+// and link first, then the topic registry, then the delivery. The directory
+// assembler, when it exists, sits between the topic and the delivery; the
+// config-subscription assembler, when it exists, sits after the delivery.
+func DefaultAssemblers() []Assembler {
+	return []Assembler{newPeerAssembler(), topicAssembler{}, newDeliveryAssembler()}
+}

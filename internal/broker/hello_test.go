@@ -141,8 +141,8 @@ func TestUnimplementedRPCsReturnUnimplemented(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	_, err := tb.client.Send(ctx, &localpb.SendRequest{})
+	_, err := tb.client.GetConfig(ctx, &localpb.GetConfigRequest{})
 	if got, want := status.Code(err), codes.Unimplemented; got != want {
-		t.Fatalf("Send error code = %v (err %v), want %v", got, err, want)
+		t.Fatalf("GetConfig error code = %v (err %v), want %v", got, err, want)
 	}
 }
