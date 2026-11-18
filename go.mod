@@ -12,3 +12,5 @@ tool (
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc
 	google.golang.org/protobuf/cmd/protoc-gen-go
 )
+
+replace github.com/PeterSR/claude-code-socket-transport => ./third_party/claude-code-socket-transport
