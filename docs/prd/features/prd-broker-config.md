@@ -156,8 +156,8 @@ Broker 必须以结构化格式输出运行日志。
 会话的 MCP 服务进程与正在运行的 Broker 版本不兼容时，工具调用必须失败并提示用户重启 Broker，系统不得自行终止正在运行的 Broker。
 
 - **验收**：让一个不兼容版本的 MCP 服务进程连接正在运行的 Broker，工具调用返回提示重启 Broker 的错误，原 Broker 进程和已登记在它上面的其他 Agent 不受影响。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/version_local_test.go` 的 `TestLocalVersionMismatchReq016`、`TestLocalVersionMismatchRecoveryReq016`
 
 ### REQ-broker-config-017
 
@@ -236,8 +236,8 @@ Broker 必须以结构化格式输出运行日志。
 会话尚未选定 Broker 时，存在多个可用的 Broker 的，MCP 服务进程必须按以下顺序选择第一个可用的：会话的工具配置明确指定的 Broker；本账户下正在运行的用户级 Broker；本账户有权使用的系统级 Broker。
 
 - **验收**：主机上同时运行着系统级 Broker 和账户甲的用户级 Broker，系统级 Broker 监听 `:17443`，甲的用户级 Broker 监听 `:17444`。甲的会话在未作指定时登记在甲的用户级 Broker 上；甲的工具配置指定了系统级 Broker 时登记在系统级 Broker 上；没有用户级 Broker 的账户乙的会话登记在系统级 Broker 上。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/select_reregister_test.go` 的 `TestSelectOrderReq026`
 
 ### REQ-broker-config-027
 
@@ -324,8 +324,8 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 会话所登记的 Broker 进程退出后，系统必须把该会话重新登记到同一个 Broker，不得改登记到另一个 Broker。
 
 - **验收**：主机上同时运行着系统级 Broker 和账户甲的用户级 Broker，两者监听不同的端口，甲的会话登记在用户级 Broker 上；终止用户级 Broker 进程，会话的下一次列出 Agent 成功，主机上重新出现甲的用户级 Broker，会话仍登记在指纹不变的这个用户级 Broker 上，系统级 Broker 上不出现该会话的 Agent。账户乙的会话登记在系统级 Broker 上时，终止系统级 Broker 进程，在它由系统的服务管理机制重新启动之前，主机上不出现乙的用户级 Broker；重新启动之后，乙的会话重新登记在系统级 Broker 上。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/select_reregister_test.go` 的 `TestReregisterUserBrokerReq037`、`TestReregisterSystemBrokerReq037`
 
 ## 数据需求
 

@@ -37,6 +37,8 @@
 
 本机接口是 Unix domain socket 上的 gRPC 服务，socket 位于 `config` 给出的运行时目录内，名为 `broker.sock`。调用方只有同一二进制内的 MCP 服务进程和终端命令，接口不对其他程序承诺兼容；两端以握手时交换的本机协议版本号判断能否互通。
 
+`Hello` 的版本与本进程不等时返回 `version_mismatch`，并在这条连接上记“已拒绝”；此后该连接上除 `Hello` 外的调用一律返回同一错误，之后版本相符的 `Hello` 也不清除标记。其他连接与已登记的 Agent 不受影响，进程不退出，也不要求 `Hello` 先于其他调用（`REQ-broker-config-016`）。
+
 下面的 proto 只是草图，消息名以 `local.proto` 为准；草图中的 `HelloReply`、`RegisterUp`、`RegisterDown` 等名称与 `local.proto` 中的消息名不同。
 
 ```proto
@@ -266,6 +268,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 - 名字变得不可用：Agent 注销，各登记连接回到第 5 步的等待；名字恢复可用后重新完成登记，MCP 服务进程按重新登记恢复它记着的 topic。
 - 记录消失：视为会话结束，Agent 注销。
 - 记录所载的 socket 路径与 Agent 的不同（包括变为空串）：视为该 Agent 的记录已消失，Agent 注销；新会话以新的 socket 路径重新登记，得到新的 Agent 标识（[ADR-agent-identity-by-inbox-socket](../../adr/adr-agent-identity-by-inbox-socket.md)）。
+- 记录所载的协议版本号非 0 且不是 1：写一条 `session_protocol_unrecognized` 运行日志，同一个 Agent 的同一个取值只写一次，登记与投递照常。
 
 上述注销发生后，原来的登记连接回到等待，条件恢复时重新发出登记完成。
 
