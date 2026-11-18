@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"google.golang.org/protobuf/encoding/protodelim"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -87,12 +88,17 @@ func TestWireConcurrentWritesDoNotInterleave(t *testing.T) {
 }
 
 func TestWireOversizeRejected(t *testing.T) {
+	// The read side must reject a frame another peer sent without the local
+	// writer's limit, so encode it directly instead of through msgWriter.
+	var frame bytes.Buffer
+	if _, err := protodelim.MarshalTo(&frame, wrapperspb.Bytes(make([]byte, maxMessageSize+1))); err != nil {
+		t.Fatalf("marshal oversize frame: %v", err)
+	}
+
 	pr, pw := io.Pipe()
 	defer func() { _ = pw.Close() }()
-	w := newMsgWriter(pw)
-
 	go func() {
-		_ = w.write(wrapperspb.Bytes(make([]byte, maxMessageSize+1)))
+		_, _ = pw.Write(frame.Bytes())
 		_ = pw.Close()
 	}()
 
@@ -108,6 +114,54 @@ func TestWireOversizeRejected(t *testing.T) {
 	}
 	if errors.Is(err, io.EOF) {
 		t.Fatalf("read of oversize message returned io.EOF: %v", err)
+	}
+}
+
+// bytesMessageOfSize returns a wrapperspb.BytesValue whose encoded size, as
+// seen by the framing limit, is exactly size bytes.
+func bytesMessageOfSize(t *testing.T, size int) *wrapperspb.BytesValue {
+	t.Helper()
+	payload := size
+	for {
+		if payload < 0 {
+			t.Fatalf("cannot build a message of exactly %d bytes", size)
+		}
+		msg := wrapperspb.Bytes(make([]byte, payload))
+		got := proto.Size(msg)
+		if got == size {
+			return msg
+		}
+		payload -= got - size
+	}
+}
+
+func TestWireMessageAtSizeLimitAccepted(t *testing.T) {
+	msg := bytesMessageOfSize(t, maxMessageSize)
+
+	var buf bytes.Buffer
+	if err := newMsgWriter(&buf).write(msg); err != nil {
+		t.Fatalf("write at the size limit: %v", err)
+	}
+
+	var got wrapperspb.BytesValue
+	if err := newMsgReader(bytes.NewReader(buf.Bytes())).read(&got); err != nil {
+		t.Fatalf("read at the size limit: %v", err)
+	}
+	if size := proto.Size(&got); size != maxMessageSize {
+		t.Fatalf("round-tripped size = %d, want %d", size, maxMessageSize)
+	}
+}
+
+func TestWireMessageOverLimitNotWritten(t *testing.T) {
+	msg := bytesMessageOfSize(t, maxMessageSize+1)
+
+	var buf bytes.Buffer
+	err := newMsgWriter(&buf).write(msg)
+	if !errors.Is(err, errOversize) {
+		t.Fatalf("write over the size limit = %v, want errOversize", err)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("wrote %d bytes of an oversize frame, want 0", buf.Len())
 	}
 }
 

@@ -3,6 +3,8 @@ package helper
 import (
 	"bufio"
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"sync"
 
@@ -13,6 +15,11 @@ import (
 // maxMessageSize bounds one framed message so that neither end of a pipe can
 // make the other allocate an arbitrary amount of memory.
 const maxMessageSize = 4 << 20
+
+// errOversize reports that a message was not written because its encoded size
+// exceeds maxMessageSize. A peer would reject such a frame, so sending it can
+// only break the connection.
+var errOversize = errors.New("helper: message exceeds the size limit")
 
 // msgWriter writes length-delimited protobuf messages to a pipe. It serializes
 // complete messages, so concurrent callers never interleave their bytes.
@@ -27,11 +34,15 @@ func newMsgWriter(w io.Writer) *msgWriter {
 
 // write encodes msg and writes it with a single Write call. Holding the mutex
 // across that call keeps one message's bytes contiguous even when other
-// goroutines write concurrently.
+// goroutines write concurrently. A message above maxMessageSize is refused
+// before any byte reaches the pipe.
 func (m *msgWriter) write(msg proto.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if size := proto.Size(msg); size > maxMessageSize {
+		return fmt.Errorf("%w: %d bytes, limit %d", errOversize, size, maxMessageSize)
+	}
 	var buf bytes.Buffer
 	if _, err := protodelim.MarshalTo(&buf, msg); err != nil {
 		return err
