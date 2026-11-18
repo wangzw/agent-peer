@@ -110,6 +110,7 @@ type delivery struct {
 	toPeer func(ctx context.Context, r peerSend) error
 
 	dedupe *dedupeTable
+	waiter *linkWaiter
 }
 
 // newDelivery builds a delivery around deps. It only stores the dependencies;
@@ -123,6 +124,7 @@ func newDelivery(deps deliveryDeps) *delivery {
 	d.dedupe = newDedupeTable(clock, func() time.Duration {
 		return d.deps.Settings.Send().DedupeWindow
 	})
+	d.waiter = newLinkWaiter(deps.Link)
 	return d
 }
 
