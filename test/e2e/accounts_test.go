@@ -129,10 +129,11 @@ func TestOtherAccountRejected(t *testing.T) {
 		}
 
 		// The Broker sees the other account's connection attempt and rejects
-		// it, recording the account id.
-		log := string(host.BrokerLog(t))
-		if !strings.Contains(log, `"event":"local_connection_rejected"`) || !strings.Contains(log, `"uid":2000`) {
-			t.Fatalf("the Broker log does not record the rejected other-account connection:\n%s", log)
+		// it, recording the account id. Both facts have to be in one record:
+		// an event elsewhere in the log and a uid elsewhere prove nothing about
+		// this rejection.
+		if log := host.BrokerLog(t); !accountsLogRecord(log, "local_connection_rejected", 2000) {
+			t.Fatalf("the Broker log has no local_connection_rejected record carrying uid 2000:\n%s", log)
 		}
 
 		// The intruder ended with the command; it never registered, so it must
@@ -278,6 +279,28 @@ func accountsOneshotRejected(t *testing.T, c *harness.Cluster, nodeName, socket,
 		return true, ""
 	})
 	return result
+}
+
+// accountsLogRecord reports whether data holds one JSON log record whose event
+// is event and whose uid field is uid.
+func accountsLogRecord(data []byte, event string, uid int) bool {
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "{") {
+			continue
+		}
+		var record struct {
+			Event string `json:"event"`
+			UID   *int   `json:"uid"`
+		}
+		if json.Unmarshal([]byte(line), &record) != nil {
+			continue
+		}
+		if record.Event == event && record.UID != nil && *record.UID == uid {
+			return true
+		}
+	}
+	return false
 }
 
 // accountsUID runs argv through the node account and parses its standard

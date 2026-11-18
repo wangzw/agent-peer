@@ -31,9 +31,15 @@ func TestLocalTopics(t *testing.T) {
 	t.Run("REQ-topics-001 join", func(t *testing.T) {
 		s := topicsSession(t, host, "joiner", topicsPlain(t))
 		defer s.End(t)
-		out := topicsJoin(t, s, "release")
-		if !topicsContains(out.Topics, "release") {
-			t.Fatalf("joined topics after join_topic are %v, want release", out.Topics)
+		topicsJoin(t, s, "release")
+		// The acceptance criterion is the agent's own topic list, not the echo
+		// join_topic returns.
+		out, state := topicsList(t, s)
+		if state != "" {
+			t.Fatalf("list_topics failed: %s", state)
+		}
+		if !topicsContains(out.Joined, "release") {
+			t.Fatalf("joined topics after join_topic are %v, want release", out.Joined)
 		}
 	})
 
@@ -77,9 +83,15 @@ func TestLocalTopics(t *testing.T) {
 		s := topicsSession(t, host, "multi", topicsPlain(t))
 		defer s.End(t)
 		topicsJoin(t, s, "t1")
-		out := topicsJoin(t, s, "t2")
-		if !topicsSameSet(out.Topics, []string{"t1", "t2"}) {
-			t.Fatalf("joined topics are %v, want t1 and t2", out.Topics)
+		topicsJoin(t, s, "t2")
+		// Read the resulting membership from list_topics rather than from the
+		// echo of the last join.
+		out, state := topicsList(t, s)
+		if state != "" {
+			t.Fatalf("list_topics failed: %s", state)
+		}
+		if !topicsSameSet(out.Joined, []string{"t1", "t2"}) {
+			t.Fatalf("joined topics are %v, want t1 and t2", out.Joined)
 		}
 	})
 
@@ -264,7 +276,9 @@ func topicsRestartBroker(t *testing.T, host *harness.Node, config string) {
 		t.Fatalf("the Broker did not restart: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
 	bin := harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
-	harness.Eventually(t, 5*time.Second, "the Broker answers after a session process started it", func() (bool, string) {
+	// The Broker gets the product's ten-second readiness allowance plus three
+	// seconds, the same bound harness.StartBroker applies.
+	harness.Eventually(t, brokerReadyBound, "the Broker answers after a session process started it", func() (bool, string) {
 		result := host.Exec(t, []string{bin, "status"}, nil)
 		if result.ExitCode == 0 {
 			return true, ""
