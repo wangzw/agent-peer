@@ -68,7 +68,8 @@ type Actor struct {
 }
 
 // Validate 注册某个键的附加校验；Set 与文件重载在提交之前调用它，返回错误则不提交。
-// 校验在包内互斥锁持有期间执行，校验函数不得调用本包的其他导出函数。
+// 校验在包内互斥锁持有期间执行，校验函数不得调用本包的其他导出函数；需要别的包判断时
+// 只可调用对方只取自身锁的查询，例如 pairing 的 AliasConflict 与 ResolveAlias。
 func Validate(key string, check func(old, new Value) error)
 
 // Subscribe 注册某个键的变更通知；各次通知按提交的顺序逐个送达。
@@ -293,9 +294,9 @@ type PathSet struct {
 
 写文件失败时返回 `internal`，内存与审计不变：本包尽力把原字节写回文件；无论写回是否成功，都把内存中记录的文件哈希改成磁盘当前内容的哈希，使本进程不把这次留下的空文件或残缺内容当作外部改动采纳。
 
-通知队列由一个协程按提交的顺序逐个调用订阅者，对同一个键的两次修改因此按修改的先后生效。校验函数用于需要别的包判断的情形，由 `broker` 注册：`broker.listen` 的新值只做绑定探测，校验函数绑定后立即关闭，不保留 listener，变更提交后由订阅者实际绑定；探测失败则修改不提交，原有的监听不受影响（`REQ-broker-config-034`）。探测与真正的绑定之间存在时间差，期间端口可能被其他进程占用。校验函数在包内互斥锁持有期间执行，不得调用本包的其他导出函数。`broker.alias` 的新值与某个对端的生效别名相同时修改不提交。本次运行的监听地址来自启动参数时，`Set` 对 `broker.listen` 的修改在校验之前即以 `invalid_argument` 拒绝，错误说明本次运行的监听地址由启动参数给定，配置文件与内存中的值都不变（`REQ-broker-config-029`）。
+通知队列由一个协程按提交的顺序逐个调用订阅者，对同一个键的两次修改因此按修改的先后生效。校验函数用于需要别的包判断的情形，由 `broker` 注册：`broker.listen` 的新值只做绑定探测，校验函数绑定后立即关闭，不保留 listener，变更提交后由订阅者实际绑定；探测失败则修改不提交，原有的监听不受影响（`REQ-broker-config-034`）。探测与真正的绑定之间存在时间差，期间端口可能被其他进程占用。校验函数在包内互斥锁持有期间执行，不得调用本包的其他导出函数。`broker.alias` 的新值与某个已提交对端的生效别名或一次进行中的握手预占相同时修改不提交；校验函数调用 `pairing` 的 `AliasConflict`，后者只取 `pairing` 的锁。本次运行的监听地址来自启动参数时，`Set` 对 `broker.listen` 的修改在校验之前即以 `invalid_argument` 拒绝，错误说明本次运行的监听地址由启动参数给定，配置文件与内存中的值都不变（`REQ-broker-config-029`）。
 
-订阅者使修改立即生效，订阅在 `broker` 装配完成后交给各包：`broker.alias` 的变更使各链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片；`broker.listen` 的变更使 `link` 改在新地址上监听，没有配置别名时默认别名随端口变化，按别名变更处理；对外地址列表的变化，不论来自 `broker.listen`、`broker.advertise`、`broker.advertise_extra` 的修改还是定期的重新枚举，都经 `SubscribeAdvertised` 送达，使本方是[接受方](../../glossary.md)的各条链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片；`broker.public` 的变更使 `directory` 发布或撤回本机的记录；改为公开时，`broker` 另行按各 Agent 的公开 topic 集合重新声明。`pairing.static_key` 没有订阅者，`pairing` 在下一次握手查找密钥时读取新值；`Secret` 返回取值之前读取配置文件并比较内容哈希，内容不同即重新加载，文件变化通知丢失时删除或更换仍能生效。各项间隔、次数与上限在下一次使用时取新值。
+订阅者使修改立即生效，订阅在 `broker` 装配完成后交给各包：`broker.alias` 的变更使各链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片，同时调用 `pairing` 的 `SetOwnAlias` 推入新的本机别名，`broker` 在装配时也推入一次当前值；`broker.listen` 的变更使 `link` 改在新地址上监听，没有配置别名时默认别名随端口变化，按别名变更处理；对外地址列表的变化，不论来自 `broker.listen`、`broker.advertise`、`broker.advertise_extra` 的修改还是定期的重新枚举，都经 `SubscribeAdvertised` 送达，使本方是[接受方](../../glossary.md)的各条链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片；`broker.public` 的变更使 `directory` 发布或撤回本机的记录；改为公开时，`broker` 另行按各 Agent 的公开 topic 集合重新声明。`pairing.static_key` 没有订阅者，`pairing` 在下一次握手查找密钥时读取新值；`Secret` 返回取值之前读取配置文件并比较内容哈希，内容不同即重新加载，文件变化通知丢失时删除或更换仍能生效。各项间隔、次数与上限在下一次使用时取新值。
 
 ### 配置文件的监视
 
@@ -358,6 +359,8 @@ type PathSet struct {
 ## 并发与事务边界
 
 `Set` 与文件重载的各项动作由一把互斥锁串行化，订阅者在锁外由通知协程调用。为某个键注册的校验函数在 `Set` 与文件重载提交之前、持锁期间执行，因此不得调用本包的其他导出函数。`Get` 读取内存中的值，不访问磁盘。审计日志的追加由独立的锁保护，每条记录以一次写调用写入完整的一行。
+
+`config` 的锁与 `pairing` 的锁有固定顺序：先取 `config` 锁，再取 `pairing` 锁；反向禁止。`pairing` 持有自己的锁时不调用 `config` 的任何函数。`config` 的校验函数在持锁期间只调用 `pairing` 的 `AliasConflict` 与 `ResolveAlias`，这两个方法只取 `pairing` 的锁。`broker.alias` 的校验通过到订阅者把新值推入 `pairing` 之间存在窄窗口：窗口内提交的握手可能拿到与新本机别名相同的生效别名，窗口结束后 `pairing` 的提交复核恢复拒绝这个名字。窗口的长度取决于通知队列的排队情况，这是消除锁序反转所接受的代价。
 
 ## 实现状态
 

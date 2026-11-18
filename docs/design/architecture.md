@@ -305,6 +305,6 @@ Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间�
 | [inbox](modules/design-inbox.md) | 已实现 |
 | [topic](modules/design-topic.md) | 未实现 |
 | [link](modules/design-link.md) | 未实现 |
-| [pairing](modules/design-pairing.md) | 未实现 |
+| [pairing](modules/design-pairing.md) | 已实现 |
 | [directory](modules/design-directory.md) | 未实现 |
 | [config](modules/design-config.md) | 已实现 |

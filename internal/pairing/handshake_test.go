@@ -1,0 +1,1217 @@
+package pairing
+
+import (
+	"context"
+	"crypto/ed25519"
+	"crypto/hmac"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"io"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/agent-peer/internal/pairing/pairingpb"
+	"google.golang.org/protobuf/proto"
+)
+
+// --- handshake test doubles ------------------------------------------------
+
+// testWaitBound bounds every wait that a test places around a handshake. It is
+// deliberately short: an implementation that wrongly accepts a handshake the
+// test expects to be rejected must fail the test within this bound instead of
+// blocking until the go test timeout. Two seconds keeps the whole failing test
+// under the review's three-second ceiling even with build and scheduling
+// overhead. Correct in-memory handshakes finish well inside it.
+const testWaitBound = 2 * time.Second
+
+// hsSettings is a mutable settings fake. aliasFunc, when set, overrides Alias
+// so a test can change the value between the calls a handshake makes.
+type hsSettings struct {
+	mu          sync.Mutex
+	dataDir     string
+	alias       string
+	hostname    string
+	advertised  []config.AdvertisedAddr
+	listen      string
+	staticKey   string
+	maxFailures int
+	maxAttempts int
+	audits      []config.Event
+	aliasFunc   func() (string, error)
+	aliasCalls  int
+}
+
+func newHSSettings(t *testing.T) *hsSettings {
+	t.Helper()
+	return &hsSettings{
+		dataDir:     t.TempDir(),
+		alias:       "self",
+		hostname:    "testhost",
+		listen:      "127.0.0.1:17443",
+		maxFailures: 5,
+		maxAttempts: 10,
+	}
+}
+
+func (s *hsSettings) DataDir() (string, error)  { return s.dataDir, nil }
+func (s *hsSettings) Hostname() (string, error) { return s.hostname, nil }
+func (s *hsSettings) ListenAddress() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.listen, nil
+}
+func (s *hsSettings) StaticKey() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.staticKey
+}
+func (s *hsSettings) MaxFailures() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.maxFailures, nil
+}
+func (s *hsSettings) MaxAttemptsPerMinute() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.maxAttempts, nil
+}
+func (s *hsSettings) Advertised() ([]config.AdvertisedAddr, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]config.AdvertisedAddr(nil), s.advertised...), nil
+}
+func (s *hsSettings) Alias() (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.aliasCalls++
+	if s.aliasFunc != nil {
+		return s.aliasFunc()
+	}
+	return s.alias, nil
+}
+func (s *hsSettings) Audit(e config.Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.audits = append(s.audits, e)
+}
+func (s *hsSettings) recorded() []config.Event {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]config.Event(nil), s.audits...)
+}
+
+// hsTimer is a timer driven by hsClock.
+type hsTimer struct {
+	c        chan time.Time
+	deadline time.Time
+	stopped  bool
+	fired    bool
+	clock    *hsClock
+}
+
+func (t *hsTimer) C() <-chan time.Time { return t.c }
+func (t *hsTimer) Stop() bool {
+	t.clock.mu.Lock()
+	defer t.clock.mu.Unlock()
+	if t.fired || t.stopped {
+		return false
+	}
+	t.stopped = true
+	return true
+}
+
+// hsClock is a fake clock. Advance moves time forward and fires due timers.
+type hsClock struct {
+	mu     sync.Mutex
+	now    time.Time
+	timers []*hsTimer
+}
+
+func newHSClock() *hsClock {
+	return &hsClock{now: time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)}
+}
+
+func (c *hsClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *hsClock) NewTimer(d time.Duration) timer {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t := &hsTimer{c: make(chan time.Time, 1), deadline: c.now.Add(d), clock: c}
+	c.timers = append(c.timers, t)
+	return t
+}
+
+func (c *hsClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	c.now = c.now.Add(d)
+	now := c.now
+	var due []*hsTimer
+	for _, t := range c.timers {
+		if !t.stopped && !t.fired && !t.deadline.After(now) {
+			t.fired = true
+			due = append(due, t)
+		}
+	}
+	c.mu.Unlock()
+	for _, t := range due {
+		t.c <- now
+	}
+}
+
+// hsConn is one endpoint of an in-memory PairConn pair.
+type hsConn struct {
+	mu         sync.Mutex
+	queue      []hsFrame
+	closed     bool
+	wake       chan struct{}
+	peer       *hsConn
+	fp         Fingerprint
+	pub        []byte
+	remote     string
+	sent       []uint32
+	sentCh     chan uint32
+	closeCount int
+}
+
+type hsFrame struct {
+	kind    uint32
+	payload []byte
+}
+
+func newHSConn() *hsConn {
+	return &hsConn{wake: make(chan struct{}, 1), sentCh: make(chan uint32, 32)}
+}
+
+// hsConnPairFor builds endpoints whose reported identities are the given
+// fingerprint/public-key pairs, checking the pair is self-consistent.
+func hsConnPairFor(aFP Fingerprint, aPub []byte, bFP Fingerprint, bPub []byte) (*hsConn, *hsConn) {
+	a := newHSConn()
+	b := newHSConn()
+	a.peer = b
+	b.peer = a
+	a.fp = bFP
+	a.pub = append([]byte(nil), bPub...)
+	b.fp = aFP
+	b.pub = append([]byte(nil), aPub...)
+	a.remote = "192.0.2.1:40001"
+	b.remote = "192.0.2.2:40002"
+	return a, b
+}
+
+func (c *hsConn) notify() {
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (c *hsConn) PeerFingerprint() Fingerprint { return c.fp }
+func (c *hsConn) PeerPublicKey() []byte        { return append([]byte(nil), c.pub...) }
+func (c *hsConn) RemoteAddr() string           { return c.remote }
+
+func (c *hsConn) Send(ctx context.Context, kind uint32, payload []byte) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	c.mu.Lock()
+	c.sent = append(c.sent, kind)
+	c.mu.Unlock()
+	select {
+	case c.sentCh <- kind:
+	default:
+	}
+
+	peer := c.peer
+	if peer == nil {
+		return io.ErrClosedPipe
+	}
+	peer.mu.Lock()
+	if peer.closed {
+		peer.mu.Unlock()
+		return io.ErrClosedPipe
+	}
+	peer.queue = append(peer.queue, hsFrame{kind: kind, payload: append([]byte(nil), payload...)})
+	peer.mu.Unlock()
+	peer.notify()
+	return nil
+}
+
+func (c *hsConn) Receive(ctx context.Context) (uint32, []byte, error) {
+	for {
+		c.mu.Lock()
+		if len(c.queue) > 0 {
+			f := c.queue[0]
+			c.queue = c.queue[1:]
+			c.mu.Unlock()
+			return f.kind, f.payload, nil
+		}
+		closed := c.closed
+		c.mu.Unlock()
+		if closed {
+			return 0, nil, io.EOF
+		}
+		select {
+		case <-ctx.Done():
+			return 0, nil, ctx.Err()
+		case <-c.wake:
+		}
+	}
+}
+
+func (c *hsConn) Unread(kind uint32, payload []byte) {
+	c.mu.Lock()
+	c.queue = append([]hsFrame{{kind: kind, payload: append([]byte(nil), payload...)}}, c.queue...)
+	c.mu.Unlock()
+	c.notify()
+}
+
+func (c *hsConn) Close() error {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	c.closeCount++
+	peer := c.peer
+	c.mu.Unlock()
+	c.notify()
+	if peer != nil {
+		// A real transport reports a closed peer as EOF on the other side.
+		peer.mu.Lock()
+		peer.closed = true
+		peer.mu.Unlock()
+		peer.notify()
+	}
+	return nil
+}
+
+// hsRecordingConn records the frames pairing itself sends, distinguishing them
+// from frames the fake transport sends after run returns.
+type hsRecordingConn struct {
+	PairConn
+	mu    sync.Mutex
+	kinds []uint32
+}
+
+func (r *hsRecordingConn) Send(ctx context.Context, kind uint32, payload []byte) error {
+	r.mu.Lock()
+	r.kinds = append(r.kinds, kind)
+	r.mu.Unlock()
+	return r.PairConn.Send(ctx, kind, payload)
+}
+
+// hsOnSendConn runs f once, after a frame of the given kind is sent
+// successfully. A test uses it to change state at one exact point of a
+// handshake.
+type hsOnSendConn struct {
+	PairConn
+	kind uint32
+	f    func()
+	once sync.Once
+}
+
+func (c *hsOnSendConn) Send(ctx context.Context, kind uint32, payload []byte) error {
+	err := c.PairConn.Send(ctx, kind, payload)
+	if err == nil && kind == c.kind {
+		c.once.Do(c.f)
+	}
+	return err
+}
+
+func (r *hsRecordingConn) sentKinds() []uint32 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]uint32(nil), r.kinds...)
+}
+
+// hsTransport is the injected transport for handshake tests.
+type hsTransport struct {
+	mu        sync.Mutex
+	dialErr   error
+	raw       PairConn
+	runConn   PairConn
+	beforeRun func()
+	afterRun  func(ctx context.Context, raw PairConn) error
+	dials     int
+	drops     []Fingerprint
+}
+
+func (t *hsTransport) PairDial(ctx context.Context, address string, run func(PairConn) error) error {
+	t.mu.Lock()
+	t.dials++
+	dialErr := t.dialErr
+	raw := t.raw
+	runConn := t.runConn
+	beforeRun := t.beforeRun
+	afterRun := t.afterRun
+	t.mu.Unlock()
+
+	if dialErr != nil {
+		return dialErr
+	}
+	if beforeRun != nil {
+		beforeRun()
+	}
+	conn := runConn
+	if conn == nil {
+		conn = raw
+	}
+	if err := run(conn); err != nil {
+		return err
+	}
+	if afterRun != nil {
+		return afterRun(ctx, raw)
+	}
+	return nil
+}
+
+func (t *hsTransport) Drop(fp Fingerprint) {
+	t.mu.Lock()
+	t.drops = append(t.drops, fp)
+	t.mu.Unlock()
+}
+
+func hsSendHello(raw PairConn) error {
+	return raw.Send(context.Background(), kindHello, nil)
+}
+
+// hsNewPairing builds a live Pairing with a generated identity and an empty
+// peer table in the settings' data directory.
+func hsNewPairing(t *testing.T, s *hsSettings, tr Transport, clk *hsClock) *Pairing {
+	t.Helper()
+	id, err := generateIdentity(s.dataDir, clk.Now)
+	if err != nil {
+		t.Fatalf("generateIdentity: %v", err)
+	}
+	table, err := loadPeerTable(filepath.Join(s.dataDir, "peers.json"), realFileOps{})
+	if err != nil {
+		t.Fatalf("loadPeerTable: %v", err)
+	}
+	s.mu.Lock()
+	ownAlias := s.alias
+	s.mu.Unlock()
+	table.setOwnAlias(ownAlias)
+	return &Pairing{
+		settings:  s,
+		transport: tr,
+		clock:     clk,
+		identity:  id,
+		peers:     table,
+		keys:      &keyTable{},
+		storeOps:  realFileOps{},
+		randRead:  rand.Read,
+	}
+}
+
+// hsKey generates a standalone Ed25519 key pair and its fingerprint, as a peer
+// identity that never needs a certificate in these tests.
+func hsKey(t *testing.T) (Fingerprint, []byte) {
+	t.Helper()
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	return FingerprintOf(pub), append([]byte(nil), pub...)
+}
+
+// hsPair runs one Connect against one Accept over an in-memory connection pair
+// and waits for both sides. afterRun lets a test control the link Hello.
+func hsPair(t *testing.T, initP, accP *Pairing, initTr *hsTransport, key, localAlias string, afterRun func(context.Context, PairConn) error) (Peer, string, error, error) {
+	t.Helper()
+	aConn, bConn := hsConnPairFor(initP.identity.fingerprint(), initP.identity.publicKey(), accP.identity.fingerprint(), accP.identity.publicKey())
+	initTr.raw = aConn
+	initTr.runConn = nil
+	initTr.beforeRun = nil
+	initTr.afterRun = afterRun
+
+	recB := &hsRecordingConn{PairConn: bConn}
+	acceptErr := make(chan error, 1)
+	go func() { acceptErr <- accP.Accept(recB) }()
+
+	peer, shown, connectErr := initP.Connect(context.Background(), "127.0.0.1:17443", key, localAlias)
+	return peer, shown, connectErr, awaitAccept(acceptErr)
+}
+
+// --- tests -----------------------------------------------------------------
+
+func TestHandshakeHMACFormulaVectors(t *testing.T) {
+	t.Parallel()
+
+	key := []byte("K7QF-2M9X-HT4C-PWZ3")
+	ni := makeSeq(0, 32)
+	nr := makeSeq(32, 32)
+
+	var acceptor, initiatorSeen, initiator, acceptorSeen Fingerprint
+	for i := range acceptor {
+		acceptor[i] = 0x11
+		initiatorSeen[i] = 0x22
+		initiator[i] = 0x33
+		acceptorSeen[i] = 0x44
+	}
+
+	// The expected values come from the formulas written in
+	// docs/design/modules/design-pairing.md, transcribed here as
+	// designPairHint/designResponderProof/designInitiatorProof, not from the
+	// implementation's own functions.
+	wantHint := designPairHint(key, ni)
+	if got := computeHint(key, ni); !hmac.Equal(got, wantHint) {
+		t.Fatalf("hint = %x, want %x", got, wantHint)
+	}
+	wantMR := designResponderProof(key, ni, nr, acceptor, initiatorSeen)
+	if got := responderProof(key, ni, nr, acceptor, initiatorSeen); !hmac.Equal(got, wantMR) {
+		t.Fatalf("responder proof = %x, want %x", got, wantMR)
+	}
+	wantMI := designInitiatorProof(key, ni, nr, initiator, acceptorSeen)
+	if got := initiatorProof(key, ni, nr, initiator, acceptorSeen); !hmac.Equal(got, wantMI) {
+		t.Fatalf("initiator proof = %x, want %x", got, wantMI)
+	}
+}
+
+func TestPairingFrameOrderAndKinds(t *testing.T) {
+	clk := newHSClock()
+	initS := newHSSettings(t)
+	initS.alias = "alpha"
+	accS := newHSSettings(t)
+	accS.alias = "beta"
+	accS.staticKey = "STATIC-KEY"
+
+	initTr := &hsTransport{}
+	accTr := &hsTransport{}
+	initP := hsNewPairing(t, initS, initTr, clk)
+	accP := hsNewPairing(t, accS, accTr, clk)
+
+	aConn, bConn := hsConnPairFor(initP.identity.fingerprint(), initP.identity.publicKey(), accP.identity.fingerprint(), accP.identity.publicKey())
+	initTr.raw = aConn
+	initTr.afterRun = func(ctx context.Context, raw PairConn) error { return hsSendHello(raw) }
+	recA := &hsRecordingConn{PairConn: aConn}
+	initTr.runConn = recA
+	recB := &hsRecordingConn{PairConn: bConn}
+
+	acceptErr := make(chan error, 1)
+	go func() { acceptErr <- accP.Accept(recB) }()
+
+	peer, shown, err := initP.Connect(context.Background(), "hostA(127.0.0.1:17443)", "STATIC-KEY", "")
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if shown != "hostA" {
+		t.Fatalf("shownHost = %q, want hostA", shown)
+	}
+	if err := awaitAccept(acceptErr); err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	if got, want := recA.sentKinds(), []uint32{kindPairRequest, kindPairConfirm}; !equalKinds(got, want) {
+		t.Fatalf("initiator frames = %v, want %v", got, want)
+	}
+	if got, want := recB.sentKinds(), []uint32{kindPairChallenge, kindPairDone}; !equalKinds(got, want) {
+		t.Fatalf("acceptor frames = %v, want %v", got, want)
+	}
+	if peer.Role != RoleDialer || peer.Fingerprint != accP.identity.fingerprint() {
+		t.Fatalf("peer = %+v, want dialer with the acceptor fingerprint", peer)
+	}
+	if !accP.IsPeer(initP.identity.fingerprint()) {
+		t.Fatal("acceptor did not commit the initiator")
+	}
+	if !initP.IsPeer(accP.identity.fingerprint()) {
+		t.Fatal("initiator did not commit the acceptor")
+	}
+}
+
+func TestAcceptCommitsOnlyAfterHandoffFrame(t *testing.T) {
+	clk := newHSClock()
+	initS := newHSSettings(t)
+	initS.alias = "alpha"
+	accS := newHSSettings(t)
+	accS.alias = "beta"
+	accS.staticKey = "STATIC-KEY"
+	initTr := &hsTransport{}
+	initP := hsNewPairing(t, initS, initTr, clk)
+	accP := hsNewPairing(t, accS, &hsTransport{}, clk)
+
+	aConn, bConn := hsConnPairFor(initP.identity.fingerprint(), initP.identity.publicKey(), accP.identity.fingerprint(), accP.identity.publicKey())
+	initTr.raw = aConn
+	runDone := make(chan struct{})
+	releaseHello := make(chan struct{})
+	initTr.afterRun = func(ctx context.Context, raw PairConn) error {
+		close(runDone)
+		<-releaseHello
+		return hsSendHello(raw)
+	}
+
+	acceptErr := make(chan error, 1)
+	go func() { acceptErr <- accP.Accept(bConn) }()
+	connectErr := make(chan error, 1)
+	go func() {
+		_, _, err := initP.Connect(context.Background(), "127.0.0.1:17443", "STATIC-KEY", "")
+		connectErr <- err
+	}()
+
+	<-runDone
+	if got := accP.Peers(); len(got) != 0 {
+		t.Fatalf("acceptor committed before the link Hello: %+v", got)
+	}
+	close(releaseHello)
+	if err := <-connectErr; err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if err := awaitAccept(acceptErr); err != nil {
+		t.Fatalf("Accept: %v", err)
+	}
+	if !accP.IsPeer(initP.identity.fingerprint()) {
+		t.Fatal("acceptor did not commit after the Hello")
+	}
+	kind, _, err := receiveWithTimeout(bConn)
+	if err != nil || kind != kindHello {
+		t.Fatalf("handoff frame was not unread: kind=%d err=%v", kind, err)
+	}
+}
+
+func TestAcceptRequiresHelloKind(t *testing.T) {
+	clk := newHSClock()
+	initS := newHSSettings(t)
+	initS.alias = "alpha"
+	accS := newHSSettings(t)
+	accS.alias = "beta"
+	accS.staticKey = "STATIC-KEY"
+	initTr := &hsTransport{}
+	initP := hsNewPairing(t, initS, initTr, clk)
+	accP := hsNewPairing(t, accS, &hsTransport{}, clk)
+
+	aConn, bConn := hsConnPairFor(initP.identity.fingerprint(), initP.identity.publicKey(), accP.identity.fingerprint(), accP.identity.publicKey())
+	initTr.raw = aConn
+	initTr.afterRun = func(ctx context.Context, raw PairConn) error {
+		return raw.Send(context.Background(), 99, nil)
+	}
+
+	acceptErr := make(chan error, 1)
+	go func() { acceptErr <- accP.Accept(bConn) }()
+	if _, _, err := initP.Connect(context.Background(), "127.0.0.1:17443", "STATIC-KEY", ""); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	err := awaitAccept(acceptErr)
+	if !errors.Is(err, ErrProtocol) {
+		t.Fatalf("Accept error = %v, want ErrProtocol", err)
+	}
+	if got := accP.Peers(); len(got) != 0 {
+		t.Fatalf("acceptor committed on a bad handoff frame: %+v", got)
+	}
+	if got := len(accP.peers.reserved); got != 0 {
+		t.Fatalf("%d aliases left reserved", got)
+	}
+}
+
+func TestHandshakeTimeoutInitiator(t *testing.T) {
+	clk := newHSClock()
+	s := newHSSettings(t)
+	tr := &hsTransport{}
+	p := hsNewPairing(t, s, tr, clk)
+	peerFP, peerPub := hsKey(t)
+	aConn, _ := hsConnPairFor(p.identity.fingerprint(), p.identity.publicKey(), peerFP, peerPub)
+	tr.raw = aConn
+	tr.beforeRun = func() { clk.Advance(30 * time.Second) }
+	go func() {
+		<-aConn.sentCh // PairRequest was sent
+		clk.Advance(11 * time.Second)
+	}()
+
+	_, _, err := p.Connect(context.Background(), "127.0.0.1:17443", "K", "")
+	var pairErr *PairingError
+	if !errors.As(err, &pairErr) || pairErr.Reason != ReasonTimeout {
+		t.Fatalf("Connect error = %v, want a timeout PairingError", err)
+	}
+}
+
+func TestHandshakeTimeoutAcceptor(t *testing.T) {
+	clk := newHSClock()
+	initS := newHSSettings(t)
+	initS.alias = "alpha"
+	accS := newHSSettings(t)
+	accS.alias = "beta"
+	accS.staticKey = "STATIC-KEY"
+	initTr := &hsTransport{}
+	initP := hsNewPairing(t, initS, initTr, clk)
+	accP := hsNewPairing(t, accS, &hsTransport{}, clk)
+
+	aConn, bConn := hsConnPairFor(initP.identity.fingerprint(), initP.identity.publicKey(), accP.identity.fingerprint(), accP.identity.publicKey())
+	initTr.raw = aConn // no afterRun: the link Hello never arrives
+
+	acceptErr := make(chan error, 1)
+	go func() { acceptErr <- accP.Accept(bConn) }()
+	if _, _, err := initP.Connect(context.Background(), "127.0.0.1:17443", "STATIC-KEY", ""); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	clk.Advance(11 * time.Second)
+	err := awaitAccept(acceptErr)
+	var pairErr *PairingError
+	if !errors.As(err, &pairErr) || pairErr.Reason != ReasonTimeout {
+		t.Fatalf("Accept error = %v, want a timeout PairingError", err)
+	}
+	if got := accP.Peers(); len(got) != 0 {
+		t.Fatalf("acceptor committed despite the timeout: %+v", got)
+	}
+	if got := len(accP.peers.reserved); got != 0 {
+		t.Fatalf("%d aliases left reserved after timeout", got)
+	}
+}
+
+func TestFailureLimitInvalidatesKey(t *testing.T) {
+	clk := newHSClock()
+	accS := newHSSettings(t)
+	accS.alias = "beta"
+	accS.maxFailures = 2
+	accS.staticKey = ""
+	accP := hsNewPairing(t, accS, &hsTransport{}, clk)
+
+	key, _, _, err := accP.CreateOneTimeKey()
+	if err != nil {
+		t.Fatalf("CreateOneTimeKey: %v", err)
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		if got := hsBadConfirmAttempt(t, accP, key); !errors.Is(got, ErrPairingRejected) {
+			t.Fatalf("attempt %d error = %v, want a rejection", attempt, got)
+		}
+	}
+
+	// The key reached pairing.max_failures and must be gone: the next request
+	// is rejected as a key-invalid request.
+	err = hsRequestAttempt(t, accP, key, ReasonKeyInvalid)
+	var pairErr *PairingError
+	if !errors.As(err, &pairErr) || pairErr.Reason != ReasonKeyInvalid {
+		t.Fatalf("request after failure limit = %v, want key invalid", err)
+	}
+	if got := accP.Peers(); len(got) != 0 {
+		t.Fatalf("peer table changed on failed handshakes: %+v", got)
+	}
+}
+
+func TestConcurrentAcceptorHandshakesReserveDistinctAliases(t *testing.T) {
+	clk := newHSClock()
+	accS := newHSSettings(t)
+	accS.alias = "beta"
+	accS.staticKey = "STATIC-KEY"
+	accP := hsNewPairing(t, accS, &hsTransport{}, clk)
+
+	const peers = 2
+	type result struct {
+		fp  Fingerprint
+		err error
+	}
+	results := make(chan result, peers)
+	start := make(chan struct{})
+	for i := 0; i < peers; i++ {
+		fp, pub := hsKey(t)
+		aConn, bConn := hsConnPairFor(fp, pub, accP.identity.fingerprint(), accP.identity.publicKey())
+		go func(initiatorFP Fingerprint) {
+			<-start
+			results <- result{fp: initiatorFP, err: hsCompleteAsInitiator(t, accP, aConn, bConn, initiatorFP, "dup", "STATIC-KEY")}
+		}(fp)
+	}
+	close(start)
+
+	seen := make(map[string]bool)
+	for i := 0; i < peers; i++ {
+		res := <-results
+		if res.err != nil {
+			t.Fatalf("handshake %d: %v", i, res.err)
+		}
+		alias := accP.EffectiveAlias(res.fp)
+		if alias == "" {
+			t.Fatalf("handshake %d has no effective alias", i)
+		}
+		if seen[alias] {
+			t.Fatalf("two concurrent peers got the same effective alias %q", alias)
+		}
+		seen[alias] = true
+	}
+}
+
+func TestConnectNeedsLocalAliasThenProvidedAliasCompletes(t *testing.T) {
+	clk := newHSClock()
+	initS := newHSSettings(t)
+	initS.alias = "alpha"
+	accS := newHSSettings(t)
+	accS.alias = "beta"
+	accS.staticKey = "STATIC-KEY"
+	initTr := &hsTransport{}
+	initP := hsNewPairing(t, initS, initTr, clk)
+	accP := hsNewPairing(t, accS, &hsTransport{}, clk)
+
+	// The acceptor reports "beta"; make the initiator already hold that alias.
+	dupFP, dupPub := hsKey(t)
+	if _, err := initP.peers.put(peerEntry{
+		fingerprint: dupFP, publicKey: dupPub, alias: "beta", role: RoleDialer, pairedAt: clk.Now(),
+	}); err != nil {
+		t.Fatalf("seed peer table: %v", err)
+	}
+
+	_, _, err, _ := hsPair(t, initP, accP, initTr, "STATIC-KEY", "", nil)
+	if !errors.Is(err, ErrNeedsLocalAlias) {
+		t.Fatalf("Connect without a local alias = %v, want ErrNeedsLocalAlias", err)
+	}
+
+	peer, _, err, acceptErr := hsPair(t, initP, accP, initTr, "STATIC-KEY", "picked", func(ctx context.Context, raw PairConn) error {
+		return hsSendHello(raw)
+	})
+	if err != nil {
+		t.Fatalf("Connect with a local alias: %v", err)
+	}
+	if acceptErr != nil {
+		t.Fatalf("Accept with a local alias: %v", acceptErr)
+	}
+	if peer.LocalAlias != "picked" {
+		t.Fatalf("LocalAlias = %q, want picked", peer.LocalAlias)
+	}
+	if got := initP.EffectiveAlias(dupFP); got != "beta" {
+		t.Fatalf("existing peer alias changed to %q", got)
+	}
+}
+
+func TestConnectDialErrorMapping(t *testing.T) {
+	clk := newHSClock()
+	s := newHSSettings(t)
+	tr := &hsTransport{}
+	p := hsNewPairing(t, s, tr, clk)
+	ctx := context.Background()
+
+	cases := []struct {
+		name string
+		dial error
+		want error
+		time bool
+	}{
+		{name: "dial failed", dial: fmt.Errorf("%w: refused", ErrDialFailed), want: ErrPeerUnreachable},
+		{name: "deadline", dial: context.DeadlineExceeded, time: true},
+		{name: "store", dial: fmt.Errorf("%w: disk", ErrStore), want: ErrStore},
+		{name: "canceled", dial: context.Canceled, want: context.Canceled},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tr.dialErr = tc.dial
+			_, _, err := p.Connect(ctx, "127.0.0.1:17443", "K", "")
+			if tc.time {
+				var pairErr *PairingError
+				if !errors.As(err, &pairErr) || pairErr.Reason != ReasonTimeout {
+					t.Fatalf("error = %v, want timeout PairingError", err)
+				}
+				return
+			}
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("error = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestMismatchedFingerprintViewsFailProofs(t *testing.T) {
+	clk := newHSClock()
+	initS := newHSSettings(t)
+	initS.alias = "alpha"
+	accS := newHSSettings(t)
+	accS.alias = "beta"
+	accS.staticKey = "STATIC-KEY"
+	initTr := &hsTransport{}
+	initP := hsNewPairing(t, initS, initTr, clk)
+	accP := hsNewPairing(t, accS, &hsTransport{}, clk)
+	otherFP, otherPub := hsKey(t)
+
+	// The acceptor sees a valid but different initiator identity.
+	aConn, bConn := hsConnPairFor(initP.identity.fingerprint(), initP.identity.publicKey(), accP.identity.fingerprint(), accP.identity.publicKey())
+	bConn.fp = otherFP
+	bConn.pub = otherPub
+	initTr.raw = aConn
+	initTr.afterRun = func(ctx context.Context, raw PairConn) error { return hsSendHello(raw) }
+
+	acceptErr := make(chan error, 1)
+	go func() { acceptErr <- accP.Accept(bConn) }()
+	_, _, err := initP.Connect(context.Background(), "127.0.0.1:17443", "STATIC-KEY", "")
+	var pairErr *PairingError
+	if !errors.As(err, &pairErr) || pairErr.Reason != ReasonVerificationFailed {
+		t.Fatalf("Connect error = %v, want verification failure", err)
+	}
+	if err := awaitAccept(acceptErr); err == nil {
+		t.Fatal("acceptor reported success after a failed proof")
+	}
+	if got := initP.Peers(); len(got) != 0 {
+		t.Fatalf("initiator committed after a failed proof: %+v", got)
+	}
+	if got := accP.Peers(); len(got) != 0 {
+		t.Fatalf("acceptor committed after a failed proof: %+v", got)
+	}
+}
+
+func TestRateLimitedFailureUsesSourceMergeKey(t *testing.T) {
+	clk := newHSClock()
+	accS := newHSSettings(t)
+	accS.alias = "beta"
+	accS.staticKey = ""
+	accS.maxAttempts = 1
+	accP := hsNewPairing(t, accS, &hsTransport{}, clk)
+
+	if err := hsRequestAttempt(t, accP, "not-a-key", ReasonKeyInvalid); !errors.Is(err, ErrPairingRejected) {
+		t.Fatalf("first request error = %v", err)
+	}
+	err := hsRequestAttempt(t, accP, "not-a-key", ReasonTryLater)
+	var pairErr *PairingError
+	if !errors.As(err, &pairErr) || pairErr.Reason != ReasonTryLater {
+		t.Fatalf("second request error = %v, want try later", err)
+	}
+
+	var mergeKey string
+	for _, e := range accS.recorded() {
+		if e.Event == config.EventPairingFailed && e.Detail == auditReasonTryLater {
+			mergeKey = e.MergeKey
+		}
+	}
+	if mergeKey != "source:192.0.2.2" {
+		t.Fatalf("merge key = %q, want source:192.0.2.2", mergeKey)
+	}
+}
+
+// The attempt limit is per minute: when the injected clock crosses a minute
+// boundary the counter starts over rather than locking the acceptor forever.
+func TestAttemptCounterResetsEachMinute(t *testing.T) {
+	clk := newHSClock()
+	accS := newHSSettings(t)
+	accS.alias = "beta"
+	accS.staticKey = ""
+	accS.maxAttempts = 1
+	accP := hsNewPairing(t, accS, &hsTransport{}, clk)
+
+	if err := hsRequestAttempt(t, accP, "bad-one", ReasonKeyInvalid); !errors.Is(err, ErrPairingRejected) {
+		t.Fatalf("first request error = %v", err)
+	}
+	if err := hsRequestAttempt(t, accP, "bad-two", ReasonTryLater); !errors.Is(err, ErrPairingRejected) {
+		t.Fatalf("second request error = %v", err)
+	}
+
+	clk.Advance(time.Minute)
+	if err := hsRequestAttempt(t, accP, "bad-three", ReasonKeyInvalid); !errors.Is(err, ErrPairingRejected) {
+		t.Fatalf("request after the minute boundary error = %v, want a key-invalid rejection", err)
+	}
+}
+
+func TestUnknownRejectReasonIsProtocolError(t *testing.T) {
+	clk := newHSClock()
+	s := newHSSettings(t)
+	tr := &hsTransport{}
+	p := hsNewPairing(t, s, tr, clk)
+	aConn, bConn := hsConnPairFor(p.identity.fingerprint(), p.identity.publicKey(), p.identity.fingerprint(), p.identity.publicKey())
+	tr.raw = aConn
+	go func() {
+		<-aConn.sentCh
+		payload, _ := proto.Marshal(&pairingpb.PairReject{Reason: pairingpb.PairingRejectReason(99)})
+		_ = bConn.Send(context.Background(), kindPairReject, payload)
+	}()
+
+	_, _, err := p.Connect(context.Background(), "127.0.0.1:17443", "K", "")
+	if !errors.Is(err, ErrProtocol) {
+		t.Fatalf("Connect error = %v, want ErrProtocol", err)
+	}
+}
+
+// TestAliasChangedAtCommitLeavesNoPeer renames the Broker between the
+// reservation (PairConfirm) and the commit (PairDone). The Broker's
+// broker.alias subscriber pushes the new value through SetOwnAlias, and the
+// commit recheck must see it and refuse the peer.
+func TestAliasChangedAtCommitLeavesNoPeer(t *testing.T) {
+	clk := newHSClock()
+	initS := newHSSettings(t)
+	initS.alias = "alpha"
+	accS := newHSSettings(t)
+	accS.alias = "beta"
+	accS.staticKey = "STATIC-KEY"
+	initTr := &hsTransport{}
+	initP := hsNewPairing(t, initS, initTr, clk)
+	accP := hsNewPairing(t, accS, &hsTransport{}, clk)
+
+	aConn, bConn := hsConnPairFor(initP.identity.fingerprint(), initP.identity.publicKey(), accP.identity.fingerprint(), accP.identity.publicKey())
+	initTr.raw = aConn
+	initTr.runConn = &hsOnSendConn{
+		PairConn: aConn,
+		kind:     kindPairConfirm,
+		f:        func() { initP.SetOwnAlias("beta") },
+	}
+	acceptErr := make(chan error, 1)
+	go func() { acceptErr <- accP.Accept(&hsRecordingConn{PairConn: bConn}) }()
+
+	_, _, err := initP.Connect(context.Background(), "127.0.0.1:17443", "STATIC-KEY", "")
+	if !errors.Is(err, ErrNeedsLocalAlias) {
+		t.Fatalf("Connect error = %v, want ErrNeedsLocalAlias", err)
+	}
+	if got := initP.Peers(); len(got) != 0 {
+		t.Fatalf("initiator committed with a conflicting own alias: %+v", got)
+	}
+	if got := len(initP.peers.reserved); got != 0 {
+		t.Fatalf("%d aliases left reserved", got)
+	}
+	if acceptErrVal := awaitAccept(acceptErr); acceptErrVal == nil {
+		t.Fatal("acceptor completed a handshake the initiator refused to commit")
+	}
+}
+
+// TestStaticKeyReReadAtConfirm covers REQ-broker-pairing-032 and
+// REQ-broker-pairing-033 across a single handshake: the preset static key is
+// deleted or rotated after the PairRequest lookup but before the acceptor
+// verifies the PairConfirm proof. Verification must use the key's current value,
+// so the stale proof cannot complete the handshake.
+func TestStaticKeyReReadAtConfirm(t *testing.T) {
+	const oldKey = "OLD-STATIC"
+
+	cases := []struct {
+		name string
+		swap func(*hsSettings)
+	}{
+		{name: "deleted", swap: func(s *hsSettings) { setStaticKey(s, "") }},
+		{name: "rotated", swap: func(s *hsSettings) { setStaticKey(s, "NEW-STATIC") }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			clk := newHSClock()
+			accS := newHSSettings(t)
+			accS.alias = "beta"
+			accS.staticKey = oldKey
+			accP := hsNewPairing(t, accS, &hsTransport{}, clk)
+
+			initiatorFP, initiatorPub := hsKey(t)
+			aConn, bConn := hsConnPairFor(initiatorFP, initiatorPub, accP.identity.fingerprint(), accP.identity.publicKey())
+			// Unblocks Accept if a wrong implementation stops waiting for a
+			// frame this test never sends.
+			defer func() { _ = aConn.Close() }()
+
+			acceptErr := make(chan error, 1)
+			go func() { acceptErr <- accP.Accept(bConn) }()
+
+			ni := make([]byte, nonceLength)
+			if _, err := rand.Read(ni); err != nil {
+				t.Fatalf("random nonce: %v", err)
+			}
+			request := &pairingpb.PairRequest{
+				InitiatorNonce: ni,
+				InitiatorAlias: "intruder",
+				LookupTag:      computeHint([]byte(oldKey), ni),
+			}
+			if err := hsSendProto(aConn, kindPairRequest, request); err != nil {
+				t.Fatalf("send PairRequest: %v", err)
+			}
+			kind, payload, err := receiveWithTimeout(aConn)
+			if err != nil {
+				t.Fatalf("receive PairChallenge: %v", err)
+			}
+			if kind != kindPairChallenge {
+				t.Fatalf("frame after PairRequest = %d, want PairChallenge", kind)
+			}
+			var challenge pairingpb.PairChallenge
+			if err := proto.Unmarshal(payload, &challenge); err != nil {
+				t.Fatalf("decode PairChallenge: %v", err)
+			}
+
+			// The key changes between the request lookup and the confirmation
+			// verification.
+			tc.swap(accS)
+
+			proof := initiatorProof([]byte(oldKey), ni, challenge.GetResponderNonce(), initiatorFP, accP.identity.fingerprint())
+			if err := hsSendProto(aConn, kindPairConfirm, &pairingpb.PairConfirm{Proof: proof}); err != nil {
+				t.Fatalf("send PairConfirm: %v", err)
+			}
+
+			kind, payload, err = receiveWithTimeout(aConn)
+			if err != nil {
+				t.Fatalf("receive the reply to PairConfirm: %v", err)
+			}
+			if kind != kindPairReject {
+				t.Fatalf("acceptor replied with frame %d, want PairReject: a stale static key completed the handshake", kind)
+			}
+			var reject pairingpb.PairReject
+			if err := proto.Unmarshal(payload, &reject); err != nil {
+				t.Fatalf("decode PairReject: %v", err)
+			}
+			if reason, ok := rejectReasonFromPB(reject.GetReason()); !ok || reason != ReasonVerificationFailed {
+				t.Fatalf("reject reason = %v, want verification failed", reject.GetReason())
+			}
+
+			var pairErr *PairingError
+			if err := awaitAccept(acceptErr); !errors.As(err, &pairErr) || pairErr.Reason != ReasonVerificationFailed {
+				t.Fatalf("Accept error = %v, want a verification-failure PairingError", err)
+			}
+			if got := accP.Peers(); len(got) != 0 {
+				t.Fatalf("acceptor committed after the key changed: %+v", got)
+			}
+			if got := len(accP.peers.reserved); got != 0 {
+				t.Fatalf("%d aliases left reserved after the key changed", got)
+			}
+		})
+	}
+}
+
+// receiveWithTimeout reads one frame, bounding the wait so a wrong
+// implementation fails with an assertion instead of blocking the test.
+func receiveWithTimeout(conn PairConn) (uint32, []byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+	return conn.Receive(ctx)
+}
+
+// awaitAccept waits for Accept to return, bounding the wait for the same reason.
+func awaitAccept(ch <-chan error) error {
+	select {
+	case err := <-ch:
+		return err
+	case <-time.After(testWaitBound):
+		return errors.New("Accept did not return within the test wait bound")
+	}
+}
+
+// --- manual handshake drivers ----------------------------------------------
+
+// hsBadConfirmAttempt sends a syntactically valid request and a wrong proof,
+// expecting a verification failure.
+func hsBadConfirmAttempt(t *testing.T, p *Pairing, key string) error {
+	t.Helper()
+	fp, pub := hsKey(t)
+	aConn, bConn := hsConnPairFor(fp, pub, p.identity.fingerprint(), p.identity.publicKey())
+	acceptErr := make(chan error, 1)
+	go func() { acceptErr <- p.Accept(bConn) }()
+
+	ni := make([]byte, nonceLength)
+	if _, err := rand.Read(ni); err != nil {
+		t.Fatalf("random nonce: %v", err)
+	}
+	request := &pairingpb.PairRequest{
+		InitiatorNonce: ni,
+		InitiatorAlias: "intruder",
+		LookupTag:      computeHint([]byte(key), ni),
+	}
+	if err := hsSendProto(aConn, kindPairRequest, request); err != nil {
+		t.Fatalf("send PairRequest: %v", err)
+	}
+	kind, _, err := receiveWithTimeout(aConn)
+	if err != nil || kind != kindPairChallenge {
+		t.Fatalf("receive challenge: kind=%d err=%v", kind, err)
+	}
+	if err := hsSendProto(aConn, kindPairConfirm, &pairingpb.PairConfirm{Proof: make([]byte, proofLength)}); err != nil {
+		t.Fatalf("send bad PairConfirm: %v", err)
+	}
+	return awaitAccept(acceptErr)
+}
+
+// hsRequestAttempt sends one PairRequest and expects a PairReject with the
+// given reason. It returns the error Accept reported.
+func hsRequestAttempt(t *testing.T, p *Pairing, key string, want RejectReason) error {
+	t.Helper()
+	fp, pub := hsKey(t)
+	aConn, bConn := hsConnPairFor(fp, pub, p.identity.fingerprint(), p.identity.publicKey())
+	acceptErr := make(chan error, 1)
+	go func() { acceptErr <- p.Accept(bConn) }()
+
+	ni := make([]byte, nonceLength)
+	if _, err := rand.Read(ni); err != nil {
+		t.Fatalf("random nonce: %v", err)
+	}
+	request := &pairingpb.PairRequest{
+		InitiatorNonce: ni,
+		InitiatorAlias: "intruder",
+		LookupTag:      computeHint([]byte(key), ni),
+	}
+	if err := hsSendProto(aConn, kindPairRequest, request); err != nil {
+		t.Fatalf("send PairRequest: %v", err)
+	}
+	kind, payload, err := receiveWithTimeout(aConn)
+	if err != nil {
+		t.Fatalf("receive reject: %v", err)
+	}
+	if kind != kindPairReject {
+		t.Fatalf("frame kind = %d, want PairReject", kind)
+	}
+	var reject pairingpb.PairReject
+	if err := proto.Unmarshal(payload, &reject); err != nil {
+		t.Fatalf("decode reject: %v", err)
+	}
+	gotReason, ok := rejectReasonFromPB(reject.GetReason())
+	if !ok || gotReason != want {
+		t.Fatalf("reject reason = %v, want %v", reject.GetReason(), want)
+	}
+	return awaitAccept(acceptErr)
+}
+
+// hsCompleteAsInitiator drives the initiator side of one handshake to
+// completion, including the link Hello, then waits for Accept.
+func hsCompleteAsInitiator(t *testing.T, p *Pairing, aConn, bConn *hsConn, initiatorFP Fingerprint, alias, key string) error {
+	t.Helper()
+	acceptErr := make(chan error, 1)
+	go func() { acceptErr <- p.Accept(bConn) }()
+
+	ni := make([]byte, nonceLength)
+	if _, err := rand.Read(ni); err != nil {
+		return err
+	}
+	request := &pairingpb.PairRequest{
+		InitiatorNonce: ni,
+		InitiatorAlias: alias,
+		LookupTag:      computeHint([]byte(key), ni),
+	}
+	if err := hsSendProto(aConn, kindPairRequest, request); err != nil {
+		return err
+	}
+	kind, payload, err := receiveWithTimeout(aConn)
+	if err != nil || kind != kindPairChallenge {
+		return fmt.Errorf("challenge: kind=%d err=%v", kind, err)
+	}
+	var challenge pairingpb.PairChallenge
+	if err := proto.Unmarshal(payload, &challenge); err != nil {
+		return err
+	}
+	proof := initiatorProof([]byte(key), ni, challenge.GetResponderNonce(), initiatorFP, p.identity.fingerprint())
+	if err := hsSendProto(aConn, kindPairConfirm, &pairingpb.PairConfirm{Proof: proof}); err != nil {
+		return err
+	}
+	kind, _, err = receiveWithTimeout(aConn)
+	if err != nil || kind != kindPairDone {
+		return fmt.Errorf("done: kind=%d err=%v", kind, err)
+	}
+	if err := aConn.Send(context.Background(), kindHello, nil); err != nil {
+		return err
+	}
+	return awaitAccept(acceptErr)
+}
+
+func hsSendProto(conn PairConn, kind uint32, msg proto.Message) error {
+	payload, err := proto.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return conn.Send(context.Background(), kind, payload)
+}
+
+// --- small helpers ---------------------------------------------------------
+
+func makeSeq(start, n int) []byte {
+	out := make([]byte, n)
+	for i := range out {
+		out[i] = byte(start + i)
+	}
+	return out
+}
+
+func equalKinds(a, b []uint32) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
