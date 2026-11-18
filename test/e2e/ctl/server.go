@@ -124,6 +124,20 @@ func (h *handler) handle(path string, body []byte) (any, error) {
 		}
 		return struct{}{}, nil
 
+	case "/v1/session/errors":
+		req, err := decode[SessionIDRequest](body)
+		if err != nil {
+			return nil, err
+		}
+		errs, err := h.agent.SessionErrors(req.ID)
+		if err != nil {
+			return nil, err
+		}
+		if errs == nil {
+			errs = []string{}
+		}
+		return SessionErrorsResult{Errors: errs}, nil
+
 	case "/v1/session/mcp":
 		req, err := decode[SessionMCPRequest](body)
 		if err != nil {

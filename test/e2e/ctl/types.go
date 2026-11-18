@@ -103,6 +103,12 @@ type SessionFakeRequest struct {
 	Arg any    `json:"arg,omitempty"`
 }
 
+// SessionErrorsResult carries the background failures a simulated session
+// recorded since the previous request.
+type SessionErrorsResult struct {
+	Errors []string `json:"errors"`
+}
+
 // SessionMCPRequest applies one operation to a session's MCP server
 // processes.
 type SessionMCPRequest struct {

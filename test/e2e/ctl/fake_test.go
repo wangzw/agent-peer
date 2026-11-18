@@ -40,6 +40,42 @@ func TestCtlFakeUnsupportedOperation(t *testing.T) {
 	}
 }
 
+// TestCtlSessionErrors checks that a background failure recorded in a
+// session's fake reaches the caller through the control endpoint, and that a
+// second request does not return it again.
+func TestCtlSessionErrors(t *testing.T) {
+	_, client := newTestAgent(t)
+	ctx := context.Background()
+
+	info, err := client.StartSession(ctx, ctl.SessionStartRequest{Name: "errors"})
+	if err != nil {
+		t.Fatalf("starting a session: %v", err)
+	}
+	defer func() { _ = client.End(ctx, ctl.SessionIDRequest{ID: info.ID}) }()
+
+	if err := client.Fake(ctx, ctl.SessionFakeRequest{
+		ID: info.ID, Op: "inject_background_error", Arg: "injected failure",
+	}); err != nil {
+		t.Fatalf("injecting a background failure: %v", err)
+	}
+
+	res, err := client.Errors(ctx, ctl.SessionIDRequest{ID: info.ID})
+	if err != nil {
+		t.Fatalf("reading session failures: %v", err)
+	}
+	if len(res.Errors) != 1 || res.Errors[0] != "injected failure" {
+		t.Fatalf("errors = %v, want the injected failure", res.Errors)
+	}
+
+	again, err := client.Errors(ctx, ctl.SessionIDRequest{ID: info.ID})
+	if err != nil {
+		t.Fatalf("reading session failures again: %v", err)
+	}
+	if len(again.Errors) != 0 {
+		t.Fatalf("errors after the first read = %v, want none", again.Errors)
+	}
+}
+
 // TestCtlFakeRelease checks that release ends a HoldOpen connection and that
 // the frame it held was recorded.
 func TestCtlFakeRelease(t *testing.T) {

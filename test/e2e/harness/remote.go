@@ -141,7 +141,7 @@ func (r *remoteNode) tryStartSession(spec SessionSpec) (*Session, error) {
 
 // newSession builds the harness session for a start answer.
 func (r *remoteNode) newSession(spec SessionSpec, info ctl.SessionInfo, tb testing.TB) *Session {
-	return &Session{
+	s := &Session{
 		name: spec.Name,
 		impl: &remoteSession{
 			name:   spec.Name,
@@ -156,6 +156,15 @@ func (r *remoteNode) newSession(spec SessionSpec, info ctl.SessionInfo, tb testi
 			},
 		},
 	}
+	// A session that the test did not end itself is still ended before the
+	// project goes down, so a background failure recorded in the container is
+	// reported rather than lost with it.
+	r.t.Cleanup(func() {
+		if err := s.endIfNotEnded(); err != nil {
+			r.t.Errorf("harness: session %s: %v", s.name, err)
+		}
+	})
+	return s
 }
 
 func (r *remoteNode) exec(tb testing.TB, argv []string, env map[string]string) ExecResult {
@@ -360,8 +369,50 @@ func (s *remoteSession) fake() FakeSession {
 	return s.proxy
 }
 
+// fakeErrors reads the background failures the fake in the container
+// recorded. It returns a control failure as an error rather than ending the
+// test, because the teardown cleanup reports it.
+func (s *remoteSession) fakeErrors() ([]error, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+	res, err := s.client.Errors(ctx, ctl.SessionIDRequest{ID: s.id})
+	if err != nil {
+		return nil, fmt.Errorf("harness: session %s: reading simulated session failures: %w", s.name, err)
+	}
+	return stringErrors(res.Errors), nil
+}
+
+// takeFakeErrors is the test-facing form: a control failure is an
+// infrastructure failure and fails the test.
+func (s *remoteSession) takeFakeErrors(tb testing.TB) []error {
+	tb.Helper()
+	errs, err := s.fakeErrors()
+	if err != nil {
+		tb.Fatalf("%v", err)
+		return nil
+	}
+	return errs
+}
+
 func (s *remoteSession) end() error {
-	return s.client.End(context.Background(), ctl.SessionIDRequest{ID: s.id})
+	// A background failure never reaches the test on its own, so the end of
+	// the session is where it is reported.
+	errs, readErr := s.fakeErrors()
+	endErr := s.client.End(context.Background(), ctl.SessionIDRequest{ID: s.id})
+	if readErr != nil {
+		if endErr == nil {
+			return readErr
+		}
+		return fmt.Errorf("%v; %w", endErr, readErr)
+	}
+	if len(errs) > 0 {
+		background := fmt.Errorf("harness: session %s: simulated session failures: %s", s.name, joinErrors(errs))
+		if endErr == nil {
+			return background
+		}
+		return fmt.Errorf("%v; %w", endErr, background)
+	}
+	return endErr
 }
 
 // remoteOracle calls the five local interface RPCs over /v1/local. Product

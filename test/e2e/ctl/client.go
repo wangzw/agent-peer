@@ -89,6 +89,14 @@ func (c *Client) Fake(ctx context.Context, req SessionFakeRequest) error {
 	return c.do(ctx, "/v1/session/fake", req, nil)
 }
 
+// Errors returns the background failures a session's simulated session
+// recorded since the previous call.
+func (c *Client) Errors(ctx context.Context, req SessionIDRequest) (SessionErrorsResult, error) {
+	var out SessionErrorsResult
+	err := c.do(ctx, "/v1/session/errors", req, &out)
+	return out, err
+}
+
 // MCP applies one operation to a session's MCP server processes.
 func (c *Client) MCP(ctx context.Context, req SessionMCPRequest) (SessionMCPResult, error) {
 	var out SessionMCPResult

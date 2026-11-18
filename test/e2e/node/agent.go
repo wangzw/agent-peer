@@ -445,9 +445,26 @@ func (a *Agent) fake(sessionID, op string, arg any) {
 		fake.SetBusyDelay(time.Duration(intArg(arg)) * time.Millisecond)
 	case "release":
 		fake.Release()
+	case "inject_background_error":
+		fake.InjectBackgroundError(errors.New(stringArg(arg)))
 	default:
 		a.tb.Fatalf("node: unsupported session operation %q", op)
 	}
+}
+
+// SessionErrors returns the background failures a session's simulated session
+// recorded since the previous call, in the order they were recorded.
+func (a *Agent) SessionErrors(sessionID string) ([]string, error) {
+	var errs []string
+	err := Guard(func() {
+		for _, err := range a.session(sessionID).session.Fake().TakeErrors() {
+			errs = append(errs, err.Error())
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return errs, nil
 }
 
 // MCP applies one operation to the MCP server processes of a session.

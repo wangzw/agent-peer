@@ -311,6 +311,7 @@ type sessionBackend interface {
 	startExtraMCP(t testing.TB)
 	inboxConnections(t testing.TB) int
 	fake() FakeSession
+	takeFakeErrors(t testing.TB) []error
 	end() error
 }
 
@@ -374,6 +375,15 @@ func (s *Session) InboxConnections(t testing.TB) int {
 // node, a control-protocol proxy on a container node.
 func (s *Session) Fake() FakeSession {
 	return s.impl.fake()
+}
+
+// TakeFakeErrors returns the background failures the simulated session
+// recorded since the previous call and forgets them. A failure here means the
+// fake's accept loop or connection handling broke, which the test must not
+// pass over, so the caller reports what it gets.
+func (s *Session) TakeFakeErrors(t testing.TB) []error {
+	t.Helper()
+	return s.impl.takeFakeErrors(t)
 }
 
 // WaitFrame waits up to bound for the next frame delivered to the session's

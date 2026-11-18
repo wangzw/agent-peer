@@ -419,19 +419,47 @@ func (s *localSession) inboxConnections(t testing.TB) int {
 
 func (s *localSession) fake() FakeSession { return s.session.Fake() }
 
+func (s *localSession) takeFakeErrors(t testing.TB) []error {
+	t.Helper()
+	return s.session.Fake().TakeErrors()
+}
+
 func (s *localSession) end() error {
+	// A background failure never reaches the test on its own, so the end of
+	// the session is where it is reported.
+	fakeErrs := s.session.Fake().TakeErrors()
 	err := s.session.End()
-	if s.deferred == nil {
-		return err
+	if s.deferred != nil {
+		if errs := s.deferred.TakeErrors(); len(errs) > 0 {
+			fakeErrs = append(fakeErrs, stringErrors(errs)...)
+		}
 	}
-	if errs := s.deferred.TakeErrors(); len(errs) > 0 {
-		background := fmt.Errorf("harness: session %s: simulated session failures: %s", s.name, strings.Join(errs, "; "))
+	if len(fakeErrs) > 0 {
+		background := fmt.Errorf("harness: session %s: simulated session failures: %s", s.name, joinErrors(fakeErrs))
 		if err == nil {
 			return background
 		}
 		return fmt.Errorf("%v; %w", err, background)
 	}
 	return err
+}
+
+// stringErrors turns recorded messages back into errors.
+func stringErrors(messages []string) []error {
+	errs := make([]error, 0, len(messages))
+	for _, message := range messages {
+		errs = append(errs, errors.New(message))
+	}
+	return errs
+}
+
+// joinErrors joins error messages with a semicolon.
+func joinErrors(errs []error) string {
+	parts := make([]string, 0, len(errs))
+	for _, err := range errs {
+		parts = append(parts, err.Error())
+	}
+	return strings.Join(parts, "; ")
 }
 
 // cleanup ends the node's sessions, stops its Broker, kills every process that

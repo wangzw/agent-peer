@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -39,6 +40,8 @@ type FakeSession interface {
 	Frames() []fakesession.Frame
 	WaitFrame(timeout time.Duration) (fakesession.Frame, bool)
 	WaitFrameN(n int, timeout time.Duration) (fakesession.Frame, bool)
+	TakeErrors() []error
+	InjectBackgroundError(err error)
 	Close()
 	RemoveSocket()
 }
@@ -107,6 +110,33 @@ func (f *remoteFake) SetBusyDelay(delay time.Duration) {
 
 // Release ends one hold created by HoldOpen.
 func (f *remoteFake) Release() { f.apply("release", nil) }
+
+// TakeErrors returns the background failures the fake recorded since the
+// previous call and forgets them.
+func (f *remoteFake) TakeErrors() []error {
+	f.tb.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+	res, err := f.client.Errors(ctx, ctl.SessionIDRequest{ID: f.info.ID})
+	if err != nil {
+		f.tb.Fatalf("harness: session %s: reading simulated session failures: %v", f.name, err)
+		return nil
+	}
+	errs := make([]error, 0, len(res.Errors))
+	for _, message := range res.Errors {
+		errs = append(errs, errors.New(message))
+	}
+	return errs
+}
+
+// InjectBackgroundError records err in the fake as a background failure. It
+// exists for tests of the reporting path.
+func (f *remoteFake) InjectBackgroundError(err error) {
+	if err == nil {
+		return
+	}
+	f.apply("inject_background_error", err.Error())
+}
 
 // WritePartialRecord is not expressible over the control protocol.
 func (f *remoteFake) WritePartialRecord(string) { f.unsupported("WritePartialRecord") }

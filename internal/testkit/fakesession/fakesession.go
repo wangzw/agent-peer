@@ -155,7 +155,6 @@ type Fake struct {
 	held          []*heldConn
 	conns         map[net.Conn]struct{}
 	bgErr         error
-	reportedErr   bool
 
 	done    chan struct{}
 	frameCh chan struct{}
@@ -391,11 +390,7 @@ func (f *Fake) Frames() []Frame {
 	for i := range f.frames {
 		out[i] = copyFrame(f.frames[i])
 	}
-	err := f.takeBackgroundErrorLocked()
 	f.mu.Unlock()
-	if err != nil {
-		f.t.Errorf("fakesession: %v", err)
-	}
 	return out
 }
 
@@ -435,11 +430,7 @@ func (f *Fake) waitFrameN(n int, timeout time.Duration) (Frame, bool) {
 			if f.frameCursor < n {
 				f.frameCursor = n
 			}
-			err := f.takeBackgroundErrorLocked()
 			f.mu.Unlock()
-			if err != nil {
-				f.t.Errorf("fakesession: %v", err)
-			}
 			return fr, true
 		}
 		f.mu.Unlock()
@@ -447,19 +438,12 @@ func (f *Fake) waitFrameN(n int, timeout time.Duration) (Frame, bool) {
 		select {
 		case <-f.frameCh:
 		case <-timer.C:
-			if err := f.takeBackgroundError(); err != nil {
-				f.t.Errorf("fakesession: %v", err)
-			}
 			return Frame{}, false
 		case <-f.done:
 			f.mu.Lock()
 			have := len(f.frames)
-			err := f.takeBackgroundErrorLocked()
 			f.mu.Unlock()
 			if have < n {
-				if err != nil {
-					f.t.Errorf("fakesession: %v", err)
-				}
 				return Frame{}, false
 			}
 		}
@@ -581,20 +565,27 @@ func (f *Fake) nextModTimeLocked() time.Time {
 	return now
 }
 
-// takeBackgroundErrorLocked returns an unreported background error once. The
-// caller holds f.mu.
-func (f *Fake) takeBackgroundErrorLocked() error {
-	if f.bgErr == nil || f.reportedErr {
+// TakeErrors returns the background failures recorded since the previous call
+// and forgets them. Recording never calls a testing method itself: the owner of
+// the fake reports what this returns, either on the test goroutine or through
+// the node agent that hosts the fake.
+func (f *Fake) TakeErrors() []error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.bgErr == nil {
 		return nil
 	}
-	f.reportedErr = true
-	return f.bgErr
+	err := f.bgErr
+	f.bgErr = nil
+	return []error{err}
 }
 
-// takeBackgroundError is the locking form of takeBackgroundErrorLocked.
-func (f *Fake) takeBackgroundError() error {
-	f.mu.Lock()
-	err := f.takeBackgroundErrorLocked()
-	f.mu.Unlock()
-	return err
+// InjectBackgroundError records err as a background failure, as the accept
+// loop does when it fails unexpectedly. Tests use it to check that the failure
+// reaches the test at all.
+func (f *Fake) InjectBackgroundError(err error) {
+	if err == nil {
+		return
+	}
+	f.setBackgroundError(err)
 }

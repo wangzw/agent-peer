@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -204,6 +205,44 @@ func TestNodeConfigFile(t *testing.T) {
 			names = append(names, entry.Name())
 		}
 		t.Errorf("config directory holds %v, want only config.yaml", names)
+	}
+}
+
+// failureRecorder records a failure instead of ending the test, so a test can
+// check that another call reported what it should.
+type failureRecorder struct {
+	testing.TB
+	message string
+}
+
+// Helper does nothing; the recorder never points at a caller's line.
+func (r *failureRecorder) Helper() {}
+
+// Fatalf records the message.
+func (r *failureRecorder) Fatalf(format string, args ...any) {
+	r.message = fmt.Sprintf(format, args...)
+}
+
+// TestSessionEndReportsBackgroundError checks that a background failure the
+// fake recorded fails the test at the end of the session instead of being
+// lost. The injected failure is the positive control: without the check, End
+// would report nothing.
+func TestSessionEndReportsBackgroundError(t *testing.T) {
+	n := NewLocalHost(t, LocalOptions{Name: "hostA"})
+	s := n.StartSession(t, SessionSpec{Name: "background"})
+
+	injected := errors.New("injected background failure")
+	s.Fake().InjectBackgroundError(injected)
+	if errs := s.TakeFakeErrors(t); len(errs) != 1 || !strings.Contains(errs[0].Error(), "injected background failure") {
+		t.Fatalf("TakeFakeErrors() = %v, want the injected failure", errs)
+	}
+
+	// The error is reported once. Inject it again so End has one to report.
+	s.Fake().InjectBackgroundError(injected)
+	recorder := &failureRecorder{TB: t}
+	s.End(recorder)
+	if !strings.Contains(recorder.message, "injected background failure") {
+		t.Fatalf("End reported %q, want the injected background failure", recorder.message)
 	}
 }
 
