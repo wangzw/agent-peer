@@ -7,6 +7,9 @@ JOBS ?= 4
 
 GIT ?= git
 
+# Total timeout of the end-to-end test binary, passed to go test -timeout.
+E2E_TIMEOUT ?= 30m
+
 .PHONY: gen gen-check lint proto-lint test e2e docs-check check
 
 # Regenerate the protobuf code with buf. Generated Go code is committed next to
@@ -63,7 +66,7 @@ test:
 	fi
 
 e2e:
-	go test -tags e2e -p $(JOBS) -parallel $(JOBS) ./test/e2e/...
+	go test -tags e2e -timeout $(E2E_TIMEOUT) -p $(JOBS) -parallel $(JOBS) ./test/e2e/...
 
 # Document standards plus a render of every Mermaid diagram in the docs that
 # differ from origin/main. scripts/docs-check.sh owns the details, including
