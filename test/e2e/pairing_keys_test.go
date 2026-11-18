@@ -107,8 +107,11 @@ func TestPairingKeys(t *testing.T) {
 		pkConnect(t, opB, address, key.Key, "").MustOK(t)
 		pkWaitConnected(t, b, "hostA-17443", pkRelinkBound)
 
+		// A one-time key used once is gone, not expired; the acceptor's audit
+		// reason tells the two causes apart.
+		since := time.Now().Add(-time.Second)
 		r := pkConnect(t, opC, address, key.Key, "")
-		r.MustCode(t, "pairing_rejected")
+		pkRejectReason(t, r, a, since, "hostC-17443", "key invalid")
 		if !r.HasPrefix("Not connected") {
 			t.Fatalf("the reuse error is %q, want it to start with Not connected", r.Text)
 		}
@@ -122,8 +125,9 @@ func TestPairingKeys(t *testing.T) {
 	t.Run("REQ-broker-pairing-008 no static key", func(t *testing.T) {
 		// A runs the default configuration and therefore has no static key.
 		for _, key := range []string{"hello-world-key-123", "wrong-key-one", "wrong-key-two", "wrong-key-three"} {
+			since := time.Now().Add(-time.Second)
 			r := pkConnect(t, opD, addrA, key, "")
-			r.MustCode(t, "pairing_rejected")
+			pkRejectReason(t, r, a, since, "hostD-17443", "key invalid")
 			if !r.HasPrefix("Not connected") {
 				t.Fatalf("a wrong key returned %q, want it to start with Not connected", r.Text)
 			}
@@ -140,8 +144,9 @@ func TestPairingKeys(t *testing.T) {
 	})
 
 	t.Run("REQ-broker-pairing-011 wrong key stores nothing", func(t *testing.T) {
+		since := time.Now().Add(-time.Second)
 		r := pkConnect(t, opD, addrA, "definitely-not-the-key", "")
-		r.MustCode(t, "pairing_rejected")
+		pkRejectReason(t, r, a, since, "hostD-17443", "key invalid")
 
 		aData := pkPeersJSON(t, a)
 		dData := pkPeersJSON(t, d)
@@ -264,7 +269,8 @@ func TestPairingKeys(t *testing.T) {
 		a.WriteConfig(t, pkConfig(pkStaticKeyYAML(pkStaticReplace)))
 		pkWaitAuditConfigChange(t, a, "pairing.static_key", since)
 
-		pkConnect(t, opC, addrA, pkStatic128, "").MustCode(t, "pairing_rejected")
+		rejectedAt := time.Now().Add(-time.Second)
+		pkRejectReason(t, pkConnect(t, opC, addrA, pkStatic128, ""), a, rejectedAt, "hostC-17443", "key invalid")
 		pkConnect(t, opD, addrA, pkStaticReplace, "").MustOK(t)
 		pkWaitConnected(t, b, "hostA-17443", pkRelinkBound)
 	})
@@ -409,6 +415,35 @@ func pkConnect(t *testing.T, op *harness.Session, address, key, localAlias strin
 		args["local_alias"] = localAlias
 	}
 	return op.Call(t, "connect_broker", args)
+}
+
+// pkRejectReason asserts the connect was rejected and that the acceptor
+// audited the failure with reason since since. The acceptor owns the reason,
+// so its audit record is where an invalid key and an expired one are told
+// apart; the dialer only learns that the connection closed.
+func pkRejectReason(t *testing.T, r harness.Result, acceptor *harness.Node, since time.Time, alias, reason string) {
+	t.Helper()
+	r.MustCode(t, "pairing_rejected")
+	harness.Eventually(t, pkWaitBound, "the pairing failure is audited as "+reason, func() (bool, string) {
+		events, detail := acceptor.Oracle().Audit(t, since, 0)
+		if detail != nil {
+			return false, detail.GetMessage()
+		}
+		var seen []string
+		for _, event := range events {
+			if event.GetEvent() != localpb.AuditEventKind_AUDIT_EVENT_KIND_PAIRING_FAILED {
+				continue
+			}
+			if event.GetPeer().GetAlias() != alias {
+				continue
+			}
+			seen = append(seen, event.GetDetail())
+			if event.GetDetail() == reason {
+				return true, ""
+			}
+		}
+		return false, fmt.Sprintf("pairing_failed events for %s carry details %v", alias, seen)
+	})
 }
 
 // pkDecodeConnect decodes a successful connect_broker result.
