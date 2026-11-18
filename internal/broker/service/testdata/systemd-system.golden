@@ -1,0 +1,18 @@
+[Unit]
+Description=agent-peer system Broker
+Documentation=https://github.com/wangzw/agent-peer
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/agent-peer broker --system
+Restart=always
+RestartSec=5
+UMask=0022
+# The Broker reaches every served account's session registry and inbox
+# sockets through per-account helpers, so it must see the real /home, /tmp
+# and /run. Do not add ProtectHome, PrivateTmp or ProtectSystem.
+
+[Install]
+WantedBy=multi-user.target

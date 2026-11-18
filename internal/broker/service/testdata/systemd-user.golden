@@ -1,0 +1,13 @@
+[Unit]
+Description=agent-peer Broker for this account
+Documentation=https://github.com/wangzw/agent-peer
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/agent-peer broker
+Restart=always
+RestartSec=5
+UMask=0077
+
+[Install]
+WantedBy=default.target

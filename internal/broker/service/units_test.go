@@ -1,0 +1,193 @@
+package service
+
+import (
+	"encoding/xml"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+const (
+	goldenExe     = "/usr/local/bin/agent-peer"
+	goldenLogPath = "/Users/alice/Library/Logs/agent-peer/broker.log"
+)
+
+func TestUnitsMatchGolden(t *testing.T) {
+	cases := []struct {
+		name   string
+		golden string
+		render func() (string, error)
+	}{
+		{"systemd-user", "systemd-user.golden", func() (string, error) {
+			return SystemdUserUnit(goldenExe)
+		}},
+		{"systemd-system", "systemd-system.golden", func() (string, error) {
+			return SystemdSystemUnit(goldenExe)
+		}},
+		{"launch-agent", "launch-agent.golden", func() (string, error) {
+			return LaunchAgentPlist(goldenExe, goldenLogPath)
+		}},
+		{"launch-daemon", "launch-daemon.golden", func() (string, error) {
+			return LaunchDaemonPlist(goldenExe)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tc.render()
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			want, err := os.ReadFile(filepath.Join("testdata", tc.golden))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertEqualText(t, got, string(want))
+		})
+	}
+}
+
+func TestSystemdExecStartEscaping(t *testing.T) {
+	cases := []struct {
+		exe  string
+		want string
+	}{
+		{"/opt/my apps/agent%peer", `ExecStart="/opt/my apps/agent%%peer" broker`},
+		{"/opt/a$b/agent-peer", `ExecStart=/opt/a$$b/agent-peer broker`},
+	}
+	for _, tc := range cases {
+		out, err := SystemdUserUnit(tc.exe)
+		if err != nil {
+			t.Fatalf("SystemdUserUnit(%q): %v", tc.exe, err)
+		}
+		if got := execStartLine(t, out); got != tc.want {
+			t.Errorf("ExecStart for %q:\nwant: %q\ngot:  %q", tc.exe, tc.want, got)
+		}
+	}
+}
+
+func TestPlistEscaping(t *testing.T) {
+	out, err := LaunchAgentPlist("/Users/a&b/bin/agent-peer", "/tmp/agent-peer.log")
+	if err != nil {
+		t.Fatalf("LaunchAgentPlist: %v", err)
+	}
+	const want = "<string>/Users/a&amp;b/bin/agent-peer</string>"
+	if !strings.Contains(out, want) {
+		t.Errorf("plist does not contain %q:\n%s", want, out)
+	}
+	if strings.Contains(out, "/Users/a&b/bin/agent-peer") {
+		t.Errorf("plist contains the unescaped executable path:\n%s", out)
+	}
+
+	dec := xml.NewDecoder(strings.NewReader(out))
+	for {
+		_, err := dec.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("plist is not well-formed XML: %v", err)
+		}
+	}
+}
+
+func TestUnitsRejectRelativeOrControlChars(t *testing.T) {
+	bad := []string{"agent-peer", "/usr/bin/a\nb"}
+	for _, exe := range bad {
+		if _, err := SystemdUserUnit(exe); err == nil {
+			t.Errorf("SystemdUserUnit(%q) accepted an invalid path", exe)
+		}
+		if _, err := SystemdSystemUnit(exe); err == nil {
+			t.Errorf("SystemdSystemUnit(%q) accepted an invalid path", exe)
+		}
+		if _, err := LaunchAgentPlist(exe, "/tmp/agent-peer.log"); err == nil {
+			t.Errorf("LaunchAgentPlist(%q) accepted an invalid path", exe)
+		}
+		if _, err := LaunchDaemonPlist(exe); err == nil {
+			t.Errorf("LaunchDaemonPlist(%q) accepted an invalid path", exe)
+		}
+	}
+}
+
+// TestPlistLint runs plutil on the generated plists. It is meaningful only on
+// macOS, where plutil is always installed; on other platforms it skips.
+func TestPlistLint(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("plutil is only available on macOS")
+	}
+	plutil, err := exec.LookPath("plutil")
+	if err != nil {
+		t.Fatalf("plutil not found on macOS: %v", err)
+	}
+
+	logPath := filepath.Join(t.TempDir(), "broker.log")
+	agent, err := LaunchAgentPlist(goldenExe, logPath)
+	if err != nil {
+		t.Fatalf("LaunchAgentPlist: %v", err)
+	}
+	daemon, err := LaunchDaemonPlist(goldenExe)
+	if err != nil {
+		t.Fatalf("LaunchDaemonPlist: %v", err)
+	}
+
+	dir := t.TempDir()
+	for name, content := range map[string]string{"agent.plist": agent, "daemon.plist": daemon} {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command(plutil, "-lint", path).CombinedOutput(); err != nil {
+			t.Errorf("plutil -lint %s: %v\n%s", name, err, out)
+		}
+	}
+}
+
+func TestSystemConfigTemplateIsCommentsOnly(t *testing.T) {
+	for i, line := range strings.Split(SystemConfigTemplate(), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "#") {
+			t.Errorf("line %d of the system config template is not a comment: %q", i+1, line)
+		}
+	}
+}
+
+func execStartLine(t *testing.T, unit string) string {
+	t.Helper()
+	for _, line := range strings.Split(unit, "\n") {
+		if strings.HasPrefix(line, "ExecStart=") {
+			return line
+		}
+	}
+	t.Fatalf("unit has no ExecStart line:\n%s", unit)
+	return ""
+}
+
+// assertEqualText reports the first differing line, standing in for a
+// line-oriented diff without adding a test dependency to go.mod.
+func assertEqualText(t *testing.T, got, want string) {
+	t.Helper()
+	if got == want {
+		return
+	}
+	wantLines := strings.Split(want, "\n")
+	gotLines := strings.Split(got, "\n")
+	for i := 0; i < len(wantLines) || i < len(gotLines); i++ {
+		var w, g string
+		if i < len(wantLines) {
+			w = wantLines[i]
+		}
+		if i < len(gotLines) {
+			g = gotLines[i]
+		}
+		if w != g {
+			t.Fatalf("output does not match golden at line %d:\nwant: %q\ngot:  %q", i+1, w, g)
+		}
+	}
+	t.Fatalf("output does not match golden (want %d bytes, got %d)", len(want), len(got))
+}
