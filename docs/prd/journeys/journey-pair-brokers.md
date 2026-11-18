@@ -47,4 +47,6 @@ A 与 B 互为对端，并且已连接。
 
 ## 端到端测试
 
-未实现
+`test/e2e/journey_pair_test.go` 的 `TestJourneyPairBrokers`
+
+以上备选路径中，“配对密钥在生成 10 分钟后才被使用”不在本旅程的端到端测试中，由 `internal/pairing` 的单元测试覆盖。依赖真实 Claude Code 会话的验证留待用户批准。

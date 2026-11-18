@@ -61,8 +61,8 @@ Broker 的别名必须可以经配置修改。
 Agent 必须能让本机 Broker 生成一次性配对密钥。
 
 - **验收**：调用后得到一个一次性配对密钥及其失效时间；另一台主机凭本机 Broker 的地址和这个密钥即可发起配对，不需要其他信息。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/journey_pair_test.go` 的 `TestJourneyPairBrokers`
 
 ### REQ-broker-pairing-006
 
