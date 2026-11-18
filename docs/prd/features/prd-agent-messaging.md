@@ -35,16 +35,16 @@
 未启用本系统工具的会话不得出现在任何 Agent 的列表中，也不得成为发送目标。
 
 - **验收**：同一主机上启动一个未启用工具的会话，其他 Agent 的列表不含它，以它的会话名为目标的发送返回错误。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/registration_test.go` 的 `TestLocalRegistration/REQ-agent-messaging-002 session without tools`
 
 ### REQ-agent-messaging-003
 
 Agent 的名字必须是所在 Claude Code 会话的会话名按 Claude Code 匹配会话名的规则规范化后的结果：去掉控制字符与格式字符，去掉首尾空白，转为小写，空白换成 `-`。
 
 - **验收**：以会话名 `api-worker` 启动会话，其 Agent 地址的名字部分是 `api-worker`；以会话名 ` API Worker ` 启动会话，名字部分是 `api-worker`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/registration_test.go` 的 `TestLocalRegistration/REQ-agent-messaging-003 name normalization`
 
 ### REQ-agent-messaging-004
 
@@ -91,8 +91,8 @@ Agent 必须能列出所有对自己可见的在线 Agent，包括本机上的�
 列表中的每一项必须给出该 Agent 的地址，以及它与调用方共同所在的 topic。
 
 - **验收**：调用方与某个 Agent 同在 topic `t1` 与 `t2`，列表中该项的地址正确，共同 topic 恰为 `t1` 与 `t2`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/registration_test.go` 的 `TestLocalRegistration/REQ-agent-messaging-009 shared topics`
 
 ### REQ-agent-messaging-010
 
@@ -107,8 +107,8 @@ Agent 必须能列出所有对自己可见的在线 Agent，包括本机上的�
 列表结果必须包含调用方自己的 Agent 地址。
 
 - **验收**：任一 Agent 调用列表，结果中有一个标明为调用方自身的地址，其名字部分等于该会话名规范化后的结果。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/registration_test.go` 的 `TestLocalRegistration/REQ-agent-messaging-011 self entry`
 
 ### REQ-agent-messaging-012
 
@@ -259,8 +259,8 @@ Agent 的名字经接收方会话对署名的清洗后与原名不同时，该 A
 会话名不可用的会话不得登记为 Agent，系统不得以其他名字代替，并必须向该会话说明原因。会话名不可用是指它规范化后为空、经署名清洗后为空，或含有 `@` 或 `*`。已登记的会话改名后名字变得不可用的，其登记随之撤销。
 
 - **验收**：以会话名 `a@b` 启动一个启用了工具的会话：其他 Agent 的列表中不出现对应它的任何一项；它调用列出 Agent 时得到错误，说明会话名含有 `@` 因而不能登记。把会话改名为 `ab` 后，其他 Agent 的列表中出现名字为 `ab` 的一项。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/registration_test.go` 的 `TestLocalRegistration/REQ-agent-messaging-030 unusable names`
 
 ### REQ-agent-messaging-031
 
