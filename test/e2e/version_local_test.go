@@ -14,6 +14,10 @@ import (
 	"github.com/wangzw/agent-peer/test/e2e/node"
 )
 
+// versionLocalLaunchBudget is the ten-second readiness allowance of a launched
+// Broker plus three seconds.
+const versionLocalLaunchBudget = 13 * time.Second
+
 // versionLocalBrokerProcs returns the node's agent-peer broker processes. The
 // environment is the filter because a Broker launched by an MCP server process
 // inherits it too.
@@ -176,7 +180,7 @@ func TestLocalVersionMismatchRecoveryReq016(t *testing.T) {
 	}
 
 	var freshPID int
-	harness.Eventually(t, 13*time.Second, "b's MCP server process starts its own Broker and recovers", func() (bool, string) {
+	harness.Eventually(t, versionLocalLaunchBudget, "b's MCP server process starts its own Broker and recovers", func() (bool, string) {
 		procs, err := versionLocalBrokerProcs(n)
 		if err != nil {
 			return false, err.Error()

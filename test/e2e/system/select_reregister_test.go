@@ -3,11 +3,14 @@
 package e2e
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strconv"
@@ -17,6 +20,7 @@ import (
 	"time"
 
 	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/agent-peer/test/e2e/node"
 	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
 )
 
@@ -25,6 +29,16 @@ const (
 	srSystemSocket = "/run/agent-peer/broker.sock"
 	// srSystemService is the systemd unit of the system-level Broker.
 	srSystemService = "agent-peer.service"
+	// srLaunchBudget is the ten-second readiness allowance of a launched
+	// Broker plus three seconds.
+	srLaunchBudget = 13 * time.Second
+	// srRestartBudget is systemd's RestartSec=5 plus three seconds.
+	srRestartBudget = 8 * time.Second
+	// statusClientRole is the TestMain role that reads an agent ID as the
+	// account that owns the Broker.
+	statusClientRole = "status-client"
+	// srStatusBound bounds one status-client run, matching the Broker call bound.
+	srStatusBound = 10 * time.Second
 )
 
 // srInit starts the systemd container, unless this is the inner run, and
@@ -125,6 +139,71 @@ func srIdentityHash(t *testing.T, account string) string {
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// srAgentID returns the agent ID the Broker of account reports for the agent
+// at address. A user-level Broker admits only its own account's peer
+// credentials, so the read runs in the status-client role as that account; the
+// role takes the ID from the Oracle's Status RPC.
+func srAgentID(t *testing.T, account, address string) string {
+	t.Helper()
+	base := syscontainer.Command(account, []string{
+		registerClientRoleEnv + "=" + statusClientRole,
+		"AGENT_PEER_SOCKET=" + syscontainer.UserSocketPath(t, account),
+		"E2E_ADDRESS=" + address,
+	}, copyTestBinary(t))
+
+	ctx, cancel := context.WithTimeout(context.Background(), srStatusBound)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, base.Path, base.Args[1:]...)
+	cmd.Env = base.Env
+	cmd.Dir = base.Dir
+	cmd.SysProcAttr = base.SysProcAttr
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("reading the agent ID of %q as %s: %v\nstdout: %s\nstderr: %s",
+			address, account, err, strings.TrimSpace(string(out)), strings.TrimSpace(stderr.String()))
+	}
+	id := strings.TrimSpace(string(out))
+	if id == "" {
+		t.Fatalf("the status-client role printed no agent ID for %q", address)
+	}
+	return id
+}
+
+// runStatusClientRole is the body of the test binary when TestMain selects the
+// status-client role. It runs as the account that owns the Broker, reads the
+// agent ID of one address through the Oracle, and prints that ID.
+func runStatusClientRole() int {
+	oracle, err := node.DialOracle(os.Getenv("AGENT_PEER_SOCKET"))
+	if err != nil {
+		return failStatusClientRole(err)
+	}
+	defer func() { _ = oracle.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), srStatusBound)
+	defer cancel()
+	resp, err := oracle.Status(ctx)
+	if err != nil {
+		return failStatusClientRole(err)
+	}
+	address := os.Getenv("E2E_ADDRESS")
+	for _, entry := range resp.GetAgents() {
+		if entry.GetAddress() == address {
+			fmt.Println(entry.GetAgentId())
+			return 0
+		}
+	}
+	return failStatusClientRole(fmt.Errorf("the Broker reports no agent at %q: %v", address, resp.GetAgents()))
+}
+
+// failStatusClientRole prints err to standard error and returns a failure code.
+func failStatusClientRole(err error) int {
+	fmt.Fprintln(os.Stderr, "status-client:", err)
+	return 1
 }
 
 // srBrokerProcs returns the Broker processes of account.
@@ -231,7 +310,7 @@ func TestSelectOrderReq026(t *testing.T) {
 	srStopSystemService(t)
 	srLeaveStaleSocket(t)
 	s4 := syscontainer.NewSession(t, "other", "s4")
-	harness.Eventually(t, 13*time.Second, "other's session starts a user-level Broker and registers", func() (bool, string) {
+	harness.Eventually(t, srLaunchBudget, "other's session starts a user-level Broker and registers", func() (bool, string) {
 		if procs := srBrokerProcs(t, "other"); len(procs) == 0 {
 			return false, "other has no user-level Broker process"
 		}
@@ -259,13 +338,14 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 	if wantAddress == "" {
 		t.Fatal("peer's status does not list s1")
 	}
+	wantAgentID := srAgentID(t, "peer", wantAddress)
 	wantKey := srIdentityHash(t, "peer")
 
 	if err := syscall.Kill(userBroker.PID, syscall.SIGKILL); err != nil {
 		t.Fatalf("killing peer's user-level Broker %d: %v", userBroker.PID, err)
 	}
 
-	harness.Eventually(t, 13*time.Second, "peer's session registers again with a new user-level Broker", func() (bool, string) {
+	harness.Eventually(t, srLaunchBudget, "peer's session registers again with a new user-level Broker", func() (bool, string) {
 		var fresh []syscontainer.ProcInfo
 		for _, proc := range srBrokerProcs(t, "peer") {
 			if proc.PID != userBroker.PID {
@@ -287,6 +367,9 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 	status = srMustStatus(t, "peer")
 	if got := srAgentAddress(status, "s1"); got != wantAddress {
 		t.Fatalf("s1's Agent address after the restart is %q, want %q", got, wantAddress)
+	}
+	if got := srAgentID(t, "peer", wantAddress); got != wantAgentID {
+		t.Fatalf("s1's Agent ID after the restart is %q, want %q", got, wantAgentID)
 	}
 	if strings.Contains(srMustStatus(t, "root"), "s1") {
 		t.Fatal("s1 moved to the system Broker after its user-level Broker was killed")
@@ -325,7 +408,7 @@ func TestReregisterSystemBrokerReq037(t *testing.T) {
 	}
 
 	var newPID int
-	harness.Eventually(t, 8*time.Second, "systemd restarts the system Broker and s3 registers again", func() (bool, string) {
+	harness.Eventually(t, srRestartBudget, "systemd restarts the system Broker and s3 registers again", func() (bool, string) {
 		pid, err := srMainPID()
 		if err != nil {
 			return false, err.Error()

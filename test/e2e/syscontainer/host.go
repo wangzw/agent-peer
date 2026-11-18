@@ -81,10 +81,17 @@ func StartUserBroker(t *testing.T, account string, args ...string) *Proc {
 	if !InContainer() {
 		t.Fatalf("syscontainer: StartUserBroker runs inside the container")
 	}
-	uid := AccountUID(t, account)
-	socket := filepath.Join(fmt.Sprintf("/tmp/agent-peer-%d", uid), "broker.sock")
+	socket := UserSocketPath(t, account)
 	cmd := Command(account, nil, agentPeerBinary, append([]string{"broker"}, args...)...)
 	return startAndWait(t, cmd, socket, "the "+account+" user Broker")
+}
+
+// UserSocketPath returns the local socket path a user-level Broker of account
+// binds.
+func UserSocketPath(t *testing.T, account string) string {
+	t.Helper()
+	uid := AccountUID(t, account)
+	return filepath.Join(fmt.Sprintf("/tmp/agent-peer-%d", uid), "broker.sock")
 }
 
 // startAndWait starts cmd and waits for socket to appear. A process that exits
