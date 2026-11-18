@@ -63,9 +63,18 @@ func TestLocalAliasChangedPushesNewAddress(t *testing.T) {
 		t.Fatalf("agent_address = %q, want %q", changed.GetAgentAddress(), "b@hostZ")
 	}
 
-	// One event per stream, not one per agent broadcast several times.
-	for _, rs := range []*regStream{a1, a2, b1} {
-		rs.expectNoEvent(100 * time.Millisecond)
+	// One event per stream, not one per agent broadcast several times. Change
+	// the alias again and read the next event of each stream: a duplicate of
+	// the hostZ change would arrive before this barrier event.
+	setLocalAlias(t, tb, "hostY")
+	tb.b.localAliasChanged()
+	for _, rs := range []*regStream{a1, a2} {
+		if got := localAliasNextChanged(t, rs, 3*time.Second).GetAgentAddress(); got != "a@hostY" {
+			t.Fatalf("agent_address after the barrier change = %q, want %q", got, "a@hostY")
+		}
+	}
+	if got := localAliasNextChanged(t, b1, 3*time.Second).GetAgentAddress(); got != "b@hostY" {
+		t.Fatalf("agent_address after the barrier change = %q, want %q", got, "b@hostY")
 	}
 
 	if got := len(tb.topics.AgentChangedCalls()); got != topicsBefore {
