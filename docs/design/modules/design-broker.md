@@ -54,6 +54,8 @@ service Local {
 
 `CreatePairingKey` 除可空的 `agent_id` 外不带参数，只生成一次性配对密钥，应答另带供展示的本 Broker 对外地址；本次运行不监听时以 `invalid_argument` 拒绝（`REQ-broker-pairing-025`、`REQ-broker-pairing-028`、`REQ-broker-pairing-036`）。`Connect` 带对方的地址、配对密钥与可选的本地别名（`REQ-broker-pairing-010`）。`ListBrokers` 的每一项带有该 Broker 的对外地址列表，对端另带本方是它的拨号方还是接受方（`REQ-broker-discovery-012`）。`SetConfig` 在本次运行的监听地址来自启动参数时拒绝修改 `broker.listen`（`REQ-broker-config-029`），对密钥类配置项（只经配置文件设置、取值不经本机接口返回的配置项，例如预置静态密钥）一律拒绝（`REQ-broker-pairing-031`）；`GetConfig` 对密钥类配置项只给出是否已设置（`REQ-broker-pairing-030`）。
 
+`Disconnect` 的 `broker` 参数取对端的生效别名或 64 位十六进制指纹（大小写不敏感），先按别名解析，解析不到且恰为 64 位十六进制时按指纹解析；指定的 Broker 不是对端时返回 `not_found`；解除配对经注入的关闭链路接口断开链路（`REQ-broker-pairing-021`）。`Connect` 成功后促使对该对端立即拨号；成功应答带对方的生效别名、指纹、地址中的主机名与警告（`REQ-broker-pairing-010`）。失败时错误码：地址或本地别名写法不合法为 `invalid_argument`，别名冲突为 `needs_local_alias`，对方拒绝、握手超时、连接在握手完成前关闭或对方违反配对协议为 `pairing_rejected`，地址连不上为 `peer_unreachable`（`REQ-broker-pairing-004`、`REQ-broker-pairing-011`）。`ListBrokers` 中对端的对外地址列表：本方是拨号方的取接受方告知的列表与名片所载的列表，不含发起配对时拨通的地址；本方是接受方的只取名片所载的列表。不取对端表中来源为名片的候选地址，名片地址以名录当前有效的名片为准。对端的状态按链路是否已建立、是否知道地址取三者之一。被拒绝或角色不符时 `status_detail` 说明需要重新配对，协议版本不兼容时说明带对方版本（已知时）。排序先对端后非对端，同类按别名再按指纹（`REQ-broker-discovery-012`、`REQ-broker-discovery-013`、`REQ-broker-pairing-035`）。
+
 调用方的账户不是任何调用的参数，它取自连接的进程凭据。下表是每个调用的前提；用户级 Broker 的配置文件属于本账户，它不做权限判定，表中的权限前提只在系统级 Broker 上检查。
 
 | 调用 | 需要 Agent 身份 | 对配置文件的权限 | 需求 |
@@ -68,6 +70,8 @@ service Local {
 需要 Agent 身份的调用携带登记时得到的 Agent 标识，标识无效或不属于调用方账户时返回 `not_registered`。权限不足时返回 `permission_denied`，不改变任何状态。Claude Code 对工具调用的权限确认发生在调用到达本机接口之前，与本表的判定各自独立。
 
 四个管理调用 `SetConfig`、`Connect`、`Disconnect`、`CreatePairingKey` 携带可选的 `agent_id`，只用于填写审计记录中的 `actor` 字段；空值允许；非空而无效或不属于调用方账户时返回 `not_registered`；该字段不参与权限判定，也不作为工具参数暴露。
+
+`Connect`、`Disconnect`、`CreatePairingKey` 先解析审计发起者，`agent_id` 无效时不产生任何副作用。发起方一侧的 `pairing_key_created`、`pairing_succeeded`、`pairing_failed`、`unpaired` 由 `broker` 写入；`pairing_failed` 只在已开始拨号或握手之后的失败写入，详情为原因与请求中的地址；任何审计都不含配对密钥。接受方一侧的配对审计由 `pairing` 写入（`REQ-broker-config-007`、`REQ-broker-config-008`）。
 
 `Register` 的上行首帧带两项：MCP 服务进程环境中的 inbox socket 路径（可以为空）、环境中的 Claude Code 配置目录（可以为空）；Broker 只读取首帧，其后的上行帧被忽略。首帧的 socket 路径为空时，Broker 立即在下行流上发出 `not_registered` 及原因 `socket_path_missing`，流保持打开，这条登记不会自行完成。Broker 按“登记”一节完成登记后，在下行流上发出登记完成，带 Agent 标识、Agent 地址和 `topics.auto_join` 的当前值；10 秒内未能完成时发出 `not_registered` 及原因，流保持打开，此后条件满足时照常发出登记完成。socket 路径不是绝对路径或含 `..` 元素时按找不到记录处理，10 秒后以 `session_record_not_found` 报告。socket 文件的属主不是调用方账户时，与找不到记录、名字不可用一样等待，10 秒后以 `socket_not_owned` 报告，并随注册表的变化继续尝试。已完成的登记因名字变得不可用、记录消失或记录所载 socket 路径改变而撤销时，下行流立即发出 `not_registered` 及原因。之后下行流还用于通知地址变化：`agent_changed` 只在 Agent 的地址或曾用名变化时发出，带当前状态；本机别名变化后，每条登记流都收到带新地址的 `agent_changed`。同一个 socket 路径上的多个登记连接得到同一个 Agent 标识。
 
@@ -186,7 +190,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 2. 经 `inbox` 的 `InSession` 检查自己是否运行在某个 Claude Code 会话的进程树内，是则报错退出。
 3. 对账户锁加排他的文件锁，拿不到即报告已有实例在运行并退出。账户锁的路径由 `config` 给出，只取决于本进程的账户，与形态、配置内容和监听地址无关；以不同的监听地址再启动一个实例，同样拿不到锁。系统级 Broker 取的是 root 的账户锁，root 因此不能同时运行一个系统级和一个用户级的实例。
 4. 加载配置，把 `--listen` 给出的地址作为本次运行的监听地址。
-5. 按顺序执行各装配器，构造身份与对端表、link、topic、名录等实例；随后构造本机接口并启动各组件，各组件在此时注册链路帧处理与订阅。
+5. 按顺序执行各装配器：由装配器依次打开身份与对端表、构造 link 并把拨号与关闭链路的能力注入 `pairing`、构造 topic 与名录，各包实例在此时建立；随后构造本机接口并启动各组件，各组件在此时注册链路帧处理与订阅。
 6. 绑定监听地址。这一步在全部组件启动之后执行，地址取本次运行的生效监听地址。绑定失败时报告该地址不可用并退出，不改用其他地址或端口，也不改为不监听（[ADR-listen-by-default](../../adr/adr-listen-by-default.md)，`REQ-broker-config-024`）。监听地址配置为空时跳过这一步。
 7. 只有持锁的进程删除残留的本机 socket 文件并绑定本机 socket：用户级的权限为 `0600`；系统级的在绑定后按配置设置属组与权限，默认为运行时目录的属组与 `0666`，管理员把它设为某个组与该组可写的权限，即把能连接它的账户限定到该组（`REQ-broker-config-027`）。绑定后关闭 Go 默认的关闭即删除行为；删除本机 socket 文件前核对它仍是本进程绑定的文件。
 8. 就绪管道存在时，它是启动结果的出口：以上任何一步失败，向它写入一行失败原因，关闭管道后退出；监听地址与本机 socket 都已绑定之后，写入一行 `ok` 并关闭管道。管道由 MCP 服务进程经两级 re-exec 以文件描述符 3 传下来，隐藏标志 `--ready-fd=3` 将其告知 Broker，从终端启动的进程没有它；监听地址配置为空时第 6 步不执行，`ok` 在绑定本机 socket 之后写入。
@@ -270,6 +274,12 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 
 投递请求的正文是一个 A2A 的 Message，只含一个文本部分。它的 `message_id` 复用投递请求的消息标识，`role` 取 `ROLE_USER`。接收方取出文本部分作为要写入会话的正文。
 
+### 本机别名的转接
+
+`broker.alias` 的变更订阅把新的生效别名推入 `pairing` 的本机别名缓存；启动装配时先订阅、再推一次当前值，这个订阅先于向对端宣告新别名的订阅登记，订阅之前与订阅之后发生的变更都不会丢失（`REQ-broker-pairing-003`）。
+
+`broker.alias` 的校验函数只调用 `pairing` 的别名冲突查询，冲突时拒绝修改，说明不带对端指纹。两包之间的锁序是 `config` 锁在前、`pairing` 锁在后，`pairing` 不在自身锁内调用 `config`。校验通过与推入之间的窄窗口内若有握手提交了同名对端，按 [pairing](design-pairing.md) 与 [config](design-config.md) 记载的代价处理。
+
 ### 对外地址的转接
 
 `directory` 接受一张名片时，发布者是本方作为拨号方的对端的，`broker` 把名片所载的对外地址列表交给 `pairing` 的 `UpdateCardAddresses`，作为来源为名片的候选地址；本方是接受方的对端与非对端的名片不写入对端表。`config` 的对外地址列表变化时，`broker` 调用 `link` 的 `AnnounceAddresses`，使本方是接受方的各条链路收到 `PeerInfo`，并调用 `directory` 的 `Reissue`，本 Broker 公开时立即签发新版本的名片（`REQ-broker-discovery-016`）。
@@ -333,6 +343,8 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 
 调用方记录在连接建立时写入一次，之后只读。辅助进程表由一把锁保护；发给同一个辅助进程的请求可以并行，各带请求号，应答按请求号对应。权限判定与随后的操作之间不加锁：判定通过之后文件权限被收回的，这一次调用仍然执行。
 
+对端管理调用不持有 Agent 表的锁等待配对握手；`Connect` 的耗时以 `pairing` 的握手期限为上限。
+
 ## 扩展点
 
 把消息送达不在本机的 Agent 的方式是一个扩展点，为与使用其他协议的 Agent 互通而预留。现有的实现只有一种：经 `link` 请求对端 Broker 投递。地址解析得到的是“哪个对端上的哪个 Agent”，与到达方式无关。下列规则对任何到达方式都适用：发送的结果只取成功、未送达或结果未知；一次发送以 `send.request_timeout` 为预算；以同一消息标识重发的消息按消息标识去重。
@@ -351,5 +363,6 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 地址生成与解析 | 部分实现 | `internal/broker/address.go`（`AgentIDFor`、`FormatAddress`、`ParseAddress`）；目标解析归发送 |
 | 发送、重试与结果归结 | 未实现 | — |
 | 投递请求处理、署名与去重 | 未实现 | — |
-| 各包之间的转接与对外地址的转接 | 未实现 | — |
+| 各包之间的转接与对外地址的转接 | 部分实现 | `internal/broker/latetransport.go`、`internal/broker/aliaswire.go`、`internal/broker/peerassemble.go`、`internal/broker/topicassemble.go`；对外地址的转接与配置变更通知 `link`、`directory` 由配置读写与名片负责 |
+| 配对与对端管理的本机调用 | 已实现 | `internal/broker/connect_rpc.go`、`internal/broker/disconnect_rpc.go`、`internal/broker/pairkey_rpc.go`、`internal/broker/listbrokers.go`、`internal/broker/peerinfo.go`；非对端的列出由名片与公开 topic 接入 |
 | 终端命令 | 未实现 | — |

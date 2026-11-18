@@ -37,7 +37,7 @@ MCP 服务的名字是 `peer`，模型看到的工具全名是 `mcp__peer__<工�
 | `leave_topic` | `name` | 否 | 无 | 退出后的 topic 列表 | `REQ-topics-003` |
 | `list_brokers` | 无 | 是 | 无 | 每个已知 Broker 的别名、指纹、对外地址列表、是否对端、状态；对端另标明本方是它的拨号方还是接受方 | `REQ-broker-discovery-012` 至 `REQ-broker-discovery-014` |
 | `connect_broker` | `address`，对方的连接地址，写作 `地址:端口` 或 `主机名(地址:端口)`；`key`，配对密钥；`local_alias?` | 否 | 写 | 对方的别名与指纹，`address` 带主机名时一并给出，可能附带警告；或以 `Not connected` 开头的错误 | `REQ-broker-pairing-010`、`REQ-broker-config-021` |
-| `disconnect_broker` | `broker`，对端别名或 64 位十六进制指纹 | 否 | 写 | 解除配对的结果 | `REQ-broker-pairing-021`、`REQ-broker-config-021` |
+| `disconnect_broker` | `broker`，对端的别名或 64 位十六进制指纹 | 否 | 写 | 解除配对的结果 | `REQ-broker-pairing-021`、`REQ-broker-config-021` |
 | `create_pairing_key` | 无 | 否 | 写 | 一次性配对密钥及其失效时间；另行展示本机 Broker 的地址，写作 `主机名(地址:端口)`，对外地址列表有多项时一并列出，为空时说明没有可展示的地址、需要用户自行告知对方连接地址；本 Broker 不监听时返回错误，提示由对方生成密钥、本方发起配对 | `REQ-broker-pairing-005`、`REQ-broker-pairing-025`、`REQ-broker-pairing-028`、`REQ-broker-pairing-036`、`REQ-broker-config-021` |
 | `get_config` | `key?` | 是 | 读 | 配置项及其当前值；密钥类配置项只给出是否已设置 | `REQ-broker-config-001`、`REQ-broker-config-022`、`REQ-broker-pairing-030` |
 | `set_config` | `key`、`value` | 否 | 写 | 修改前后的值；修改密钥类配置项一律失败 | `REQ-broker-config-002`、`REQ-broker-config-021`、`REQ-broker-config-029`、`REQ-broker-pairing-031` |
