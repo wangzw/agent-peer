@@ -262,15 +262,34 @@ func TestLocalSessionChanges(t *testing.T) {
 	t.Run("REQ-topics-022 membership ends with session and returns after broker restart", func(t *testing.T) {
 		first := lifecycleSession(t, host, "x", workspace)
 		lifecycleWaitRegistered(t, first, "x")
+		observer := lifecycleSession(t, host, "observer", workspace)
+		defer observer.End(t)
+		lifecycleWaitRegistered(t, observer, "observer")
+		lifecycleWaitAgent(t, observer, "x")
 		lifecycleJoin(t, first, "t1")
 		socketPath := first.Fake().SocketPath()
 		first.End(t)
 
-		// A new session that reclaims the same inbox socket has the same agent
-		// identity; the manual membership must still have ended with the old
-		// session.
+		// Topic membership is keyed by the AgentID derived from the inbox
+		// socket path. Start the replacement on the same path so a membership
+		// the Broker failed to clear would show up in its listing, and wait
+		// until the ended session is out of the agent table first so the new
+		// connection cannot attach to the old agent instead.
+		harness.Eventually(t, 3*time.Second, "the ended session leaves the local list", func() (bool, string) {
+			out, state := lifecycleListAgents(t, observer, nil)
+			if state != "" {
+				return false, state
+			}
+			if _, ok := lifecycleFindAgent(out, "x"); ok {
+				return false, "x is still listed"
+			}
+			return true, ""
+		})
 		second := host.StartSession(t, harness.SessionSpec{
-			Name: "x", StartMCP: true, Workdir: workspace, SocketPath: socketPath,
+			Name:       "x",
+			StartMCP:   true,
+			Workdir:    workspace,
+			SocketPath: first.Fake().SocketPath(),
 		})
 		defer second.End(t)
 		harness.Eventually(t, 3*time.Second, "the new session has only the default topic", func() (bool, string) {
@@ -283,9 +302,6 @@ func TestLocalSessionChanges(t *testing.T) {
 
 		y := lifecycleSession(t, host, "y", workspace)
 		defer y.End(t)
-		observer := lifecycleSession(t, host, "observer", workspace)
-		defer observer.End(t)
-		lifecycleWaitRegistered(t, observer, "observer")
 		lifecycleWaitAgent(t, observer, "y")
 		// Shared topics are the intersection of both sides' memberships, so the
 		// observer must hold t1 as well. Confirm the membership from the

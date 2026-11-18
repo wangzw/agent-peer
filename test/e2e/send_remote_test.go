@@ -278,6 +278,9 @@ func TestRemoteSendFaults(t *testing.T) {
 		if !r.HasPrefix("Not sent") {
 			t.Fatalf("the oversize error is %q, want it to start with Not sent", r.Text)
 		}
+		if got := r.Origin(); got != "" {
+			t.Fatalf("the oversize error carries origin %q, want the sender's own rejection", got)
+		}
 		if grew := bytesIn() - before; grew >= 100_000 {
 			t.Fatalf("the rejected message put %d bytes on the link, want far less than the body", grew)
 		}
@@ -286,11 +289,17 @@ func TestRemoteSendFaults(t *testing.T) {
 		}
 
 		atBoundary := strings.Repeat("x", atLimit)
+		boundaryBefore := bytesIn()
 		r = b1.Call(t, "send_message", map[string]any{"to": "a1@hostA-17443", "message": atBoundary})
 		r.MustOK(t)
 		frame := a1.WaitFrame(t, srWaitBound)
 		if body := srEnvelopeBody(t, frame.Content); body != atBoundary {
 			t.Fatalf("the boundary message arrived with %d bytes, want %d", len(body), len(atBoundary))
+		}
+		// The body crossed the link: prove the counter sees its traffic, so the
+		// small growth asserted for the rejected send above means something.
+		if grew := bytesIn() - boundaryBefore; grew < int64(atLimit) {
+			t.Fatalf("the boundary message put %d bytes on the link, want at least the %d-byte body", grew, atLimit)
 		}
 	})
 }

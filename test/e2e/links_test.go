@@ -28,6 +28,12 @@ const (
 	// keeps redialing makes at least four attempts inside it, while a stopped
 	// one makes none; the window is a deliberate observation, not a sleep.
 	lkNoRedialWindow = 2000 * time.Millisecond
+	// lkBrokerIdleWindow is also five reconnect intervals, spanning forty
+	// harness polls. A Broker that exits with its last client is gone before
+	// the first poll after that disconnect, and a broken link would flip the
+	// peer status within one reconnect interval; a healthy idle Broker keeps
+	// both assertions true for the whole window.
+	lkBrokerIdleWindow = 2000 * time.Millisecond
 )
 
 // lkTopic is the topic the sessions use.
@@ -127,13 +133,17 @@ func TestLinks(t *testing.T) {
 		a1Ended = true
 		b1.End(t)
 		b1Ended = true
+		// End the operator sessions too, so no tool client of either Broker
+		// remains while the window observes the idle Brokers.
+		opA.End(t)
+		opB.End(t)
 
-		if got := lkBrokerProcesses(t, c, "hostA"); got < 1 {
-			t.Fatalf("A has %d Broker processes after both sessions ended", got)
-		}
-		harness.Consistently(t, time.Second, "B still sees A connected with no sessions left", func() (bool, string) {
-			if lkStatus(t, bNode, "hostA-17443") != localpb.BrokerStatus_BROKER_STATUS_CONNECTED {
-				return false, "the peer is no longer connected"
+		harness.Consistently(t, lkBrokerIdleWindow, "A's Broker outlives its last session and B still sees it connected", func() (bool, string) {
+			if got := lkBrokerProcesses(t, c, "hostA"); got < 1 {
+				return false, fmt.Sprintf("A has %d Broker processes after both sessions ended", got)
+			}
+			if got := lkStatus(t, bNode, "hostA-17443"); got != localpb.BrokerStatus_BROKER_STATUS_CONNECTED {
+				return false, fmt.Sprintf("B sees A as %s", got)
 			}
 			return true, ""
 		})
@@ -142,6 +152,7 @@ func TestLinks(t *testing.T) {
 	t.Run("REQ-broker-pairing-017 survives restart", func(t *testing.T) {
 		lkRestart(t, c, "hostA", lkConfig(), opA)
 		opA = lkOperator(t, aNode)
+		opB = lkOperator(t, bNode)
 
 		// The peer table is loaded before the Broker answers.
 		if _, ok := lkFindPeer(lkPeers(t, aNode), "hostB-17443"); !ok {
