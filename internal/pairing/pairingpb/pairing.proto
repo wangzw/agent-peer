@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package internal.pairing.pairingpb;
+
+option go_package = "github.com/wangzw/agent-peer/internal/pairing/pairingpb;pairingpb";
+
+message PairRequest {
+  bytes initiator_nonce = 1;
+  string initiator_alias = 2;
+  bytes lookup_tag = 3;
+}
+
+message PairChallenge {
+  bytes responder_nonce = 1;
+  string responder_alias = 2;
+  repeated AdvertisedAddress advertised_addresses = 3;
+  bytes proof = 4;
+}
+
+message PairConfirm {
+  bytes proof = 1;
+}
+
+message PairDone {}
+
+message PairReject {
+  PairingRejectReason reason = 1;
+}
+
+enum PairingRejectReason {
+  PAIRING_REJECT_REASON_UNSPECIFIED = 0;
+  PAIRING_REJECT_REASON_KEY_INVALID = 1;
+  PAIRING_REJECT_REASON_VERIFICATION_FAILED = 2;
+  PAIRING_REJECT_REASON_TRY_LATER = 3;
+}
+
+message AdvertisedAddress {
+  string kind = 1;
+  string addr = 2;
+}

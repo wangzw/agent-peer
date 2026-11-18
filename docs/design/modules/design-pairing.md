@@ -55,10 +55,10 @@ func Accept(conn PairConn) error        // 由 link 在首帧为 PairRequest 时
 func Unpair(fp Fingerprint) error
 
 func ObserveAlias(fp Fingerprint, alias string)                  // 由 link 在收到 Hello 或 PeerInfo 时调用
-func ObserveAcceptorAddresses(fp Fingerprint, addresses []string) // 由 link 在本方是拨号方、收到接受方的 Hello 或 PeerInfo 时调用
-func ObserveConnected(fp Fingerprint, address string)            // 由 link 在拨号连通、链路建立后调用
-func UpdateCardAddresses(fp Fingerprint, addresses []string)     // 由 broker 在接受对端的名片时调用
-func Candidates(fp Fingerprint) (addresses []string, last string) // 供 link 拨号；本方是接受方时为空
+func ObserveAcceptorAddresses(fp Fingerprint, addresses []config.AdvertisedAddr) // 由 link 在本方是拨号方、收到接受方的 Hello 或 PeerInfo 时调用
+func ObserveConnected(fp Fingerprint, address string)                            // 由 link 在拨号连通、链路建立后调用
+func UpdateCardAddresses(fp Fingerprint, addresses []config.AdvertisedAddr)      // 由 broker 在接受对端的名片时调用
+func Candidates(fp Fingerprint) (addresses []string, last string)                // 供 link 拨号；只含直连地址；本方是接受方时为空
 
 func Sign(data []byte) []byte
 func Verify(pub, data, sig []byte) bool
@@ -73,7 +73,7 @@ type Transport interface {
 
 一次性配对密钥是系统生成的 80 位随机数，编码为 16 个字符，每 4 个一组以 `-` 分隔，字母表取 Crockford Base32 的 `0123456789ABCDEFGHJKMNPQRSTVWXYZ`（[REF-crockford-base32](../../references.md)），例如 `K7QF-2M9X-HT4C-PWZ3`。预置静态密钥是配置项 `pairing.static_key` 的取值，长度 16 至 128 个字符。两种密钥在握手中都按原样使用，区分大小写；预置静态密钥不套用一次性配对密钥的分组格式与字母表。
 
-`CreateOneTimeKey` 的 `shown` 是本机对外地址列表中每一项的展示写法，首项在前，形如 `buildbox(192.168.1.10:17443)` 或 `buildbox([2001:db8::1]:17443)`：括号外是 `config` 给出的系统主机名，括号里是对外地址列表中的一项。展示不是密钥的一部分，也不与密钥绑定（`REQ-broker-pairing-028`）。
+`CreateOneTimeKey` 的 `shown` 是本机对外地址列表中每一项的展示写法，首项在前，形如 `buildbox(192.168.1.10:17443)` 或 `buildbox([2001:db8::1]:17443)`：括号外是 `config` 给出的系统主机名，括号里是这一项 `Addr` 的写法，直连项即 `主机:端口`。展示不是密钥的一部分，也不与密钥绑定（`REQ-broker-pairing-028`）。
 
 `Connect` 的 `address` 有两种写法：`地址:端口`，或接受方生成密钥时展示的 `主机名(地址:端口)`。后一种写法只取括号里的部分用于拨号；主机名部分被读取后只作为 `shownHost` 交回调用方展示，不用于拨号，不参与身份的判定，也不记入候选地址。地址是 IP 地址或域名，IPv6 地址带方括号，端口不可省略。
 
@@ -87,6 +87,8 @@ type Transport interface {
 
 下图是一次配对握手。`PairRequest` 中的查找标记是由配对密钥与本次随机数算出的短值，接受方据此找出发起方用的是哪个密钥，算式见核心数据结构。发起方在收到 `PairDone` 后写入对端表；接受方验证通过后先把对方记为待提交的条目，在同一连接上收到发起方的首个 `Hello` 时才写入对端表。只有接受方的应答带对外地址列表，发起方不报告自己的地址。
 
+接受方在找不到相符的密钥、尝试次数超过限制或验证 `mi` 失败时回 `PairReject` 并关闭连接。握手超过期限时只关闭连接，不发帧。发起方收到 `PairReject`，或在 `PairDone` 之前连接被关闭，都得到 `pairing_rejected`，说明以 `Not connected` 开头；发起方本地的握手超时同样映射为 `pairing_rejected`。
+
 ```mermaid
 sequenceDiagram
     participant I as 发起方 pairing
@@ -94,17 +96,40 @@ sequenceDiagram
     Note over I,R: TLS 已建立，双方各自记下对方证书的指纹
     I->>R: PairRequest（发起方随机数 ni，发起方别名，查找标记）
     R->>R: 在一次性配对密钥与预置静态密钥中按查找标记确定密钥
-    R->>I: PairChallenge（接受方随机数 nr，接受方别名，接受方的对外地址列表，认证码 mr）
-    I->>I: 用密钥验证 mr，检查别名冲突
-    I->>R: PairConfirm（认证码 mi）
-    R->>R: 用当前的密钥验证 mi，作废一次性密钥，记下待提交的条目
-    R->>I: PairDone
-    I->>I: 写入对端表，本方是拨号方，记下候选地址
-    I->>R: Hello（同一连接）
-    R->>R: 提交条目，写入对端表，本方是接受方
+    alt 没有相符的密钥或尝试过于频繁
+        R->>I: PairReject（密钥无效或稍后再试）
+        R->>R: 关闭连接
+    else 找到密钥
+        R->>I: PairChallenge（接受方随机数 nr，接受方别名，接受方的对外地址列表，认证码 mr）
+        I->>I: 用密钥验证 mr，检查别名冲突
+        I->>R: PairConfirm（认证码 mi）
+        R->>R: 用当前的密钥验证 mi
+        alt 验证失败
+            R->>I: PairReject（验证失败）
+            R->>R: 关闭连接
+        else 验证通过
+            R->>R: 作废一次性密钥，记下待提交的条目
+            R->>I: PairDone
+            I->>I: 写入对端表，本方是拨号方，记下候选地址
+            I->>R: Hello（同一连接）
+            R->>R: 提交条目，写入对端表，本方是接受方
+        end
+    end
 ```
 
 ## 核心数据结构
+
+配对握手的帧：
+
+| 帧 | kind | 类别 | 内容 |
+|---|---|---|---|
+| `PairRequest` | 100 | 状态帧 | 发起方随机数 ni、发起方别名、查找标记 |
+| `PairChallenge` | 101 | 状态帧 | 接受方随机数 nr、接受方别名、接受方的对外地址列表、认证码 mr |
+| `PairConfirm` | 102 | 状态帧 | 认证码 mi |
+| `PairDone` | 103 | 状态帧 | 无载荷 |
+| `PairReject` | 104 | 状态帧 | 拒绝原因：密钥无效、验证失败或稍后再试 |
+
+配对握手的帧都是状态帧，不带请求号，也不产生应答。线上的拒绝原因只有密钥无效、验证失败与稍后再试；握手超时不是线上原因，由发起方在本地判定。
 
 | 结构 | 内容 | 存放 |
 |---|---|---|
@@ -116,7 +141,7 @@ sequenceDiagram
 
 数据目录的位置由 `config` 按部署形态给出。同一主机上的每个 Broker 实例各有自己的数据目录，因而各有自己的身份与对端表。指纹是证书公钥信息的 SHA-256，显示时取十六进制；监听地址与对外地址都不参与身份的判定。对端的生效别名是它的本地别名，没有本地别名时是它自报的别名。预置静态密钥不在数据目录中，只在配置文件里。
 
-候选地址按来源分别保存，每个来源只保留最近一次给出的列表，每个列表至多 8 项：`acceptor` 是接受方在 `PairChallenge`、`Hello` 或 `PeerInfo` 中告知的对外地址列表；`card` 是该对端名片所载的列表；`pairing` 是发起配对时拨通的地址。候选地址只含本版本认识的地址项：`acceptor` 与 `card` 两个来源的列表中种类不认识的项在记入时跳过，不保存，也不用于拨号，列表中其余的项照常记入（[ADR-advertised-address](../../adr/adr-advertised-address.md)）。`Candidates` 返回按 `acceptor`、`card`、`pairing` 的顺序合并去重后的列表，以及上一次连通的地址。本方是接受方的对端不保存候选地址；重新配对使本方成为接受方时，原有的候选地址随之删除。
+候选地址按来源分别保存，每个来源只保留最近一次给出的列表，每个列表至多 8 项：`acceptor` 是接受方在 `PairChallenge`、`Hello` 或 `PeerInfo` 中告知的对外地址列表，类型是 `[]config.AdvertisedAddr`；`card` 是该对端名片所载的列表，类型相同；`pairing` 是发起配对时拨通的地址。候选地址只含本版本认识的地址项：`acceptor` 与 `card` 两个来源的列表中种类不认识的项在记入时跳过，不保存，也不用于拨号，列表中其余的项照常记入（[ADR-advertised-address](../../adr/adr-advertised-address.md)）。`Candidates` 返回按 `acceptor`、`card`、`pairing` 的顺序合并去重并跳过种类不认识的项后的直连地址（`主机:端口`），以及上一次连通的地址。本方是接受方的对端不保存候选地址；重新配对使本方成为接受方时，原有的候选地址随之删除。
 
 认证码与查找标记的计算，`‖` 表示拼接：
 
@@ -125,6 +150,8 @@ sequenceDiagram
 mr   = HMAC-SHA256(密钥, "agent-peer pair responder" ‖ ni ‖ nr ‖ 接受方指纹 ‖ 接受方看到的发起方指纹)
 mi   = HMAC-SHA256(密钥, "agent-peer pair initiator" ‖ ni ‖ nr ‖ 发起方指纹 ‖ 发起方看到的接受方指纹)
 ```
+
+`ni`、`nr` 与链路 `Hello` 中的随机数各是 32 字节。
 
 每一方验证时，把对方算式里的两个指纹换成自己视角下的值：自己看到的对方指纹，以及自己的指纹。连接在中途被拆成出示不同证书的两段时，两个视角不一致，验证失败。两个认证码的标签不同，一方的认证码不能充当另一方的。
 
@@ -173,12 +200,12 @@ A 收到 B 的 `Hello` 之前的任何一处失败，A 的对端表都保持不�
 ### 接受方
 
 1. 对密钥表中每个未过期的一次性配对密钥计算查找标记，有与请求相符的即用它，这样的请求不计入配对尝试计数。
-2. 没有相符的一次性配对密钥时，检查配对尝试计数，超过 `pairing.max_attempts_per_minute` 时回拒绝并关闭；未超过的，对已配置的预置静态密钥计算查找标记，相符即用它且不计入计数，不相符的计数加一并回拒绝。
-3. 计算 `mr`，回 `PairChallenge`，其中带 `config` 给出的本方对外地址列表；收 `PairConfirm`，验证 `mi`。验证时重新取当前的密钥：一次性配对密钥必须仍在密钥表中，预置静态密钥必须仍是 `config` 给出的当前值。验证失败时，相符的是一次性配对密钥的，其失败次数加一，达到 `pairing.max_failures` 后作废。
+2. 没有相符的一次性配对密钥时，检查配对尝试计数，超过 `pairing.max_attempts_per_minute` 时回 `PairReject`（原因为稍后再试）并关闭；未超过的，对已配置的预置静态密钥计算查找标记，相符即用它且不计入计数，不相符的计数加一并回 `PairReject`（原因为密钥无效），随后关闭。
+3. 计算 `mr`，回 `PairChallenge`，其中带 `config` 给出的本方对外地址列表；收 `PairConfirm`，验证 `mi`。验证时重新取当前的密钥：一次性配对密钥必须仍在密钥表中，预置静态密钥必须仍是 `config` 给出的当前值。验证失败的，回 `PairReject`（原因为验证失败）并关闭；相符的是一次性配对密钥的，其失败次数加一，达到 `pairing.max_failures` 后作废。
 4. 验证通过：一次性配对密钥立即作废；对方自报的别名有冲突或不符合别名的规则时为它准备本地别名；把对方记为待提交的条目，回 `PairDone`。
 5. 在同一连接上收到发起方的首个 `Hello` 后提交：写入对端表，本方是接受方，不记任何地址；对方指纹已在表中时覆盖，角色按本次重新确定，原有的候选地址删除，同一对端原有的链路被关闭。连接在此之前关闭或握手超过期限的，丢弃待提交的条目，对端表与原有的链路都不变。
 
-一次配对握手从发出或收到 `PairRequest` 起，到接受方提交为止，整体以 10 秒为限，超过即关闭连接。
+一次配对握手从发出或收到 `PairRequest` 起，到接受方提交为止，整体以 10 秒为限。接受方超过期限时只关闭连接，不发帧；发起方超时在本地判定，映射为 `pairing_rejected`。
 
 查找标记由密钥与本次握手的随机数算出。向接受方猜测密钥的一方，猜错时得不到任何认证码，只能止步于“没有相符的密钥”；对预置静态密钥的这种猜测受每分钟尝试次数的限制，一次性配对密钥有 80 位随机性，不需要这一限制。查找标记是发起方在核实对方之前发出的：发起方连到的若不是预期的接受方，例如地址写错或域名被劫持，对方可以拿查找标记离线穷举预置静态密钥，不受尝试次数的限制（[ADR-static-pairing-key](../../adr/adr-static-pairing-key.md)）；一次性配对密钥的随机性使这种穷举不可行。
 
@@ -194,14 +221,18 @@ A 收到 B 的 `Hello` 之前的任何一处失败，A 的对端表都保持不�
 
 | 情形 | 发起方得到 | 接受方的处理 |
 |---|---|---|
-| 没有与查找标记相符的密钥：密钥错误、已过期或已使用 | `pairing_rejected`：密钥无效 | 尝试计数加一，写审计 |
-| 认证码验证失败 | `pairing_rejected`：验证失败 | 相符的是一次性配对密钥的，其失败次数加一；写审计 |
-| 尝试过于频繁 | `pairing_rejected`：稍后再试 | 写审计，同一来源的重复记录由 `config` 合并 |
+| 没有与查找标记相符的密钥：密钥错误、已过期或已使用 | `pairing_rejected`：密钥无效 | 回 `PairReject`（原因：密钥无效），关闭连接；尝试计数加一，写审计 |
+| 接受方验证 `mi` 失败 | `pairing_rejected`：验证失败 | 回 `PairReject`（原因：验证失败），关闭连接；相符的是一次性配对密钥的，其失败次数加一；写审计 |
+| 发起方验证 `mr` 失败 | `pairing_rejected`：验证失败 | 无，连接由发起方关闭 |
+| 尝试过于频繁 | `pairing_rejected`：稍后再试 | 回 `PairReject`（原因：稍后再试），关闭连接；写审计，同一来源的重复记录由 `config` 合并 |
 | `address` 写法不合法，或提供的本地别名不符合别名的规则 | `invalid_argument` | 无 |
 | 地址无法连接 | `peer_unreachable` | 无 |
 | 别名冲突且未提供本地别名 | `needs_local_alias` | 无，握手未完成 |
 | 对方已是对端 | 成功，条目被覆盖，角色按本次重新确定 | 收到发起方的 `Hello` 后覆盖已有条目，角色按本次重新确定 |
-| 握手超过期限 | `pairing_rejected`：握手超时 | 关闭连接，丢弃待提交的条目 |
+| 握手超过期限：发起方自己的 10 秒期限届满，且没有收到 `PairReject` | `pairing_rejected`：握手超时 | 只关闭连接，不发帧；丢弃待提交的条目 |
+| `PairDone` 之前连接被关闭，没有收到 `PairReject`，且发起方自己的 10 秒期限未届满 | `pairing_rejected`：未连接 | 无 |
+
+发起方按下列先后判定失败：收到过 `PairReject` 的，把帧上的原因映射为 `pairing_rejected`；没有收到的，`PairDone` 之前连接关闭时按自己的 10 秒期限决定说明，期限已届满的用“握手超时”，未届满的用“未连接”。
 
 `Connect` 对同一个一次性配对密钥不是幂等的：密钥在首次成功后作废。`Unpair` 是幂等的。配对失败时双方都不保存对方的身份（`REQ-broker-pairing-011`），唯一的例外是 `PairDone` 到达而发起方的 `Hello` 没有到达，其恢复方式见走查。
 
