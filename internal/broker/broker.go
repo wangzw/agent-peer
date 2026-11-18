@@ -104,17 +104,17 @@ func New(deps Deps) (*Broker, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	b := &Broker{
-		deps:       deps,
-		log:        deps.Logger,
-		grpc:       grpc.NewServer(opts...),
-		ctx:        ctx,
-		cancel:     cancel,
-		agents:     make(map[AgentID]*agent),
-		waiting:    make(map[*regConn]struct{}),
-		watches:    make(map[string]*dirWatch),
-		events:     newRegistryQueue(),
-		refreshOne: func(*agent) {},
+		deps:    deps,
+		log:     deps.Logger,
+		grpc:    grpc.NewServer(opts...),
+		ctx:     ctx,
+		cancel:  cancel,
+		agents:  make(map[AgentID]*agent),
+		waiting: make(map[*regConn]struct{}),
+		watches: make(map[string]*dirWatch),
+		events:  newRegistryQueue(),
 	}
+	b.refreshOne = b.refreshAgent
 	localpb.RegisterLocalServer(b.grpc, b)
 	go b.eventLoop()
 	return b, nil

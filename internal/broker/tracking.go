@@ -1,0 +1,226 @@
+package broker
+
+import (
+	"errors"
+	"path/filepath"
+	"time"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/inbox"
+)
+
+// errAgentGone reports that the agent named by an RPC left the table, either
+// before or during the reread the RPC asked for.
+var errAgentGone = errors.New("broker: agent is no longer registered")
+
+// prevNameRetention is how long a renamed agent keeps advertising its previous
+// name.
+const prevNameRetention = 10 * time.Minute
+
+// rereadAgent refreshes one agent from its session record and returns the
+// snapshot after the reread. An agent that is not in the table, or that the
+// reread unregistered, yields errAgentGone.
+func (b *Broker) rereadAgent(id AgentID) (agentSnapshot, error) {
+	b.mu.Lock()
+	a, ok := b.agents[id]
+	b.mu.Unlock()
+	if !ok {
+		return agentSnapshot{}, errAgentGone
+	}
+
+	b.refreshAgent(a)
+
+	snapshot, ok := b.lookupAgent(id)
+	if !ok {
+		return agentSnapshot{}, errAgentGone
+	}
+	return snapshot, nil
+}
+
+// refreshAgent rereads one agent's session record and applies the change. The
+// record may rename the agent, change its status, or make it unregistrable, in
+// which case the agent leaves the table and its registration connections go
+// back to waiting.
+func (b *Broker) refreshAgent(a *agent) {
+	// The reread runs under a.refreshMu, outside Broker.mu, so a slow record
+	// read never blocks the table.
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
+
+	b.mu.Lock()
+	if b.agents[a.id] != a {
+		b.mu.Unlock()
+		return
+	}
+	previous := a.session
+	b.mu.Unlock()
+
+	next, err := a.backend.Reread(b.ctx, previous)
+
+	b.mu.Lock()
+	if b.agents[a.id] != a {
+		// The agent left the table while the record was being read; its
+		// registration connection owns the state again, so discard the result.
+		b.mu.Unlock()
+		return
+	}
+
+	switch {
+	case err == nil:
+	case errors.Is(err, inbox.ErrPartial):
+		// A half-written record keeps the last good values until the next
+		// registry event.
+		b.mu.Unlock()
+		return
+	case errors.Is(err, inbox.ErrNoRecord):
+		stops := b.revokeLocked(a, localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND)
+		b.unlockAndNotify(stops)
+		return
+	default:
+		b.log.Warn(EvRecordRereadFailed, "agent", shortID(a.id), "error", err)
+		b.mu.Unlock()
+		return
+	}
+
+	if next.SocketPath == "" || filepath.Clean(next.SocketPath) != a.socketPath {
+		// The record now names a different inbox socket (or none): treat it as
+		// a vanished record. A session that re-registers under the new path gets
+		// a new agent ID.
+		b.log.Info(EvAgentSocketChanged, "agent", shortID(a.id),
+			"old_socket", a.socketPath, "new_socket", next.SocketPath)
+		stops := b.revokeLocked(a, localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND)
+		b.unlockAndNotify(stops)
+		return
+	}
+
+	name, usable := NameUsable(next.Name)
+	if !usable {
+		stops := b.revokeLocked(a, localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE)
+		b.unlockAndNotify(stops)
+		return
+	}
+
+	oldName := a.name
+	nameChanged := name != oldName
+	statusChanged := next.Status != a.status
+
+	// A rename changes how many agents carry the old and the new name, which
+	// changes the disambiguation ref in their addresses. Record the addresses
+	// of the agents involved before the change so the ones that moved can be
+	// pushed afterwards.
+	var before map[AgentID]string
+	if nameChanged {
+		before = make(map[AgentID]string)
+		for id, other := range b.agents {
+			if other == a || other.name == oldName || other.name == name {
+				before[id] = b.addressOf(other)
+			}
+		}
+	}
+
+	a.session = next
+	if nameChanged {
+		a.prevName = oldName
+		a.prevNameAt = b.deps.Clock.Now()
+		if a.prevTimer != nil {
+			a.prevTimer.Stop()
+		}
+		at := a.prevNameAt
+		a.prevTimer = b.deps.Clock.AfterFunc(prevNameRetention, func() { b.expirePrevName(a, at) })
+		a.name = name
+		b.log.Info(EvAgentRenamed, "agent", shortID(a.id), "old_name", oldName, "new_name", name)
+	}
+	if statusChanged {
+		a.status = next.Status
+	}
+
+	if nameChanged || statusChanged {
+		b.deps.Topics.AgentChanged(a.id, a.name, a.prevName, a.ref, topicStatus(a.status))
+	}
+
+	if nameChanged {
+		for id := range before {
+			other := b.agents[id]
+			if other == nil {
+				continue
+			}
+			// The renamed agent always announces the change: its previous name
+			// moved even if the truncated address happens to be identical.
+			if other == a || b.addressOf(other) != before[id] {
+				b.pushAgentChangedLocked(other)
+			}
+		}
+	}
+	b.mu.Unlock()
+}
+
+// expirePrevName clears the previous name of a once the retention window has
+// passed. at is the prevNameAt the timer was started with; a later rename has
+// replaced it and owns a fresh timer.
+func (b *Broker) expirePrevName(a *agent, at time.Time) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.agents[a.id] != a || a.prevName == "" || !a.prevNameAt.Equal(at) {
+		return
+	}
+	a.prevName = ""
+	a.prevTimer = nil
+	b.deps.Topics.AgentChanged(a.id, a.name, a.prevName, a.ref, topicStatus(a.status))
+	b.pushAgentChangedLocked(a)
+}
+
+// revokeLocked unregisters a because its record can no longer describe it.
+// Every registration connection goes back to waiting with reason reported once,
+// and gets its inbox watch back so a restored record completes it again.
+// Callers must hold Broker.mu; the returned stops run outside it.
+func (b *Broker) revokeLocked(a *agent, reason localpb.NotRegisteredReason) []func() {
+	conns := make([]*regConn, 0, len(a.conns))
+	for c := range a.conns {
+		conns = append(conns, c)
+	}
+	a.conns = nil
+
+	stops := b.unregisterLocked(a)
+
+	for _, c := range conns {
+		c.agent = nil
+		c.waitReason = reason
+		c.reported = true
+		b.waiting[c] = struct{}{}
+
+		// Take the watch before reporting, so a record recovered immediately
+		// after the report is still observed.
+		if key, ok := b.acquireWatchLocked(c.configDir, c.backend); ok {
+			if _, still := b.waiting[c]; still {
+				c.watchDir = key
+				c.watching = true
+			} else {
+				stops = append(stops, b.releaseWatchLocked(key, true)...)
+			}
+		}
+		if _, still := b.waiting[c]; still {
+			c.out.push(notRegisteredResponse(reason))
+		}
+	}
+	return stops
+}
+
+// pushAgentChangedLocked queues an agent_changed event on every registration
+// connection of a and records the pushed address. Callers must hold Broker.mu.
+func (b *Broker) pushAgentChangedLocked(a *agent) {
+	address := b.addressOf(a)
+	a.lastAddress = address
+	event := &localpb.RegisterResponse{
+		Event: &localpb.RegisterResponse_AgentChanged{
+			AgentChanged: &localpb.AgentChangedEvent{
+				AgentId:      string(a.id),
+				AgentAddress: address,
+				Status:       statusToProto(a.status),
+				PreviousName: a.prevName,
+			},
+		},
+	}
+	for c := range a.conns {
+		c.out.push(event)
+	}
+}

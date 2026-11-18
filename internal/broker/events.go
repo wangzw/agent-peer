@@ -80,12 +80,17 @@ func (b *Broker) eventLoop() {
 	}
 }
 
-// handleRegistryEvent retries every registration connection waiting on dir.
-// The session-tracking work item adds the reread of the agents whose records
-// live in dir.
+// handleRegistryEvent rereads the agents whose records live in dir and retries
+// every registration connection waiting on it. An event with pid 0 cannot be
+// attributed to one record, so it refreshes every agent of the directory.
 func (b *Broker) handleRegistryEvent(dir string, pid int) {
-	_ = pid
 	b.mu.Lock()
+	var agents []*agent
+	for _, a := range b.agents {
+		if a.watching && a.watchDir == dir && (pid == 0 || a.session.PID == pid) {
+			agents = append(agents, a)
+		}
+	}
 	var conns []*regConn
 	for c := range b.waiting {
 		if c.watching && c.watchDir == dir && c.socketPath != "" {
@@ -100,6 +105,9 @@ func (b *Broker) handleRegistryEvent(dir string, pid int) {
 	b.mu.Unlock()
 	b.events.markHandled()
 
+	for _, a := range agents {
+		b.refreshAgent(a)
+	}
 	for _, c := range conns {
 		b.attempt(c)
 	}
