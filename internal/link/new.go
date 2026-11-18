@@ -64,5 +64,9 @@ func New(opts Options) (*Link, error) {
 
 	// TLS dialing, server credentials and gRPC streams
 	l.unauth = newUnauthRegistry(l.maxUnauthenticated, l.firstFrameTimeout, l.clock.AfterFunc)
+
+	// frame dispatch and send API
+	l.stateHandlers = make(map[FrameKind]func(peer Fingerprint, f Frame))
+	l.requestHandlers = make(map[FrameKind]func(ctx context.Context, peer Fingerprint, f Frame) Frame)
 	return l, nil
 }
