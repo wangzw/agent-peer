@@ -39,9 +39,11 @@ func (d *Directory) SetPublic(public bool) error {
 			d.mu.Unlock()
 			return nil
 		}
+		d.reissuePending = false
 		vs = append(vs, v)
 	} else {
 		d.public = false
+		d.reissuePending = false
 		d.active = make(map[string]string)
 		for _, r := range d.st.ownRecords() {
 			if isExpired(r.expires, now) || r.isRevocation() {
@@ -167,7 +169,8 @@ func (d *Directory) RetireInactiveTopics() {
 }
 
 // Reissue signs and publishes a fresh card with the current alias and
-// advertised addresses. It does nothing while the Broker is private.
+// advertised addresses. It does nothing while the Broker is private. A signing
+// failure leaves a pending marker that the maintenance loop retries.
 func (d *Directory) Reissue() {
 	d.mu.Lock()
 	if d.closed {
@@ -178,8 +181,10 @@ func (d *Directory) Reissue() {
 		d.mu.Unlock()
 		return
 	}
+	d.reissuePending = true
 	var vs []*directorypb.RecordVersion
 	if v, err := d.issueCardLocked(d.now()); err == nil {
+		d.reissuePending = false
 		vs = append(vs, v)
 	}
 	d.mu.Unlock()
@@ -189,10 +194,10 @@ func (d *Directory) Reissue() {
 }
 
 // renewDue reissues the local card and every active public topic declaration
-// whose renewal is due, and retries revocations whose signing failed earlier.
-// Nothing is renewed while the Broker is private, but pending revocations are
-// retried in either state until signing succeeds. The maintenance loop calls it
-// once per wakeup.
+// whose renewal is due, retries a card whose Reissue could not be signed, and
+// retries revocations whose signing failed earlier. Nothing is renewed while
+// the Broker is private, but pending revocations are retried in either state
+// until signing succeeds. The maintenance loop calls it once per wakeup.
 func (d *Directory) renewDue(now time.Time) {
 	d.mu.Lock()
 	if d.closed {
@@ -215,9 +220,11 @@ func (d *Directory) renewDue(now time.Time) {
 			publisher: d.st.self,
 			kind:      directorypb.RecordKind_RECORD_KIND_BROKER_CARD,
 		}
-		if r, ok := d.st.get(cardID); ok && !r.isRevocation() &&
-			!isExpired(r.expires, now) && renewalDue(r.expires, now) {
+		r, ok := d.st.get(cardID)
+		due := ok && !r.isRevocation() && !isExpired(r.expires, now) && renewalDue(r.expires, now)
+		if d.reissuePending || due {
 			if v, err := d.issueCardLocked(now); err == nil {
+				d.reissuePending = false
 				vs = append(vs, v)
 			}
 		}
@@ -259,6 +266,7 @@ func (d *Directory) startupCheck(now time.Time) {
 		return
 	}
 	d.public = d.settings.Public()
+	d.reissuePending = false
 	var vs []*directorypb.RecordVersion
 	if d.public {
 		if v, err := d.issueCardLocked(now); err == nil {

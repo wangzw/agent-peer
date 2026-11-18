@@ -600,6 +600,44 @@ func TestReissueOnAddressChange(t *testing.T) {
 	})
 }
 
+// TestReissueRetriesAfterSigningFailure covers a re-sign that could not be
+// signed: the maintenance loop must retry it even though the last card is not
+// yet due for renewal.
+func TestReissueRetriesAfterSigningFailure(t *testing.T) {
+	id := &failingIdentity{Identity: newTestIdentity(1)}
+	f := newPubFixtureWithIdentity(t, id)
+	f.settings.SetAdvertised([]config.AdvertisedAddr{{Kind: "direct", Addr: "198.51.100.4:17443"}})
+	if err := f.d.SetPublic(true); err != nil {
+		t.Fatalf("SetPublic(true): %v", err)
+	}
+	first := f.mustOwnRecord(recKindCard, "")
+
+	f.settings.SetAdvertised([]config.AdvertisedAddr{{Kind: "direct", Addr: "198.51.100.9:17443"}})
+	id.SetFailSign(true)
+	f.d.Reissue()
+	if got := f.mustOwnRecord(recKindCard, "").version; got != first.version {
+		t.Fatalf("Reissue stored version %d although signing failed, want the old %d", got, first.version)
+	}
+
+	id.SetFailSign(false)
+	f.d.renewDue(f.now())
+
+	card := f.mustOwnRecord(recKindCard, "")
+	if card.version <= first.version {
+		t.Fatalf("card version %d after the retry, want above %d", card.version, first.version)
+	}
+	addrs := card.body.GetBrokerCard().GetAddresses()
+	if len(addrs) != 1 || addrs[0].GetAddr() != "198.51.100.9:17443" {
+		t.Fatalf("retried card addresses = %v, want the address that failed to publish", addrs)
+	}
+
+	stable := card.version
+	f.d.renewDue(f.now())
+	if got := f.mustOwnRecord(recKindCard, "").version; got != stable {
+		t.Fatalf("renewDue reissued version %d without a pending re-sign, want %d", got, stable)
+	}
+}
+
 func TestRenewDue(t *testing.T) {
 	// REQ-broker-discovery-008 and REQ-topics-012: a card and an active
 	// declaration are renewed after one day; a declaration outside the active

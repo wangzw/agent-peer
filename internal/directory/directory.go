@@ -26,6 +26,7 @@ type Directory struct {
 	up              map[Fingerprint]bool
 	public          bool
 	active          map[string]string // public topic name to description
+	reissuePending  bool              // a Reissue could not be signed; renewDue retries it
 	onCard          []func(Fingerprint, []config.AdvertisedAddr)
 	ownHook         func(ids []recordID) // called with own records accepted from a link
 	dirty           bool
