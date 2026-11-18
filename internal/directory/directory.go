@@ -30,6 +30,7 @@ type Directory struct {
 	ownHook         func(ids []recordID) // called with own records accepted from a link
 	dirty           bool
 	persistHook     func() // test seam called between taking the snapshot and writing it
+	afterMaintain   func() // test seam called at the end of each maintenance pass
 	started, closed bool
 
 	persistMu sync.Mutex
