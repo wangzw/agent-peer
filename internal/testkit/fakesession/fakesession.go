@@ -191,11 +191,16 @@ func New(t testing.TB, opts Options) *Fake {
 		done:      make(chan struct{}),
 		frameCh:   make(chan struct{}, 1),
 	}
-	t.Cleanup(f.Close)
 
 	if f.configDir == "" {
 		f.configDir = t.TempDir()
 	}
+	// Register Close only after t.TempDir. Cleanups run last-in-first-out, so
+	// this makes Close run before the temporary directory's RemoveAll: the
+	// listener, connections and socket are torn down while the directory that
+	// holds them still exists, instead of the fake shutting down against a
+	// directory the test framework has already deleted.
+	t.Cleanup(f.Close)
 	if f.pid = opts.PID; f.pid == 0 {
 		f.pid = nextPID()
 	}

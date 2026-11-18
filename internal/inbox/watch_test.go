@@ -324,6 +324,36 @@ func TestWatch_StopAndShared(t *testing.T) {
 	}
 }
 
+// TestWatch_CleanupStopsBeforeTempDirRemoval pins the cleanup order this
+// package relies on: the temporary directory comes from t.TempDir, the shared
+// watcher is started after it, and the stop function is registered after the
+// cleanup that observes the watcher. t.Cleanup runs last-in-first-out, so the
+// observation runs after stop has unregistered the watcher and before
+// t.TempDir removes the directory. Nothing here waits on time; the order alone
+// decides the outcome.
+func TestWatch_CleanupStopsBeforeTempDirRemoval(t *testing.T) {
+	dir := t.TempDir()
+	stop, err := Watch(dir, func(int) {})
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+	if got := sharedWatcherCount(dir); got != 1 {
+		t.Fatalf("sharedWatcherCount = %d after Watch, want 1", got)
+	}
+
+	// This cleanup is registered before stop, so it runs after stop and while
+	// the temporary directory still exists.
+	t.Cleanup(func() {
+		if got := sharedWatcherCount(dir); got != 0 {
+			t.Errorf("sharedWatcherCount = %d in cleanup after stop, want 0: the watcher outlived the stop that should precede the directory removal", got)
+		}
+		if _, err := os.Stat(dir); err != nil {
+			t.Errorf("temporary directory %s is gone in cleanup after stop: %v", dir, err)
+		}
+	})
+	t.Cleanup(stop)
+}
+
 func TestWatch_UnknownEventCallsZero(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(aSessionsDir(dir), 0o700); err != nil {
