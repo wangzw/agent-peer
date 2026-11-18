@@ -508,11 +508,12 @@ func TestRunLoop(t *testing.T) {
 		path := fakelocal.SocketPath(t)
 		var brokerVersion atomic.Uint32
 		brokerVersion.Store(2)
-		srv := fakelocal.Start(t, path, fakelocal.Handlers{
+		handlers := fakelocal.Handlers{
 			Hello: func(context.Context, *localpb.HelloRequest) (*localpb.HelloResponse, error) {
 				return &localpb.HelloResponse{ProtocolVersion: brokerVersion.Load()}, nil
 			},
-		})
+		}
+		srv := fakelocal.Start(t, path, handlers)
 		launcher := &loopLauncher{}
 
 		st := &statusStore{}
@@ -522,6 +523,21 @@ func TestRunLoop(t *testing.T) {
 			return target{Path: path, Kind: kindUser}, nil
 		}
 		deps.launch = launcher
+		// A restart leaves a window in which the socket file is gone. Gate the
+		// probe on the replacement listener so the loop sees a Broker that
+		// answers and takes the reconnect backoff instead of the launch path.
+		restarted := make(chan struct{})
+		var restarting atomic.Bool
+		probe := deps.probe
+		deps.probe = func(ctx context.Context, p string) probeResult {
+			if restarting.Load() {
+				select {
+				case <-restarted:
+				case <-ctx.Done():
+				}
+			}
+			return probe(ctx, p)
+		}
 		loopStart(t, deps)
 
 		status := loopWaitStatus(t, st, "PhaseVersionMismatch", func(s Status) bool {
@@ -543,7 +559,10 @@ func TestRunLoop(t *testing.T) {
 		}
 
 		brokerVersion.Store(1)
-		srv.Restart()
+		restarting.Store(true)
+		srv.Stop()
+		srv = fakelocal.Start(t, path, handlers)
+		close(restarted)
 
 		// The Broker leaving READY is still a failed attempt: reconnect waits
 		// one connection backoff before dialing again.
