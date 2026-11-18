@@ -248,7 +248,7 @@ Broker 内每条链路有一个读协程、一个写协程和一个按序处理�
 
 ### 失败与降级
 
-系统没有降级模式。链路断开期间，远端 Agent 从列表中消失，向它们的发送在重试或等待之后失败。Claude Code 更新导致帧格式不兼容时，全部入站投递失败，由更新 [inbox](modules/design-inbox.md) 依赖的库来恢复。Broker 进程退出后，各 MCP 服务进程的登记连接随之断开，MCP 服务进程立即连回原来那个 Broker 并重新登记（`REQ-broker-config-037`），不等下一次工具调用，空闲的会话因此在 Broker 重启后仍能收到消息：原来连的是用户级 Broker 的，由 MCP 服务进程重新拉起；原来连的是系统级 Broker 的，只退避重连它，等待系统的服务管理机制重新启动，不拉起用户级 Broker，也不改连其他 Broker。配置的监听地址无法绑定时 Broker 启动失败；该 Broker 若由 MCP 服务进程拉起，此后的工具调用返回 Broker 给出的原因，直到用户改用其他地址或端口。默认路由所在接口的地址在地址转换之外连不上时，拨号持续失败，直到用户把对外地址配置为指定的地址或追加地址。接受方在链路断开之后、重新建立之前更换了地址，而拨号方又没有从名片得到新地址时，链路无法自行恢复，要重新配对；链路断开期间，接受方发出的消息只在发送的预算内等待对方连入（[ADR-initiator-redials](../adr/adr-initiator-redials.md)）。辅助进程意外退出时，系统级 Broker 在下一次需要时重新派生，经它进行中的写入按结果未知处理。Broker 不可用或登记未完成时，MCP 服务进程不退出，工具调用返回说明原因的错误，连接在后台持续重试，会话不需要用户重新连接MCP 服务（`REQ-agent-messaging-038`）。
+系统没有降级模式。链路断开期间，远端 Agent 从列表中消失，向它们的发送在重试或等待之后失败。Claude Code 更新导致帧格式不兼容时，全部入站投递失败，由更新 [inbox](modules/design-inbox.md) 依赖的库来恢复。Broker 进程退出后，各 MCP 服务进程的登记连接随之断开，MCP 服务进程按退避重连原来那个 Broker，退避只在登记完成后复位，连上后重新登记（`REQ-broker-config-037`），不等下一次工具调用，空闲的会话因此在 Broker 重启后仍能收到消息：原来连的是用户级 Broker 的，由 MCP 服务进程重新拉起；原来连的是系统级 Broker 的，只退避重连它，等待系统的服务管理机制重新启动，不拉起用户级 Broker，也不改连其他 Broker。配置的监听地址无法绑定时 Broker 启动失败；该 Broker 若由 MCP 服务进程拉起，此后的工具调用返回 Broker 给出的原因，直到用户改用其他地址或端口。默认路由所在接口的地址在地址转换之外连不上时，拨号持续失败，直到用户把对外地址配置为指定的地址或追加地址。接受方在链路断开之后、重新建立之前更换了地址，而拨号方又没有从名片得到新地址时，链路无法自行恢复，要重新配对；链路断开期间，接受方发出的消息只在发送的预算内等待对方连入（[ADR-initiator-redials](../adr/adr-initiator-redials.md)）。辅助进程意外退出时，系统级 Broker 在下一次需要时重新派生，经它进行中的写入按结果未知处理。Broker 不可用或登记未完成时，MCP 服务进程不退出，工具调用返回说明原因的错误，连接在后台持续重试，会话不需要用户重新连接MCP 服务（`REQ-agent-messaging-038`）。
 
 ### 可观测性
 
@@ -301,7 +301,7 @@ Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间�
 | 模块 | 状态 |
 |---|---|
 | [broker](modules/design-broker.md) | 未实现 |
-| [mcpserver](modules/design-mcpserver.md) | 未实现 |
+| [mcpserver](modules/design-mcpserver.md)（信号由“cmd 与终端命令”单元接入） | 部分实现 |
 | [inbox](modules/design-inbox.md) | 已实现 |
 | [topic](modules/design-topic.md) | 未实现 |
 | [link](modules/design-link.md) | 未实现 |
