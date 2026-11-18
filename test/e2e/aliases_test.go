@@ -218,14 +218,24 @@ func TestAliases(t *testing.T) {
 			return true, ""
 		})
 		peers := alPeers(t, aNode)
-		var assigned string
+		byFingerprint := make(map[string]string, len(peers))
 		for _, peer := range peers {
-			if peer.GetAlias() != "macbook" {
-				assigned = peer.GetAlias()
-			}
+			byFingerprint[hex.EncodeToString(peer.GetFingerprint())] = peer.GetAlias()
 		}
-		if !strings.HasPrefix(assigned, "macbook-") || len(assigned) < len("macbook-")+4 || !alHexSuffix(assigned[len("macbook-"):]) {
-			t.Fatalf("the assigned alias %q is not macbook-<4+ hex digits>", assigned)
+
+		// The alias belongs to the identity, not to whichever entry the table
+		// happens to list last: Y keeps its self-reported alias and the second
+		// reporter, Z, gets the fingerprint suffix.
+		yAlias, yOK := byFingerprint[alIdentityFingerprint(t, yNode)]
+		zAlias, zOK := byFingerprint[alIdentityFingerprint(t, zNode)]
+		if !yOK || !zOK {
+			t.Fatalf("A does not list both Y and Z: %v", byFingerprint)
+		}
+		if yAlias != "macbook" {
+			t.Fatalf("Y's alias is %q, want macbook", yAlias)
+		}
+		if !strings.HasPrefix(zAlias, "macbook-") || len(zAlias) < len("macbook-")+4 || !alHexSuffix(zAlias[len("macbook-"):]) {
+			t.Fatalf("Z's alias %q is not macbook-<4+ hex digits>", zAlias)
 		}
 	})
 
