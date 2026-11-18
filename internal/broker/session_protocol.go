@@ -16,7 +16,7 @@ func (b *Broker) checkSessionProtocolLocked(a *agent) {
 		return
 	}
 	b.log.Warn(EvSessionProtocolUnrecognized,
-		"agent", a.id,
+		"agent", shortID(a.id),
 		"pid", a.session.PID,
 		"peer_protocol", p,
 		"supported", sessionPeerProtocol,

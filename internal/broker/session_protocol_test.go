@@ -80,6 +80,10 @@ func TestSessionProtocolWarnOnce(t *testing.T) {
 	if got := peerProtocolOf(t, logs[0]); got != 2 {
 		t.Fatalf("peer_protocol = %d, want 2", got)
 	}
+	id := mustAgentID(t, fake.SocketPath())
+	if got, want := logs[0]["agent"], shortID(id); got != want {
+		t.Fatalf("agent = %v, want the short Agent ID %q", got, want)
+	}
 
 	// A reread that still sees version 2 must not warn again.
 	drainNotify(tb.topics.notify)
@@ -90,7 +94,6 @@ func TestSessionProtocolWarnOnce(t *testing.T) {
 		t.Fatal("the rename did not reach the topic table")
 	}
 
-	id := mustAgentID(t, fake.SocketPath())
 	snap, ok := tb.b.lookupAgent(id)
 	if !ok {
 		t.Fatal("the agent left the table")
@@ -139,7 +142,7 @@ func TestSessionProtocolNoWarn(t *testing.T) {
 		name  string
 		extra map[string]any
 	}{
-		{name: "supported", extra: nil},
+		{name: "supported", extra: map[string]any{"peerProtocol": 1}},
 		{name: "missing", extra: map[string]any{"peerProtocol": nil}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -148,7 +151,6 @@ func TestSessionProtocolNoWarn(t *testing.T) {
 			rs := startRegistration(t, tb, fake)
 			rs.complete(3 * time.Second)
 
-			time.Sleep(200 * time.Millisecond)
 			if logs := sessionProtocolLogs(t, tb); len(logs) != 0 {
 				t.Fatalf("%s records = %d, want none: %v", sessionProtocolEvent, len(logs), tb.logLines(t))
 			}
