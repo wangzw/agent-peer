@@ -56,7 +56,7 @@ service Local {
 
 `SetConfig` 先解析审计发起者，`agent_id` 无效时不改动配置；对于键不存在、密钥类配置项与本次运行由 `--listen` 固定的 `broker.listen`，它在处理取值之前拒绝，说明不取决于取值的写法，取值无法解析时同样给出。`GetConfig` 的 `key` 为空时返回全部配置项，按键名的字典序；非空时只返回该项，未知键返回 `invalid_argument`。`Audit` 的 `since` 缺省时返回全部记录；`limit` 非 0 时返回最新的 N 条，仍按时间顺序发送，读完即结束，不跟随新事件。
 
-`Disconnect` 的 `broker` 参数取对端的生效别名或 64 位十六进制指纹（大小写不敏感），先按别名解析，解析不到且恰为 64 位十六进制时按指纹解析；指定的 Broker 不是对端时返回 `not_found`；解除配对经注入的关闭链路接口断开链路（`REQ-broker-pairing-021`）。`Connect` 成功后促使对该对端立即拨号；成功应答带对方的生效别名、指纹、地址中的主机名与警告（`REQ-broker-pairing-010`）。失败时错误码：地址或本地别名写法不合法为 `invalid_argument`，别名冲突为 `needs_local_alias`，对方拒绝、握手超时、连接在握手完成前关闭或对方违反配对协议为 `pairing_rejected`，地址连不上为 `peer_unreachable`（`REQ-broker-pairing-004`、`REQ-broker-pairing-011`）。`ListBrokers` 中对端的对外地址列表：本方是拨号方的取接受方告知的列表与名片所载的列表，不含发起配对时拨通的地址；本方是接受方的只取名片所载的列表。不取对端表中来源为名片的候选地址，名片地址以名录当前有效的名片为准。对端的状态按链路是否已建立、是否知道地址取三者之一。被拒绝或角色不符时 `status_detail` 说明需要重新配对，协议版本不兼容时说明带对方版本（已知时）。排序先对端后非对端，同类按别名再按指纹（`REQ-broker-discovery-012`、`REQ-broker-discovery-013`、`REQ-broker-pairing-035`）。
+`Disconnect` 的 `broker` 参数取对端的生效别名或 64 位十六进制指纹（大小写不敏感），先按别名解析，解析不到且恰为 64 位十六进制时按指纹解析；指定的 Broker 不是对端时返回 `not_found`；解除配对经注入的关闭链路接口断开链路（`REQ-broker-pairing-021`）。`Connect` 成功后促使对该对端立即拨号；成功应答带对方的生效别名、指纹、地址中的主机名与警告（`REQ-broker-pairing-010`）。警告按地址逐条给出：对 `Peer.Candidates` 中来源为 `SourcePairing` 与 `SourceAcceptor` 的每个地址，名录中每个指纹不同于对方的发布者各产生一条，说明为 `fingerprint mismatch: the directory card for <addr> belongs to <card fingerprint>, but the paired broker presented <peer fingerprint>`，两个指纹均为完整的 64 位小写十六进制；没有不一致时警告为空（`REQ-broker-pairing-023`）。失败时错误码：地址或本地别名写法不合法为 `invalid_argument`，别名冲突为 `needs_local_alias`，对方拒绝、握手超时、连接在握手完成前关闭或对方违反配对协议为 `pairing_rejected`，地址连不上为 `peer_unreachable`（`REQ-broker-pairing-004`、`REQ-broker-pairing-011`）。`ListBrokers` 中对端的对外地址列表：本方是拨号方的取接受方告知的列表与名片所载的列表，不含发起配对时拨通的地址；本方是接受方的只取名片所载的列表。不取对端表中来源为名片的候选地址，名片地址以名录当前有效的名片为准。对端的状态按链路是否已建立、是否知道地址取三者之一。被拒绝或角色不符时 `status_detail` 说明需要重新配对，协议版本不兼容时说明带对方版本（已知时）。排序先对端后非对端，同类按别名再按指纹（`REQ-broker-discovery-012`、`REQ-broker-discovery-013`、`REQ-broker-pairing-035`）。
 
 调用方的账户不是任何调用的参数，它取自连接的进程凭据。下表是每个调用的前提；用户级 Broker 的检查器恒允许，配置文件属于本账户，表中的权限前提只在系统级 Broker 上检查。
 
@@ -310,11 +310,21 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 
 ### 对外地址的转接
 
-`directory` 接受一张名片时，发布者是本方作为拨号方的对端的，`broker` 把名片所载的对外地址列表交给 `pairing` 的 `UpdateCardAddresses`，作为来源为名片的候选地址；本方是接受方的对端与非对端的名片不写入对端表。`config` 的对外地址列表变化时，`broker` 调用 `link` 的 `AnnounceAddresses`，使本方是接受方的各条链路收到 `PeerInfo`，并调用 `directory` 的 `Reissue`，本 Broker 公开时立即签发新版本的名片（`REQ-broker-discovery-016`）。
+`directory` 打开时登记 `OnCard` 回调，回调由 `relayCard` 处理：发布者是本方作为拨号方的对端的，把名片所载的对外地址列表交给 `pairing` 的 `UpdateCardAddresses`，作为来源为名片的候选地址；本方是接受方的对端与非对端的名片不写入对端表。`config` 的对外地址列表变化时，`broker` 调用 `link` 的 `AnnounceAddresses`，使本方是接受方的各条链路收到 `PeerInfo`，并调用 `directory` 的 `Reissue`，本 Broker 公开时立即签发新版本的名片（`REQ-broker-discovery-016`）。
+
+名录由 directory 装配器在装配阶段打开。`directoryAssembler.Assemble` 以 `directory.NewIdentity(asm.Pairing)` 得到的身份、`asm.Pairing` 作为对端表、`directory.NewLinkTransport(asm.Link)`、`deps.Logger` 与 `wallClock` 构造 `directory.Deps`，经 `directory.Open` 打开名录，并在此时登记 `OnCard`。`asm.Pairing` 或 `asm.Link` 为 nil 时不装配，`Deps.Directory` 保持 nil，Broker 使用内置的不公开实现；`directory.NewIdentity` 的任何错误都使启动失败。`directoryAdapter.install` 把同一个适配器填进 `Deps.Directory`、`Deps.Catalog`、`Deps.Warner` 与 `Deps.CardIssuer`，适配器实现 `PublicTopicDirectory`、`BrokerCatalog`、`ConnectWarner` 与 `CardIssuer`。
+
+`directoryComponent.Start` 在 link 监听之前调用名录的 `Start`，随后登记 `broker.public` 订阅，并读一次当前值调用 `SetPublic`，补上配置加载与订阅之间的改动；`SetPublic` 失败记 `set_public_failed` 运行日志，不使启动失败。该组件不订阅 `broker.alias` 与对外地址列表，这两项的转调由配置读写与审计的装配器负责。
+
+`broker.public` 由假变真时，`publicChanged` 取 `publicTopicSet` 的快照，按名字排序逐个调用 `DeclarePublicTopic`；单个失败记 `public_topic_redeclare_failed`，不影响其余。声明完成后再取一次快照，对两次之间失去公开成员的 topic 调用 `RetirePublicTopic`。由真变假时只调用 `SetPublic(false)`，名片与声明的撤回由名录自己完成（`REQ-broker-discovery-009`、`REQ-topics-024`）。
+
+重启后，`directoryComponent.AfterReady` 在就绪两分钟时调用 `RetireInactiveTopics`，撤回上次运行留下、本次没有 Agent 重新声明的公开 topic；`Stop` 先取消这个计时器，再关闭名录。
+
+本方先持有某 Broker 的名片、后向它发起配对时，`OnCard` 不会再次触发，名片地址要等对方下一次续签才进入候选地址，间隔至多约一天；握手中已拿到接受方告知的地址，候选地址不为空。
 
 本机别名变化时，`broker` 依次调用 `link` 的 `AnnounceAlias`、`directory` 的 `Reissue` 与向各登记流推送新地址：`AnnounceAlias` 使各条链路收到 `PeerInfo`，本 Broker 公开时 `Reissue` 立即签发新名片，地址推送使每条登记流收到带新地址的 `agent_changed`。对外地址列表变化时依次调用 `link` 的 `AnnounceAddresses` 与 `directory` 的 `Reissue`。`broker.listen` 变化时调用 `link` 的 `Listen` 在新地址上绑定，失败时以错误级别记一条 `listen_rebind_failed` 运行日志，字段为地址与错误，不重试。`config` 按登记顺序串行调用订阅者，这些转调因此按提交顺序执行；`pairing` 推入本机别名的订阅先于这些订阅登记。一次修改同时触发本机别名与对外地址列表的通知时，`Reissue` 对每次通知各调用一次，不合并。
 
-配对成功后，以发起配对时给出的地址，以及接受方在握手中告知的对外地址列表中的每一项，分别查名录，名片所载的指纹与对方出示的不一致时，在结果中附指纹不一致的警告（`REQ-broker-pairing-023`）。
+配对成功后，`fingerprintWarnings` 依次检查 `Peer.Candidates` 中来源为 `SourcePairing` 与 `SourceAcceptor` 的地址，按出现顺序去重，对每个地址用 `CardsByAddress` 查名录；返回的每个指纹不同于对方的发布者都产生一条警告，配对结果照常成功。警告的文字与逐地址的规则见外部接口契约中的 `Connect`（`REQ-broker-pairing-023`）。
 
 ### 列出 Agent 与查看状态
 
@@ -329,6 +339,9 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 | 情形 | 错误码 | 是否重试 |
 |---|---|---|
 | 正文为空，消息标识不是 UUID，发送方名字或目标名字的原文超过 1024 字节；本次运行的监听地址来自启动参数时修改 `broker.listen`；修改 `broker.listen` 而新地址无法绑定（`REQ-broker-config-034`）；修改密钥类配置项；`Connect` 的地址写法不合法；本次运行不监听时生成配对密钥 | `invalid_argument` | 否 |
+| 本 Broker 不公开时以公开方式加入 topic | `invalid_argument` | 否 |
+| 本机公开 topic 声明数达上限 | `quota_exceeded` | 否 |
+| 公开 topic 简介不合法 | `invalid_argument` | 否 |
 | 编码后的帧超过上限 | `too_large` | 否 |
 | 别名未知，名字或消歧标识不存在；目标是某个 Agent 的曾用名，说明中给出它现在的地址 | `not_found` | 否 |
 | 名字对应多个可见的 Agent | `ambiguous` | 否 |
@@ -375,6 +388,10 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 
 对端管理调用不持有 Agent 表的锁等待配对握手；`Connect` 的耗时以 `pairing` 的握手期限为上限。
 
+### 测试钩子
+
+带 `agentpeer_testenv` 构建标签的二进制在环境变量 `AGENT_PEER_TEST_CLOCK_FILE` 指向的文件中读取时长偏移，并把 `wallClock`（`internal/broker/wallclock.go`）换成返回当前时间加该偏移的时钟（`internal/broker/wallclock_testenv.go`）。`wallClock` 只由 directory 装配器传给 `directory.Deps.Now`，link、pairing 与 Broker 自身的计时不受影响。发布构建不包含这个钩子。
+
 ## 扩展点
 
 把消息送达不在本机的 Agent 的方式是一个扩展点，为与使用其他协议的 Agent 互通而预留。现有的实现只有一种：经 `link` 请求对端 Broker 投递。地址解析得到的是“哪个对端上的哪个 Agent”，与到达方式无关。下列规则对任何到达方式都适用：发送的结果只取成功、未送达或结果未知；一次发送以 `send.request_timeout` 为预算；以同一消息标识重发的消息按消息标识去重。
@@ -397,7 +414,8 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 投递请求处理、署名与去重 | 已实现 | `internal/broker/receive.go`（`handleDeliver`）、`internal/broker/signature.go`（`signatureFor`）、`internal/broker/dedupe.go`（`dedupeTable`） |
 | 各包之间的转接 | 已实现 | `internal/broker/latetransport.go`、`internal/broker/aliaswire.go`、`internal/broker/peerassemble.go`、`internal/broker/topicassemble.go` |
 | 配置变更与对外地址变化的转接 | 已实现 | `internal/broker/configwire.go`、`internal/broker/configassemble.go` |
-| 名片地址交给 pairing 与配对后比对指纹 | 未实现 | — |
+| 名片地址交给 pairing 与配对后比对指纹 | 已实现 | `internal/broker/discoveryrelay.go`（`relayCard`）、`internal/broker/fpcheck.go`（`fingerprintWarnings`） |
+| 名录的装配：公开开关、公开 topic 适配与非对端列出 | 已实现 | `internal/broker/diradapter.go`（`directoryAdapter`、`directoryAdapter.install`）、`internal/broker/dirassemble.go`（`directoryAssembler`、`directoryComponent`）、`internal/broker/discoveryrelay.go`（`publicChanged`） |
 | 配对与对端管理的本机调用 | 已实现 | `internal/broker/connect_rpc.go`、`internal/broker/disconnect_rpc.go`、`internal/broker/pairkey_rpc.go`、`internal/broker/listbrokers.go`、`internal/broker/peerinfo.go`；非对端的列出由名片与公开 topic 接入 |
 | 配置读写与审计的本机调用 | 已实现 | `internal/broker/configrpc.go`、`internal/broker/auditrpc.go` |
 | 终端命令 | 部分实现 | `cmd/agent-peer`、`internal/mcpserver/termcmd`；`service install` 未实现，`broker --system` 由系统级 Broker 单元负责 |
