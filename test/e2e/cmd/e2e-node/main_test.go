@@ -3,15 +3,115 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wangzw/agent-peer/test/e2e/ctl"
+	"github.com/wangzw/agent-peer/test/e2e/node"
 )
+
+// TestMain turns the test binary into the MCP stand-in that
+// TestOneshotSessionPrintsResult passes as --bin when E2E_NODE_STUB is set.
+// The node library's own tests use the same re-execution technique; this copy
+// lives here because a test binary serves only its own package's TestMain.
+func TestMain(m *testing.M) {
+	if os.Getenv("E2E_NODE_STUB") == "mcp" {
+		os.Exit(runMCPStub())
+	}
+	os.Exit(m.Run())
+}
+
+// stubListAgent is one entry of the stub's list_agents answer.
+type stubListAgent struct {
+	Address string `json:"address"`
+	Status  string `json:"status"`
+}
+
+// stubListOut is the structured result of the stub's list_agents tool.
+type stubListOut struct {
+	Self   string          `json:"self_address"`
+	Agents []stubListAgent `json:"agents"`
+}
+
+// runMCPStub serves an MCP server on standard input and output with a
+// list_agents tool that always succeeds.
+func runMCPStub() int {
+	server := mcp.NewServer(&mcp.Implementation{Name: "e2e-node-stub", Version: "0"}, nil)
+	mcp.AddTool[any, stubListOut](
+		server,
+		&mcp.Tool{Name: "list_agents", Description: "Returns a fixed agent listing."},
+		func(context.Context, *mcp.CallToolRequest, any) (*mcp.CallToolResult, stubListOut, error) {
+			return nil, stubListOut{
+				Self:   "stub@hostA",
+				Agents: []stubListAgent{{Address: "stub@hostA", Status: "idle"}},
+			}, nil
+		},
+	)
+	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+		fmt.Fprintf(os.Stderr, "e2e-node stub: serving MCP: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// TestOneshotSessionPrintsResult runs oneshot-session against the MCP stand-in
+// and checks that standard output carries a parseable ToolResult with no tool
+// error.
+func TestOneshotSessionPrintsResult(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "e2e-node")
+
+	build := exec.Command("go", "build", "-o", binary, ".")
+	var buildStderr bytes.Buffer
+	build.Stderr = &buildStderr
+	if err := build.Run(); err != nil {
+		t.Fatalf("building e2e-node: %v\n%s", err, buildStderr.String())
+	}
+
+	stub, err := os.Executable()
+	if err != nil {
+		t.Fatalf("locating the test binary: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(binary, "oneshot-session",
+		"--name", "stub-session",
+		"--bin", stub,
+		"--env", "E2E_NODE_STUB=mcp")
+	// The session writes its record and MCP log under $HOME, so give it a
+	// temporary home rather than the test runner's.
+	cmd.Env = append(os.Environ(), "HOME="+t.TempDir())
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("oneshot-session exited with %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
+	}
+
+	var result node.ToolResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decoding the ToolResult %q: %v", stdout.String(), err)
+	}
+	if result.IsError {
+		t.Fatalf("list_agents returned a tool error: %s", result.Text)
+	}
+	var out stubListOut
+	if err := json.Unmarshal(result.Structured, &out); err != nil {
+		t.Fatalf("decoding the structured content %q: %v", result.Structured, err)
+	}
+	if out.Self != "stub@hostA" {
+		t.Fatalf("self_address = %q, want stub@hostA", out.Self)
+	}
+	if len(out.Agents) != 1 || out.Agents[0].Address != "stub@hostA" {
+		t.Fatalf("agents = %+v, want the stub's single entry", out.Agents)
+	}
+}
 
 // TestServeShutdown starts the command, asks it to stop over the control
 // socket, and checks that it exits with zero and removes the socket.

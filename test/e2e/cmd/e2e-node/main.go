@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,8 +28,23 @@ const shutdownBound = 2 * time.Second
 // probeHelloBound bounds one probe-hello invocation.
 const probeHelloBound = 10 * time.Second
 
+// oneshotCallBound bounds the single tool call of oneshot-session. The call
+// itself answers at once while the Broker is unavailable; the bound only keeps
+// a broken MCP server from hanging the command.
+const oneshotCallBound = 30 * time.Second
+
+// oneshotReadyBound bounds how long oneshot-session waits for the MCP server's
+// background connection loop to finish its first selection. A tool call made
+// immediately after the handshake can still see the loop's starting state.
+const oneshotReadyBound = 3 * time.Second
+
+// oneshotStartingText is the part of the starting-state tool error that tells
+// the loop has not classified the Broker yet.
+const oneshotStartingText = "still being set up"
+
 const usage = "usage: e2e-node serve --ctl <socket> --home <dir> --bin <agent-peer> [--runtime-root <dir>] [--path <PATH>]\n" +
-	"       e2e-node probe-hello --addr <host:port>"
+	"       e2e-node probe-hello --addr <host:port>\n" +
+	"       e2e-node oneshot-session --name <name> --bin <agent-peer> [--env NAME=value]..."
 
 func main() {
 	os.Exit(run(os.Args[1:]))
@@ -44,6 +61,8 @@ func run(args []string) int {
 		return runServe(args[1:])
 	case "probe-hello":
 		return runProbeHello(args[1:])
+	case "oneshot-session":
+		return runOneshotSession(args[1:])
 	default:
 		fmt.Fprintln(os.Stderr, usage)
 		return 2
@@ -73,6 +92,108 @@ func runProbeHello(args []string) int {
 	}
 	fmt.Printf("REASON=%s\n", reason.String())
 	return 0
+}
+
+// envFlags collects repeated --env NAME=value flags into one map.
+type envFlags map[string]string
+
+// String renders the collected values for the flag package's usage message.
+func (e envFlags) String() string {
+	entries := make([]string, 0, len(e))
+	for name, value := range e {
+		entries = append(entries, name+"="+value)
+	}
+	return strings.Join(entries, ",")
+}
+
+// Set records one NAME=value pair. The first "=" splits the pair, so a value
+// may contain "=".
+func (e envFlags) Set(pair string) error {
+	name, value, ok := strings.Cut(pair, "=")
+	if !ok || name == "" {
+		return fmt.Errorf("want NAME=value, got %q", pair)
+	}
+	e[name] = value
+	return nil
+}
+
+// runOneshotSession runs one simulated Claude Code session of the account that
+// invokes the command, starts an MCP server process, calls list_agents and
+// prints the ToolResult as JSON. The account's own "$HOME/.claude" is
+// the Claude configuration directory, so the session record and inbox socket
+// live in that account's home. A tool call that fails is still a successful
+// invocation: it prints the error result and exits 0. Only an infrastructure
+// failure, such as a session that will not start, exits 1.
+func runOneshotSession(args []string) int {
+	flags := flag.NewFlagSet("oneshot-session", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	name := flags.String("name", "", "session name")
+	binary := flags.String("bin", "", "agent-peer binary")
+	env := envFlags{}
+	flags.Var(env, "env", "NAME=value added to the MCP server environment (repeatable)")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if *name == "" || *binary == "" || flags.NArg() > 0 {
+		fmt.Fprintln(os.Stderr, "e2e-node: oneshot-session needs --name and --bin")
+		return 2
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "e2e-node: oneshot-session: finding the account home: %v\n", err)
+		return 1
+	}
+	tb := node.NewTB("oneshot-session", "")
+	defer tb.Close()
+
+	session, err := node.StartSession(context.Background(), tb,
+		node.BaseEnv{Home: home, Path: os.Getenv("PATH")},
+		node.MCPCommand{Path: *binary, Args: []string{"mcp"}},
+		node.SessionSpec{Name: *name, StartMCP: true, Env: env})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "e2e-node: oneshot-session: starting the session: %v\n", err)
+		return 1
+	}
+
+	// The MCP server reports its background connection loop before it reports
+	// the loop's first result. Repeat the call while that starting state is
+	// showing, so the printed result carries the actual outcome, and make the
+	// ordinary path one call.
+	result, err := oneshotListAgents(context.Background(), session)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "e2e-node: oneshot-session: calling list_agents: %v\n", err)
+		return 1
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+		fmt.Fprintf(os.Stderr, "e2e-node: oneshot-session: writing the result: %v\n", err)
+		return 1
+	}
+	if err := session.End(); err != nil {
+		fmt.Fprintf(os.Stderr, "e2e-node: oneshot-session: ending the session: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// oneshotListAgents calls list_agents once and, while the MCP server says its
+// connection loop is still starting, calls it again every 50ms for up to
+// oneshotReadyBound. A tool error that is not the starting state is a result,
+// not a failure of the command.
+func oneshotListAgents(ctx context.Context, session *node.Session) (node.ToolResult, error) {
+	deadline := time.Now().Add(oneshotReadyBound)
+	for {
+		callCtx, cancel := context.WithTimeout(ctx, oneshotCallBound)
+		result, err := session.Call(callCtx, "list_agents", nil)
+		cancel()
+		if err != nil {
+			return node.ToolResult{}, err
+		}
+		if !result.IsError || !strings.Contains(result.Text, oneshotStartingText) || !time.Now().Before(deadline) {
+			return result, nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // runServe carries out one serve invocation.

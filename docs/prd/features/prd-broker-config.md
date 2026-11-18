@@ -180,8 +180,8 @@ Broker 必须以结构化格式输出运行日志。
 用户级 Broker 必须拒绝其他账户的登记与调用。
 
 - **验收**：账户甲运行着一个用户级 Broker；账户乙的会话的 MCP 服务进程和账户乙在终端执行的命令都连不上它，甲的 Broker 上不出现乙的 Agent，乙也读不到它的状态、配置和审计日志。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/accounts_test.go` 的 `TestOtherAccountRejected/REQ-broker-config-019 filesystem layer`、`TestOtherAccountRejected/REQ-broker-config-019 credential layer`、`TestOtherAccountRejected/REQ-broker-config-019 account paths`
 
 ### REQ-broker-config-020
 
