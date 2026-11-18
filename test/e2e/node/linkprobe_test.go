@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
@@ -110,12 +111,49 @@ func startLinkTestServer(t *testing.T, srv linkpb.LinkServer) string {
 	if err != nil {
 		t.Fatalf("node: listening for the Link stand-in: %v", err)
 	}
-	server := grpc.NewServer(grpc.Creds(serverTLS(cert)))
+	server := grpc.NewServer(grpc.Creds(probeServerCreds{cfg: &tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAnyClientCert,
+		// The relay's upstream client goes through gRPC's own TLS
+		// credentials, which require h2 when the server offers ALPN. The
+		// probe offers none, so its handshake leaves the protocol empty.
+		NextProtos: []string{"h2"},
+	}}))
 	linkpb.RegisterLinkServer(server, srv)
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 	return listener.Addr().String()
 }
+
+// probeServerCreds mirrors the product Link server: it completes the TLS
+// handshake itself and does not require an ALPN protocol. gRPC's own server
+// credentials would reject the probe, which deliberately offers no h2.
+type probeServerCreds struct{ cfg *tls.Config }
+
+func (c probeServerCreds) ServerHandshake(raw net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	tc := tls.Server(raw, c.cfg)
+	if err := tc.HandshakeContext(context.Background()); err != nil {
+		_ = tc.Close()
+		return nil, nil, err
+	}
+	return tc, credentials.TLSInfo{
+		State:          tc.ConnectionState(),
+		CommonAuthInfo: credentials.CommonAuthInfo{SecurityLevel: credentials.PrivacyAndIntegrity},
+	}, nil
+}
+
+func (probeServerCreds) ClientHandshake(context.Context, string, net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	return nil, nil, errors.New("node: probe server credentials cannot dial")
+}
+
+func (probeServerCreds) Info() credentials.ProtocolInfo {
+	return credentials.ProtocolInfo{SecurityProtocol: "tls"}
+}
+
+func (c probeServerCreds) Clone() credentials.TransportCredentials { return c }
+
+func (probeServerCreds) OverrideServerName(string) error { return nil }
 
 func TestProbeHelloGetsReject(t *testing.T) {
 	srv := &linkTestServer{rejectReason: linkpb.RejectReason_REJECT_REASON_NOT_A_PEER}

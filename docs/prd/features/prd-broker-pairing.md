@@ -69,48 +69,48 @@ Agent 必须能让本机 Broker 生成一次性配对密钥。
 一次性配对密钥必须在生成 10 分钟后失效。
 
 - **验收**：生成后第 9 分钟用它配对成功；另生成一个，在第 11 分钟用它配对，返回密钥已过期的错误。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/pairing_keys_test.go` 的 `TestPairingKeys/REQ-broker-pairing-006 key within validity`；时限部分由 `internal/pairing/pairkey_expired_test.go` 的 `TestREQBrokerPairing006_NineMinutesSucceedsElevenMinutesExpired` 与 `internal/pairing/pairkey_test.go` 的 `TestREQBrokerPairing006_KeyExpiredAtElevenMinutes` 覆盖
 
 ### REQ-broker-pairing-007
 
 一次性配对密钥必须在成功完成一次配对后失效。
 
 - **验收**：用同一个一次性配对密钥先后从两台主机向生成它的 Broker 发起配对，先发起的成功，后发起的返回密钥无效的错误。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/pairing_keys_test.go` 的 `TestPairingKeys/REQ-broker-pairing-007 one-time key used once`
 
 ### REQ-broker-pairing-008
 
 配置文件中没有设置预置静态密钥时，只有有效的一次性配对密钥能使配对成功。
 
 - **验收**：以默认配置启动的 Broker 没有设置预置静态密钥，另一台主机以任意不是有效一次性配对密钥的字符串作为密钥向它发起配对，都返回密钥无效的错误，双方都不保存对方的身份。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/pairing_keys_test.go` 的 `TestPairingKeys/REQ-broker-pairing-008 no static key`
 
 ### REQ-broker-pairing-009
 
 配置文件中设置了预置静态密钥后，它必须可以用于任意多次配对，且不随时间失效。
 
 - **验收**：在 Broker 的配置文件中设置预置静态密钥，三台不同的主机先后凭本机 Broker 的地址和该密钥配对，全部成功；设置 11 分钟之后，第四台主机凭它配对，同样成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/pairing_keys_test.go` 的 `TestPairingKeys/REQ-broker-pairing-009 static key many times`；“11 分钟后仍可用”由 `internal/pairing/pairkey_test.go` 的 `TestREQBrokerPairing009_StaticKeyNotExpired` 覆盖
 
 ### REQ-broker-pairing-010
 
 Agent 必须能凭对方的地址和配对密钥，让本机 Broker 向对方发起配对。
 
 - **验收**：以对方的地址和一次性配对密钥调用，返回配对成功以及对方的别名与指纹；以对方的地址和对方配置的预置静态密钥调用，结果相同；把展示的地址原文（`主机名(地址:端口)`）原样作为地址，结果相同，展示中的主机名不用于连接；密钥仍单独传入。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/journey_pair_test.go` 的 `TestJourneyPairBrokers`；`test/e2e/pairing_keys_test.go` 的 `TestPairingKeys/REQ-broker-pairing-010 static key and plain address`
 
 ### REQ-broker-pairing-011
 
 配对密钥错误、过期或已被使用时，配对必须失败并说明原因，双方都不得保存对方的身份。
 
 - **验收**：以错误的密钥发起配对，调用返回说明密钥无效的错误；之后双方列出对端的结果都不含对方。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/pairing_keys_test.go` 的 `TestPairingKeys/REQ-broker-pairing-011 wrong key stores nothing`
 
 ### REQ-broker-pairing-012
 
@@ -141,8 +141,8 @@ Broker 之间传输的全部内容必须加密。
 来自既未持有有效配对密钥，也不是对端的 Broker 的连接请求必须被拒绝。
 
 - **验收**：一个未配对的 Broker 不带密钥连接，连接被拒绝，被连接方列出对端的结果不含它。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/pairing_keys_test.go` 的 `TestPairingKeys/REQ-broker-pairing-015 unpaired without key rejected`
 
 ### REQ-broker-pairing-016
 
@@ -221,8 +221,8 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 系统不得生成预置静态密钥，生成配对密钥的操作只产生一次性配对密钥。
 
 - **验收**：在没有设置预置静态密钥的 Broker 上多次生成配对密钥，每次得到的都是带失效时间的一次性配对密钥，Broker 的配置文件与 Broker 保存在磁盘上的数据中都没有出现可重复使用的配对密钥；在配置文件中设置预置静态密钥后，凭它配对成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/pairing_keys_test.go` 的 `TestPairingKeys/REQ-broker-pairing-025 never generates a static key`
 
 ### REQ-broker-pairing-026
 
@@ -253,8 +253,8 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 长度不足 16 个字符或超过 128 个字符的预置静态密钥必须被拒绝，Broker 不得以它启动，运行期间改成这样的值时也不得采用。
 
 - **验收**：在配置文件中把预置静态密钥设为 15 个字符后启动 Broker，启动失败，错误指出这一配置项；设为 16 个字符或 128 个字符时都能启动，并能凭它配对。运行期间在配置文件中把它改为 129 个字符，Broker 不采用新值，凭原来的密钥配对仍成功，凭新值配对失败。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/pairing_keys_test.go` 的 `TestPairingKeys/REQ-broker-pairing-029 static key length`
 
 ### REQ-broker-pairing-030
 
@@ -285,8 +285,8 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 把配置文件中的预置静态密钥改为另一个合法的值后，Broker 必须在不重启的情况下（`REQ-broker-config-017`）只接受新值，凭旧值的配对必须被拒绝。
 
 - **验收**：配置文件中设有预置静态密钥，并已有一个凭它配对的对端；把它改为另一个合法的值，不重启 Broker。随后分别凭旧值与新值发起配对，凭旧值的被拒绝，返回的原因是密钥无效，凭新值的成功；更换之前已配对的对端仍是对端，链路不受影响。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/pairing_keys_test.go` 的 `TestPairingKeys/REQ-broker-pairing-033 replace static key`
 
 ### REQ-broker-pairing-034
 
