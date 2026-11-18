@@ -531,9 +531,9 @@ func TestScenarioUnreachableNeverDelivered(t *testing.T) {
 	settings.RequestTimeout = 200 * time.Millisecond
 	b.settings.SetSettings(settings)
 
-	requireScenarioNotSent(t, "dialer", a.send(sender, "frontend@hostB", "lost-original"),
+	_ = requireScenarioNotSent(t, "dialer", a.send(sender, "frontend@hostB", "lost-original"),
 		localpb.ErrorCode_ERROR_CODE_PEER_UNREACHABLE)
-	requireScenarioNotSent(t, "acceptor", b.send(replier, "api-worker@hostA", "lost-original"),
+	_ = requireScenarioNotSent(t, "acceptor", b.send(replier, "api-worker@hostA", "lost-original"),
 		localpb.ErrorCode_ERROR_CODE_PEER_UNREACHABLE)
 
 	// A sentinel proves the link works afterwards; the abandoned message must
@@ -617,7 +617,7 @@ func TestScenarioNoForwarding(t *testing.T) {
 		Topics: []string{"t1"},
 	})
 
-	requireScenarioNotSent(t, "forward", a.send(caller, "conly@hostB", "hello"),
+	_ = requireScenarioNotSent(t, "forward", a.send(caller, "conly@hostB", "hello"),
 		localpb.ErrorCode_ERROR_CODE_NOT_FOUND)
 	if got := len(n.net.requests(a.fp, b.fp)); got != 1 {
 		t.Fatalf("requests a -> b = %d, want 1: the message must reach the Broker the sender picked", got)
@@ -641,7 +641,7 @@ func TestScenarioNoCommonTopic(t *testing.T) {
 	caller, _ := a.addAgent("api-worker", "ta")
 	_, frontend := b.addAgent("frontend", "tb")
 
-	requireScenarioNotSent(t, "no-topic", a.send(caller, "frontend@hostB", "hello"),
+	_ = requireScenarioNotSent(t, "no-topic", a.send(caller, "frontend@hostB", "hello"),
 		localpb.ErrorCode_ERROR_CODE_NOT_VISIBLE)
 	if got := len(n.net.requests(a.fp, b.fp)); got != 0 {
 		t.Fatalf("requests = %d, want 0: visibility is decided before sending", got)
@@ -676,7 +676,7 @@ func TestScenarioTooLargeNoRequest(t *testing.T) {
 	}
 
 	before := len(n.net.requests(a.fp, b.fp))
-	requireScenarioNotSent(t, "over-limit", a.send(sender, "frontend@hostB", atLimit+"x"),
+	_ = requireScenarioNotSent(t, "over-limit", a.send(sender, "frontend@hostB", atLimit+"x"),
 		localpb.ErrorCode_ERROR_CODE_TOO_LARGE)
 	if after := len(n.net.requests(a.fp, b.fp)); after != before {
 		t.Fatalf("requests after an oversized message = %d, want %d", after, before)

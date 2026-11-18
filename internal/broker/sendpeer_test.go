@@ -423,7 +423,7 @@ func TestSendPeerBackoffDoubles(t *testing.T) {
 	})
 
 	err := f.send(f.caller("api-worker", "1a2b3c"), "frontend@hostB", "hello")
-	requireSendPeerError(t, err)
+	_ = requireSendPeerError(t, err)
 
 	mu.Lock()
 	defer mu.Unlock()
