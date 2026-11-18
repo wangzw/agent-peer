@@ -26,6 +26,15 @@ var testBinary string
 // the test harness. It is also the backstop after the SIGKILL fallback in stop.
 const waitDelay = 3 * time.Second
 
+// maxRuntimeRootBytes leaves room for the account directory and broker.sock
+// under the runtime root inside the Unix sun_path limit.
+const maxRuntimeRootBytes = 60
+
+// maxSocketPathBytes is the shortest sockaddr_un.sun_path across the supported
+// platforms. macOS sizes sun_path at 104 bytes and Linux at 108, both including
+// the trailing NUL, so a path may use at most 103 bytes.
+const maxSocketPathBytes = 103
+
 // TestMain builds the binary every subprocess test runs. The build uses
 // os.Environ because go build is a tool here, not the process under test; the
 // process under test gets a clean environment from sandbox.env.
@@ -71,7 +80,7 @@ type sandbox struct {
 func newSandbox(t *testing.T) *sandbox {
 	t.Helper()
 
-	root, err := os.MkdirTemp("", "ap-")
+	root, err := sandboxRoot()
 	if err != nil {
 		t.Fatalf("create runtime root: %v", err)
 	}
@@ -85,6 +94,31 @@ func newSandbox(t *testing.T) *sandbox {
 	sb := &sandbox{t: t, root: root, home: t.TempDir()}
 	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	return sb
+}
+
+// sandboxRoot returns a runtime root short enough for the Unix socket paths
+// under it. A long TMPDIR, which macOS uses by default, leaves too few bytes
+// for the account directory and broker.sock, so a too-long root falls back to
+// a fresh directory under /tmp.
+func sandboxRoot() (string, error) {
+	root, err := os.MkdirTemp("", "ap-")
+	if err != nil {
+		return "", err
+	}
+	if len(root) <= maxRuntimeRootBytes {
+		return root, nil
+	}
+	_ = os.RemoveAll(root)
+
+	root, err = os.MkdirTemp("/tmp", "ap-")
+	if err != nil {
+		return "", err
+	}
+	if len(root) > maxRuntimeRootBytes {
+		_ = os.RemoveAll(root)
+		return "", fmt.Errorf("temporary runtime root %q is longer than %d bytes", root, maxRuntimeRootBytes)
+	}
+	return root, nil
 }
 
 // env is the child environment. It starts from nothing rather than

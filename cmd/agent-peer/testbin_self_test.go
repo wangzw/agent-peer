@@ -97,6 +97,36 @@ func TestOccupiedPortRefusesBind(t *testing.T) {
 	_ = l.Close()
 }
 
+// TestSandboxShortRootUnderLongTMPDIR checks that a long TMPDIR cannot push the
+// runtime root past the room left for the Unix socket path. macOS sets TMPDIR
+// to a long per-user directory, and a root under it leaves too few bytes for
+// the account directory and broker.sock.
+func TestSandboxShortRootUnderLongTMPDIR(t *testing.T) {
+	base := t.TempDir()
+	long := filepath.Join(base, strings.Repeat("very-long-temp-root-", 4))
+	if err := os.MkdirAll(long, 0o700); err != nil {
+		t.Fatalf("create long TMPDIR: %v", err)
+	}
+	t.Setenv("TMPDIR", long)
+
+	sb := newSandbox(t)
+
+	if len(sb.root) > maxRuntimeRootBytes {
+		t.Fatalf("runtime root %q is %d bytes, want at most %d", sb.root, len(sb.root), maxRuntimeRootBytes)
+	}
+	if strings.HasPrefix(sb.root, long) {
+		t.Fatalf("runtime root %q still sits under the long TMPDIR %q", sb.root, long)
+	}
+	for _, path := range []string{
+		filepath.Join(sb.root, strconv.Itoa(os.Geteuid()), "broker.sock"),
+		filepath.Join(sb.root, "root", "broker.sock"),
+	} {
+		if len(path) > maxSocketPathBytes {
+			t.Fatalf("socket path %q is %d bytes, want at most %d", path, len(path), maxSocketPathBytes)
+		}
+	}
+}
+
 // TestBinaryBuilt checks that TestMain produced a runnable binary. A swallowed
 // build failure would otherwise surface as unrelated errors in every
 // subprocess test.
