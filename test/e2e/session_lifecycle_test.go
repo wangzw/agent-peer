@@ -164,9 +164,13 @@ func TestLocalSessionChanges(t *testing.T) {
 		})
 
 		// Clearing the conversation changes the session identifier, which must
-		// not change the address or the memberships. The window is long enough
-		// for the Broker to reread the changed record several times.
+		// not change the address or the memberships. A status change made after
+		// the identifier change is a barrier: seeing it proves the Broker has
+		// reread the record with the new identifier, so the window below
+		// observes a record it has already processed.
 		clearer.Fake().SetSessionID("after-clear")
+		clearer.Fake().SetBusy(true)
+		lifecycleWaitStatus(t, observer, "clearer", "busy")
 		harness.Consistently(t, 1*time.Second, "clearing the conversation keeps the address and memberships", func() (bool, string) {
 			out, state := lifecycleListAgents(t, observer, nil)
 			if state != "" {
