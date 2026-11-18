@@ -473,11 +473,15 @@ func sessionFramesResult(result node.AgentFrames) SessionFramesResult {
 		frames = append(frames, SessionFrame{
 			Raw:       frame.Raw,
 			Auth:      frame.Auth,
+			AuthRaw:   frame.AuthRaw,
 			MsgID:     frame.MsgID,
+			Type:      frame.Type,
 			FromName:  frame.FromName,
 			From:      frame.From,
 			SessionID: frame.SessionID,
+			Priority:  frame.Priority,
 			Content:   frame.Content,
+			Fields:    frame.Fields,
 		})
 	}
 	return SessionFramesResult{Frames: frames, OK: result.OK}

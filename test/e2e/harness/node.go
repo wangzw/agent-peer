@@ -288,7 +288,7 @@ type sessionBackend interface {
 	restartMCP(t testing.TB)
 	startExtraMCP(t testing.TB)
 	inboxConnections(t testing.TB) int
-	fake() *fakesession.Fake
+	fake() FakeSession
 	end() error
 }
 
@@ -340,8 +340,9 @@ func (s *Session) InboxConnections(t testing.TB) int {
 	return s.impl.inboxConnections(t)
 }
 
-// Fake returns the simulated session.
-func (s *Session) Fake() *fakesession.Fake {
+// Fake returns the simulated session: the real fakesession.Fake on a local
+// node, a control-protocol proxy on a container node.
+func (s *Session) Fake() FakeSession {
 	return s.impl.fake()
 }
 
@@ -349,11 +350,6 @@ func (s *Session) Fake() *fakesession.Fake {
 // inbox and fails the test when none arrives.
 func (s *Session) WaitFrame(t testing.TB, bound time.Duration) fakesession.Frame {
 	t.Helper()
-	// A container session has no local fakesession.Fake; its backend waits
-	// through the node agent instead.
-	if waiter, ok := s.impl.(frameWaiter); ok {
-		return waiter.waitFrame(t, bound)
-	}
 	frame, ok := s.Fake().WaitFrame(bound)
 	if !ok {
 		t.Fatalf("harness: session %s: no inbox frame within %s", s.name, bound)

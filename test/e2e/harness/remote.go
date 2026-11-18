@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -29,13 +28,6 @@ type oracleRemote interface {
 	getConfig(t testing.TB, key string) (*localpb.GetConfigResponse, *localpb.ErrorDetail)
 	audit(t testing.TB, since time.Time, limit uint32) ([]*localpb.AuditEvent, *localpb.ErrorDetail)
 	close()
-}
-
-// frameWaiter is implemented by a session backend that waits for a frame
-// without holding a local fakesession.Fake. The container backend implements
-// it; the local backend keeps going through Fake.
-type frameWaiter interface {
-	waitFrame(t testing.TB, bound time.Duration) fakesession.Frame
 }
 
 // remoteNode drives the node agent of one container over the control socket.
@@ -123,6 +115,12 @@ func (r *remoteNode) startSession(tb testing.TB, spec SessionSpec) *Session {
 			id:     info.ID,
 			client: r.client,
 			tb:     tb,
+			proxy: &remoteFake{
+				tb:     tb,
+				name:   spec.Name,
+				client: r.client,
+				info:   info,
+			},
 		},
 	}
 }
@@ -227,9 +225,7 @@ type remoteSession struct {
 	id     string
 	client *ctl.Client
 	tb     testing.TB
-
-	frameMu    sync.Mutex
-	frameCalls int
+	proxy  *remoteFake
 }
 
 func (s *remoteSession) call(tb testing.TB, tool string, args map[string]any) Result {
@@ -303,52 +299,15 @@ func (s *remoteSession) inboxConnections(tb testing.TB) int {
 	return res.N
 }
 
-// fake is unsupported: the simulated session and its frames live in the
-// container process, so there is no local fakesession.Fake to hand out.
-func (s *remoteSession) fake() *fakesession.Fake {
-	s.tb.Helper()
-	s.tb.Fatalf("harness: session %s: Fake is not available for a session in a container; use WaitFrame for frames", s.name)
-	return nil
+// fake returns the proxy that forwards fake operations to the container's node
+// agent. The session and its frames live in the container process, so the
+// host works through the control protocol rather than a local fakesession.
+func (s *remoteSession) fake() FakeSession {
+	return s.proxy
 }
 
 func (s *remoteSession) end() error {
 	return s.client.End(context.Background(), ctl.SessionIDRequest{ID: s.id})
-}
-
-// waitFrame waits for the next frame the session recorded, walking the frames
-// in arrival order exactly as fakesession.Fake.WaitFrame does.
-func (s *remoteSession) waitFrame(t testing.TB, bound time.Duration) fakesession.Frame {
-	t.Helper()
-	s.frameMu.Lock()
-	s.frameCalls++
-	wanted := s.frameCalls
-	s.frameMu.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), bound+5*time.Second)
-	defer cancel()
-	res, err := s.client.Frames(ctx, ctl.SessionFramesRequest{
-		ID:        s.id,
-		WaitN:     wanted,
-		TimeoutMS: bound.Milliseconds(),
-	})
-	if err != nil {
-		t.Fatalf("harness: session %s: waiting for a frame: %v", s.name, err)
-		return fakesession.Frame{}
-	}
-	if !res.OK || len(res.Frames) < wanted {
-		t.Fatalf("harness: session %s: no inbox frame within %s", s.name, bound)
-		return fakesession.Frame{}
-	}
-	frame := res.Frames[wanted-1]
-	return fakesession.Frame{
-		Raw:       []byte(frame.Raw),
-		Auth:      frame.Auth,
-		MsgID:     frame.MsgID,
-		FromName:  frame.FromName,
-		From:      frame.From,
-		SessionID: frame.SessionID,
-		Content:   frame.Content,
-	}
 }
 
 // remoteOracle calls the five local interface RPCs over /v1/local. Product

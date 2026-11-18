@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
 	"github.com/wangzw/agent-peer/test/e2e/node"
 )
 
@@ -304,7 +303,7 @@ func (s *localSession) inboxConnections(t testing.TB) int {
 	return count
 }
 
-func (s *localSession) fake() *fakesession.Fake { return s.session.Fake() }
+func (s *localSession) fake() FakeSession { return s.session.Fake() }
 
 func (s *localSession) end() error { return s.session.End() }
 

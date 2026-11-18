@@ -76,15 +76,20 @@ type AgentCallResult struct {
 	Elapsed    time.Duration
 }
 
-// AgentFrame is one frame recorded by a simulated session.
+// AgentFrame is one frame recorded by a simulated session. The fields mirror
+// fakesession.Frame so the host-side proxy can reconstruct it.
 type AgentFrame struct {
 	Raw       string
 	Auth      bool
+	AuthRaw   string
 	MsgID     string
+	Type      string
 	FromName  string
 	From      string
 	SessionID string
+	Priority  string
 	Content   string
+	Fields    map[string]any
 }
 
 // AgentFrames is the answer of a frame wait: what was recorded and whether the
@@ -393,11 +398,15 @@ func (a *Agent) frames(sessionID string, waitN int, timeout time.Duration) Agent
 		frames = append(frames, AgentFrame{
 			Raw:       string(frame.Raw),
 			Auth:      frame.Auth,
+			AuthRaw:   string(frame.AuthRaw),
 			MsgID:     frame.MsgID,
+			Type:      frame.Type,
 			FromName:  frame.FromName,
 			From:      frame.From,
 			SessionID: frame.SessionID,
+			Priority:  frame.Priority,
 			Content:   frame.Content,
+			Fields:    frame.Fields,
 		})
 	}
 	return AgentFrames{Frames: frames, OK: ok}
@@ -437,7 +446,7 @@ func (a *Agent) fake(sessionID, op string, arg any) {
 	case "release":
 		fake.Release()
 	default:
-		a.tb.Fatalf("node: unknown session operation %q", op)
+		a.tb.Fatalf("node: unsupported session operation %q", op)
 	}
 }
 

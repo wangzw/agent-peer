@@ -77,13 +77,17 @@ type SessionFramesRequest struct {
 
 // SessionFrame is one frame recorded by a simulated session.
 type SessionFrame struct {
-	Raw       string `json:"raw,omitempty"`
-	Auth      bool   `json:"auth,omitempty"`
-	MsgID     string `json:"msg_id,omitempty"`
-	FromName  string `json:"from_name,omitempty"`
-	From      string `json:"from,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	Content   string `json:"content,omitempty"`
+	Raw       string         `json:"raw,omitempty"`
+	Auth      bool           `json:"auth,omitempty"`
+	AuthRaw   string         `json:"auth_raw,omitempty"`
+	MsgID     string         `json:"msg_id,omitempty"`
+	Type      string         `json:"type,omitempty"`
+	FromName  string         `json:"from_name,omitempty"`
+	From      string         `json:"from,omitempty"`
+	SessionID string         `json:"session_id,omitempty"`
+	Priority  string         `json:"priority,omitempty"`
+	Content   string         `json:"content,omitempty"`
+	Fields    map[string]any `json:"fields,omitempty"`
 }
 
 // SessionFramesResult is the answer of a frame wait.
