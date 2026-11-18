@@ -24,4 +24,9 @@ type storedRecord struct {
 	version uint64
 	expires time.Time
 	source  Fingerprint // link it was accepted from; zero means locally issued
+
+	// revokePending marks a locally issued record whose revocation could not be
+	// signed. The maintenance loop retries it until a revocation replaces this
+	// record. It is not persisted.
+	revokePending bool
 }
