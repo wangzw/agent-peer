@@ -45,14 +45,21 @@ func Set(actor Actor, key string, v Value) (old Value, err error)
 // Secret 返回密钥类配置项的取值，未设置时为空；只供 pairing 在握手查找密钥时调用。
 func Secret(key string) string
 
-// Advertised 返回本次运行的对外地址列表，每项都是直连的地址项，形如 "主机:端口"，至多 8 项；不监听时为空。
-func Advertised() []string
+// AdvertisedAddr 是对外地址列表中的一项。Kind 是地址种类，决定其他 Broker 怎样经这一项连到本 Broker；
+// Addr 是该种类下的地址写法。本版本产生的 Kind 只有 "direct"，此时 Addr 为 "主机:端口"，IPv6 主机带方括号。
+type AdvertisedAddr struct {
+    Kind string
+    Addr string
+}
+
+// Advertised 返回本次运行的对外地址列表，至多 8 项；不监听时为空。列表中的每一项都是直连的地址项。
+func Advertised() []AdvertisedAddr
 
 // Hostname 返回系统主机名，其中不属于别名字符集的字符替换为 "-"。
 func Hostname() string
 
 // SubscribeAdvertised 注册对外地址列表的变更通知；各次通知按发生的顺序逐个送达。
-func SubscribeAdvertised(onChange func(old, new []string))
+func SubscribeAdvertised(onChange func(old, new []AdvertisedAddr))
 
 // Actor 是一次修改或一个事件的发起者：系统账户，以及经 Agent 发起时的 Agent 地址。
 type Actor struct {
@@ -106,6 +113,12 @@ func ReadAudit(since time.Time) ([]Event, error)
 
 `broker.listen` 的默认值只是默认配置中的一个取值，代码不对这个端口做任何特殊处理。一次性配对密钥的有效期、名录记录的有效期和续签间隔由需求固定（`REQ-broker-pairing-006`、`REQ-broker-discovery-007`、`REQ-broker-discovery-008`），不是配置键；消息编码成 inbox 帧后的字节数上限 1 000 000 同样固定（`REQ-agent-messaging-026`），Agent 曾用名的保留时间 10 分钟是常量，两者见 [broker](design-broker.md)。表中其余默认值是实现选定的初值。
 
+### SetConfig 的取值
+
+`SetConfig` 请求中的 `value` 是一个字符串，原样携带模型给出的文字，不按键的类型预先编码。Broker 按该键在配置键表中的类型解析它：字符串、布尔、整数与时长键的取值是一个 YAML 标量，例如 `10m`、`true`；字符串列表键的取值是一个 YAML 流式序列（flow sequence），例如 `[a, b]`。解析结果转成 `Value` 后交给 `Set`；字符串不能按该键的类型解析时，调用以 `invalid_argument` 失败，错误信息指出该键与原因，不改动任何状态。
+
+`GetConfig` 的应答、`SetConfig` 的应答与审计记录中的取值仍用 `ConfigValue` 表示。`Set` 接收解析后的 `Value`，不接收字符串。
+
 ## 依赖
 
 `config` 不引用本项目的其他包，符合模块依赖图的方向。
@@ -143,7 +156,7 @@ func ReadAudit(since time.Time) ([]Event, error)
 
 表外的组合非法，例如监听特定地址而 `broker.advertise` 只有端口，或不监听而 `broker.advertise` 非空；不监听时 `broker.advertise_extra` 也必须为空（`REQ-broker-config-032`）。组合按本次运行生效的监听地址判定，监听地址来自启动参数时以它为准。`broker.advertise_extra` 中不带端口的项取对外地址所用的端口：`broker.advertise` 写出了端口时取它，否则取监听端口。主机是 IP 地址或域名，IPv6 地址写成带方括号的形式。列表中重复的项只保留首次出现的。
 
-对外地址列表中的每一项有一个种类，种类决定其他 Broker 怎样经这一项连到本 Broker。本版本认识的种类只有直连，写作 `主机:端口`，表示可以直接向该地址建立连接；本包得出的列表只含直连的项。`broker.advertise` 与 `broker.advertise_extra` 中写出本版本不认识的种类的项属于非法配置，与组合非法同样处理。种类的具体表示法属于实现。其他 Broker 告知的列表与名片所载的列表中出现不认识的种类时怎样处理，见 [link](design-link.md)、[pairing](design-pairing.md) 与 [directory](design-directory.md)。
+对外地址列表中的每一项有一个种类，种类决定其他 Broker 怎样经这一项连到本 Broker。Go 接口以 `AdvertisedAddr` 表示一项，`Kind` 是种类，`Addr` 是该种类下的地址写法。本版本产生的种类只有直连，取值为 `direct`，其地址写作 `主机:端口`，表示可以直接向该地址建立连接，IPv6 主机带方括号；本包得出的列表只含直连的项。`broker.advertise` 与 `broker.advertise_extra` 中写出本版本不认识的种类的项属于非法配置，与组合非法同样处理。线路上种类的具体表示法属于实现。其他 Broker 告知的列表与名片所载的列表中出现不认识的种类时怎样处理，见 [link](design-link.md)、[pairing](design-pairing.md) 与 [directory](design-directory.md)。
 
 默认路由所在接口的地址：度量值最小的默认 IPv4 路由所在接口上的 IPv4 地址，不含 `169.254.0.0/16` 中的链路本地地址；存在默认 IPv6 路由时，另加度量值最小的那条所在接口上的全局单播 IPv6 地址，不含链路本地地址与临时地址。没有默认路由时这部分为空。主机接入的其他网络上的地址不列入。
 
@@ -231,6 +244,7 @@ func ReadAudit(since time.Time) ([]Event, error)
 | 启动时配置文件无法解析或含不合法的值 | 拒绝启动；无法解析时错误信息只给出行号与列号，不引用文件内容；含不合法的值时指出键与原因，不含密钥类配置项的取值 |
 | 启动时监听地址与对外地址配置的组合非法，对外地址的配置超过 8 项，或写出本版本不认识的地址种类 | 拒绝启动；组合非法时错误信息同时指出 `broker.listen` 与 `broker.advertise` 或 `broker.advertise_extra`，超过 8 项时指出 `broker.advertise_extra`，种类不认识时指出写出该项的键 |
 | 运行时目录或账户锁所在目录的属主、权限不符 | 拒绝启动，错误信息指出目录 |
+| `SetConfig` 请求中的 `value` 无法按该键的类型解析 | 返回 `invalid_argument`，指出该键与原因，不改动任何状态 |
 | `Set` 的键不存在，值不合法，或校验函数拒绝 | 返回 `invalid_argument`，不改动任何状态 |
 | `Set` 修改密钥类配置项 | 返回 `invalid_argument`，说明该项只能在配置文件中设置，不改动任何状态 |
 | `Set` 使监听地址与对外地址配置的组合非法，使对外地址的配置超过 8 项，或写出本版本不认识的地址种类 | 返回 `invalid_argument`，说明与哪一项冲突或哪一项的种类不认识，不改动任何状态 |

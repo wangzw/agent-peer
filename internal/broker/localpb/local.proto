@@ -1,0 +1,350 @@
+syntax = "proto3";
+
+package internal.broker.localpb;
+
+option go_package = "github.com/wangzw/agent-peer/internal/broker/localpb;localpb";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+service Local {
+  rpc Hello(HelloRequest) returns (HelloResponse);
+  rpc Register(stream RegisterRequest) returns (stream RegisterResponse);
+  rpc ListAgents(ListAgentsRequest) returns (ListAgentsResponse);
+  rpc Send(SendRequest) returns (SendResponse);
+  rpc JoinTopic(JoinTopicRequest) returns (JoinTopicResponse);
+  rpc LeaveTopic(LeaveTopicRequest) returns (LeaveTopicResponse);
+  rpc ListTopics(ListTopicsRequest) returns (ListTopicsResponse);
+  rpc ListBrokers(ListBrokersRequest) returns (ListBrokersResponse);
+  rpc Connect(ConnectRequest) returns (ConnectResponse);
+  rpc Disconnect(DisconnectRequest) returns (DisconnectResponse);
+  rpc CreatePairingKey(CreatePairingKeyRequest) returns (CreatePairingKeyResponse);
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  rpc SetConfig(SetConfigRequest) returns (SetConfigResponse);
+  rpc Status(StatusRequest) returns (StatusResponse);
+  rpc Audit(AuditRequest) returns (stream AuditEvent);
+}
+
+message HelloRequest {
+  uint32 protocol_version = 1;
+}
+
+message HelloResponse {
+  uint32 protocol_version = 1;
+}
+
+message RegisterRequest {
+  string inbox_socket_path = 1;
+  string claude_config_dir = 2;
+}
+
+message RegisterResponse {
+  oneof event {
+    RegistrationComplete registration_complete = 1;
+    RegistrationProblem not_registered = 2;
+    AgentChangedEvent agent_changed = 3;
+  }
+}
+
+message RegistrationComplete {
+  string agent_id = 1;
+  string agent_address = 2;
+  bool auto_join = 3;
+}
+
+message RegistrationProblem {
+  NotRegisteredReason reason = 1;
+}
+
+message AgentChangedEvent {
+  string agent_id = 1;
+  string agent_address = 2;
+  AgentStatus status = 3;
+  string previous_name = 4;
+}
+
+enum NotRegisteredReason {
+  NOT_REGISTERED_REASON_UNSPECIFIED = 0;
+  NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND = 1;
+  NOT_REGISTERED_REASON_NAME_UNUSABLE = 2;
+  NOT_REGISTERED_REASON_SOCKET_NOT_OWNED = 3;
+  NOT_REGISTERED_REASON_SOCKET_PATH_MISSING = 4;
+}
+
+message ListAgentsRequest {
+  string agent_id = 1;
+  string topic = 2;
+  string broker = 3;
+  string name = 4;
+}
+
+message ListAgentsResponse {
+  string self_address = 1;
+  repeated AgentEntry agents = 2;
+}
+
+message AgentEntry {
+  string address = 1;
+  repeated string shared_topics = 2;
+  AgentStatus status = 3;
+  string previous_name = 4;
+}
+
+enum AgentStatus {
+  // The status is unknown.
+  AGENT_STATUS_UNSPECIFIED = 0;
+  AGENT_STATUS_IDLE = 1;
+  AGENT_STATUS_BUSY = 2;
+  AGENT_STATUS_WAITING = 3;
+  AGENT_STATUS_SHELL = 4;
+}
+
+message SendRequest {
+  string agent_id = 1;
+  string to_address = 2;
+  string message = 3;
+}
+
+message SendResponse {}
+
+message JoinTopicRequest {
+  string agent_id = 1;
+  string name = 2;
+  bool is_public = 3;
+  string description = 4;
+}
+
+message JoinTopicResponse {
+  repeated string topics = 1;
+}
+
+message LeaveTopicRequest {
+  string agent_id = 1;
+  string name = 2;
+}
+
+message LeaveTopicResponse {
+  repeated string topics = 1;
+}
+
+message ListTopicsRequest {
+  string agent_id = 1;
+}
+
+message ListTopicsResponse {
+  repeated string joined_topics = 1;
+  repeated PublicTopic public_topics = 2;
+}
+
+message PublicTopic {
+  string name = 1;
+  string description = 2;
+}
+
+message ListBrokersRequest {}
+
+message ListBrokersResponse {
+  repeated BrokerInfo brokers = 1;
+}
+
+message BrokerInfo {
+  string alias = 1;
+  bytes fingerprint = 2;
+  repeated AdvertisedAddress advertised_addresses = 3;
+  bool is_peer = 4;
+  BrokerStatus status = 5;
+  PeerRole role = 6;
+  string status_detail = 7;
+  LinkState link_state = 8;
+}
+
+enum BrokerStatus {
+  BROKER_STATUS_UNSPECIFIED = 0;
+  BROKER_STATUS_CONNECTED = 1;
+  BROKER_STATUS_CONNECTABLE = 2;
+  BROKER_STATUS_NOT_DIRECTLY_REACHABLE = 3;
+}
+
+enum PeerRole {
+  PEER_ROLE_UNSPECIFIED = 0;
+  PEER_ROLE_DIALER = 1;
+  PEER_ROLE_ACCEPTOR = 2;
+}
+
+enum LinkState {
+  LINK_STATE_UNSPECIFIED = 0;
+  LINK_STATE_DIALING = 1;
+  LINK_STATE_WAITING = 2;
+  LINK_STATE_HANDSHAKING = 3;
+  LINK_STATE_ESTABLISHED = 4;
+  LINK_STATE_BACKOFF = 5;
+  LINK_STATE_REJECTED = 6;
+}
+
+message ConnectRequest {
+  string address = 1;
+  string key = 2;
+  string local_alias = 3;
+  string agent_id = 4;
+}
+
+message ConnectResponse {
+  string alias = 1;
+  bytes fingerprint = 2;
+  string shown_host = 3;
+  repeated Warning warnings = 4;
+}
+
+message Warning {
+  WarningKind kind = 1;
+  string message = 2;
+}
+
+enum WarningKind {
+  WARNING_KIND_UNSPECIFIED = 0;
+  WARNING_KIND_FINGERPRINT_MISMATCH = 1;
+}
+
+message DisconnectRequest {
+  string broker = 1;
+  string agent_id = 2;
+}
+
+message DisconnectResponse {}
+
+message CreatePairingKeyRequest {
+  string agent_id = 1;
+}
+
+message CreatePairingKeyResponse {
+  string key = 1;
+  google.protobuf.Timestamp expires_at = 2;
+  repeated string shown_addresses = 3;
+}
+
+message GetConfigRequest {
+  string key = 1;
+}
+
+message GetConfigResponse {
+  repeated ConfigEntry entries = 1;
+}
+
+message ConfigEntry {
+  string key = 1;
+  ConfigValue value = 2;
+}
+
+message ConfigValue {
+  oneof value {
+    string string_value = 1;
+    bool bool_value = 2;
+    int64 int_value = 3;
+    google.protobuf.Duration duration_value = 4;
+    StringList string_list_value = 5;
+    bool secret_is_set = 6;
+  }
+}
+
+message StringList {
+  repeated string values = 1;
+}
+
+message SetConfigRequest {
+  string key = 1;
+  // Raw text as given by the model. The Broker parses it as a YAML scalar or
+  // flow sequence according to the key's type.
+  string value = 2;
+  string agent_id = 3;
+}
+
+message SetConfigResponse {
+  ConfigValue old_value = 1;
+  ConfigValue new_value = 2;
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+  repeated AgentStatusEntry agents = 1;
+  repeated BrokerInfo peers = 2;
+}
+
+message AgentStatusEntry {
+  string agent_id = 1;
+  string account = 2;
+  string address = 3;
+  repeated string topics = 4;
+  AgentStatus status = 5;
+  string previous_name = 6;
+}
+
+message AuditRequest {
+  google.protobuf.Timestamp since = 1;
+  // Maximum number of events to return. A non-zero limit returns the newest N
+  // events; 0 means no limit.
+  uint32 limit = 2;
+}
+
+message AuditEvent {
+  google.protobuf.Timestamp time = 1;
+  AuditEventKind event = 2;
+  string actor = 3;
+  string account = 4;
+  PeerRef peer = 5;
+  string key = 6;
+  ConfigValue old_value = 7;
+  ConfigValue new_value = 8;
+  uint64 count = 9;
+  string detail = 10;
+}
+
+enum AuditEventKind {
+  AUDIT_EVENT_KIND_UNSPECIFIED = 0;
+  AUDIT_EVENT_KIND_CONFIG_SET = 1;
+  AUDIT_EVENT_KIND_CONFIG_FILE_CHANGED = 2;
+  AUDIT_EVENT_KIND_PAIRING_KEY_CREATED = 3;
+  AUDIT_EVENT_KIND_PAIRING_SUCCEEDED = 4;
+  AUDIT_EVENT_KIND_PAIRING_FAILED = 5;
+  AUDIT_EVENT_KIND_LINK_UP = 6;
+  AUDIT_EVENT_KIND_LINK_DOWN = 7;
+  AUDIT_EVENT_KIND_UNPAIRED = 8;
+  AUDIT_EVENT_KIND_CONNECTION_REJECTED = 9;
+  AUDIT_EVENT_KIND_REJECTED_BY_PEER = 10;
+  AUDIT_EVENT_KIND_LOCAL_ALIAS_ASSIGNED = 11;
+}
+
+message PeerRef {
+  bytes fingerprint = 1;
+  string alias = 2;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_INVALID_ARGUMENT = 1;
+  ERROR_CODE_TOO_LARGE = 2;
+  ERROR_CODE_NOT_FOUND = 3;
+  ERROR_CODE_AMBIGUOUS = 4;
+  ERROR_CODE_NOT_VISIBLE = 5;
+  ERROR_CODE_PEER_UNREACHABLE = 6;
+  ERROR_CODE_INBOX_UNWRITABLE = 7;
+  ERROR_CODE_DELIVERY_UNKNOWN = 8;
+  ERROR_CODE_PAIRING_REJECTED = 9;
+  ERROR_CODE_NEEDS_LOCAL_ALIAS = 10;
+  ERROR_CODE_PERMISSION_DENIED = 11;
+  ERROR_CODE_NOT_REGISTERED = 12;
+  ERROR_CODE_VERSION_MISMATCH = 13;
+  ERROR_CODE_QUOTA_EXCEEDED = 14;
+  ERROR_CODE_INTERNAL = 15;
+}
+
+message ErrorDetail {
+  ErrorCode code = 1;
+  string message = 2;
+  bytes originating_broker_fingerprint = 3;
+}
+
+message AdvertisedAddress {
+  string kind = 1;
+  string addr = 2;
+}

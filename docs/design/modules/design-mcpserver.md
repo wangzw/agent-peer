@@ -17,7 +17,7 @@
 ### 非职责
 
 - 不与对端 Broker 通信，由 [link](design-link.md) 负责；不写 inbox socket，不读会话注册表，由 [inbox](design-inbox.md) 负责。Claude Code 的内部信息中，本进程只读取环境变量 `CLAUDE_CODE_MESSAGING_SOCKET` 与 `CLAUDE_CONFIG_DIR`。
-- 不表明自己的账户。调用方的账户由 [broker](design-broker.md) 从本机 socket 另一端进程的凭据（进程凭据）得出；登记时报出的三项只用于查找会话记录。
+- 不表明自己的账户。调用方的账户由 [broker](design-broker.md) 从本机 socket 另一端进程的凭据（进程凭据）得出；登记时报出的两项，即 inbox socket 路径与 Claude Code 配置目录，只用于查找会话记录。
 - 不区分调用来自主会话还是子代理。子代理与主会话共用本进程和同一条连接，以主会话的 Agent 身份行事（`REQ-agent-messaging-035`）。
 - 不判定权限。每个调用能否执行由 `broker` 按调用方账户判定，`mcpserver` 只转述结果。
 - 不拉起系统级 Broker。系统级 Broker 只由管理员安装和启动。
@@ -65,7 +65,7 @@ auto_join: true                               # 设为 false 时不自动加入�
 
 ## 依赖
 
-`mcpserver` 只引用 `broker` 包中本机接口的客户端与消息定义，符合模块依赖图的方向。它用系统的 `git` 命令读取 `origin` 地址。两种形态下运行时目录的位置规则与 [config](design-config.md) 所列的一致，由 `broker` 包中的客户端一并提供。
+`mcpserver` 只引用本机接口的 proto 包 `internal/broker/localpb`，不引用 `broker` 包本身，符合模块依赖图的方向。它用系统的 `git` 命令读取 `origin` 地址。两种形态下运行时目录的位置规则与 [config](design-config.md) 所列的一致，`mcpserver` 按这些规则自行算出本机 socket 的路径，不需要引用 `broker` 包。
 
 ## 核心算法与流程
 
@@ -84,9 +84,9 @@ auto_join: true                               # 设为 false 时不自动加入�
 
 ### 拉起用户级 Broker
 
-启动 `agent-peer broker`，不带 `--system`，作为新的会话组的首进程，并使它的父进程不再是本进程；它的环境中去掉 `CLAUDE_CODE_MESSAGING_SOCKET`，使 Broker 的进程树检查不把它当作会话的后代（见 [inbox](design-inbox.md)）。然后在有限时间内反复重连。多个 MCP 服务进程同时这样做时，只有取得账户锁的那个 Broker 留下，其余的自行退出。
+拉起时，MCP 服务进程先启动一个中间进程，即同一二进制文件的隐藏子命令，例如 `agent-peer __broker-launcher`，由它再启动真正的 `agent-peer broker`。中间进程以 `Setsid: true` 启动 Broker，不带 `--system`，Broker 因此成为新的会话组的首进程；中间进程随即退出，Broker 由 init 或 subreaper 收养，不再是会话进程的后代，满足“Broker 与它派生的进程都不是任何会话的后代进程”的约束。MCP 服务进程把就绪管道经 `ExtraFiles` 交给中间进程，中间进程启动 Broker 时把同一个管道再传给它；Broker 的标准输入、标准输出与标准错误指向 `/dev/null` 或运行日志。MCP 服务进程回收退出后的中间进程。Broker 的环境中去掉 `CLAUDE_CODE_MESSAGING_SOCKET`，使 `inbox` 的 `InSession` 检查不把它当作会话的后代（见 [inbox](design-inbox.md)）。Broker 完成监听地址与本机 socket 的绑定后，向就绪管道写一行 `ok`，失败时写一行失败原因，随后关闭管道；MCP 服务进程读到 `ok` 即继续，读到失败原因就把它转给模型，10 秒内没有读到任何一行按失败处理。多个 MCP 服务进程同时这样做时，只有取得账户锁的那个 Broker 留下，其余的自行退出。
 
-Broker 在启动阶段失败时，例如配置的监听地址已被同一主机上另一个账户的 Broker 占用，它在标准错误输出说明原因后退出。MCP 服务进程收集这段说明，此后的每次工具调用都返回它，直到一次重新选定成功；后台按退避重跑完整的“选定 Broker”，包括重新拉起用户级 Broker。说明中写明要由用户在配置或启动参数中改用其他监听地址，MCP 服务进程不替用户更换（[ADR-listen-by-default](../../adr/adr-listen-by-default.md)，`REQ-broker-config-024`）。
+Broker 在启动阶段失败时，例如配置的监听地址已被同一主机上另一个账户的 Broker 占用，它把失败原因写进就绪管道后退出。MCP 服务进程把这一行原样转给模型，此后的每次工具调用都返回它，直到一次重新选定成功；后台按退避重跑完整的“选定 Broker”，包括重新拉起用户级 Broker。失败原因中写明要由用户在配置或启动参数中改用其他监听地址，MCP 服务进程不替用户更换（[ADR-listen-by-default](../../adr/adr-listen-by-default.md)，`REQ-broker-config-024`）。
 
 ### 启动与登记
 
@@ -114,6 +114,8 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 3. 找到项目配置文件且 `topics` 非空：加入其中每一个。
 4. 工作目录所在的 git 仓库有 `origin`，且其地址能规范化：加入以规范化结果命名的 topic。
 5. 其余情况不加入。
+
+这里的会话工作目录取 MCP 服务进程的当前工作目录，Claude Code 以项目目录作为该进程的工作目录启动它。
 
 自动加入一律不带公开声明（`REQ-topics-019`）。`topics.auto_join` 的值由 Broker 在登记的应答中给出，MCP 服务进程不需要读配置的权限。
 

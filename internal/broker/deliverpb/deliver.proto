@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package internal.broker.deliverpb;
+
+option go_package = "github.com/wangzw/agent-peer/internal/broker/deliverpb;deliverpb";
+
+import "google/protobuf/duration.proto";
+import "internal/broker/localpb/local.proto";
+
+message DeliverRequest {
+  string message_id = 1;
+  string sender_name = 2;
+  string sender_ref = 3;
+  string target_name = 4;
+  string target_ref = 5;
+  google.protobuf.Duration remaining_budget = 6;
+  Message body = 7;
+}
+
+message DeliverResult {
+  oneof result {
+    Delivered delivered = 1;
+    localpb.ErrorDetail error = 2;
+  }
+}
+
+message Delivered {}
+
+// A2A 1.0.0 Message subset. Field numbers are the A2A numbers; unused numbers
+// (2, 3, 6, 7, 8) are intentionally skipped for future compatibility.
+message Message {
+  string message_id = 1;
+  Role role = 4;
+  repeated Part parts = 5;
+}
+
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_USER = 1;
+  ROLE_AGENT = 2;
+}
+
+// A2A 1.0.0 Part subset: only the text branch of the content oneof.
+message Part {
+  oneof content {
+    string text = 1;
+  }
+}

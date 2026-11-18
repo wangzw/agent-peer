@@ -37,6 +37,8 @@
 
 本机接口是 Unix domain socket 上的 gRPC 服务，socket 位于 `config` 给出的运行时目录内，名为 `broker.sock`。调用方只有同一二进制内的 MCP 服务进程和终端命令，接口不对其他程序承诺兼容；两端以握手时交换的本机协议版本号判断能否互通。
 
+下面的 proto 只是草图，消息名以 `local.proto` 为准；草图中的 `HelloReply`、`RegisterUp`、`RegisterDown` 等名称与 `local.proto` 中的消息名不同。
+
 ```proto
 service Local {
   rpc Hello(HelloRequest) returns (HelloReply);                  // 版本握手
@@ -50,7 +52,7 @@ service Local {
 }
 ```
 
-`CreatePairingKey` 不带参数，只生成一次性配对密钥，应答另带供展示的本 Broker 对外地址；本次运行不监听时以 `invalid_argument` 拒绝（`REQ-broker-pairing-025`、`REQ-broker-pairing-028`、`REQ-broker-pairing-036`）。`Connect` 带对方的地址、配对密钥与可选的本地别名（`REQ-broker-pairing-010`）。`ListBrokers` 的每一项带有该 Broker 的对外地址列表，对端另带本方是它的拨号方还是接受方（`REQ-broker-discovery-012`）。`SetConfig` 在本次运行的监听地址来自启动参数时拒绝修改 `broker.listen`（`REQ-broker-config-029`），对密钥类配置项（只经配置文件设置、取值不经本机接口返回的配置项，例如预置静态密钥）一律拒绝（`REQ-broker-pairing-031`）；`GetConfig` 对密钥类配置项只给出是否已设置（`REQ-broker-pairing-030`）。
+`CreatePairingKey` 除可空的 `agent_id` 外不带参数，只生成一次性配对密钥，应答另带供展示的本 Broker 对外地址；本次运行不监听时以 `invalid_argument` 拒绝（`REQ-broker-pairing-025`、`REQ-broker-pairing-028`、`REQ-broker-pairing-036`）。`Connect` 带对方的地址、配对密钥与可选的本地别名（`REQ-broker-pairing-010`）。`ListBrokers` 的每一项带有该 Broker 的对外地址列表，对端另带本方是它的拨号方还是接受方（`REQ-broker-discovery-012`）。`SetConfig` 在本次运行的监听地址来自启动参数时拒绝修改 `broker.listen`（`REQ-broker-config-029`），对密钥类配置项（只经配置文件设置、取值不经本机接口返回的配置项，例如预置静态密钥）一律拒绝（`REQ-broker-pairing-031`）；`GetConfig` 对密钥类配置项只给出是否已设置（`REQ-broker-pairing-030`）。
 
 调用方的账户不是任何调用的参数，它取自连接的进程凭据。下表是每个调用的前提；用户级 Broker 的配置文件属于本账户，它不做权限判定，表中的权限前提只在系统级 Broker 上检查。
 
@@ -65,6 +67,8 @@ service Local {
 
 需要 Agent 身份的调用携带登记时得到的 Agent 标识，标识无效或不属于调用方账户时返回 `not_registered`。权限不足时返回 `permission_denied`，不改变任何状态。Claude Code 对工具调用的权限确认发生在调用到达本机接口之前，与本表的判定各自独立。
 
+四个管理调用 `SetConfig`、`Connect`、`Disconnect`、`CreatePairingKey` 携带可选的 `agent_id`，只用于填写审计记录中的 `actor` 字段；空值允许；非空而无效或不属于调用方账户时返回 `not_registered`；该字段不参与权限判定，也不作为工具参数暴露。
+
 `Register` 的上行首帧带两项：MCP 服务进程环境中的 inbox socket 路径（可以为空）、环境中的 Claude Code 配置目录（可以为空）。Broker 按“登记”一节完成登记后，在下行流上发出登记完成，带 Agent 标识、Agent 地址和 `topics.auto_join` 的当前值；10 秒内未能完成时发出 `not_registered` 及原因，流保持打开，此后条件满足时照常发出登记完成。已完成的登记因名字变得不可用或记录消失而撤销时，下行流同样发出 `not_registered` 及原因。之后下行流还用于通知地址变化。同一个 socket 路径上的多个登记连接得到同一个 Agent 标识。
 
 命令行：
@@ -74,10 +78,12 @@ service Local {
 | `agent-peer broker [--system] [--listen <地址>]` | — | 在前台运行 Broker。`--system` 选择系统级形态，要求以 root 运行；`--listen` 取代配置中的监听地址，只对本次运行有效，不读写配置文件中的这一项；其间经工具修改监听地址的调用失败（`REQ-broker-config-025`、`REQ-broker-config-029`） |
 | `agent-peer mcp` | — | 作为 MCP 服务进程运行，由 Claude Code 按会话的工具配置启动，见 [mcpserver](design-mcpserver.md) |
 | `agent-peer status` | `Status` | 查看 Agent、成员关系、对端与链路（`REQ-broker-config-010`） |
-| `agent-peer audit` | `Audit` | 查看审计日志（`REQ-broker-config-009`） |
+| `agent-peer audit [--limit <条数>]` | `Audit` | 以流的方式查看审计日志，`--limit` 指定取最新的多少条，为 0 表示不限条数（`REQ-broker-config-009`） |
 | `agent-peer service install [--system]` | — | 安装随登录启动的用户级服务，或随系统启动的系统级服务（`REQ-broker-config-015`） |
 
 `status` 与 `audit` 连接哪个 Broker，按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的同一顺序确定，但不拉起 Broker。
+
+`Audit` 是服务端流式调用：审计事件按时间顺序作为一条流逐条到达，读完即结束。请求带一个可选的 `limit`：非 0 时返回最新的 N 条事件，这 N 条仍按时间顺序到达；为 0 表示不限条数。读取不保留游标或分页状态，每次调用各自重新读取，`limit` 只截断这一次流的内容。
 
 Agent 地址的文法是对模型的稳定承诺：
 
@@ -135,7 +141,7 @@ Agent 记录，只存在于内存，以 inbox socket 路径为身份（[ADR-agen
 | `Name` | 会话名经 `inbox` 的 `NormalizeName` 规范化后的结果 |
 | `PrevName`、`PrevNameAt` | 最近一次的曾用名及改名的时刻，保留 10 分钟后由一次性的计时器清除并推送一次变化；保留时间是常量，不可配置 |
 | `PublicTopics` | 该 Agent 以公开方式加入的 topic 名集合，用于退出或注销时撤回公开声明，以及 Broker 改为公开时重新声明 |
-| `Status` | 会话状态，取 `idle`、`busy`、`waiting`、`shell` 之一，记录中缺失或不认识的值记为未知 |
+| `Status` | 会话状态，取 `idle`、`busy`、`waiting`、`shell` 之一；记录中缺失或不认识的值记为未知，线上以 `AGENT_STATUS_UNSPECIFIED` 表示状态未知 |
 | `Conns` | 归于该 Agent 的登记连接数 |
 
 调用方记录，每个本机接口连接一条，在接受连接时建立，连接关闭时丢弃：进程凭据给出的账户、附属组所依据的账户名。同一连接上的全部调用都归于这个账户。
@@ -143,6 +149,15 @@ Agent 记录，只存在于内存，以 inbox socket 路径为身份（[ADR-agen
 辅助进程表，只在系统级形态下存在：以账户为键，值是该账户的辅助进程及与它通信的管道。
 
 去重表的键是来源与消息标识：对端发来的请求以对端指纹为来源，本机发送以本机为来源。值是该消息的处理状态（处理中、已有结果）和结果，条目保留 `send.dedupe_window` 后删除。表只在内存中，Broker 重启后清空。消息标识必须是 UUID，不是 UUID 的请求以 `invalid_argument` 拒绝。
+
+链路上属于本包的帧：
+
+| kind | 帧 | 类别 | 内容 | 用途 |
+|---|---|---|---|---|
+| 400 | `DeliverRequest` | 请求帧 | 消息标识、发送方名字与消歧标识、目标、剩余预算、A2A Message 正文 | 请求对端 Broker 把消息写入目标会话的 inbox |
+| 401 | `DeliverResult` | 应答帧 | `delivered` 与 `error` 的 oneof | 对 `DeliverRequest` 的应答 |
+
+两帧都经 `link` 的 `Request` 传输，`DeliverResult` 作为 `DeliverRequest` 的应答回来。
 
 ## 核心算法与流程
 
@@ -172,7 +187,8 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 5. 加载身份与对端表、名录。
 6. 绑定监听地址。绑定失败时报告该地址不可用并退出，不改用其他地址或端口，也不改为不监听（[ADR-listen-by-default](../../adr/adr-listen-by-default.md)，`REQ-broker-config-024`）。监听地址配置为空时跳过这一步。
 7. 只有持锁的进程删除残留的本机 socket 文件并绑定本机 socket：用户级的权限为 `0600`；系统级的在绑定后按配置设置属组与权限，默认为运行时目录的属组与 `0666`，管理员把它设为某个组与该组可写的权限，即把能连接它的账户限定到该组（`REQ-broker-config-027`）。
-8. 启动 `link`：对本方是拨号方的对端拨号，对本方是接受方的对端等待连入（[ADR-initiator-redials](../../adr/adr-initiator-redials.md)，`REQ-broker-pairing-019`）。
+8. 就绪管道存在时，它是启动结果的出口：以上任何一步失败，向它写入一行失败原因，关闭管道后退出；监听地址与本机 socket 都已绑定之后，写入一行 `ok` 并关闭管道。管道由 MCP 服务进程经两级 re-exec 传下来，从终端启动的进程没有它；监听地址配置为空时第 6 步不执行，`ok` 在绑定本机 socket 之后写入。
+9. 启动 `link`：对本方是拨号方的对端拨号，对本方是接受方的对端等待连入（[ADR-initiator-redials](../../adr/adr-initiator-redials.md)，`REQ-broker-pairing-019`）。
 
 持锁期间，Broker 每隔 1 分钟核对一次运行时目录：账户锁的路径上已不是自己持有的那个文件时退出，使锁文件被清理后不会出现两个实例；本机 socket 文件不在时重新绑定。
 
@@ -225,7 +241,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 2. 解析目标地址的别名。别名既不是本机别名也不是任何对端的生效别名时返回 `not_found`。
 3. 本机目标：同样以 `send.request_timeout` 为总预算，解析名字部分，向 `topic` 询问调用方与目标是否可见，重读目标的会话记录，然后调用 `inbox` 写入。署名是调用方在本机别名下的地址，按“处理投递请求”第 4 步的规则生成。`inbox` 报告未写入时按 `send.inbox_retries` 重试，报告不确定时不重试；预算用尽即返回未送达。本机的两个 Agent 可以属于不同的账户，可见性的规则不因此改变。
 4. 远端目标：以 `send.request_timeout` 为这次发送的预算，即一次发送的总时限（`REQ-agent-messaging-017`、`REQ-agent-messaging-018`）。链路已建立时，解析名字部分并检查可见性，经 `link` 发出投递请求，等待应答直到预算用尽。链路未建立时，本方是拨号方的，等待并促使 `link` 立即重新拨号，每次等待按 `send.link_backoff` 指数退避，至多 `send.link_retries` 次；本方是接受方的，不能促使对方连入，只在预算内等待链路建立（[ADR-initiator-redials](../../adr/adr-initiator-redials.md)）。链路在等待应答期间中断的，重新建立后以同一消息标识重发。
-5. 归结结果。得到对端的确定应答时原样返回，对端返回的错误不重试。预算或重试用尽时，投递请求一次也没有发出的返回 `peer_unreachable`，发出过的返回 `delivery_unknown`（`REQ-agent-messaging-017`、`REQ-agent-messaging-027`）。
+5. 归结结果。得到对端的确定应答时原样返回；应答是错误时，把 `DeliverResult` 的 `error` 转成本机接口的 `ErrorDetail`，来源 Broker 指纹填入该对端的指纹。对端返回的错误不重试。预算或重试用尽时，投递请求一次也没有发出的返回 `peer_unreachable`，发出过的返回 `delivery_unknown`（`REQ-agent-messaging-017`、`REQ-agent-messaging-027`）。
 
 名字部分的解析，别名与名字部分在地址的最后一个 `@` 处分开，名字先经 `NormalizeName` 规范化：
 
@@ -243,6 +259,8 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 5. 由剩余预算算出本地的截止时刻，重读目标的会话记录。在截止时刻之前调用 `inbox` 写入，报告未写入时按 `send.inbox_retries` 重试；过了截止时刻不再写入。这次处理不随链路断开而取消，一直执行到得出结果或到达截止时刻，结果照常记入去重表，发送方重发时得到的是这个结果。
 6. `inbox` 报告已写入时结果为成功，报告不确定时结果为 `delivery_unknown`，其余为 `inbox_unwritable`。结果记入去重表后返回。
 
+投递请求的正文是一个 A2A 的 Message，只含一个文本部分。它的 `message_id` 复用投递请求的消息标识，`role` 取 `ROLE_USER`。接收方取出文本部分作为要写入会话的正文。
+
 ### 对外地址的转接
 
 `directory` 接受一张名片时，发布者是本方作为拨号方的对端的，`broker` 把名片所载的对外地址列表交给 `pairing` 的 `UpdateCardAddresses`，作为来源为名片的候选地址；本方是接受方的对端与非对端的名片不写入对端表。`config` 的对外地址列表变化时，`broker` 调用 `link` 的 `AnnounceAddresses`，使本方是接受方的各条链路收到 `PeerInfo`，并调用 `directory` 的 `Reissue`，本 Broker 公开时立即签发新版本的名片（`REQ-broker-discovery-016`）。
@@ -253,7 +271,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 
 处理之前先重读调用方与本机各个可见 Agent 的会话记录。列出 Agent 的结果由本机可见的 Agent 与各链路上可见的远端 Agent 组成，每项的地址按署名的同一规则拼出，别名取本方的生效别名；同一 Broker 上有同名 Agent 时这些项都带消歧标识。曾用名仍在保留期内的，该项注明曾用名（`REQ-agent-messaging-032`）。调用方自己的地址单独给出，别名取本机别名。可见性只取决于 topic，与 Agent 属于哪个账户无关。
 
-`Status` 的全量输出是全部 Agent、它们的成员关系、对端与链路。调用方账户对配置文件没有读权限时，输出只含该账户自己的 Agent 及其成员关系。
+`Status` 的全量输出列出本机全部 Agent 及其成员关系，对端与链路另行列出，远端 Agent 不在 Agent 表中。调用方账户对配置文件没有读权限时，输出只含该账户自己的 Agent 及其成员关系，不含对端与链路。
 
 ## 错误与失败语义
 
@@ -271,7 +289,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 | 请求发出后没有确定应答，或 `inbox` 报告不确定 | `delivery_unknown` | 链路重建后重发；`inbox` 不确定时不重试 |
 | 对端返回的任何错误 | 保留原错误码 | 否 |
 
-启动阶段的失败不经本机接口返回，进程以非零的退出码结束并在标准错误输出说明原因：`--system` 而不是 root、处在会话的进程树内、已有实例持有账户锁、配置不合法、监听地址不可用。由 MCP 服务进程拉起而失败的，这段说明由 MCP 服务进程转给模型。
+启动阶段的失败不经本机接口返回。从终端启动的，进程以非零的退出码结束，并在标准错误输出说明原因：`--system` 而不是 root、处在会话的进程树内、已有实例持有账户锁、配置不合法、监听地址不可用。由 MCP 服务进程拉起的，进程以非零的退出码结束，失败原因经就绪管道交回，由 MCP 服务进程转给模型。
 
 发送对同一消息标识是幂等的，幂等只在去重表保留条目的时间内成立；接收方的 Broker 在两次请求之间重启时，同一条消息可能写入两次。返回未送达类错误之后系统不再投递（`REQ-agent-messaging-019`）；返回 `delivery_unknown` 之后同样不再投递，但消息可能已经写入。
 
