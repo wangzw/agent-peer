@@ -27,7 +27,17 @@ type Broker struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	mu     sync.Mutex
-	// agent table fields: added by the registration work item
+
+	// agent table fields
+	agents     map[AgentID]*agent
+	waiting    map[*regConn]struct{}
+	watches    map[string]*dirWatch
+	events     registryQueue
+	unregHooks []func(AgentID)
+	gone       []AgentID
+	refreshOne func(a *agent)
+	lastAlias  string // last broker.alias value read successfully, guarded by mu
+
 	// downstream state
 }
 
@@ -84,19 +94,29 @@ func New(deps Deps) (*Broker, error) {
 
 	opts := []grpc.ServerOption{
 		grpc.Creds(peerCreds),
+		// Stop must wait for method handlers: the Register handler removes its
+		// agent and releases its watch after the stream ends, and shutdown
+		// closes the configuration and the account lock right after Stop.
+		grpc.WaitForHandlers(true),
 	}
 	opts = append(opts, versionServerOptions()...)
 	opts = append(opts, deps.ServerOptions...)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	b := &Broker{
-		deps:   deps,
-		log:    deps.Logger,
-		grpc:   grpc.NewServer(opts...),
-		ctx:    ctx,
-		cancel: cancel,
+		deps:       deps,
+		log:        deps.Logger,
+		grpc:       grpc.NewServer(opts...),
+		ctx:        ctx,
+		cancel:     cancel,
+		agents:     make(map[AgentID]*agent),
+		waiting:    make(map[*regConn]struct{}),
+		watches:    make(map[string]*dirWatch),
+		events:     newRegistryQueue(),
+		refreshOne: func(*agent) {},
 	}
 	localpb.RegisterLocalServer(b.grpc, b)
+	go b.eventLoop()
 	return b, nil
 }
 

@@ -1,0 +1,524 @@
+package broker
+
+import (
+	"errors"
+	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/inbox"
+)
+
+// registrationWait is how long a waiting registration stays silent before it
+// reports why it has not completed.
+const registrationWait = 10 * time.Second
+
+// attemptReadHook, when set by a test, runs inside attempt after it has read
+// retry and before it releases attemptMu. It lets a test stop the attempt in
+// that window and deliver a registry event while the lock is held. Production
+// leaves it nil.
+var attemptReadHook atomic.Pointer[func(c *regConn)]
+
+// attemptBusyHook, when set by a test, runs when attempt finds attemptMu held,
+// after it has recorded the retry request. It lets a test wait until another
+// attempt call has handed its request to the running attempt. Production leaves
+// it nil.
+var attemptBusyHook atomic.Pointer[func(c *regConn)]
+
+// Register serves one registration stream. The first frame identifies the
+// caller's inbox socket and configuration directory; later upstream frames are
+// ignored. The stream stays open while the registration waits, and after it
+// completes it carries address changes until the connection ends.
+func (b *Broker) Register(stream localpb.Local_RegisterServer) error {
+	first, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+	ctx := stream.Context()
+	caller, ok := CallerFrom(ctx)
+	if !ok {
+		return toStatus(Errorf(localpb.ErrorCode_ERROR_CODE_INTERNAL,
+			"no caller identified on this connection"))
+	}
+	backend, release, err := b.deps.Sessions.Acquire(ctx, caller.UID)
+	if err != nil {
+		return toStatus(Errorf(localpb.ErrorCode_ERROR_CODE_INTERNAL,
+			"no session backend for account %d: %v", caller.UID, err))
+	}
+
+	c := &regConn{
+		caller:    caller,
+		rawPath:   first.GetInboxSocketPath(),
+		configDir: first.GetClaudeConfigDir(),
+		backend:   backend,
+		release:   release,
+		out:       newEventQueue(),
+	}
+
+	senderDone := make(chan struct{})
+	go func() {
+		defer close(senderDone)
+		for {
+			resp, ok := c.out.pop()
+			if !ok {
+				return
+			}
+			if err := stream.Send(resp); err != nil {
+				return
+			}
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			if _, err := stream.Recv(); err != nil {
+				return
+			}
+		}
+	}()
+
+	b.beginRegistration(c)
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
+
+	b.dropConn(c)
+	c.out.close()
+	<-senderDone
+	if release != nil {
+		release()
+	}
+	return nil
+}
+
+// beginRegistration puts a new connection into the waiting set and starts the
+// lookup that may complete it.
+func (b *Broker) beginRegistration(c *regConn) {
+	if c.rawPath == "" {
+		b.mu.Lock()
+		b.waiting[c] = struct{}{}
+		c.waitReason = localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SOCKET_PATH_MISSING
+		c.attempted = true
+		c.reported = true
+		c.out.push(notRegisteredResponse(c.waitReason))
+		b.mu.Unlock()
+		return
+	}
+
+	id, socketPath, err := AgentIDFor(c.rawPath)
+	if err != nil {
+		// A path that can never name a record waits like a missing record. It
+		// needs neither a watch nor a registry lookup.
+		b.mu.Lock()
+		b.waiting[c] = struct{}{}
+		c.waitReason = localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND
+		c.attempted = true
+		c.waitTimer = b.deps.Clock.AfterFunc(registrationWait, func() { b.reportWaiting(c) })
+		b.mu.Unlock()
+		return
+	}
+
+	c.id = id
+	c.socketPath = socketPath
+
+	b.mu.Lock()
+	// Take the watch before the connection becomes visible to the event loop,
+	// so a registry change cannot slip in between.
+	if key, ok := b.acquireWatchLocked(c.configDir, c.backend); ok {
+		c.watchDir = key
+		c.watching = true
+	}
+	b.waiting[c] = struct{}{}
+	c.waitTimer = b.deps.Clock.AfterFunc(registrationWait, func() { b.reportWaiting(c) })
+	b.mu.Unlock()
+
+	b.attempt(c)
+}
+
+// attempt runs a full check of a waiting connection: lookup, socket owner,
+// usable name. Checks of one connection are serialized by c.attemptMu. A caller
+// that finds an attempt already running asks for one more pass instead of
+// waiting; this keeps the registry event goroutine from stalling behind a
+// record read and lets the running attempt apply the change it carries.
+//
+// The request is recorded before the lock is tried, and the attempt checks it
+// again after releasing the lock. A request made while the lock is held is
+// therefore seen by the run that releases it, and one made after that belongs
+// to a later call; in neither case can it fall between the read of retry and
+// the unlock and be dropped.
+func (b *Broker) attempt(c *regConn) {
+	c.retry.Store(true)
+	for {
+		if !c.attemptMu.TryLock() {
+			if hook := attemptBusyHook.Load(); hook != nil {
+				(*hook)(c)
+			}
+			return
+		}
+		c.retry.Store(false)
+		a, attached := b.tryComplete(c)
+		retry := c.retry.Load()
+		if hook := attemptReadHook.Load(); hook != nil {
+			(*hook)(c)
+		}
+		if attached && retry && a != nil {
+			// A registry event arrived between the record read and the
+			// attachment. The agent is in the table now, so reread it and apply
+			// the change the event carries.
+			b.mu.Lock()
+			refresh := b.refreshOne
+			b.mu.Unlock()
+			refresh(a)
+		}
+		c.attemptMu.Unlock()
+		// Run again when a request arrived while the lock was held. The check
+		// comes after the unlock so that a request made in the window between
+		// the read above and the unlock is not lost.
+		if attached || !c.retry.Load() {
+			return
+		}
+	}
+}
+
+// tryComplete runs one check and reports whether it attached the connection to
+// an agent. attached is false when the connection is still waiting or has left.
+func (b *Broker) tryComplete(c *regConn) (a *agent, attached bool) {
+	b.mu.Lock()
+	_, waiting := b.waiting[c]
+	b.mu.Unlock()
+	if !waiting {
+		return nil, false
+	}
+
+	reason, session, name, ok := b.inspect(c)
+
+	b.mu.Lock()
+	if ok {
+		stops := b.completeLocked(c, session, name)
+		a := c.agent
+		b.mu.Unlock()
+		for _, stop := range stops {
+			stop()
+		}
+		if a == nil {
+			return nil, false
+		}
+		return a, true
+	}
+	if _, stillWaiting := b.waiting[c]; stillWaiting {
+		c.waitReason = reason
+		c.attempted = true
+		if c.reportDue {
+			b.reportWaitingLocked(c)
+		}
+	}
+	b.mu.Unlock()
+	return nil, false
+}
+
+// inspect performs the three checks of a registration attempt. ok is true when
+// all of them pass.
+func (b *Broker) inspect(c *regConn) (localpb.NotRegisteredReason, inbox.Session, string, bool) {
+	s, err := c.backend.Lookup(b.ctx, c.configDir, c.socketPath)
+	if err != nil {
+		if !errors.Is(err, inbox.ErrNoRecord) && !errors.Is(err, inbox.ErrPartial) {
+			b.log.Warn(EvRegistrationWaiting, "error", err, "uid", c.caller.UID)
+		}
+		return localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND,
+			inbox.Session{}, "", false
+	}
+	if !socketOwnedBy(c.socketPath, c.caller.UID) {
+		return localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SOCKET_NOT_OWNED,
+			inbox.Session{}, "", false
+	}
+	name, usable := NameUsable(s.Name)
+	if !usable {
+		return localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE,
+			inbox.Session{}, "", false
+	}
+	return localpb.NotRegisteredReason_NOT_REGISTERED_REASON_UNSPECIFIED, s, name, true
+}
+
+// completeLocked attaches a connection to its agent, creating the agent when
+// needed, and queues the registration_complete event. It returns the watch
+// stops the caller runs outside Broker.mu. Callers must hold Broker.mu.
+//
+// A new agent's watch is created before the agent enters the table. Watch
+// releases Broker.mu while it subscribes, and an agent in the table without its
+// ref would make every reader of the address panic, so the insertion, the ref
+// assignment and the registration_complete push all happen under one
+// uninterrupted hold. The connection stays in the waiting set while the watch
+// is created, so a stream that ends in that window is still seen.
+//
+// When the connection already watches the agent's configuration directory, its
+// reference is transferred to the agent: the agent's reference is taken before
+// the connection's is dropped, so the subscription and Broker.mu both stay put
+// and no registry event can fall between them. Otherwise the agent's watch is
+// created after the connection's is dropped, the window releases Broker.mu, and
+// the attempt is asked to reread the agent after the attachment.
+func (b *Broker) completeLocked(c *regConn, s inbox.Session, name string) []func() {
+	if _, ok := b.waiting[c]; !ok {
+		return nil
+	}
+
+	var stops []func()
+	if _, exists := b.agents[c.id]; !exists {
+		agentKey := watchKey(s.ConfigDir)
+		sameKey := c.watching && c.watchDir == agentKey
+		var key string
+		var withWatch bool
+		if sameKey {
+			// The connection already watches the agent's directory. Hand its
+			// reference over: take the agent's reference before dropping the
+			// connection's. The subscription never falls to zero and Broker.mu
+			// is never released, so no registry event can fall between the
+			// connection's watch and the agent's.
+			key, withWatch = b.acquireWatchLocked(agentKey, c.backend)
+			stops = append(stops, b.releaseWatchLocked(c.watchDir, c.watching)...)
+		} else {
+			// Drop this connection's own watch before taking the agent's. The
+			// stop runs outside Broker.mu; until then the old subscription still
+			// covers its directory. Clearing the flags before the acquisition
+			// keeps a stream that ends during it from releasing the reference a
+			// second time.
+			stops = append(stops, b.releaseWatchLocked(c.watchDir, c.watching)...)
+			c.watching = false
+			c.watchDir = ""
+			key, withWatch = b.acquireWatchLocked(agentKey, c.backend)
+		}
+		c.watching = false
+		c.watchDir = ""
+		if c.waitTimer != nil {
+			c.waitTimer.Stop()
+			c.waitTimer = nil
+		}
+		// Broker.mu is held again after the watch creation.
+
+		if _, still := b.waiting[c]; !still {
+			// The stream ended while the watch was being created.
+			if withWatch {
+				stops = append(stops, b.releaseWatchLocked(key, true)...)
+			}
+			return stops
+		}
+		if !sameKey {
+			// Creating the watch released Broker.mu while this connection was
+			// already out of the watching set. A registry event in that window
+			// found the agent still out of the table and was not applied; ask
+			// the attempt to reread the agent once after the attachment.
+			c.retry.Store(true)
+		}
+		if other, raced := b.agents[c.id]; raced {
+			// Another connection registered this agent meanwhile; the extra
+			// watch reference is not needed.
+			if withWatch {
+				stops = append(stops, b.releaseWatchLocked(key, true)...)
+			}
+			other.conns[c] = struct{}{}
+			c.agent = other
+		} else {
+			a := &agent{
+				id:         c.id,
+				socketPath: c.socketPath,
+				caller:     c.caller,
+				backend:    c.backend,
+				session:    s,
+				name:       name,
+				status:     s.Status,
+				public:     make(map[string]string),
+				conns:      make(map[*regConn]struct{}),
+			}
+			b.agents[a.id] = a
+			a.conns[c] = struct{}{}
+			c.agent = a
+			if withWatch {
+				a.watchDir = key
+				a.watching = true
+			}
+			b.log.Info(EvAgentRegistered, "agent", shortID(a.id), "name", name, "uid", c.caller.UID)
+		}
+	} else {
+		stops = append(stops, b.releaseWatchLocked(c.watchDir, c.watching)...)
+		c.watching = false
+		c.watchDir = ""
+		a := b.agents[c.id]
+		a.conns[c] = struct{}{}
+		c.agent = a
+	}
+
+	delete(b.waiting, c)
+	if c.waitTimer != nil {
+		c.waitTimer.Stop()
+		c.waitTimer = nil
+	}
+	c.reported = false
+
+	// Introduce the agent to the topic table before the MCP process can see
+	// registration_complete and join its default topics.
+	b.recomputeRefsLocked()
+
+	autoJoin := true
+	if v, err := b.deps.Config.Get("topics.auto_join"); err != nil {
+		b.log.Warn(EvAgentRegistered, "error", err, "key", "topics.auto_join")
+	} else {
+		autoJoin = v.Bool
+	}
+	c.out.push(&localpb.RegisterResponse{
+		Event: &localpb.RegisterResponse_RegistrationComplete{
+			RegistrationComplete: &localpb.RegistrationComplete{
+				AgentId:      string(c.agent.id),
+				AgentAddress: b.addressOf(c.agent),
+				AutoJoin:     autoJoin,
+			},
+		},
+	})
+	return stops
+}
+
+// reportWaiting is the 10-second timer callback of a waiting connection.
+func (b *Broker) reportWaiting(c *regConn) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.waiting[c]; !ok {
+		return
+	}
+	if !c.attempted {
+		// The first attempt is still running and waitReason is not meaningful
+		// yet. Reporting now would leak the zero reason; attempt reports as
+		// soon as it has stored one.
+		c.reportDue = true
+		return
+	}
+	b.reportWaitingLocked(c)
+}
+
+// reportWaitingLocked sends the not_registered event for a waiting connection
+// and records that it was sent. Callers must hold Broker.mu.
+func (b *Broker) reportWaitingLocked(c *regConn) {
+	if c.reported {
+		return
+	}
+	c.out.push(notRegisteredResponse(c.waitReason))
+	c.reported = true
+	b.log.Info(EvRegistrationWaiting, "reason", reasonName(c.waitReason), "uid", c.caller.UID)
+}
+
+// dropConn removes a connection from the waiting set or from its agent. The
+// last connection of an agent unregisters it.
+func (b *Broker) dropConn(c *regConn) {
+	var stops []func()
+	b.mu.Lock()
+	if _, waiting := b.waiting[c]; waiting {
+		delete(b.waiting, c)
+		if c.waitTimer != nil {
+			c.waitTimer.Stop()
+			c.waitTimer = nil
+		}
+		stops = append(stops, b.releaseWatchLocked(c.watchDir, c.watching)...)
+		c.watching = false
+		c.watchDir = ""
+	} else if a := c.agent; a != nil {
+		delete(a.conns, c)
+		c.agent = nil
+		if len(a.conns) == 0 {
+			stops = append(stops, b.unregisterLocked(a)...)
+		}
+	}
+	b.unlockAndNotify(stops)
+}
+
+func socketOwnedBy(path string, uid uint32) bool {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+	if fi.Mode()&os.ModeSocket == 0 {
+		return false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false
+	}
+	return st.Uid == uid
+}
+
+func notRegisteredResponse(reason localpb.NotRegisteredReason) *localpb.RegisterResponse {
+	return &localpb.RegisterResponse{
+		Event: &localpb.RegisterResponse_NotRegistered{
+			NotRegistered: &localpb.RegistrationProblem{Reason: reason},
+		},
+	}
+}
+
+// reasonName renders an enum value for the structured log, for example
+// "socket_path_missing".
+func reasonName(reason localpb.NotRegisteredReason) string {
+	return strings.ToLower(strings.TrimPrefix(reason.String(), "NOT_REGISTERED_REASON_"))
+}
+
+// eventQueue is the unbounded, per-connection queue that feeds one sender
+// goroutine. Closing it discards pending events, because by then the
+// registration stream is over.
+type eventQueue struct {
+	mu     sync.Mutex
+	items  []*localpb.RegisterResponse
+	closed bool
+	signal chan struct{}
+}
+
+func newEventQueue() *eventQueue {
+	return &eventQueue{signal: make(chan struct{}, 1)}
+}
+
+func (q *eventQueue) push(resp *localpb.RegisterResponse) {
+	q.mu.Lock()
+	if q.closed {
+		q.mu.Unlock()
+		return
+	}
+	q.items = append(q.items, resp)
+	q.mu.Unlock()
+	select {
+	case q.signal <- struct{}{}:
+	default:
+	}
+}
+
+func (q *eventQueue) close() {
+	q.mu.Lock()
+	q.closed = true
+	q.items = nil
+	q.mu.Unlock()
+	select {
+	case q.signal <- struct{}{}:
+	default:
+	}
+}
+
+// pop blocks until an event is queued or the queue is closed. It returns
+// ok == false once the queue is closed and empty.
+func (q *eventQueue) pop() (*localpb.RegisterResponse, bool) {
+	for {
+		q.mu.Lock()
+		if len(q.items) > 0 {
+			resp := q.items[0]
+			q.items = q.items[1:]
+			q.mu.Unlock()
+			return resp, true
+		}
+		if q.closed {
+			q.mu.Unlock()
+			return nil, false
+		}
+		q.mu.Unlock()
+		<-q.signal
+	}
+}
