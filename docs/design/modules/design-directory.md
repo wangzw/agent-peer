@@ -168,7 +168,9 @@ C 接受 `v1` 之后，列出已知 Broker 的结果包含 `hostA`，状态为�
 - 尚未到期，且到期时间不晚于当前时间加 7 天再加 1 小时的时钟偏差容限。
 - 名片所载的别名符合别名的规则：1 至 24 个字符，取自字母、数字、`.`、`-`、`_`（`REQ-broker-pairing-037`）。
 - 本方没有同一标识的记录，或本方的版本号更低。
-- 接受后不超出数量限制。同一标识的替换不增加记录数，不受数量限制；新标识的记录要同时满足总数不超过 `directory.max_records`、经该链路接受的记录数不超过 `directory.max_records_per_link`、该发布者的公开 topic 声明数不超过 `directory.max_topics_per_publisher`。
+- 接受后不超出数量限制。同一标识的替换不增加记录数，不受数量限制。新标识的记录要同时满足：总数不超过 `directory.max_records`，经该链路接受的记录数不超过 `directory.max_records_per_link`，该发布者的公开 topic 声明与未知种类记录合计不超过 `directory.max_topics_per_publisher`，名片与撤回不计。本版本不认识的种类计入，使发布者不能借其他种类绕过这项上限。本机签发的记录不受这些限制，但计入总数。
+
+来源不是已建立链路的 `RecordList` 与 `Records` 整帧忽略；来源不是已建立链路的 `RecordRequest` 回以空的 `Records`。
 
 名片的对外地址列表中各项的种类不在上述条件之内：名片含有本版本不认识的种类的地址项时，只要上述条件满足即照常接受，其余的地址项照常可用（`REQ-broker-discovery-017`）。
 
