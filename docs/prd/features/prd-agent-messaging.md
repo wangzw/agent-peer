@@ -75,8 +75,8 @@ Agent 的消歧标识必须采用与 Claude Code 在其会话列表中为同一�
 发送目标的名字在目标 Broker 上对应多个 Agent 且未带消歧标识时，发送必须失败并说明存在歧义。
 
 - **验收**：对两个同名 Agent 只用名字发送，返回的错误指出歧义；带上其中一个的消歧标识后发送成功，且只有该 Agent 收到。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-007 ambiguous`
 
 ### REQ-agent-messaging-008
 
@@ -123,32 +123,32 @@ Agent 必须能列出所有对自己可见的在线 Agent，包括本机上的�
 Agent 必须能向一个 Agent 地址发送一条纯文本消息。
 
 - **验收**：以某个可见 Agent 的地址为目标发送文本，该 Agent 的会话中出现这段文本。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-013 plain text`
 
 ### REQ-agent-messaging-014
 
 发送方与目标互不可见时，发送必须失败，且消息不得进入目标会话。
 
 - **验收**：两个没有任何共同 topic 的 Agent 之间发送，发送方得到错误，目标会话中不出现该消息。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-014 not visible`
 
 ### REQ-agent-messaging-015
 
 发送调用只能在消息已经交给目标会话的 inbox socket 之后返回成功。成功不表示目标会话中的模型已读或已处理该消息。
 
 - **验收**：把目标会话的入站策略设为留待用户批准，向它发送；调用返回成功的那一刻，该消息已经出现在目标会话的待批准列表中。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-015 success only after inbox`
 
 ### REQ-agent-messaging-016
 
 发送调用返回后，系统不得就这条消息向发送方发出任何后续通知。
 
 - **验收**：向一个把消息留待用户批准的会话发送，发送方得到成功；无论用户随后批准、拒绝还是不处理，发送方会话都不出现来自系统的通知。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-016 no follow-up`
 
 ### REQ-agent-messaging-017
 
@@ -163,8 +163,8 @@ Agent 必须能向一个 Agent 地址发送一条纯文本消息。
 目标所在的 Broker 无法把消息写入目标会话时，发送调用必须在发送时限之内返回未送达的错误。
 
 - **验收**：把发送方 Broker 的发送时限配置为 10 秒，目标会话已退出但尚未从列表移除时向它发送，调用在 10 秒之内返回说明目标会话不可写入的错误。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-018 inbox unwritable`
 
 ### REQ-agent-messaging-019
 
@@ -243,8 +243,8 @@ Agent 必须能向一个 Agent 地址发送一条纯文本消息。
 同一主机上互相可见的两个 Agent 之间，发送行为必须与跨主机时一致。
 
 - **验收**：同一主机上同在一个 topic 的两个 Agent 经本系统互发消息，署名、成功与错误的含义都与跨主机时相同。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-028 same as remote`
 
 ### REQ-agent-messaging-029
 
