@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -19,80 +18,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
 	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"github.com/wangzw/agent-peer/test/e2e/node"
 )
-
-// BaseEnv is the complete environment of every child process a local node
-// starts. Nothing is inherited from os.Environ; the local node isolates itself
-// from the developer's account through AGENT_PEER_TEST_RUNTIME_ROOT and
-// AGENT_PEER_TEST_HOME instead.
-type BaseEnv struct {
-	// Home becomes HOME.
-	Home string
-	// Path becomes PATH.
-	Path string
-	// Extra adds variables, for example AGENT_PEER_TEST_RUNTIME_ROOT.
-	Extra map[string]string
-}
-
-// Build returns the environment as NAME=value strings, sorted by name. A value
-// of "" in more removes the variable. LANG is always C.UTF-8.
-func (e BaseEnv) Build(more map[string]string) []string {
-	values := map[string]string{
-		"HOME": e.Home,
-		"PATH": e.Path,
-		"LANG": "C.UTF-8",
-	}
-	for name, value := range e.Extra {
-		setEnv(values, name, value)
-	}
-	for name, value := range more {
-		setEnv(values, name, value)
-	}
-
-	names := make([]string, 0, len(values))
-	for name := range values {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	env := make([]string, 0, len(names))
-	for _, name := range names {
-		env = append(env, name+"="+values[name])
-	}
-	return env
-}
-
-// setEnv sets name in values, or deletes it when value is empty.
-func setEnv(values map[string]string, name, value string) {
-	if value == "" {
-		delete(values, name)
-		return
-	}
-	values[name] = value
-}
-
-// brokerReadyBound is the default bound for a Broker readiness wait.
-const brokerReadyBound = 13 * time.Second
-
-// mcpProc is one MCP server process started for a session.
-//
-// The MCP protocol client that drives the process (the handshake, tools/list
-// and tools/call) belongs to the node session driver. Until that work item
-// lands the process is started with the correct environment and working
-// directory, and its stdin is kept open, but no protocol exchange happens.
-type mcpProc struct {
-	cmd   *exec.Cmd
-	pid   int
-	log   *os.File
-	stdin io.WriteCloser
-
-	done chan struct{}
-	err  error
-}
 
 // localNode runs a node's processes directly on the test host.
 type localNode struct {
@@ -109,10 +37,10 @@ type localNode struct {
 	mu            sync.Mutex
 	sessions      []*Session
 	oracles       []*OracleClient
-	broker        *brokerProc
+	broker        *node.BrokerProc
 	brokerLogPath string
 	brokers       int
-	mcpStarted    int
+	freeAddrs     map[string]bool
 }
 
 // NewLocalHost starts a node that runs on the test host. Its runtime root and
@@ -147,6 +75,7 @@ func NewLocalHost(t *testing.T, opts LocalOptions) *Node {
 				"AGENT_PEER_TEST_HOME":         acct,
 			},
 		},
+		freeAddrs: map[string]bool{},
 	}
 	t.Cleanup(l.cleanup)
 	return &Node{impl: l}
@@ -156,6 +85,13 @@ func NewLocalHost(t *testing.T, opts LocalOptions) *Node {
 func (l *localNode) brokerSocket() string {
 	return filepath.Join(l.root, strconv.Itoa(os.Geteuid()), "broker.sock")
 }
+
+// configPath is the account's configuration file.
+func (l *localNode) configPath() string {
+	return filepath.Join(l.acct, ".agent-peer", "config.yaml")
+}
+
+func (l *localNode) accountHome() string { return l.acct }
 
 func (l *localNode) freeAddr(t testing.TB) string {
 	t.Helper()
@@ -168,7 +104,80 @@ func (l *localNode) freeAddr(t testing.TB) string {
 	if err := listener.Close(); err != nil {
 		t.Fatalf("harness: node %s: releasing %s: %v", l.name, addr, err)
 	}
+	l.mu.Lock()
+	l.freeAddrs[addr] = true
+	l.mu.Unlock()
 	return addr
+}
+
+func (l *localNode) writeConfig(t testing.TB, yaml string) {
+	t.Helper()
+	dir := filepath.Join(l.acct, ".agent-peer")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("harness: node %s: creating config dir %s: %v", l.name, dir, err)
+		return
+	}
+
+	// A Broker may be watching the directory, so write a complete file and
+	// rename it into place; a reader never sees a half-written configuration.
+	tmp, err := os.CreateTemp(dir, "config-*.yaml")
+	if err != nil {
+		t.Fatalf("harness: node %s: creating temporary config: %v", l.name, err)
+		return
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.WriteString(yaml); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		t.Fatalf("harness: node %s: writing %s: %v", l.name, tmpName, err)
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		t.Fatalf("harness: node %s: closing %s: %v", l.name, tmpName, err)
+		return
+	}
+	if err := os.Chmod(tmpName, 0o600); err != nil {
+		_ = os.Remove(tmpName)
+		t.Fatalf("harness: node %s: setting mode of %s: %v", l.name, tmpName, err)
+		return
+	}
+	if err := os.Rename(tmpName, l.configPath()); err != nil {
+		_ = os.Remove(tmpName)
+		t.Fatalf("harness: node %s: installing %s: %v", l.name, l.configPath(), err)
+	}
+}
+
+func (l *localNode) readConfig(t testing.TB) []byte {
+	t.Helper()
+	data, err := os.ReadFile(l.configPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		t.Fatalf("harness: node %s: reading %s: %v", l.name, l.configPath(), err)
+		return nil
+	}
+	return data
+}
+
+// readConfigMaybe returns the configuration file without failing the test.
+func (l *localNode) readConfigMaybe() ([]byte, bool) {
+	data, err := os.ReadFile(l.configPath())
+	if err != nil {
+		return nil, false
+	}
+	return data, true
+}
+
+func (l *localNode) readFile(t testing.TB, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("harness: node %s: reading %s: %v", l.name, path, err)
+		return nil
+	}
+	return data
 }
 
 func (l *localNode) exec(t testing.TB, argv []string, env map[string]string) ExecResult {
@@ -204,135 +213,100 @@ func (l *localNode) exec(t testing.TB, argv []string, env map[string]string) Exe
 func (l *localNode) startSession(tb testing.TB, spec SessionSpec) *Session {
 	tb.Helper()
 
-	configDir := spec.ConfigDir
-	if configDir == "" {
-		configDir = filepath.Join(l.env.Home, ".claude")
-	}
-	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		tb.Fatalf("harness: node %s: creating config dir %s: %v", l.name, configDir, err)
+	// StartSession completes the MCP initialize handshake before it returns;
+	// the deadline here is the project-wide test wait, not the thirty-second
+	// startup allowance Claude Code itself uses.
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+
+	session, err := node.StartSession(ctx, tb, l.env, node.MCPCommand{Path: l.bin, Args: []string{"mcp"}}, spec)
+	if err != nil {
+		tb.Fatalf("harness: node %s: starting session %s: %v", l.name, spec.Name, err)
 		return nil
 	}
 
-	fake := fakesession.New(tb, fakesession.Options{
-		ConfigDir:  configDir,
-		Name:       spec.Name,
-		Status:     spec.Status,
-		Mode:       spec.Mode,
-		BusyDelay:  spec.BusyDelay,
-		NoBind:     spec.NoBind,
-		SocketPath: spec.SocketPath,
-	})
-
-	s := &Session{name: spec.Name, fake: fake}
-	if spec.StartMCP {
-		s.mcp = l.startMCP(tb, s, spec)
+	s := &Session{
+		name: spec.Name,
+		impl: &localSession{name: spec.Name, session: session},
 	}
-
 	l.mu.Lock()
 	l.sessions = append(l.sessions, s)
 	l.mu.Unlock()
 	return s
 }
 
-// startMCP starts the MCP server process for s. See mcpProc for what is and is
-// not implemented before the node session driver lands.
-func (l *localNode) startMCP(tb testing.TB, s *Session, spec SessionSpec) *mcpProc {
-	tb.Helper()
-
-	l.mu.Lock()
-	l.mcpStarted++
-	n := l.mcpStarted
-	l.mu.Unlock()
-
-	logPath := filepath.Join(l.env.Home, fmt.Sprintf("mcp-%d-%d.log", s.fake.PID(), n))
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		tb.Fatalf("harness: node %s: opening MCP log %s: %v", l.name, logPath, err)
-		return nil
-	}
-
-	more := make(map[string]string, len(spec.Env)+2)
-	if !spec.NoSocketEnv {
-		more["CLAUDE_CODE_MESSAGING_SOCKET"] = s.fake.SocketPath()
-	}
-	if spec.ExportConfigDir {
-		more["CLAUDE_CONFIG_DIR"] = spec.ConfigDir
-	}
-	for name, value := range spec.Env {
-		more[name] = value
-	}
-
-	workdir := spec.Workdir
-	if workdir == "" {
-		workdir = l.env.Home
-	}
-
-	cmd := exec.Command(l.bin, "mcp")
-	cmd.Dir = workdir
-	cmd.Env = l.env.Build(more)
-	cmd.Stderr = logFile
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		_ = logFile.Close()
-		tb.Fatalf("harness: node %s: creating MCP stdin: %v", l.name, err)
-		return nil
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
-		_ = logFile.Close()
-		tb.Fatalf("harness: node %s: creating MCP stdout: %v", l.name, err)
-		return nil
-	}
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
-		_ = logFile.Close()
-		tb.Fatalf("harness: node %s: starting MCP server: %v", l.name, err)
-		return nil
-	}
-
-	p := &mcpProc{
-		cmd:   cmd,
-		pid:   cmd.Process.Pid,
-		log:   logFile,
-		stdin: stdin,
-		done:  make(chan struct{}),
-	}
-	go func() {
-		_, _ = io.Copy(logFile, stdout)
-		p.err = cmd.Wait()
-		close(p.done)
-	}()
-	return p
+// localSession adapts node.Session to the harness session interface, turning
+// errors into test failures.
+type localSession struct {
+	name    string
+	session *node.Session
 }
 
-// stop ends the MCP server process and releases the log.
-func (p *mcpProc) stop() {
-	if p.stdin != nil {
-		_ = p.stdin.Close()
+func (s *localSession) call(t testing.TB, tool string, args map[string]any) Result {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), sessionCallBound)
+	defer cancel()
+	result, err := s.session.Call(ctx, tool, args)
+	if err != nil {
+		t.Fatalf("harness: session %s: calling %s: %v", s.name, tool, err)
+		return Result{}
 	}
-	if p.cmd.Process != nil {
-		_ = p.cmd.Process.Signal(syscall.SIGKILL)
+	return Result{ToolResult: result}
+}
+
+func (s *localSession) tools(t testing.TB) []string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+	names, err := s.session.Tools(ctx)
+	if err != nil {
+		t.Fatalf("harness: session %s: listing tools: %v", s.name, err)
+		return nil
 	}
-	select {
-	case <-p.done:
-	case <-time.After(2 * time.Second):
+	return names
+}
+
+func (s *localSession) stopMCP(t testing.TB, sig syscall.Signal) int {
+	t.Helper()
+	code, err := s.session.StopMCP(sig)
+	if err != nil {
+		t.Fatalf("harness: session %s: stopping the MCP server process: %v", s.name, err)
+		return -1
 	}
-	if p.log != nil {
-		_ = p.log.Close()
+	return code
+}
+
+func (s *localSession) restartMCP(t testing.TB) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+	if err := s.session.RestartMCP(ctx); err != nil {
+		t.Fatalf("harness: session %s: restarting the MCP server process: %v", s.name, err)
 	}
 }
 
-// shutdownSession closes the simulated session and stops its MCP server
-// process. It is the cleanup form of the session end method, which the plan
-// revision still has to define.
-func (l *localNode) shutdownSession(s *Session) {
-	if s.mcp != nil {
-		s.mcp.stop()
+func (s *localSession) startExtraMCP(t testing.TB) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+	if _, err := s.session.StartExtraMCP(ctx); err != nil {
+		t.Fatalf("harness: session %s: starting an extra MCP server process: %v", s.name, err)
 	}
-	s.fake.RemoveRecord()
-	s.fake.Close()
 }
+
+func (s *localSession) inboxConnections(t testing.TB) int {
+	t.Helper()
+	count, err := s.session.InboxConnections()
+	if err != nil {
+		t.Fatalf("harness: session %s: counting inbox connections: %v", s.name, err)
+		return 0
+	}
+	return count
+}
+
+func (s *localSession) fake() *fakesession.Fake { return s.session.Fake() }
+
+func (s *localSession) end() error { return s.session.End() }
 
 // cleanup ends the node's sessions, stops its Broker, kills every process that
 // still carries this node's runtime root and removes the root. It is
@@ -349,124 +323,108 @@ func (l *localNode) cleanup() {
 		l.mu.Unlock()
 
 		for _, s := range sessions {
-			l.shutdownSession(s)
+			if err := s.endIfNotEnded(); err != nil {
+				l.t.Errorf("harness: node %s: ending session %s: %v", l.name, s.name, err)
+			}
 		}
 		for _, o := range oracles {
 			o.close()
 		}
 		if broker != nil {
-			broker.stop(2 * time.Second)
+			terminateBroker(broker)
 		}
 
-		for _, pid := range procsWithEnv("AGENT_PEER_TEST_RUNTIME_ROOT", l.root) {
-			_ = syscall.Kill(pid, syscall.SIGKILL)
-		}
+		l.killProcesses()
+
 		if err := os.RemoveAll(l.root); err != nil {
 			l.t.Errorf("harness: node %s: removing runtime root %s: %v", l.name, l.root, err)
 		}
 	})
 }
 
-// procsWithEnv returns the process IDs whose environment contains
-// name=value. It scans /proc and therefore works only on Linux; elsewhere it
-// returns nil.
-func procsWithEnv(name, value string) []int {
-	if runtime.GOOS != "linux" {
-		return nil
+// terminateBroker asks the Broker to exit with SIGTERM and kills it when it has
+// not exited within two seconds.
+func terminateBroker(b *node.BrokerProc) {
+	_ = b.Signal(syscall.SIGTERM)
+	if _, err := b.Wait(2 * time.Second); err == nil {
+		return
 	}
-	want := name + "=" + value
-	self := os.Getpid()
-	entries, err := os.ReadDir("/proc")
+	_ = b.Signal(syscall.SIGKILL)
+	_, _ = b.Wait(2 * time.Second)
+}
+
+// killProcesses kills every process whose environment carries this node's
+// runtime root, including a Broker that detached from the process that started
+// it. The scan is the node library's; no second implementation lives here.
+func (l *localNode) killProcesses() {
+	procs, err := node.ListProcs(func(p node.Proc) bool {
+		return p.Env["AGENT_PEER_TEST_RUNTIME_ROOT"] == l.root
+	})
 	if err != nil {
-		return nil
+		// Other platforms cannot scan processes; the processes the node
+		// started itself have already been stopped above.
+		if !errors.Is(err, errors.ErrUnsupported) {
+			l.t.Errorf("harness: node %s: listing processes: %v", l.name, err)
+		}
+		return
 	}
+	self := os.Getpid()
+	for _, proc := range procs {
+		if proc.PID == self {
+			continue
+		}
+		_ = syscall.Kill(proc.PID, syscall.SIGKILL)
+	}
+}
 
-	var pids []int
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil || pid == self {
-			continue
-		}
-		environ, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "environ"))
-		if err != nil {
-			continue
-		}
-		for _, variable := range strings.Split(string(environ), "\x00") {
-			if variable == want {
-				pids = append(pids, pid)
-				break
+// logHasAddressInUse reports whether the Broker log contains the failure that
+// the one retry accepts as a port race.
+func logHasAddressInUse(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "address already in use")
+}
+
+// replaceFreeAddrs replaces every address this node handed out through
+// FreeAddr that appears in args or configText with a fresh one. Addresses the
+// test obtained elsewhere are left alone, so a scenario that deliberately
+// occupies a port still sees the Broker fail.
+func (l *localNode) replaceFreeAddrs(tb testing.TB, args []string, configText string) ([]string, string, bool) {
+	l.mu.Lock()
+	addrs := make([]string, 0, len(l.freeAddrs))
+	for addr := range l.freeAddrs {
+		addrs = append(addrs, addr)
+	}
+	l.mu.Unlock()
+	// Longer addresses first, so an address that is a prefix of another is not
+	// replaced inside it.
+	sort.Slice(addrs, func(i, j int) bool { return len(addrs[i]) > len(addrs[j]) })
+
+	replacements := map[string]string{}
+	changed := false
+	replace := func(text string) string {
+		for _, old := range addrs {
+			if !strings.Contains(text, old) {
+				continue
 			}
+			fresh, ok := replacements[old]
+			if !ok {
+				fresh = l.freeAddr(tb)
+				replacements[old] = fresh
+			}
+			text = strings.ReplaceAll(text, old, fresh)
+			changed = true
 		}
+		return text
 	}
-	return pids
-}
 
-// brokerProc is a Broker process started by startBroker.
-type brokerProc struct {
-	cmd  *exec.Cmd
-	done chan struct{}
-
-	mu  sync.Mutex
-	err error
-}
-
-func newBrokerProc(cmd *exec.Cmd) *brokerProc {
-	b := &brokerProc{cmd: cmd, done: make(chan struct{})}
-	go func() {
-		b.mu.Lock()
-		b.err = cmd.Wait()
-		b.mu.Unlock()
-		close(b.done)
-	}()
-	return b
-}
-
-func (b *brokerProc) finished() bool {
-	select {
-	case <-b.done:
-		return true
-	default:
-		return false
+	newArgs := make([]string, len(args))
+	for i, arg := range args {
+		newArgs[i] = replace(arg)
 	}
-}
-
-func (b *brokerProc) signal(sig syscall.Signal) error {
-	return b.cmd.Process.Signal(sig)
-}
-
-// wait waits up to bound for the process to exit and reports whether it did.
-func (b *brokerProc) wait(bound time.Duration) bool {
-	select {
-	case <-b.done:
-		return true
-	case <-time.After(bound):
-		return false
-	}
-}
-
-func (b *brokerProc) exitCode() int {
-	b.mu.Lock()
-	err := b.err
-	b.mu.Unlock()
-	var exitErr *exec.ExitError
-	switch {
-	case err == nil:
-		return 0
-	case errors.As(err, &exitErr):
-		return exitErr.ExitCode()
-	default:
-		return -1
-	}
-}
-
-// stop asks the process to exit with SIGTERM and kills it if it has not exited
-// within bound.
-func (b *brokerProc) stop(bound time.Duration) {
-	_ = b.signal(syscall.SIGTERM)
-	if !b.wait(bound) {
-		_ = b.signal(syscall.SIGKILL)
-		b.wait(bound)
-	}
+	return newArgs, replace(configText), changed
 }
 
 func (l *localNode) startBroker(tb testing.TB, spec BrokerSpec) BrokerStart {
@@ -478,63 +436,61 @@ func (l *localNode) startBroker(tb testing.TB, spec BrokerSpec) BrokerStart {
 		tb.Fatalf("harness: node %s: a Broker is already running", l.name)
 		return BrokerStart{}
 	}
-	l.brokers++
-	logPath := filepath.Join(l.root, fmt.Sprintf("broker-%d.log", l.brokers))
-	l.brokerLogPath = logPath
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		l.mu.Unlock()
-		tb.Fatalf("harness: node %s: opening Broker log %s: %v", l.name, logPath, err)
-		return BrokerStart{}
-	}
-
-	cmd := exec.Command(l.bin, "broker")
-	cmd.Env = l.env.Build(nil)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	if err := cmd.Start(); err != nil {
-		l.mu.Unlock()
-		_ = logFile.Close()
-		tb.Fatalf("harness: node %s: starting Broker: %v", l.name, err)
-		return BrokerStart{}
-	}
-	// The child has its own descriptor; the parent does not need this one.
-	_ = logFile.Close()
-
-	broker := newBrokerProc(cmd)
-	l.broker = broker
 	l.mu.Unlock()
 
-	bound := spec.Bound
-	if bound <= 0 {
-		bound = brokerReadyBound
+	args := append([]string(nil), spec.Args...)
+	configText := spec.ConfigYAML
+	if configText == "" {
+		// Retrying rewrites the file the Broker is about to read, so keep its
+		// current contents at hand even when the caller did not pass any.
+		if data, ok := l.readConfigMaybe(); ok {
+			configText = string(data)
+		}
 	}
-	deadline := time.Now().Add(bound)
-	socket := l.brokerSocket()
-	for {
-		if broker.finished() {
-			l.mu.Lock()
-			l.broker = nil
-			l.mu.Unlock()
-			return BrokerStart{
-				Running:    false,
-				ExitCode:   broker.exitCode(),
-				StderrLast: lastBrokerError(logPath),
-			}
-		}
-		if brokerReady(socket, 200*time.Millisecond) {
-			return BrokerStart{Running: true, PID: cmd.Process.Pid}
-		}
-		if !time.Now().Before(deadline) {
-			broker.stop(2 * time.Second)
-			l.mu.Lock()
-			l.broker = nil
-			l.mu.Unlock()
-			tb.Fatalf("harness: node %s: Broker not ready within %s", l.name, bound)
+	if spec.ConfigYAML != "" {
+		l.writeConfig(tb, spec.ConfigYAML)
+	}
+
+	for attempt := 0; ; attempt++ {
+		l.mu.Lock()
+		l.brokers++
+		logPath := filepath.Join(l.root, fmt.Sprintf("broker-%d.log", l.brokers))
+		l.brokerLogPath = logPath
+		l.mu.Unlock()
+
+		proc, start, err := node.StartBroker(context.Background(), node.BrokerSpec{
+			Path:    l.bin,
+			Args:    args,
+			Env:     l.env.Build(spec.Env),
+			LogPath: logPath,
+			Socket:  l.brokerSocket(),
+		}, spec.Bound)
+		if err != nil {
+			tb.Fatalf("harness: node %s: starting Broker: %v", l.name, err)
 			return BrokerStart{}
 		}
-		time.Sleep(pollInterval)
+		if start.Running {
+			l.mu.Lock()
+			l.broker = proc
+			l.mu.Unlock()
+			return start
+		}
+
+		// A port handed out by FreeAddr can be taken between the probe and the
+		// bind. Accept that race once: move every such address to a new one,
+		// rewrite the configuration file, and start again.
+		if attempt == 0 && logHasAddressInUse(logPath) {
+			newArgs, newConfig, changed := l.replaceFreeAddrs(tb, args, configText)
+			if changed {
+				if newConfig != "" {
+					l.writeConfig(tb, newConfig)
+				}
+				args = newArgs
+				configText = newConfig
+				continue
+			}
+		}
+		return start
 	}
 }
 
@@ -551,10 +507,11 @@ func (l *localNode) stopBroker(tb testing.TB, sig syscall.Signal) int {
 
 	// A signal to a process that already exited reports an error; the exit
 	// code below still tells the caller what happened.
-	_ = broker.signal(sig)
-	if !broker.wait(10 * time.Second) {
-		_ = broker.signal(syscall.SIGKILL)
-		broker.wait(2 * time.Second)
+	_ = broker.Signal(sig)
+	code, err := broker.Wait(10 * time.Second)
+	if err != nil {
+		_ = broker.Signal(syscall.SIGKILL)
+		code, _ = broker.Wait(2 * time.Second)
 	}
 
 	l.mu.Lock()
@@ -562,7 +519,7 @@ func (l *localNode) stopBroker(tb testing.TB, sig syscall.Signal) int {
 		l.broker = nil
 	}
 	l.mu.Unlock()
-	return broker.exitCode()
+	return code
 }
 
 func (l *localNode) brokerLog(tb testing.TB) []byte {
@@ -585,54 +542,15 @@ func (l *localNode) brokerLog(tb testing.TB) []byte {
 	return data
 }
 
-// lastBrokerError returns the last line of the Broker log that starts with
-// "agent-peer broker: ", with the prefix removed.
-func lastBrokerError(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	const prefix = "agent-peer broker: "
-	last := ""
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, prefix) {
-			last = strings.TrimPrefix(line, prefix)
-		}
-	}
-	return last
-}
-
-// brokerReady reports whether the Broker at socket answers Local.Hello.
-func brokerReady(socket string, timeout time.Duration) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	conn, err := grpc.NewClient("unix://"+socket, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return false
-	}
-	defer func() { _ = conn.Close() }()
-
-	_, err = localpb.NewLocalClient(conn).Hello(ctx, &localpb.HelloRequest{ProtocolVersion: localpb.ProtocolVersion})
-	return err == nil
-}
-
 func (l *localNode) oracle() *OracleClient {
-	conn, err := grpc.NewClient("unix://"+l.brokerSocket(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	oracle, err := node.DialOracle(l.brokerSocket())
 	if err != nil {
 		l.t.Fatalf("harness: node %s: connecting to the local socket: %v", l.name, err)
 		return nil
 	}
-	o := &OracleClient{conn: conn, client: localpb.NewLocalClient(conn)}
+	o := &OracleClient{oracle: oracle}
 	l.mu.Lock()
 	l.oracles = append(l.oracles, o)
 	l.mu.Unlock()
 	return o
-}
-
-// hello calls Local.Hello without failing the test.
-func (o *OracleClient) hello() (*localpb.HelloResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	return o.client.Hello(ctx, &localpb.HelloRequest{ProtocolVersion: localpb.ProtocolVersion})
 }

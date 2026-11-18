@@ -3,6 +3,7 @@ package harness
 import (
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -10,6 +11,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/agent-peer/test/e2e/node"
 )
 
 // envMap turns NAME=value strings into a map.
@@ -64,13 +69,31 @@ func TestLocalHostEnvIsolates(t *testing.T) {
 	}
 }
 
+// pidsWithRuntimeRoot returns the process IDs whose environment carries the
+// given runtime root. It uses the node library's scan; no private /proc reader
+// lives in the harness.
+func pidsWithRuntimeRoot(t *testing.T, root string) []int {
+	t.Helper()
+	procs, err := node.ListProcs(func(p node.Proc) bool {
+		return p.Env["AGENT_PEER_TEST_RUNTIME_ROOT"] == root
+	})
+	if err != nil {
+		t.Fatalf("listing processes: %v", err)
+	}
+	pids := make([]int, 0, len(procs))
+	for _, proc := range procs {
+		pids = append(pids, proc.PID)
+	}
+	return pids
+}
+
 func TestLocalHostCleanupKillsDetached(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("looking up processes by environment scans /proc")
 	}
 
-	node := NewLocalHost(t, LocalOptions{Name: "cleanup"})
-	local := node.impl.(*localNode)
+	host := NewLocalHost(t, LocalOptions{Name: "cleanup"})
+	local := host.impl.(*localNode)
 
 	// The shell exits at once; setsid detaches the sleep, which is reparented
 	// and outlives the process that started it, like a Broker started by an
@@ -87,7 +110,7 @@ func TestLocalHostCleanupKillsDetached(t *testing.T) {
 	}
 
 	Eventually(t, 5*time.Second, "the detached process starts", func() (bool, string) {
-		pids := procsWithEnv("AGENT_PEER_TEST_RUNTIME_ROOT", local.root)
+		pids := pidsWithRuntimeRoot(t, local.root)
 		if containsPID(pids, pid) {
 			return true, fmt.Sprintf("pid %d is running", pid)
 		}
@@ -97,7 +120,7 @@ func TestLocalHostCleanupKillsDetached(t *testing.T) {
 	local.cleanup()
 
 	Eventually(t, 5*time.Second, "cleanup kills the detached process", func() (bool, string) {
-		pids := procsWithEnv("AGENT_PEER_TEST_RUNTIME_ROOT", local.root)
+		pids := pidsWithRuntimeRoot(t, local.root)
 		if containsPID(pids, pid) {
 			return false, fmt.Sprintf("pid %d still running", pid)
 		}
@@ -118,22 +141,245 @@ func containsPID(pids []int, want int) bool {
 }
 
 func TestFreeAddrIsLoopback(t *testing.T) {
-	node := NewLocalHost(t, LocalOptions{Name: "addr"})
+	host := NewLocalHost(t, LocalOptions{Name: "addr"})
 
 	for i := 0; i < 3; i++ {
-		addr := node.FreeAddr(t)
+		addr := host.FreeAddr(t)
 		if !strings.HasPrefix(addr, "127.0.0.1:") {
 			t.Fatalf("FreeAddr returned %q, want a 127.0.0.1 address", addr)
 		}
-		host, port, err := net.SplitHostPort(addr)
+		hostPart, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			t.Fatalf("splitting %q: %v", addr, err)
 		}
-		if host != "127.0.0.1" {
-			t.Errorf("FreeAddr returned host %q, want 127.0.0.1", host)
+		if hostPart != "127.0.0.1" {
+			t.Errorf("FreeAddr returned host %q, want 127.0.0.1", hostPart)
 		}
 		if number, err := strconv.Atoi(port); err != nil || number == 0 {
 			t.Errorf("FreeAddr returned port %q, want a non-zero number", port)
 		}
 	}
+}
+
+func TestNodeConfigFile(t *testing.T) {
+	host := NewLocalHost(t, LocalOptions{Name: "config"})
+
+	if data := host.ReadConfig(t); data != nil {
+		t.Fatalf("ReadConfig on a fresh node returned %q, want nil", data)
+	}
+
+	const yaml = "broker:\n  alias: x\n"
+	host.WriteConfig(t, yaml)
+
+	if got := string(host.ReadConfig(t)); got != yaml {
+		t.Fatalf("ReadConfig returned %q, want %q", got, yaml)
+	}
+
+	path := filepath.Join(host.AccountHome(), ".agent-peer", "config.yaml")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	if mode := info.Mode().Perm(); mode != 0o600 {
+		t.Errorf("config file mode is %o, want 600", mode)
+	}
+	dirInfo, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("stat %s: %v", filepath.Dir(path), err)
+	}
+	if mode := dirInfo.Mode().Perm(); mode != 0o700 {
+		t.Errorf("config directory mode is %o, want 700", mode)
+	}
+	if got := string(host.ReadFile(t, path)); got != yaml {
+		t.Errorf("ReadFile returned %q, want %q", got, yaml)
+	}
+
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("reading %s: %v", filepath.Dir(path), err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "config.yaml" {
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			names = append(names, entry.Name())
+		}
+		t.Errorf("config directory holds %v, want only config.yaml", names)
+	}
+}
+
+func TestSessionEndIsIdempotent(t *testing.T) {
+	host := NewLocalHost(t, LocalOptions{Name: "end"})
+	session := host.StartSession(t, SessionSpec{Name: "e"})
+
+	record := session.Fake().RecordPath()
+	session.End(t)
+	session.End(t)
+
+	if _, err := os.Stat(record); !os.IsNotExist(err) {
+		t.Fatalf("session record %s still exists after End: %v", record, err)
+	}
+}
+
+// fakeBrokerScript writes a stand-in Broker binary that records its arguments
+// and fails with the given line on standard error.
+func fakeBrokerScript(t *testing.T, dir, failure string) (script, record string) {
+	t.Helper()
+	script = filepath.Join(dir, "fake-broker.sh")
+	record = filepath.Join(dir, "runs")
+	body := fmt.Sprintf(`#!/bin/sh
+printf '%%s\n' "$*" >> "$FAKE_BROKER_RECORD"
+listen=
+prev=
+for arg in "$@"; do
+  if [ "$prev" = "--listen" ]; then listen="$arg"; fi
+  prev="$arg"
+done
+echo "agent-peer broker: %s" >&2
+exit 4
+`, failure)
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatalf("writing %s: %v", script, err)
+	}
+	return script, record
+}
+
+// recordedRuns returns the lines the stand-in Broker wrote.
+func recordedRuns(t *testing.T, record string) []string {
+	t.Helper()
+	data, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("reading %s: %v", record, err)
+	}
+	return strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+}
+
+// listenArg returns the value after --listen in a recorded command line.
+func listenArg(t *testing.T, line string) string {
+	t.Helper()
+	fields := strings.Fields(line)
+	for i := 0; i+1 < len(fields); i++ {
+		if fields[i] == "--listen" {
+			return fields[i+1]
+		}
+	}
+	t.Fatalf("no --listen in %q", line)
+	return ""
+}
+
+func TestStartBrokerRetriesFreeAddrConflict(t *testing.T) {
+	const addressTaken = "listen address $listen is not available: listen tcp $listen: bind: address already in use"
+
+	t.Run("FreeAddr conflict is retried", func(t *testing.T) {
+		host := NewLocalHost(t, LocalOptions{Name: "retry"})
+		local := host.impl.(*localNode)
+		script, record := fakeBrokerScript(t, t.TempDir(), addressTaken)
+		local.bin = script
+
+		addr := host.FreeAddr(t)
+		result := host.StartBroker(t, BrokerSpec{
+			Args:       []string{"--listen", addr},
+			ConfigYAML: "broker:\n  listen: " + addr + "\n",
+			Env:        map[string]string{"FAKE_BROKER_RECORD": record},
+		})
+
+		runs := recordedRuns(t, record)
+		if len(runs) != 2 {
+			t.Fatalf("the Broker ran %d times, want 2: %q", len(runs), runs)
+		}
+		second := listenArg(t, runs[1])
+		if second == addr {
+			t.Errorf("the second attempt reused %q", addr)
+		}
+		if !strings.HasPrefix(second, "127.0.0.1:") {
+			t.Errorf("the second address is %q, want a 127.0.0.1 address", second)
+		}
+		if config := string(host.ReadConfig(t)); !strings.Contains(config, second) {
+			t.Errorf("configuration %q does not carry the second address %q", config, second)
+		}
+		if result.Running {
+			t.Errorf("StartBroker reports Running, want false")
+		}
+		if result.ExitCode != 4 {
+			t.Errorf("ExitCode is %d, want 4", result.ExitCode)
+		}
+	})
+
+	t.Run("an address the test chose is not retried", func(t *testing.T) {
+		host := NewLocalHost(t, LocalOptions{Name: "intentional"})
+		local := host.impl.(*localNode)
+		script, record := fakeBrokerScript(t, t.TempDir(), addressTaken)
+		local.bin = script
+
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("reserving a port: %v", err)
+		}
+		defer func() { _ = listener.Close() }()
+
+		result := host.StartBroker(t, BrokerSpec{
+			Args: []string{"--listen", listener.Addr().String()},
+			Env:  map[string]string{"FAKE_BROKER_RECORD": record},
+		})
+
+		if runs := recordedRuns(t, record); len(runs) != 1 {
+			t.Errorf("the Broker ran %d times, want 1: %q", len(runs), runs)
+		}
+		if result.Running || result.ExitCode != 4 {
+			t.Errorf("StartBroker = %+v, want a failure with exit code 4", result)
+		}
+	})
+
+	t.Run("a different failure is not retried", func(t *testing.T) {
+		host := NewLocalHost(t, LocalOptions{Name: "denied"})
+		local := host.impl.(*localNode)
+		script, record := fakeBrokerScript(t, t.TempDir(), "listen address $listen is not available: permission denied")
+		local.bin = script
+
+		result := host.StartBroker(t, BrokerSpec{
+			Args: []string{"--listen", host.FreeAddr(t)},
+			Env:  map[string]string{"FAKE_BROKER_RECORD": record},
+		})
+
+		if runs := recordedRuns(t, record); len(runs) != 1 {
+			t.Errorf("the Broker ran %d times, want 1: %q", len(runs), runs)
+		}
+		if result.Running || result.ExitCode != 4 {
+			t.Errorf("StartBroker = %+v, want a failure with exit code 4", result)
+		}
+	})
+}
+
+// TestExportedTypeShapes pins the names and signatures downstream work items
+// quote from the plan: the three aliases, the field names of the broker and
+// exec results, and the methods scenarios call.
+func TestExportedTypeShapes(t *testing.T) {
+	var _ BrokerStart = node.StartResult{}
+	var _ SessionSpec = node.SessionSpec{}
+	var _ BaseEnv = node.BaseEnv{}
+
+	var _ = BrokerSpec{Args: nil, ConfigYAML: "", Env: nil, Bound: 0}
+	var _ = ExecResult{ExitCode: 0, Stdout: "", Stderr: ""}
+	var _ = BrokerStart{Running: false, PID: 0, ExitCode: 0, StderrLast: ""}
+
+	var _ func(testing.TB) *localpb.HelloResponse = (*OracleClient)(nil).Hello
+	var _ func(testing.TB) (*localpb.ListBrokersResponse, *localpb.ErrorDetail) = (*OracleClient)(nil).ListBrokers
+	var _ func(testing.TB) (*localpb.StatusResponse, *localpb.ErrorDetail) = (*OracleClient)(nil).Status
+	var _ func(testing.TB, string) (*localpb.GetConfigResponse, *localpb.ErrorDetail) = (*OracleClient)(nil).GetConfig
+	var _ func(testing.TB, time.Time, uint32) ([]*localpb.AuditEvent, *localpb.ErrorDetail) = (*OracleClient)(nil).Audit
+
+	var _ func(testing.TB, BrokerSpec) BrokerStart = (*Node)(nil).StartBroker
+	var _ func(testing.TB, SessionSpec) *Session = (*Node)(nil).StartSession
+	var _ func(testing.TB, []string, map[string]string) ExecResult = (*Node)(nil).Exec
+	var _ func() *OracleClient = (*Node)(nil).Oracle
+	var _ func(testing.TB) string = (*Node)(nil).FreeAddr
+	var _ func() string = (*Node)(nil).AccountHome
+	var _ func(testing.TB, string) = (*Node)(nil).WriteConfig
+	var _ func(testing.TB) []byte = (*Node)(nil).ReadConfig
+	var _ func(testing.TB, string) []byte = (*Node)(nil).ReadFile
+
+	var _ func(testing.TB, string, map[string]any) Result = (*Session)(nil).Call
+	var _ func(testing.TB, time.Duration) fakesession.Frame = (*Session)(nil).WaitFrame
+	var _ func(testing.TB) = (*Session)(nil).End
+
+	var _ func(string) (struct{}, error) = Decode[struct{}]
 }
