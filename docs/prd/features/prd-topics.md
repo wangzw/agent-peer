@@ -28,32 +28,32 @@
 Agent 必须能按名字加入一个 topic。
 
 - **验收**：Agent 以名字 `release` 加入后，列出自己所在的 topic，结果包含 `release`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/topics_local_test.go` 的 `TestLocalTopics/REQ-topics-001 join`
 
 ### REQ-topics-002
 
 加入 topic 不得要求任何其他 Agent 或用户的批准，加入一个此前无人加入的 topic 时同样必须成功。
 
 - **验收**：以一个此前无人使用的名字加入，调用成功；另一个 Agent 以同名加入，调用成功，且两者互相可见。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/topics_local_test.go` 的 `TestLocalTopics/REQ-topics-002 join new name without approval`
 
 ### REQ-topics-003
 
 Agent 必须能退出一个已加入的 topic。
 
 - **验收**：退出后，列出自己所在的 topic，结果不含该 topic；与它只有该 topic 这一个共同 topic 的 Agent，其列表中不再出现它。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/topics_local_test.go` 的 `TestLocalTopics/REQ-topics-003 leave`
 
 ### REQ-topics-004
 
 一个 Agent 必须能同时属于多个 topic。
 
 - **验收**：Agent 先后加入 `t1` 和 `t2`，列出自己所在的 topic，结果同时包含 `t1` 与 `t2`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/topics_local_test.go` 的 `TestLocalTopics/REQ-topics-004 many topics`
 
 ### REQ-topics-005
 
@@ -140,32 +140,32 @@ Agent 必须能列出自己已加入的 topic 和本 Broker 已知的公开 topi
 自动加入未关闭时，会话所在工作区的项目配置文件声明了 topic 列表的，Agent 登记后必须自动加入列表中的每个 topic。
 
 - **验收**：项目配置文件声明 `t1` 与 `t2`，在该项目中启动的 Agent 未做任何加入操作，列出自己所在的 topic，结果恰为 `t1` 与 `t2`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/topics_local_test.go` 的 `TestLocalTopics/REQ-topics-015 project topics`
 
 ### REQ-topics-016
 
 自动加入未关闭时，项目配置文件没有声明 topic 列表，且会话的工作区是带有 `origin` 远端的 git 仓库的，Agent 登记后必须自动加入以该远端地址的规范化结果命名的 topic。
 
 - **验收**：在 `origin` 为 `https://github.com/org/repo` 的仓库中启动的 Agent，未做任何加入操作，所在的 topic 恰为 `github.com/org/repo`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/topics_local_test.go` 的 `TestLocalTopics/REQ-topics-016 origin topic`
 
 ### REQ-topics-017
 
 同一个仓库的不同地址写法必须规范化为同一个 topic 名，形式为小写的主机名后接仓库路径，不含协议、用户信息、端口和 `.git` 后缀。
 
 - **验收**：`git@github.com:org/repo.git`、`ssh://git@GitHub.com:22/org/repo.git` 与 `https://github.com/org/repo` 的规范化结果都是 `github.com/org/repo`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/topics_local_test.go` 的 `TestLocalTopics/REQ-topics-017 spellings`
 
 ### REQ-topics-018
 
 项目配置文件没有声明 topic 列表，且工作区不是带有 `origin` 远端的 git 仓库时，系统不得让 Agent 自动加入任何 topic。
 
 - **验收**：在一个非 git 目录中启动的 Agent，所在的 topic 为空，且不出现在任何其他 Agent 的列表中。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/topics_local_test.go` 的 `TestLocalTopics/REQ-topics-018 non-git`
 
 ### REQ-topics-019
 
@@ -180,16 +180,16 @@ Agent 必须能列出自己已加入的 topic 和本 Broker 已知的公开 topi
 Broker 配置中关闭自动加入后，该 Broker 上新登记的 Agent 不得自动加入任何 topic。
 
 - **验收**：关闭后在一个带 `origin` 的仓库中启动 Agent，其所在的 topic 为空。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/topics_local_test.go` 的 `TestLocalTopics/REQ-topics-020 broker auto_join off`
 
 ### REQ-topics-021
 
 项目配置文件中关闭自动加入后，在该项目中登记的 Agent 不得自动加入任何 topic。
 
 - **验收**：项目配置文件关闭自动加入，Broker 配置保持开启；在该项目中启动的 Agent 所在的 topic 为空，在其他项目中启动的 Agent 仍自动加入其默认 topic。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/topics_local_test.go` 的 `TestLocalTopics/REQ-topics-021 project auto_join off`
 
 ### REQ-topics-022
 
