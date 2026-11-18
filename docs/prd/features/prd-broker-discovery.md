@@ -29,16 +29,16 @@
 Broker 未在配置中明确设为公开时必须是不公开的。
 
 - **验收**：以默认配置启动的 Broker A 与 B 配对，C 与 B 相连而与 A 之间没有链路；C 列出已知 Broker 的结果不含 A。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestDiscoveryPrivateByDefault`
 
 ### REQ-broker-discovery-002
 
 Broker 设为公开后必须发布名片，名片的内容是它的指纹、别名和对外地址列表，列表可以为空。
 
 - **验收**：设为公开后，与它没有链路的 Broker 列出已知 Broker 的结果包含它，指纹、别名和对外地址列表与其实际值一致；把监听地址配置为空的公开 Broker，结果中它的对外地址列表为空。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestDiscoveryCardReachesWholeNetwork`；`test/e2e/discovery_test.go` 的 `TestDiscoveryPublicWithoutListen`
 
 ### REQ-broker-discovery-003
 
@@ -53,16 +53,16 @@ Broker 设为公开后必须发布名片，名片的内容是它的指纹、别�
 Broker 不得把另一个不公开 Broker 的任何信息传给该 Broker 的对端以外的 Broker。
 
 - **验收**：不公开的 A 与 B 已连接，B 与 C 已连接，A 与 C 之间没有链路；C 上任何工具的返回结果和 C 的日志中都不出现 A 的指纹、别名或对外地址。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestDiscoveryPrivateByDefault`
 
 ### REQ-broker-discovery-005
 
 不公开的 Broker 必须同样能获知连通网络内其他 Broker 的名片。
 
 - **验收**：不公开的 A 与 B 已连接，B 持有公开 Broker C 的名片；A 列出已知 Broker 的结果包含 C。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestDiscoveryPrivateBrokerLearnsCards`
 
 ### REQ-broker-discovery-006
 
@@ -93,8 +93,8 @@ Broker 必须拒绝内容被传递者改动过的名片，以及并非由名片�
 Broker 由公开改为不公开后，它的名片必须在 60 秒内从与它持续连通的各 Broker 的已知 Broker 结果中消失，且不得因其他 Broker 仍持有旧名片而重新出现。当时没有与它连通的 Broker 在重新连通并对账之后才收到撤回，不在此限。
 
 - **验收**：A 公开后名片到达 C；A 改为不公开，60 秒后 C 的结果不再含 A；此后让一台持有 A 旧名片的 Broker 重新接入网络，C 的结果仍不含 A。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestDiscoveryRevokeWithin60s`
 
 ### REQ-broker-discovery-010
 

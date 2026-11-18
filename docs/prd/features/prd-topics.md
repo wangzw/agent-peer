@@ -84,8 +84,8 @@ Agent 必须能退出一个已加入的 topic。
 topic 在未声明为公开时必须是不公开的。
 
 - **验收**：Agent 加入一个新 topic 且未声明公开，其他 Broker 上列出公开 topic 的结果不含它。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestDiscoveryPrivateByDefault`
 
 ### REQ-topics-009
 
@@ -172,8 +172,8 @@ Agent 必须能列出自己已加入的 topic 和本 Broker 已知的公开 topi
 自动加入的 topic 必须是不公开的。
 
 - **验收**：Agent 自动加入默认 topic 后，其他 Broker 上列出公开 topic 的结果不含它。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestDiscoveryPrivateByDefault`
 
 ### REQ-topics-020
 
@@ -204,24 +204,24 @@ Agent 的 topic 成员关系必须在所在会话结束时全部消失。Broker 
 所在 Broker 不公开时，把 topic 声明为公开的调用必须失败并说明需要先把 Broker 设为公开，Agent 不得因这次调用加入该 topic。
 
 - **验收**：不公开的 Broker 上的 Agent 以公开方式加入 topic，调用返回错误；该 Agent 所在的 topic 不变，其他 Broker 上列出公开 topic 的结果不含该 topic。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestPublicTopicRejectedOnPrivateBroker`
 
 ### REQ-topics-024
 
 Broker 由公开改为不公开后，它此前的公开 topic 声明必须从连通网络内所有 Broker 上列出公开 topic 的结果中消失。
 
 - **验收**：A 与 B 已连接，B 与 C 已连接，A 与 C 之间没有链路；A 上的 Agent 以公开方式加入 `infra-help`，C 上列出公开 topic 的结果包含它；A 改为不公开后，在该 Agent 仍在 `infra-help` 中的情况下，C 上列出公开 topic 的结果不再包含 `infra-help`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestPublicTopicGoneWhenBrokerPrivate`
 
 ### REQ-topics-025
 
 一个 Broker 上已没有以公开方式加入某个 topic 的 Agent 时，该 Broker 对这个 topic 的公开声明必须从连通网络内其他 Broker 列出公开 topic 的结果中消失。
 
 - **验收**：A 与 B 已连接，A 上只有一个 Agent 以公开方式加入 `infra-help`，网络中没有其他 Broker 声明它；该 Agent 退出 `infra-help` 后，B 上列出公开 topic 的结果不再包含它；重新以公开方式加入后再次出现，结束该 Agent 的会话后再次消失。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestPublicTopicFollowsLastMember`
 
 ## 数据需求
 

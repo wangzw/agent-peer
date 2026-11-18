@@ -36,8 +36,8 @@ Broker 有两种部署形态。生产部署时由管理员把它作为系统服�
 所属账户对 Broker 的配置文件有读权限的 Agent，必须能读取该 Broker 的当前配置。权限前提由 `REQ-broker-config-022` 规定。
 
 - **验收**：读取结果中的别名、是否公开、监听地址、是否自动加入默认 topic 与 Broker 的实际行为一致。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestDiscoveryCardReachesWholeNetwork`
 
 ### REQ-broker-config-002
 
