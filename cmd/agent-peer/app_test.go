@@ -145,25 +145,6 @@ func TestServiceIsNotImplemented(t *testing.T) {
 	}
 }
 
-func TestInternalHelpersAreNotImplemented(t *testing.T) {
-	cases := [][]string{
-		{"internal", "account-helper"},
-		{"internal", "access-check"},
-	}
-	for _, args := range cases {
-		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			a, _, stderr, _ := newDispatchApp("dev")
-
-			if got := a.run(context.Background(), args); got != exitFailure {
-				t.Fatalf("run(%q) = %d, want %d", args, got, exitFailure)
-			}
-			if !strings.Contains(stderr.String(), "not implemented") {
-				t.Fatalf("stderr = %q, want the not implemented message", stderr.String())
-			}
-		})
-	}
-}
-
 func TestUnknownInternalCommandIsHidden(t *testing.T) {
 	cases := [][]string{
 		{"internal"},

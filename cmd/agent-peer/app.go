@@ -106,7 +106,7 @@ func (a *app) runInternal(ctx context.Context, args []string) int {
 		return handler(a, ctx, args[1:])
 	}
 	switch args[0] {
-	case "broker-launcher", "account-helper", "access-check":
+	case "broker-launcher":
 		_, _ = fmt.Fprintf(a.stderr, "agent-peer %s: not implemented\n", name)
 		return exitFailure
 	}
