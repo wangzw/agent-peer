@@ -106,6 +106,13 @@ func TestJourneyPairBrokers(t *testing.T) {
 	if !pairIsFingerprint(connected.Fingerprint) {
 		t.Fatalf("connect_broker fingerprint = %q, want 64 lowercase hex digits", connected.Fingerprint)
 	}
+	// A's identity, derived from its certificate, is what both sides must
+	// report; comparing the two reported values alone would only prove that
+	// they agree with each other.
+	aIdentity := pkIdentityFingerprint(t, hostA)
+	if connected.Fingerprint != aIdentity {
+		t.Fatalf("connect_broker fingerprint = %q, want A's identity %q", connected.Fingerprint, aIdentity)
+	}
 
 	// Step 5 and 6: both sides list the other as a peer and report the link.
 	var bobView mcpserver.BrokerOut
@@ -155,10 +162,10 @@ func TestJourneyPairBrokers(t *testing.T) {
 		return true, ""
 	})
 
-	// The fingerprint the dialer reported is the one the acceptor's Broker
-	// shows on its own side too.
-	if bobView.Fingerprint != connected.Fingerprint {
-		t.Fatalf("bob lists hostA with fingerprint %q, connect_broker reported %q", bobView.Fingerprint, connected.Fingerprint)
+	// The acceptor's fingerprint is A's own identity, not merely the value the
+	// dialer reported back.
+	if bobView.Fingerprint != aIdentity {
+		t.Fatalf("bob lists hostA with fingerprint %q, want A's identity %q", bobView.Fingerprint, aIdentity)
 	}
 	pairCheckOraclePeer(t, hostA, "hostB-17443", localpb.PeerRole_PEER_ROLE_ACCEPTOR)
 	pairCheckOraclePeer(t, hostB, "hostA-17443", localpb.PeerRole_PEER_ROLE_DIALER)
