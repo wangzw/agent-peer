@@ -1,0 +1,49 @@
+version: 2
+
+project_name: agent-peer
+
+builds:
+  - id: agent-peer
+    main: ./cmd/agent-peer
+    binary: agent-peer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    hooks:
+      post:
+        - cmd: >-
+            sh -c 'if grep -a -q AGENT_PEER_TEST_ "$0"; then echo "test hook string AGENT_PEER_TEST_ found in $0" >&2; exit 1; fi' "{{ .Path }}"
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - third_party/claude-code-socket-transport/LICENSE
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-SNAPSHOT-{{ .ShortCommit }}"
+
+changelog:
+  disable: true
+
+release:
+  draft: false
+  prerelease: auto
+  name_template: "v{{ .Version }}"
