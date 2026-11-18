@@ -27,6 +27,12 @@ var egressTargets = []struct {
 	{"the host", "10.12.72.1:443"},
 }
 
+// egressRouteTargets are the destinations a route lookup must not resolve on a
+// router or on the host behind it. A timeout alone does not prove there is no
+// way out: a router that still has a default route also times out when its
+// FORWARD chain drops the packet.
+var egressRouteTargets = []string{"1.1.1.1", "10.12.72.11"}
+
 // egressForbiddenPrefixes are the pod and service networks of the k8s node the
 // tests run on. A new host route that overlaps either one would take cluster
 // traffic away from its own bridges.
@@ -35,10 +41,13 @@ var egressForbiddenPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("10.96.0.0/12"),
 }
 
-// TestInfraNoEgress checks that the three routed topologies have no way out:
-// a node behind the router cannot reach a public resolver or the test host.
-// It also checks that starting a project adds no host route into the k8s pod
-// or service networks, and that Down removes the project's docker networks.
+// TestInfraNoEgress checks that the three routed topologies have no way out.
+// The route table proves it at the routing layer: neither the router nor the
+// host behind it resolves a public address or the host's own service address.
+// A TCP probe then confirms that a node behind the router cannot reach the
+// public resolver or the test host. The test also checks that starting a
+// project adds no host route into the k8s pod or service networks, and that
+// Down removes the project's docker networks.
 func TestInfraNoEgress(t *testing.T) {
 	t.Parallel()
 
@@ -58,8 +67,10 @@ func TestInfraNoEgress(t *testing.T) {
 			c := harness.Up(t, topo.topo)
 			prefix := egressProjectPrefix(t)
 
-			// hostB carries the default route handed out by the router, so it
-			// is the node with the best chance to escape the topology.
+			for _, node := range []string{"router", "hostB"} {
+				egressAssertNoRoute(t, c, node)
+			}
+
 			for _, target := range egressTargets {
 				if c.TCPReachable(t, "hostB", target.addr, egressProbeBound) {
 					t.Errorf("%s: hostB reached %s at %s; the routed topology must not offer a way out", topo.name, target.what, target.addr)
@@ -74,6 +85,23 @@ func TestInfraNoEgress(t *testing.T) {
 			egressAssertNoForbiddenRoutes(t, before, egressHostRoutes(t), "after Down")
 			egressAssertNoProjectNetworks(t, prefix, "after Down")
 		})
+	}
+}
+
+// egressAssertNoRoute checks that node's route table has no answer for a
+// public address or the host's service address. The lookup must print
+// "unreachable" or fail; a route that merely times out is not proof, because a
+// router that forwards nothing also times out while still holding a default.
+func egressAssertNoRoute(t *testing.T, c *harness.Cluster, node string) {
+	t.Helper()
+	for _, dest := range egressRouteTargets {
+		out, err := c.RootOK(t, node, "ip", "route", "get", dest)
+		if err != nil {
+			continue
+		}
+		if !strings.Contains(out, "unreachable") {
+			t.Errorf("%s: ip route get %s found a route: %s", node, dest, strings.TrimSpace(out))
+		}
 	}
 }
 

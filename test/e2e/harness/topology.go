@@ -30,10 +30,16 @@ var TopoNAT = Topology{
 		lanbDev := c.device(t, "router", "lanb")
 
 		c.SetDefaultRoute(t, "hostA", c.Addr("router", "wan"))
-		c.SetDefaultRoute(t, "hostB", c.Addr("router", "lanb"))
+		// hostB has no default route: its only exit would be the router,
+		// and the route table itself must say there is none. It reaches hostA
+		// through a route for each WAN subnet via the router instead.
+		c.RemoveDefaultRoute(t, "hostB")
+		for _, dev := range []string{wanDev, wan2Dev} {
+			c.Root(t, "hostB", "ip", "route", "replace", c.subnet(t, "router", dev), "via", c.Addr("router", "lanb"))
+		}
 		// Docker installs a default route over one bridge gateway; the router
 		// must have connected routes only, or it would offer a way out.
-		_, _ = c.RootOK(t, "router", "ip", "route", "del", "default")
+		c.RemoveDefaultRoute(t, "router")
 
 		c.Root(t, "router", "iptables", "-P", "FORWARD", "DROP")
 		c.Root(t, "router", "iptables", "-A", "FORWARD", "-i", lanbDev, "-o", wanDev, "-j", "ACCEPT")
@@ -75,8 +81,14 @@ var TopoMITM = Topology{
 		lanbDev := c.device(t, "router", "lanb")
 
 		c.SetDefaultRoute(t, "hostA", c.Addr("router", "wan"))
-		c.SetDefaultRoute(t, "hostB", c.Addr("router", "lanb"))
-		_, _ = c.RootOK(t, "router", "ip", "route", "del", "default")
+		// hostB has no default route: its only exit would be the router,
+		// and the route table itself must say there is none. It reaches hostA
+		// through a route for each WAN subnet via the router instead.
+		c.RemoveDefaultRoute(t, "hostB")
+		for _, dev := range []string{wanDev, wan2Dev} {
+			c.Root(t, "hostB", "ip", "route", "replace", c.subnet(t, "router", dev), "via", c.Addr("router", "lanb"))
+		}
+		c.RemoveDefaultRoute(t, "router")
 
 		c.Root(t, "router", "iptables", "-P", "FORWARD", "DROP")
 		c.Root(t, "router", "iptables", "-A", "FORWARD", "-i", lanbDev, "-o", wanDev, "-j", "ACCEPT")
@@ -119,8 +131,10 @@ var TopoPortForward = Topology{
 		wanDev := c.device(t, "router", "wan")
 
 		c.SetDefaultRoute(t, "hostA", c.Addr("router", "lana"))
-		c.SetDefaultRoute(t, "hostB", "")
-		_, _ = c.RootOK(t, "router", "ip", "route", "del", "default")
+		// hostB reaches the router's WAN address on-link; a default route would
+		// be a second, unchecked path out of the topology.
+		c.RemoveDefaultRoute(t, "hostB")
+		c.RemoveDefaultRoute(t, "router")
 
 		c.Root(t, "router", "iptables", "-t", "nat", "-A", "PREROUTING",
 			"-i", wanDev, "-p", "tcp", "--dport", "17443",
@@ -262,6 +276,24 @@ func allocRoutedSubnets(t *testing.T) [3]string {
 // routedSubnet formats the index-th /24 of 198.18.0.0/15 as a CIDR.
 func routedSubnet(index int) string {
 	return fmt.Sprintf("198.%d.%d.0/24", 18+index/256, index%256)
+}
+
+// RemoveDefaultRoute deletes node's IPv4 default route and asserts that none
+// remains. Deleting it is not best effort: a topology that keeps the route
+// still sends packets toward the Docker bridge, and a probe that only times out
+// cannot tell that apart from a router that drops them.
+func (c *Cluster) RemoveDefaultRoute(t testing.TB, node string) {
+	t.Helper()
+	c.Root(t, node, "ip", "route", "del", "default")
+	c.AssertNoDefaultRoute(t, node)
+}
+
+// AssertNoDefaultRoute fails when node has an IPv4 default route.
+func (c *Cluster) AssertNoDefaultRoute(t testing.TB, node string) {
+	t.Helper()
+	if out := strings.TrimSpace(c.Root(t, node, "ip", "route", "show", "default")); out != "" {
+		t.Fatalf("harness: node %s has a default route: %q", node, out)
+	}
 }
 
 // device returns the network interface of node that carries the IPv4 address
