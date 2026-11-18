@@ -31,7 +31,8 @@ const (
 	// rendered into an address because its ref is unusable. The entry is
 	// skipped; the ref comes from the peer, so it must not decide whether this
 	// process survives.
-	EvRemoteMemberInvalid = "remote_member_invalid"
+	EvRemoteMemberInvalid         = "remote_member_invalid"
+	EvSessionProtocolUnrecognized = "session_protocol_unrecognized"
 )
 
 // NewLogger returns a logger that writes one JSON object per line. The "msg"

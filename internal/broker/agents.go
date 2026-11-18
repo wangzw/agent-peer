@@ -45,6 +45,10 @@ type agent struct {
 	// directory), so the flag is separate.
 	watchDir watchKey
 	watching bool
+
+	// warnedPeerProtocol is the last session registry frame protocol version
+	// logged as unrecognized; 0 means none has been logged.
+	warnedPeerProtocol int
 }
 
 // regConn is one registration stream. Fields other than attemptMu are guarded

@@ -388,6 +388,7 @@ func (b *Broker) completeLocked(c *regConn, s inbox.Session, name string) []func
 		c.waitTimer.Stop()
 		c.waitTimer = nil
 	}
+	b.checkSessionProtocolLocked(c.agent)
 	c.reported = false
 	c.waitDetail = ""
 

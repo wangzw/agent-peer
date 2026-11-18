@@ -121,6 +121,7 @@ func (b *Broker) refreshAgent(a *agent) {
 	}
 
 	a.session = next
+	b.checkSessionProtocolLocked(a)
 	if nameChanged {
 		a.prevName = oldName
 		a.prevNameAt = b.deps.Clock.Now()
