@@ -1,0 +1,47 @@
+# TopoNAT: hostA on two WAN networks, hostB behind the router on lanb.
+# The router masquerades lanb traffic and forwards it; hostB can reach hostA,
+# hostA cannot reach hostB. Routes and firewall rules are installed by the
+# harness after up, not here.
+services:
+  hostA:
+    image: ${E2E_IMAGE}
+    hostname: ${HOSTA_NAME:-hostA}
+    init: true
+    cap_add: [NET_ADMIN, NET_RAW]
+    volumes: ["${CTL_HOSTA}:/ctl"]
+    networks: [wan, wan2]
+
+  router:
+    image: ${E2E_IMAGE}
+    hostname: ${ROUTER_NAME:-router}
+    init: true
+    cap_add: [NET_ADMIN, NET_RAW]
+    volumes: ["${CTL_ROUTER}:/ctl"]
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv6.conf.all.forwarding: 1
+    networks: [wan, wan2, lanb]
+
+  hostB:
+    image: ${E2E_IMAGE}
+    hostname: ${HOSTB_NAME:-hostB}
+    init: true
+    cap_add: [NET_ADMIN, NET_RAW]
+    volumes: ["${CTL_HOSTB}:/ctl"]
+    networks: [lanb]
+
+# The networks cannot be internal: Docker 29 drops routed traffic that enters
+# from an internal bridge and leaves its subnet, before the router container
+# ever sees it. Routed gateway mode keeps Docker's per-container direct-access
+# drop out of the way while the router still has no default route, so the
+# containers reach no network beyond these three.
+networks:
+  wan:
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: routed
+  wan2:
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: routed
+  lanb:
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: routed

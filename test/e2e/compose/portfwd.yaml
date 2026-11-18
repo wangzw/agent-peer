@@ -1,0 +1,40 @@
+# TopoPortForward: hostA behind the router on lana, hostB on the WAN.
+# The router DNATs its own 17443 to hostA; hostA's lana address itself is not
+# reachable from hostB because the router forwards only the DNATed connection.
+services:
+  hostA:
+    image: ${E2E_IMAGE}
+    hostname: ${HOSTA_NAME:-hostA}
+    init: true
+    cap_add: [NET_ADMIN, NET_RAW]
+    volumes: ["${CTL_HOSTA}:/ctl"]
+    networks: [lana]
+
+  router:
+    image: ${E2E_IMAGE}
+    hostname: ${ROUTER_NAME:-router}
+    init: true
+    cap_add: [NET_ADMIN, NET_RAW]
+    volumes: ["${CTL_ROUTER}:/ctl"]
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv6.conf.all.forwarding: 1
+    networks: [lana, wan]
+
+  hostB:
+    image: ${E2E_IMAGE}
+    hostname: ${HOSTB_NAME:-hostB}
+    init: true
+    cap_add: [NET_ADMIN, NET_RAW]
+    volumes: ["${CTL_HOSTB}:/ctl"]
+    networks: [wan]
+
+# See nat.yaml: routed gateway mode is what lets the router container forward
+# between the networks on Docker 29.
+networks:
+  lana:
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: routed
+  wan:
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: routed
