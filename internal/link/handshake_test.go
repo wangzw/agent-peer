@@ -470,8 +470,10 @@ func TestVersionMismatchRejected(t *testing.T) {
 		t.Fatalf("peer version = %d, want %d", state.PeerVersion, linkpb.ProtocolVersion+1)
 	}
 	logs := h.log.String()
+	local := fmt.Sprintf("local=%d", linkpb.ProtocolVersion)
+	peerVersion := fmt.Sprintf("peer_version=%d", linkpb.ProtocolVersion+1)
 	if !strings.Contains(logs, "protocol version mismatch") ||
-		!strings.Contains(logs, "local=1") || !strings.Contains(logs, "peer_version=2") {
+		!strings.Contains(logs, local) || !strings.Contains(logs, peerVersion) {
 		t.Fatalf("version mismatch log does not name both versions: %s", logs)
 	}
 }
