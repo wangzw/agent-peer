@@ -54,6 +54,10 @@ message RegistrationComplete {
 
 message RegistrationProblem {
   NotRegisteredReason reason = 1;
+  // Detail names the specific cause when the reason alone is too general, such
+  // as which character makes a session name unusable. Empty when the reason is
+  // all the Broker can tell.
+  string detail = 2;
 }
 
 message AgentChangedEvent {

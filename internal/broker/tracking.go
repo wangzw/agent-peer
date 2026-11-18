@@ -73,7 +73,7 @@ func (b *Broker) refreshAgent(a *agent) {
 		b.mu.Unlock()
 		return
 	case errors.Is(err, inbox.ErrNoRecord):
-		stops := b.revokeLocked(a, localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND)
+		stops := b.revokeLocked(a, localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND, "")
 		b.unlockAndNotify(stops)
 		return
 	default:
@@ -88,14 +88,14 @@ func (b *Broker) refreshAgent(a *agent) {
 		// a new agent ID.
 		b.log.Info(EvAgentSocketChanged, "agent", shortID(a.id),
 			"old_socket", a.socketPath, "new_socket", next.SocketPath)
-		stops := b.revokeLocked(a, localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND)
+		stops := b.revokeLocked(a, localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND, "")
 		b.unlockAndNotify(stops)
 		return
 	}
 
-	name, usable := NameUsable(next.Name)
+	name, detail, usable := NameUsableDetail(next.Name)
 	if !usable {
-		stops := b.revokeLocked(a, localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE)
+		stops := b.revokeLocked(a, localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE, detail)
 		b.unlockAndNotify(stops)
 		return
 	}
@@ -173,7 +173,7 @@ func (b *Broker) expirePrevName(a *agent, at time.Time) {
 // Every registration connection goes back to waiting with reason reported once,
 // and gets its inbox watch back so a restored record completes it again.
 // Callers must hold Broker.mu; the returned stops run outside it.
-func (b *Broker) revokeLocked(a *agent, reason localpb.NotRegisteredReason) []func() {
+func (b *Broker) revokeLocked(a *agent, reason localpb.NotRegisteredReason, detail string) []func() {
 	conns := make([]*regConn, 0, len(a.conns))
 	for c := range a.conns {
 		conns = append(conns, c)
@@ -185,6 +185,7 @@ func (b *Broker) revokeLocked(a *agent, reason localpb.NotRegisteredReason) []fu
 	for _, c := range conns {
 		c.agent = nil
 		c.waitReason = reason
+		c.waitDetail = detail
 		c.reported = true
 		b.waiting[c] = struct{}{}
 
@@ -199,7 +200,7 @@ func (b *Broker) revokeLocked(a *agent, reason localpb.NotRegisteredReason) []fu
 			}
 		}
 		if _, still := b.waiting[c]; still {
-			c.out.push(notRegisteredResponse(reason))
+			c.out.push(notRegisteredResponse(reason, detail))
 		}
 	}
 	return stops

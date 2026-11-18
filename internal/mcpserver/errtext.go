@@ -74,8 +74,12 @@ func toolError(phrase, body string, code localpb.ErrorCode) error {
 }
 
 // notRegisteredReason turns a not_registered event reason into the sentence
-// shown to the model.
-func notRegisteredReason(r localpb.NotRegisteredReason) string {
+// shown to the model. A non-empty detail from the Broker names the specific
+// cause and wins over the general sentence for the reason.
+func notRegisteredReason(r localpb.NotRegisteredReason, detail string) string {
+	if detail != "" {
+		return detail
+	}
 	switch r {
 	case localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND:
 		return "no Claude Code session record matches this session's inbox socket"

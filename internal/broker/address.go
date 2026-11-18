@@ -90,11 +90,27 @@ func ComputeRefs(ids []AgentID) map[AgentID]string {
 // register it. A name is unusable when it is empty after normalization, its
 // cleaned signature is empty, or it contains "@" or "*".
 func NameUsable(raw string) (string, bool) {
+	n, _, usable := NameUsableDetail(raw)
+	return n, usable
+}
+
+// NameUsableDetail is NameUsable with an explanation. It applies the same
+// rules in the same order and returns the normalized name, the detail and
+// whether the name is usable. detail is empty when the name is usable; when it
+// is not, detail names the first failing rule for the model.
+func NameUsableDetail(raw string) (string, string, bool) {
 	n := inbox.NormalizeName(raw)
-	if n == "" || inbox.CleanSignature(n) == "" || strings.ContainsAny(n, "@*") {
-		return n, false
+	switch {
+	case n == "":
+		return n, "the session name is empty", false
+	case inbox.CleanSignature(n) == "":
+		return n, "the session name has no characters a receiver can read", false
+	case strings.Contains(n, "@"):
+		return n, `the session name contains "@"`, false
+	case strings.Contains(n, "*"):
+		return n, `the session name contains "*"`, false
 	}
-	return n, true
+	return n, "", true
 }
 
 // ValidAlias reports whether alias is a valid Broker alias: 1 to 24 characters

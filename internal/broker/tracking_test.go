@@ -311,8 +311,12 @@ func TestRenameToUnusableRevokes(t *testing.T) {
 
 	fake.Rename("a@b")
 
-	if reason := rs.problem(3 * time.Second); reason != localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE {
-		t.Fatalf("reason = %v, want name_unusable", reason)
+	problem := rs.problemEvent(3 * time.Second)
+	if problem.GetReason() != localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE {
+		t.Fatalf("reason = %v, want name_unusable", problem.GetReason())
+	}
+	if got, want := problem.GetDetail(), `the session name contains "@"`; got != want {
+		t.Fatalf("detail = %q, want %q", got, want)
 	}
 	if n := tb.lockedAgentCount(); n != 0 {
 		t.Fatalf("agents = %d, want 0", n)

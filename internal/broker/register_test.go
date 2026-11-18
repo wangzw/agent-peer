@@ -100,14 +100,19 @@ func (rs *regStream) complete(d time.Duration) *localpb.RegistrationComplete {
 	return complete
 }
 
-func (rs *regStream) problem(d time.Duration) localpb.NotRegisteredReason {
+func (rs *regStream) problemEvent(d time.Duration) *localpb.RegistrationProblem {
 	rs.t.Helper()
 	resp := rs.next(d)
 	problem := resp.GetNotRegistered()
 	if problem == nil {
 		rs.t.Fatalf("registration event = %v, want not_registered", resp)
 	}
-	return problem.GetReason()
+	return problem
+}
+
+func (rs *regStream) problem(d time.Duration) localpb.NotRegisteredReason {
+	rs.t.Helper()
+	return rs.problemEvent(d).GetReason()
 }
 
 func (rs *regStream) expectNoEvent(d time.Duration) {
@@ -384,6 +389,39 @@ func TestRegisterUnusableName(t *testing.T) {
 			complete := rs.complete(3 * time.Second)
 			if complete.GetAgentAddress() != "ab@hostA" {
 				t.Fatalf("agent_address = %q, want ab@hostA", complete.GetAgentAddress())
+			}
+		})
+	}
+}
+
+// TestRegisterUnusableNameDetail checks that a not_registered event with the
+// NAME_UNUSABLE reason names what made the name unusable, not just the enum.
+func TestRegisterUnusableNameDetail(t *testing.T) {
+	tests := []struct {
+		name   string
+		detail string
+	}{
+		{"", "the session name is empty"},
+		{"a@b", `the session name contains "@"`},
+		{"*x", `the session name contains "*"`},
+		{"\"<>\"", "the session name has no characters a receiver can read"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tb := newTestBroker(t)
+			fake := fakesession.New(t, fakesession.Options{Name: tt.name})
+			rs := startRegistration(t, tb, fake)
+
+			waitForReg(t, "the connection to wait", func() bool {
+				return tb.lockedWaitingCount() == 1
+			})
+			tb.clock.Advance(10 * time.Second)
+			problem := rs.problemEvent(3 * time.Second)
+			if problem.GetReason() != localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE {
+				t.Fatalf("reason = %v, want name_unusable", problem.GetReason())
+			}
+			if got := problem.GetDetail(); got != tt.detail {
+				t.Fatalf("detail = %q, want %q", got, tt.detail)
 			}
 		})
 	}

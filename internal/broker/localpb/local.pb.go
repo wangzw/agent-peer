@@ -805,8 +805,12 @@ func (x *RegistrationComplete) GetAutoJoin() bool {
 }
 
 type RegistrationProblem struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Reason        NotRegisteredReason    `protobuf:"varint,1,opt,name=reason,proto3,enum=internal.broker.localpb.NotRegisteredReason" json:"reason,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Reason NotRegisteredReason    `protobuf:"varint,1,opt,name=reason,proto3,enum=internal.broker.localpb.NotRegisteredReason" json:"reason,omitempty"`
+	// Detail names the specific cause when the reason alone is too general, such
+	// as which character makes a session name unusable. Empty when the reason is
+	// all the Broker can tell.
+	Detail        string `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -846,6 +850,13 @@ func (x *RegistrationProblem) GetReason() NotRegisteredReason {
 		return x.Reason
 	}
 	return NotRegisteredReason_NOT_REGISTERED_REASON_UNSPECIFIED
+}
+
+func (x *RegistrationProblem) GetDetail() string {
+	if x != nil {
+		return x.Detail
+	}
+	return ""
 }
 
 type AgentChangedEvent struct {
@@ -3086,9 +3097,10 @@ const file_internal_broker_localpb_local_proto_rawDesc = "" +
 	"\x14RegistrationComplete\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12#\n" +
 	"\ragent_address\x18\x02 \x01(\tR\fagentAddress\x12\x1b\n" +
-	"\tauto_join\x18\x03 \x01(\bR\bautoJoin\"[\n" +
+	"\tauto_join\x18\x03 \x01(\bR\bautoJoin\"s\n" +
 	"\x13RegistrationProblem\x12D\n" +
-	"\x06reason\x18\x01 \x01(\x0e2,.internal.broker.localpb.NotRegisteredReasonR\x06reason\"\xb6\x01\n" +
+	"\x06reason\x18\x01 \x01(\x0e2,.internal.broker.localpb.NotRegisteredReasonR\x06reason\x12\x16\n" +
+	"\x06detail\x18\x02 \x01(\tR\x06detail\"\xb6\x01\n" +
 	"\x11AgentChangedEvent\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12#\n" +
 	"\ragent_address\x18\x02 \x01(\tR\fagentAddress\x12<\n" +

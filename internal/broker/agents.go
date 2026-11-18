@@ -58,9 +58,10 @@ type regConn struct {
 	release    func() // from SessionRouter.Acquire, called once when the stream ends
 	agent      *agent // nil while waiting
 	waitReason localpb.NotRegisteredReason
-	attempted  bool // attempt has stored waitReason; the timer must not report before it
-	reportDue  bool // the wait timer fired before the first attempt stored a reason
-	reported   bool // a not_registered has been sent for the current wait
+	waitDetail string // specific explanation for waitReason, "" when unknown
+	attempted  bool   // attempt has stored waitReason; the timer must not report before it
+	reportDue  bool   // the wait timer fired before the first attempt stored a reason
+	reported   bool   // a not_registered has been sent for the current wait
 	waitTimer  Timer
 	watchDir   string // Broker.watches key this connection holds, "" if none
 	watching   bool

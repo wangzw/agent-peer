@@ -225,6 +225,43 @@ func TestPreflightNotRegisteredReasons(t *testing.T) {
 	}
 }
 
+// TestPreflightNotRegisteredDetail checks that a Broker-supplied detail wins
+// over the general sentence for the reason, and that a missing detail keeps
+// that sentence.
+func TestPreflightNotRegisteredDetail(t *testing.T) {
+	t.Run("detail wins", func(t *testing.T) {
+		h := newHandlers(Status{
+			Phase:               PhaseConnected,
+			NotRegistered:       localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE,
+			NotRegisteredDetail: `the session name contains "@"`,
+		})
+		_, err := h.preflight("list_agents", callGeneric, true)
+		if err == nil {
+			t.Fatal("preflight returned no error")
+		}
+		want := `list_agents failed: this session is not registered as an agent: the session name contains "@" (code: not_registered)`
+		if got := err.Error(); got != want {
+			t.Errorf("preflight error = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("no detail keeps the sentence", func(t *testing.T) {
+		h := newHandlers(Status{
+			Phase:         PhaseConnected,
+			NotRegistered: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE,
+		})
+		_, err := h.preflight("list_agents", callGeneric, true)
+		if err == nil {
+			t.Fatal("preflight returned no error")
+		}
+		want := "list_agents failed: this session is not registered as an agent: " +
+			"the session name is unusable (empty, or contains @ or *); rename the session (code: not_registered)"
+		if got := err.Error(); got != want {
+			t.Errorf("preflight error = %q, want %q", got, want)
+		}
+	})
+}
+
 // TestRPCError checks the conversion of Local RPC failures, including the
 // phrases for sends and pairings and the permission hints
 // (REQ-broker-config-021, REQ-broker-config-022, REQ-agent-messaging-027,

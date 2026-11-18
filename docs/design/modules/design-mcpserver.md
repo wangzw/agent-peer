@@ -156,7 +156,7 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 
 Broker 返回的错误码转成一句以结果开头的文字，随后附上错误码和可采取的做法，例如名字有歧义时列出候选地址，附上消歧标识，目标是曾用名时给出现在的地址，权限不足时指出所缺的权限。Broker 不可达或登记未完成时，工具调用立即返回说明原因的错误，不在 MCP 服务进程内排队。
 
-错误文字的固定格式是 `开头短语: 说明 (code: <错误码名>)`，开头短语与说明之间是 `: `；涉及远端 Broker 时再接 ` (reported by Broker <64 位小写十六进制指纹>)`，有附加提示时提示接在最后。开头短语由错误码与调用它的工具确定，不取自 Broker 给出的说明：错误码为 `delivery_unknown` 时一律为 `Delivery unknown`，其余按工具取默认值，`send_message` 为 `Not sent`，`connect_broker` 为 `Not connected`，其他工具为 `<工具名> failed`。Broker 的说明若已以 `Not sent: `、`Delivery unknown: ` 或 `Not connected: ` 之一开头，先去掉这个开头短语，再按上述规则加上正确的短语。未连接、正在连接与拉起失败这些本机状态产生的错误用 `internal` 码，登记未完成用 `not_registered`，版本不兼容用 `version_mismatch`。`send_message` 的请求发出后连接中断，按结果未知处理，开头为 `Delivery unknown`，说明消息可能已送达、重发可能使对方收到两份；`connect_broker` 的同情形以 `Not connected` 开头，说明配对可能已完成，可查看 `list_brokers`。
+错误文字的固定格式是 `开头短语: 说明 (code: <错误码名>)`，开头短语与说明之间是 `: `；涉及远端 Broker 时再接 ` (reported by Broker <64 位小写十六进制指纹>)`，有附加提示时提示接在最后。开头短语由错误码与调用它的工具确定，不取自 Broker 给出的说明：错误码为 `delivery_unknown` 时一律为 `Delivery unknown`，其余按工具取默认值，`send_message` 为 `Not sent`，`connect_broker` 为 `Not connected`，其他工具为 `<工具名> failed`。Broker 的说明若已以 `Not sent: `、`Delivery unknown: ` 或 `Not connected: ` 之一开头，先去掉这个开头短语，再按上述规则加上正确的短语。未连接、正在连接与拉起失败这些本机状态产生的错误用 `internal` 码，登记未完成用 `not_registered`，版本不兼容用 `version_mismatch`。登记未完成的说明优先取 Broker 事件里的 `detail`，它点名具体原因；`detail` 为空时按原因枚举使用固定句子，因此本进程连接不发送 `detail` 的旧 Broker 时，文字与之前一致。`send_message` 的请求发出后连接中断，按结果未知处理，开头为 `Delivery unknown`，说明消息可能已送达、重发可能使对方收到两份；`connect_broker` 的同情形以 `Not connected` 开头，说明配对可能已完成，可查看 `list_brokers`。
 
 | 情形 | 工具调用得到 |
 |---|---|

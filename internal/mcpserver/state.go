@@ -36,6 +36,9 @@ type Status struct {
 	AgentID       string              // non-empty only after registration_complete
 	Address       string
 	NotRegistered localpb.NotRegisteredReason // last reason the Broker sent; UNSPECIFIED if none yet
+	// NotRegisteredDetail is the Broker's specific explanation of
+	// NotRegistered; empty when the Broker sent none.
+	NotRegisteredDetail string
 }
 
 // statusStore holds the current Status and is safe for concurrent use.
@@ -100,7 +103,7 @@ func (h *handlers) preflight(tool string, kind callKind, needAgent bool) (Status
 		return st, toolError(phrase, fmt.Sprintf(textVersionMismatch, st.Detail, st.Remedy), localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH)
 	case PhaseConnected:
 		if needAgent && st.AgentID == "" {
-			return st, toolError(phrase, fmt.Sprintf(textNotRegistered, notRegisteredReason(st.NotRegistered)), localpb.ErrorCode_ERROR_CODE_NOT_REGISTERED)
+			return st, toolError(phrase, fmt.Sprintf(textNotRegistered, notRegisteredReason(st.NotRegistered, st.NotRegisteredDetail)), localpb.ErrorCode_ERROR_CODE_NOT_REGISTERED)
 		}
 	}
 	return st, nil

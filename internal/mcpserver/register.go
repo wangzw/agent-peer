@@ -67,6 +67,7 @@ func runRegistration(ctx context.Context, c localpb.LocalClient, first *localpb.
 				s.AgentID = agentID
 				s.Address = complete.GetAgentAddress()
 				s.NotRegistered = localpb.NotRegisteredReason_NOT_REGISTERED_REASON_UNSPECIFIED
+				s.NotRegisteredDetail = ""
 			})
 			autoJoin := complete.GetAutoJoin()
 			wg.Add(1)
@@ -79,10 +80,12 @@ func runRegistration(ctx context.Context, c localpb.LocalClient, first *localpb.
 
 		case *localpb.RegisterResponse_NotRegistered:
 			reason := event.NotRegistered.GetReason()
+			detail := event.NotRegistered.GetDetail()
 			st.Update(func(s *Status) {
 				s.AgentID = ""
 				s.Address = ""
 				s.NotRegistered = reason
+				s.NotRegisteredDetail = detail
 			})
 
 		case *localpb.RegisterResponse_AgentChanged:
@@ -128,5 +131,6 @@ func clearRegistration(st *statusStore) {
 		s.AgentID = ""
 		s.Address = ""
 		s.NotRegistered = localpb.NotRegisteredReason_NOT_REGISTERED_REASON_UNSPECIFIED
+		s.NotRegisteredDetail = ""
 	})
 }

@@ -108,7 +108,7 @@ func (b *Broker) beginRegistration(c *regConn) {
 		c.waitReason = localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SOCKET_PATH_MISSING
 		c.attempted = true
 		c.reported = true
-		c.out.push(notRegisteredResponse(c.waitReason))
+		c.out.push(notRegisteredResponse(c.waitReason, ""))
 		b.mu.Unlock()
 		return
 	}
@@ -198,7 +198,7 @@ func (b *Broker) tryComplete(c *regConn) (a *agent, attached bool) {
 		return nil, false
 	}
 
-	reason, session, name, ok := b.inspect(c)
+	problem, session, name, ok := b.inspect(c)
 
 	b.mu.Lock()
 	if ok {
@@ -214,7 +214,8 @@ func (b *Broker) tryComplete(c *regConn) (a *agent, attached bool) {
 		return a, true
 	}
 	if _, stillWaiting := b.waiting[c]; stillWaiting {
-		c.waitReason = reason
+		c.waitReason = problem.reason
+		c.waitDetail = problem.detail
 		c.attempted = true
 		if c.reportDue {
 			b.reportWaitingLocked(c)
@@ -224,27 +225,36 @@ func (b *Broker) tryComplete(c *regConn) (a *agent, attached bool) {
 	return nil, false
 }
 
+// registrationProblem is the reason and optional detail a registration attempt
+// reports for a waiting connection.
+type registrationProblem struct {
+	reason localpb.NotRegisteredReason
+	detail string
+}
+
 // inspect performs the three checks of a registration attempt. ok is true when
 // all of them pass.
-func (b *Broker) inspect(c *regConn) (localpb.NotRegisteredReason, inbox.Session, string, bool) {
+func (b *Broker) inspect(c *regConn) (registrationProblem, inbox.Session, string, bool) {
 	s, err := c.backend.Lookup(b.ctx, c.configDir, c.socketPath)
 	if err != nil {
 		if !errors.Is(err, inbox.ErrNoRecord) && !errors.Is(err, inbox.ErrPartial) {
 			b.log.Warn(EvRegistrationWaiting, "error", err, "uid", c.caller.UID)
 		}
-		return localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND,
+		return registrationProblem{reason: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND},
 			inbox.Session{}, "", false
 	}
 	if !socketOwnedBy(c.socketPath, c.caller.UID) {
-		return localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SOCKET_NOT_OWNED,
+		return registrationProblem{reason: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SOCKET_NOT_OWNED},
 			inbox.Session{}, "", false
 	}
-	name, usable := NameUsable(s.Name)
+	name, detail, usable := NameUsableDetail(s.Name)
 	if !usable {
-		return localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE,
-			inbox.Session{}, "", false
+		return registrationProblem{
+			reason: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE,
+			detail: detail,
+		}, inbox.Session{}, "", false
 	}
-	return localpb.NotRegisteredReason_NOT_REGISTERED_REASON_UNSPECIFIED, s, name, true
+	return registrationProblem{}, s, name, true
 }
 
 // completeLocked attaches a connection to its agent, creating the agent when
@@ -360,6 +370,7 @@ func (b *Broker) completeLocked(c *regConn, s inbox.Session, name string) []func
 		c.waitTimer = nil
 	}
 	c.reported = false
+	c.waitDetail = ""
 
 	// Introduce the agent to the topic table before the MCP process can see
 	// registration_complete and join its default topics.
@@ -406,7 +417,7 @@ func (b *Broker) reportWaitingLocked(c *regConn) {
 	if c.reported {
 		return
 	}
-	c.out.push(notRegisteredResponse(c.waitReason))
+	c.out.push(notRegisteredResponse(c.waitReason, c.waitDetail))
 	c.reported = true
 	b.log.Info(EvRegistrationWaiting, "reason", reasonName(c.waitReason), "uid", c.caller.UID)
 }
@@ -450,10 +461,10 @@ func socketOwnedBy(path string, uid uint32) bool {
 	return st.Uid == uid
 }
 
-func notRegisteredResponse(reason localpb.NotRegisteredReason) *localpb.RegisterResponse {
+func notRegisteredResponse(reason localpb.NotRegisteredReason, detail string) *localpb.RegisterResponse {
 	return &localpb.RegisterResponse{
 		Event: &localpb.RegisterResponse_NotRegistered{
-			NotRegistered: &localpb.RegistrationProblem{Reason: reason},
+			NotRegistered: &localpb.RegistrationProblem{Reason: reason, Detail: detail},
 		},
 	}
 }
