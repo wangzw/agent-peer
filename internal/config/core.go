@@ -93,6 +93,9 @@ func accountHomeDir() (string, error) {
 	return os.UserHomeDir()
 }
 
+// homeDirSource is the seam the agentpeer_testenv build replaces; production code never replaces it.
+var homeDirSource = accountHomeDir
+
 func newCore() *core {
 	hostname := os.Hostname
 	return &core{
@@ -102,7 +105,7 @@ func newCore() *core {
 		now:        time.Now,
 		newTicker:  newRealTicker,
 		hostname:   hostname,
-		homeDir:    accountHomeDir,
+		homeDir:    homeDirSource,
 		euid:       os.Geteuid,
 		routesSrc:  platformAddressSource{},
 		writeFile:  writeConfigFile,
