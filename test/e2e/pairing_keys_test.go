@@ -424,6 +424,15 @@ func pkConnect(t *testing.T, op *harness.Session, address, key, localAlias strin
 func pkRejectReason(t *testing.T, r harness.Result, acceptor *harness.Node, since time.Time, alias, reason string) {
 	t.Helper()
 	r.MustCode(t, "pairing_rejected")
+	// The dialer learns the cause from the acceptor's reject frame. Both sides
+	// are asserted: the tool text the dialer sees and the acceptor's audit.
+	wantText := "invalid"
+	if strings.Contains(reason, "expired") {
+		wantText = "expired"
+	}
+	if !strings.Contains(r.Text, wantText) {
+		t.Fatalf("the dialer's error is %q, want it to name %q", r.Text, wantText)
+	}
 	harness.Eventually(t, pkWaitBound, "the pairing failure is audited as "+reason, func() (bool, string) {
 		events, detail := acceptor.Oracle().Audit(t, since, 0)
 		if detail != nil {
@@ -535,7 +544,16 @@ func pkPeersJSON(t *testing.T, node *harness.Node) []byte {
 func pkDataDirContains(t *testing.T, node *harness.Node, needle string) bool {
 	t.Helper()
 	dir := filepath.Join(node.AccountHome(), ".agent-peer")
-	res := node.Exec(t, []string{"sh", "-c", "grep -R -F -e " + shellQuote(needle) + " -- " + shellQuote(dir)}, nil)
+	// The peers table is rewritten through a temporary file that is renamed
+	// into place. A recursive grep can open one of those temporary files and
+	// find it gone a moment later, so the search walks the durable files and
+	// ignores a file that disappears between listing and reading.
+	const script = `dir=$1; needle=$2; status=1
+for f in $(find "$dir" -type f ! -name '*.tmp-*' 2>/dev/null); do
+	if grep -qF -e "$needle" -- "$f" 2>/dev/null; then status=0; break; fi
+done
+exit $status`
+	res := node.Exec(t, []string{"sh", "-c", script, "sh", dir, needle}, nil)
 	switch res.ExitCode {
 	case 0:
 		return true
