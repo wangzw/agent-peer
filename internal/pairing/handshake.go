@@ -69,6 +69,11 @@ func (p *Pairing) Connect(ctx context.Context, address, key, localAlias string) 
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrDialFailed):
+			// A canceled dial is the caller's cancellation, not an
+			// unreachable peer: link wraps both sentinels in that case.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return Peer{}, "", ctxErr
+			}
 			return Peer{}, "", ErrPeerUnreachable
 		case errors.Is(err, context.DeadlineExceeded):
 			return Peer{}, "", &PairingError{Reason: ReasonTimeout, Detail: "handshake timed out"}

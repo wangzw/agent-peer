@@ -814,6 +814,27 @@ func TestConnectDialErrorMapping(t *testing.T) {
 	}
 }
 
+// A canceled dial reports the cancellation, not an unreachable peer: the link
+// dial wraps context.Canceled together with ErrDialFailed, and Connect must not
+// turn a caller's cancellation into a pairing failure.
+func TestConnectCanceledDialIsCanceled(t *testing.T) {
+	clk := newHSClock()
+	s := newHSSettings(t)
+	tr := &hsTransport{dialErr: fmt.Errorf("dial refused: %w: %w", ErrDialFailed, context.Canceled)}
+	p := hsNewPairing(t, s, tr, clk)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := p.Connect(ctx, "127.0.0.1:17443", "K", "")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if errors.Is(err, ErrPeerUnreachable) {
+		t.Fatalf("error = %v, must not be ErrPeerUnreachable", err)
+	}
+}
+
 func TestMismatchedFingerprintViewsFailProofs(t *testing.T) {
 	clk := newHSClock()
 	initS := newHSSettings(t)
