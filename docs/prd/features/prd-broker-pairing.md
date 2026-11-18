@@ -117,16 +117,16 @@ Agent 必须能凭对方的地址和配对密钥，让本机 Broker 向对方发
 不知道配对密钥的第三方即使能截获并改写双方之间的网络流量，也不得使配对成功。
 
 - **验收**：在两个 Broker 之间放置一个能读写双方之间全部流量但不知道配对密钥的中间节点，以正确的配对密钥发起配对，配对失败，双方都不保存对方或中间节点的身份。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/security_test.go` 的 `TestMITM/REQ-broker-pairing-012 man in the middle`
 
 ### REQ-broker-pairing-013
 
 Broker 之间传输的全部内容必须加密。
 
 - **验收**：抓取两个已连接 Broker 之间的网络流量，其中不出现任何消息正文、Agent 名字或 topic 名字的明文。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/security_test.go` 的 `TestLinkEncrypted/REQ-broker-pairing-013 encrypted`
 
 ### REQ-broker-pairing-014
 

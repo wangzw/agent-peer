@@ -92,8 +92,8 @@ topic 在未声明为公开时必须是不公开的。
 系统不得向没有该 topic 成员的 Broker 透露不公开 topic 的名字。
 
 - **验收**：主机 A 上有 Agent 加入不公开的 topic `secret-x`，已连接的主机 B 上没有 Agent 加入它；B 上任何工具的返回结果和 B 的日志中都不出现 `secret-x`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/security_test.go` 的 `TestPrivateTopicNamesStayHome/REQ-topics-009 private topic name`
 
 ### REQ-topics-010
 
@@ -132,8 +132,8 @@ Agent 必须能列出自己已加入的 topic 和本 Broker 已知的公开 topi
 一个 topic 的成员名单不得发送给任何 Broker，但已连接且在该 topic 也有成员的对端除外。
 
 - **验收**：主机 A 上名为 `api-worker` 的 Agent 在 topic `t1` 中，已连接的主机 B 上没有 Agent 在 `t1` 中；B 上任何工具的返回结果和 B 的日志中都不出现 `api-worker`。B 上有 Agent 加入 `t1` 后，A 上的该 Agent 出现在它的列表中。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/security_test.go` 的 `TestPrivateTopicNamesStayHome/REQ-topics-014 member list`
 
 ### REQ-topics-015
 

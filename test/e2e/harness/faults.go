@@ -280,25 +280,45 @@ func hasSYNMask(line string) bool {
 	return strings.Contains(line, "flags:0x17/0x02")
 }
 
+// captureBound bounds tcpdump's startup and exit. Both are local process
+// operations with no product timer, so the project-wide three-second bound
+// applies.
+const captureBound = 3 * time.Second
+
 // Capture starts tcpdump on node for TCP port and returns a function that
 // stops it and returns the pcap bytes. The capture file lives in the
 // container's /tmp and is read back through the node agent.
 func (c *Cluster) Capture(t testing.TB, node string, port int) (stop func() []byte) {
 	t.Helper()
 	path := fmt.Sprintf("/tmp/e2e-capture-%d.pcap", port)
-	log := fmt.Sprintf("/tmp/e2e-capture-%d.log", port)
-	// Redirecting both streams lets the exec return while tcpdump keeps
-	// running under the container's init process.
-	script := fmt.Sprintf("rm -f %s %s; nohup tcpdump -i any -w %s -U tcp port %d >%s 2>&1 &",
-		path, log, path, port, log)
+	logPath := fmt.Sprintf("/tmp/e2e-capture-%d.log", port)
+	pidPath := fmt.Sprintf("/tmp/e2e-capture-%d.pid", port)
+	// The pid file is what lets stop address this tcpdump and no other one on
+	// the node. Redirecting both streams lets the exec return while tcpdump
+	// keeps running under the container's init process.
+	script := fmt.Sprintf("rm -f %s %s %s; nohup tcpdump -i any -w %s -U tcp port %d >%s 2>&1 & echo $! > %s",
+		path, logPath, pidPath, path, port, logPath, pidPath)
 	c.Root(t, node, "sh", "-c", script)
-	Eventually(t, 5*time.Second, "tcpdump on "+node, func() (bool, string) {
-		out, err := c.RootOK(t, node, "pgrep", "-x", "tcpdump")
-		if err != nil || strings.TrimSpace(out) == "" {
-			return false, "tcpdump is not running"
+
+	// tcpdump prints "listening on <device>" only after it has opened the
+	// capture device. The process existing is not enough: a capture started a
+	// moment later would miss the first packets.
+	Eventually(t, captureBound, "tcpdump on "+node+" to attach", func() (bool, string) {
+		out, err := c.RootOK(t, node, "cat", logPath)
+		if err != nil {
+			return false, fmt.Sprintf("reading %s: %v", logPath, err)
+		}
+		if !strings.Contains(out, "listening on") {
+			return false, strings.TrimSpace(out)
 		}
 		return true, ""
 	})
+
+	pidText := strings.TrimSpace(c.Root(t, node, "cat", pidPath))
+	pid, err := strconv.Atoi(pidText)
+	if err != nil || pid <= 0 {
+		t.Fatalf("harness: node %s: tcpdump wrote no usable pid (%q): %v", node, pidText, err)
+	}
 
 	var (
 		once sync.Once
@@ -306,12 +326,11 @@ func (c *Cluster) Capture(t testing.TB, node string, port int) (stop func() []by
 	)
 	return func() []byte {
 		once.Do(func() {
-			if _, err := c.RootOK(t, node, "pkill", "-INT", "-x", "tcpdump"); err != nil {
-				t.Logf("harness: node %s: stopping tcpdump: %v", node, err)
+			if _, err := c.RootOK(t, node, "kill", "-INT", strconv.Itoa(pid)); err != nil {
+				t.Logf("harness: node %s: stopping tcpdump %d: %v", node, pid, err)
 			}
-			Eventually(t, 5*time.Second, "tcpdump on "+node+" to stop", func() (bool, string) {
-				out, err := c.RootOK(t, node, "pgrep", "-x", "tcpdump")
-				if err == nil && strings.TrimSpace(out) != "" {
+			Eventually(t, captureBound, fmt.Sprintf("tcpdump %d on %s to stop", pid, node), func() (bool, string) {
+				if _, err := c.RootOK(t, node, "kill", "-0", strconv.Itoa(pid)); err == nil {
 					return false, "tcpdump is still running"
 				}
 				return true, ""
