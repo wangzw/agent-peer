@@ -303,7 +303,7 @@ Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间�
 | [broker](modules/design-broker.md) | 未实现 |
 | [mcpserver](modules/design-mcpserver.md)（信号由“cmd 与终端命令”单元接入） | 部分实现 |
 | [inbox](modules/design-inbox.md) | 已实现 |
-| [topic](modules/design-topic.md) | 未实现 |
+| [topic](modules/design-topic.md) | 已实现 |
 | [link](modules/design-link.md) | 已实现 |
 | [pairing](modules/design-pairing.md) | 已实现 |
 | [directory](modules/design-directory.md) | 未实现 |
