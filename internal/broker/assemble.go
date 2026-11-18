@@ -27,5 +27,5 @@ type Assembler interface {
 }
 
 // DefaultAssemblers is used when RunOptions.Assemblers is nil. Later units add,
-// in order: topic, directory, delivery, config subscriptions.
-func DefaultAssemblers() []Assembler { return []Assembler{newPeerAssembler()} }
+// in order: directory, delivery, config subscriptions.
+func DefaultAssemblers() []Assembler { return []Assembler{newPeerAssembler(), topicAssembler{}} }

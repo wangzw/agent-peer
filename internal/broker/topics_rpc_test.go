@@ -562,18 +562,3 @@ func TestJoinUnknownAgentIsInternal(t *testing.T) {
 		t.Fatalf("JoinTopic after ErrUnknownAgent = %v/%v, want Internal/INTERNAL", code, wire)
 	}
 }
-
-func TestValidTopicName(t *testing.T) {
-	valid := []string{"a", strings.Repeat("a", 256), "topic with spaces", "中文"}
-	for _, name := range valid {
-		if !validTopicName(name) {
-			t.Fatalf("validTopicName(%q) = false, want true", name)
-		}
-	}
-	invalid := []string{"", strings.Repeat("a", 257), "\x00", "\x1f", "\xff", "a\nb"}
-	for _, name := range invalid {
-		if validTopicName(name) {
-			t.Fatalf("validTopicName(%q) = true, want false", name)
-		}
-	}
-}

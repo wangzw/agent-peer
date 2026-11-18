@@ -4,34 +4,14 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/topic"
 )
 
 // invalidTopicNameMessage is the client-facing reason for a rejected topic
 // name. It is shared by JoinTopic and LeaveTopic.
 const invalidTopicNameMessage = "topic name must be 1 to 256 bytes of UTF-8 without control characters"
-
-// validTopicName reports whether name satisfies the topic name rules: 1 to
-// 256 bytes, valid UTF-8, and no control characters. It mirrors
-// topic.ValidateName until the topic package lands; the topic assembler then
-// replaces the callers and deletes this function.
-func validTopicName(name string) bool {
-	if len(name) < 1 || len(name) > 256 {
-		return false
-	}
-	if !utf8.ValidString(name) {
-		return false
-	}
-	for _, r := range name {
-		if unicode.IsControl(r) {
-			return false
-		}
-	}
-	return true
-}
 
 // privateDirectory is the built-in PublicTopicDirectory used when the process
 // runs without a directory. It makes the Broker behave as not public.
@@ -85,7 +65,7 @@ func (b *Broker) JoinTopic(ctx context.Context, req *localpb.JoinTopicRequest) (
 	}
 
 	name := req.GetName()
-	if !validTopicName(name) {
+	if topic.ValidateName(name) != nil {
 		return nil, toStatus(invalidTopicNameError())
 	}
 
@@ -127,7 +107,7 @@ func (b *Broker) LeaveTopic(ctx context.Context, req *localpb.LeaveTopicRequest)
 	}
 
 	name := req.GetName()
-	if !validTopicName(name) {
+	if topic.ValidateName(name) != nil {
 		return nil, toStatus(invalidTopicNameError())
 	}
 
