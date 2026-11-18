@@ -103,7 +103,9 @@ func classifyDialError(err error) probeResult {
 	switch {
 	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ENOTDIR):
 		return probeMissing
-	case errors.Is(err, syscall.ECONNREFUSED):
+	// Linux reports ECONNREFUSED for a path that is not a socket, macOS
+	// reports ENOTSOCK. Both mean nothing accepts connections there.
+	case errors.Is(err, syscall.ECONNREFUSED), errors.Is(err, syscall.ENOTSOCK):
 		return probeRefused
 	case errors.Is(err, syscall.EACCES), errors.Is(err, syscall.EPERM):
 		return probeDenied

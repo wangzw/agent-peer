@@ -52,8 +52,8 @@ func TestProbeSocket(t *testing.T) {
 	})
 
 	t.Run("regular file at the path", func(t *testing.T) {
-		// On Linux connecting to a regular file yields ECONNREFUSED, measured
-		// here rather than assumed.
+		// Linux reports ECONNREFUSED for a regular file, macOS ENOTSOCK; both
+		// mean nothing listens there, so the probe must say refused.
 		path := fakelocal.SocketPath(t)
 		if err := os.WriteFile(path, []byte("not a socket"), 0o644); err != nil {
 			t.Fatalf("write placeholder: %v", err)
