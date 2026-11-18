@@ -100,7 +100,7 @@ func TestInfraNoEgress(t *testing.T) {
 
 			before := egressHostRoutes(t)
 			c := harness.Up(t, topo.topo)
-			prefix := egressProjectPrefix(t)
+			prefix := egressProjectPrefix(t, c)
 
 			for _, node := range []string{"router", "hostB"} {
 				egressAssertNoRoute(t, c, node)
@@ -198,19 +198,18 @@ func TestInfraNoNetworkResidue(t *testing.T) {
 	t.Parallel()
 
 	c := harness.Up(t, harness.TopoNAT)
-	prefix := egressProjectPrefix(t)
+	prefix := egressProjectPrefix(t, c)
 
 	c.Down()
 	egressAssertNoProjectNetworks(t, prefix, "after Down")
 }
 
-// egressProjectPrefix returns the compose project prefix of the running
-// cluster and fails when no docker network carries it. The harness does not
-// export the project name, so the slug rules of its projectName are mirrored
-// here; the container networks are named <project>_<network>.
-func egressProjectPrefix(t *testing.T) string {
+// egressProjectPrefix returns the prefix the running cluster's networks carry
+// and fails when no docker network has it. The harness names each network
+// <project>_<network>.
+func egressProjectPrefix(t *testing.T, c *harness.Cluster) string {
 	t.Helper()
-	prefix := "ape2e-" + egressSlug(t.Name()) + "-"
+	prefix := c.Project() + "_"
 	for _, name := range egressDockerNetworks(t) {
 		if strings.HasPrefix(name, prefix) {
 			return prefix
@@ -218,28 +217,6 @@ func egressProjectPrefix(t *testing.T) string {
 	}
 	t.Fatalf("no docker network starts with the project prefix %q", prefix)
 	return ""
-}
-
-// egressSlug mirrors harness.projectName's slug of a test name: lowercase
-// ASCII letters, digits and dashes, at most 32 characters.
-func egressSlug(testName string) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(testName) {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('-')
-		}
-	}
-	slug := strings.Trim(b.String(), "-")
-	if len(slug) > 32 {
-		slug = strings.Trim(slug[:32], "-")
-	}
-	if slug == "" {
-		slug = "e2e"
-	}
-	return slug
 }
 
 // egressDockerNetworks returns the names of the host's docker networks.

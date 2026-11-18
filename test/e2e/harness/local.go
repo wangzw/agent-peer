@@ -51,8 +51,10 @@ func NewLocalHost(t *testing.T, opts LocalOptions) *Node {
 
 	bin := BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
 
-	// A short path keeps the Broker's Unix socket under the length limit.
-	root, err := os.MkdirTemp("/tmp", "ape2e")
+	// A short path keeps the Broker's Unix socket under the length limit. The
+	// name carries the owner marker, so a cleanup can leave a live suite's
+	// root alone and remove one whose owner is gone.
+	root, err := os.MkdirTemp("/tmp", "ape2e-"+currentOwner().String()+"-")
 	if err != nil {
 		t.Fatalf("harness: creating runtime root: %v", err)
 	}

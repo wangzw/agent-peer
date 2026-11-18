@@ -116,12 +116,10 @@ func Up(t *testing.T, topo Topology) *Cluster {
 
 	// Each node gets a host directory mounted at /ctl. It is a t.TempDir, so
 	// the host user owns it and the container's peer account, which carries
-	// the same uid, can write there.
-	env := []string{"E2E_IMAGE=" + image}
+	// the same uid, can write there. The directories are created once, not per
+	// up attempt, so the mount paths stay stable across a retry.
 	for _, node := range topo.nodes {
-		dir := t.TempDir()
-		c.ctlDirs[node] = dir
-		env = append(env, "CTL_"+strings.ToUpper(node)+"="+dir)
+		c.ctlDirs[node] = t.TempDir()
 	}
 	// Compose substitutes the variables of every declared service, including
 	// one a profile keeps stopped, so a service the topology does not start
@@ -130,24 +128,31 @@ func Up(t *testing.T, topo Topology) *Cluster {
 		if _, ok := c.ctlDirs[service]; ok {
 			continue
 		}
-		env = append(env, "CTL_"+strings.ToUpper(service)+"="+t.TempDir())
+		c.ctlDirs[service] = t.TempDir()
 	}
-	for name, value := range topo.env {
-		env = append(env, name+"="+value)
-	}
-	if topo.envFunc != nil {
-		for name, value := range topo.envFunc(t) {
-			env = append(env, name+"="+value)
-		}
-	}
-	c.env = append(os.Environ(), env...)
 
 	// Register the teardown after the temporary directories so it runs before
 	// their cleanup removes the mounted directories.
 	t.Cleanup(c.cleanup)
 
-	up := c.composeCommand("up", "-d", "--wait", "--wait-timeout", "60")
-	if out, err := up.CombinedOutput(); err != nil {
+	// A block reserved for this project can still overlap a network an older
+	// run left behind. Each attempt asks envFunc for a fresh block; the failed
+	// block stays reserved until the test ends, so the next attempt cannot
+	// pick it again.
+	const upAttempts = 8
+	var out []byte
+	for attempt := 1; ; attempt++ {
+		c.env = c.buildEnv(t, topo)
+		up := c.composeCommand("up", "-d", "--wait", "--wait-timeout", "60")
+		var err error
+		out, err = up.CombinedOutput()
+		if err == nil {
+			break
+		}
+		if attempt < upAttempts && subnetOverlap(out) {
+			c.composeCommand("down", "-v", "--remove-orphans", "--timeout", "1").CombinedOutput()
+			continue
+		}
 		t.Fatalf("harness: starting compose project %s: %v\n%s", project, err, strings.TrimSpace(string(out)))
 	}
 
@@ -172,6 +177,36 @@ func Up(t *testing.T, topo Topology) *Cluster {
 	return c
 }
 
+// buildEnv builds the compose environment for one up attempt. The topology's
+// envFunc runs on every call, so a routed topology gets a fresh subnet block
+// after an overlap.
+func (c *Cluster) buildEnv(t *testing.T, topo Topology) []string {
+	env := []string{"E2E_IMAGE=" + c.image}
+	names := make([]string, 0, len(c.ctlDirs))
+	for name := range c.ctlDirs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		env = append(env, "CTL_"+strings.ToUpper(name)+"="+c.ctlDirs[name])
+	}
+	for name, value := range topo.env {
+		env = append(env, name+"="+value)
+	}
+	if topo.envFunc != nil {
+		for name, value := range topo.envFunc(t) {
+			env = append(env, name+"="+value)
+		}
+	}
+	return append(os.Environ(), env...)
+}
+
+// subnetOverlap reports whether a failed compose up was refused because its
+// subnet pool overlaps another live project's.
+func subnetOverlap(out []byte) bool {
+	return strings.Contains(strings.ToLower(string(out)), "overlap")
+}
+
 // composeServices returns the service names a compose file declares, sorted.
 // Compose parses and substitutes every declared service even when a profile
 // keeps it stopped, so Up needs the full list and not only the started nodes.
@@ -188,6 +223,11 @@ func composeServices(data []byte) ([]string, error) {
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+// Project returns the compose project name.
+func (c *Cluster) Project() string {
+	return c.project
 }
 
 // Node returns the node named name. The same Node is returned on every call.
@@ -433,8 +473,10 @@ var (
 )
 
 // projectName derives a compose project name from a test name:
-// ape2e-<slug of the test name, at most 32 characters>-<six hex digits>. Two
-// calls never return the same name.
+// ape2e-<owner pid>-<owner start time>-<slug, at most 32 characters>-<six hex
+// digits>. The owner marker lets a cleanup tell a live suite's project from one
+// a killed suite left behind, and the start time keeps a reused PID from
+// protecting stale residue. Two calls never return the same name.
 func projectName(testName string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(testName) {
@@ -456,7 +498,7 @@ func projectName(testName string) string {
 	projectNameMu.Lock()
 	defer projectNameMu.Unlock()
 	for {
-		name := "ape2e-" + slug + "-" + randomHex6()
+		name := "ape2e-" + currentOwner().String() + "-" + slug + "-" + randomHex6()
 		if name != projectNameLast {
 			projectNameLast = name
 			return name

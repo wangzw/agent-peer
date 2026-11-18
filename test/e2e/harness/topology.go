@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -217,65 +216,6 @@ func randomULA(suffix byte) string {
 		panic(fmt.Sprintf("harness: generating an IPv6 prefix: %v", err))
 	}
 	return fmt.Sprintf("fd%02x:%02x%02x:%02x%02x:%x::/64", b[0], b[1], b[2], b[3], b[4], suffix)
-}
-
-// The routed topologies pin every IPv4 subnet inside 198.18.0.0/15. Docker
-// keeps neither its default bridge (172.17.0.0/16) nor the pool it allocates
-// from (172.16.0.0/12 and 192.168.0.0/16) in that range, and this host is a
-// k8s node whose own networks (10.12.72.0/24, 10.244.0.0/16, 172.17.0.0/16 and
-// 10.96.0.0/12) must never be captured by a bridge route.
-//
-// A subnet fixed per topology would still collide with itself: TestInfraNAT,
-// TestInfraCutRestore, TestInfraCountersAndCapture and TestInfraBlock start
-// TopoNAT at the same time, and Docker refuses two live networks with
-// overlapping subnets. allocRoutedSubnets therefore gives every project its
-// own three consecutive /24s from the same range and returns them when the
-// test ends. The compose files carry the first eight /24s as defaults so a
-// manual "docker compose up" works without the harness and never takes a block
-// the allocator hands out.
-var (
-	routedSubnetMu    sync.Mutex
-	routedSubnetSlots []int
-)
-
-const routedSubnetSkip = 8
-
-// allocRoutedSubnets reserves three consecutive /24s in 198.18.0.0/15 and
-// returns them as CIDRs. The reservation lasts until the test finishes.
-func allocRoutedSubnets(t *testing.T) [3]string {
-	t.Helper()
-	routedSubnetMu.Lock()
-	if routedSubnetSlots == nil {
-		// 198.18.0.0/15 holds 512 /24s.
-		const subnetCount = 512
-		for index := routedSubnetSkip; index+2 < subnetCount; index += 3 {
-			routedSubnetSlots = append(routedSubnetSlots, index)
-		}
-	}
-	if len(routedSubnetSlots) == 0 {
-		routedSubnetMu.Unlock()
-		t.Fatalf("harness: no free subnet block left in 198.18.0.0/15")
-	}
-	first := routedSubnetSlots[0]
-	routedSubnetSlots = routedSubnetSlots[1:]
-	routedSubnetMu.Unlock()
-
-	t.Cleanup(func() {
-		routedSubnetMu.Lock()
-		routedSubnetSlots = append(routedSubnetSlots, first)
-		routedSubnetMu.Unlock()
-	})
-
-	return [3]string{
-		routedSubnet(first),
-		routedSubnet(first + 1),
-		routedSubnet(first + 2),
-	}
-}
-
-// routedSubnet formats the index-th /24 of 198.18.0.0/15 as a CIDR.
-func routedSubnet(index int) string {
-	return fmt.Sprintf("198.%d.%d.0/24", 18+index/256, index%256)
 }
 
 // RemoveDefaultRoute deletes node's IPv4 default route and asserts that none

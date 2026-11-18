@@ -334,6 +334,8 @@ func (s *Session) startMCP(ctx context.Context) (*MCPProc, error) {
 	cmd.Dir = s.workdir
 	cmd.Env = s.env.Build(more)
 	cmd.Stderr = logFile
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
+	setDeathSignal(cmd.SysProcAttr)
 
 	// The process transport is used rather than mcp.CommandTransport because
 	// this side has to call Wait itself to observe the 100 ms and 400 ms

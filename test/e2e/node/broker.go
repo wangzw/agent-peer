@@ -87,6 +87,7 @@ func StartBroker(ctx context.Context, spec BrokerSpec, bound time.Duration) (*Br
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	setDeathSignal(cmd.SysProcAttr)
 
 	if err := cmd.Start(); err != nil {
 		_ = logFile.Close()

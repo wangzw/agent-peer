@@ -65,8 +65,16 @@ test:
 		echo "skipping the kqueue double-close test: GOOS is not darwin"; \
 	fi
 
+# The e2e run cleans up after itself even when go test is killed or times out.
+# The cleanup is TestMain's: a no-test run removes the projects, networks,
+# processes and runtime roots whose owner process is gone, and leaves a live
+# suite's resources alone. Only the test image is removed here as well.
 e2e:
-	go test -tags e2e -timeout $(E2E_TIMEOUT) -p $(JOBS) -parallel $(JOBS) ./test/e2e/...
+	@go test -tags e2e -timeout $(E2E_TIMEOUT) -p $(JOBS) -parallel $(JOBS) ./test/e2e/...; \
+	status=$$?; \
+	go test -tags e2e -count=1 -run '^$$' ./test/e2e/ >/dev/null 2>&1 || true; \
+	docker images -q --filter 'reference=agent-peer-e2e' | sort -u | xargs -r docker image rm -f >/dev/null 2>&1 || true; \
+	exit $$status
 
 # Document standards plus a render of every Mermaid diagram in the docs that
 # differ from origin/main. scripts/docs-check.sh owns the details, including
