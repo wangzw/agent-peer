@@ -22,14 +22,15 @@ import (
 // concrete cause, so cmd can pick an exit code with errors.Is while the
 // readiness pipe gets the full text as one line.
 var (
-	// ErrNotRoot is reserved for the system Broker unit; this build never
-	// returns it.
-	ErrNotRoot               = errors.New("the system Broker must run as root")
-	ErrInSession             = errors.New("the Broker must not run inside the process tree of a Claude Code session")
-	ErrRuntimeDir            = errors.New("the runtime directory is not usable")
-	ErrInvalidConfig         = errors.New("the configuration is invalid")
-	ErrInvalidListen         = errors.New("the --listen address is invalid")
-	ErrListenUnavailable     = errors.New("the listen address is unavailable")
+	// ErrNotRoot is returned by Run when --system is used without root.
+	ErrNotRoot           = errors.New("the system Broker must run as root")
+	ErrInSession         = errors.New("the Broker must not run inside the process tree of a Claude Code session")
+	ErrRuntimeDir        = errors.New("the runtime directory is not usable")
+	ErrInvalidConfig     = errors.New("the configuration is invalid")
+	ErrInvalidListen     = errors.New("the --listen address is invalid")
+	ErrListenUnavailable = errors.New("the listen address is unavailable")
+	// ErrSystemModeUnavailable is no longer returned by Run; kept for callers
+	// that map exit codes.
 	ErrSystemModeUnavailable = errors.New("the system Broker is not available in this build")
 	ErrLockLost              = errors.New("the account lock file was replaced; exiting so that only one Broker runs")
 )
@@ -132,9 +133,17 @@ func Run(ctx context.Context, opts RunOptions) error {
 		return err
 	}
 
-	// Step 1: the system form is another unit's implementation.
+	// Step 1: the system form requires root. The steps below then use the
+	// system paths and the accounts on this host, so this check stays before
+	// the account lock and the configuration load.
 	if opts.System {
-		return fail(fmt.Errorf("%w: --system", ErrSystemModeUnavailable))
+		geteuid := opts.Deps.Geteuid
+		if geteuid == nil {
+			geteuid = os.Geteuid
+		}
+		if euid := geteuid(); euid != 0 {
+			return fail(fmt.Errorf("%w: --system requires root (euid %d)", ErrNotRoot, euid))
+		}
 	}
 
 	// Step 2: never run inside a Claude Code session's process tree.
@@ -155,7 +164,11 @@ func Run(ctx context.Context, opts RunOptions) error {
 	lock = l
 
 	// Step 4: load the configuration and follow log.level.
-	if err := cfg.Load(config.ModeUser, opts.Listen); err != nil {
+	mode := config.ModeUser
+	if opts.System {
+		mode = config.ModeSystem
+	}
+	if err := cfg.Load(mode, opts.Listen); err != nil {
 		if opts.Listen != "" && errors.Is(err, config.ErrInvalidValue) && strings.Contains(err.Error(), "broker.listen") {
 			return fail(fmt.Errorf("%w: %v", ErrInvalidListen, err))
 		}
@@ -184,6 +197,31 @@ func Run(ctx context.Context, opts RunOptions) error {
 		level.Set(lv)
 		deps.Logger.Info(EvLogLevelChanged, "level", newVal.String)
 	})
+
+	// System mode: the runtime directory and the local socket are shared by
+	// every account, so their group and mode come from the configuration. The
+	// group is checked before anything binds, and both keys are watched so a
+	// change is applied to the socket that is already there.
+	sockPath := filepath.Join(cfg.Paths().RuntimeDir, "broker.sock")
+	var applySocketPerms func() error
+	if opts.System {
+		applySocketPerms = func() error {
+			group, err := cfg.Get("broker.local_socket_group")
+			if err != nil {
+				return err
+			}
+			mode, err := cfg.Get("broker.local_socket_mode")
+			if err != nil {
+				return err
+			}
+			return applyLocalSocketPerms(sockPath, cfg.Paths().RuntimeDir, group.String, mode.String)
+		}
+		cfg.Validate("broker.local_socket_group", validateSocketGroup)
+		if err := checkSocketGroupAtStartup(cfg); err != nil {
+			return fail(err)
+		}
+		watchSocketPerms(cfg, applySocketPerms, deps.Logger)
+	}
 
 	// Step 5: run the assemblers, then append the options' components.
 	assemblers := opts.Assemblers
@@ -246,12 +284,17 @@ func Run(ctx context.Context, opts RunOptions) error {
 	}
 
 	// Step 9: bind the local socket. Only the lock holder reaches this point.
-	sockPath := filepath.Join(cfg.Paths().RuntimeDir, "broker.sock")
 	s, err := BindLocalSocket(sockPath, 0o600)
 	if err != nil {
 		return fail(fmt.Errorf("%w: %v", ErrRuntimeDir, err))
 	}
 	sock = s
+	if opts.System {
+		if err := applySocketPerms(); err != nil {
+			_ = s.Close(true)
+			return fail(fmt.Errorf("%w: %v", ErrInvalidConfig, err))
+		}
+	}
 
 	// Step 10: the readiness pipe reports success only after both listeners
 	// exist. The local service is served from here on.
@@ -319,6 +362,11 @@ func Run(ctx context.Context, opts RunOptions) error {
 				if err != nil {
 					deps.Logger.Warn(EvLocalSocketRebindFailed, "error", err)
 				} else {
+					if opts.System {
+						if err := applySocketPerms(); err != nil {
+							deps.Logger.Error(evLocalSocketPermsFailed, "error", err.Error())
+						}
+					}
 					old := sock
 					sock = ns
 					go serveLocal(b, ns.Listener(), deps.Logger)

@@ -10,25 +10,55 @@ import (
 	"testing"
 )
 
-// localSocketTestPath returns a path short enough for a Unix socket. t.TempDir
-// can exceed the platform's sun_path limit, so the fallback lives directly in
-// the temporary directory.
-func localSocketTestPath(t *testing.T) string {
+// maxUnixSocketPath is the longest path a Unix socket can bind on macOS, the
+// platform with the smallest sun_path. Linux allows 107 bytes.
+const maxUnixSocketPath = 103
+
+// shortSocketDir returns the path for filename under a directory short enough
+// to bind a Unix socket. t.TempDir usually fits, but its test-name suffix can
+// push the path past the sun_path limit; in that case the socket lives in a
+// fresh directory under /tmp, which keeps the path bounded.
+func shortSocketDir(t *testing.T, filename string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "broker.sock")
-	if len(path) < 100 {
+	return socketPathIn(t, t.TempDir(), filename)
+}
+
+// socketPathIn joins filename under base unless the result exceeds the
+// sun_path limit, in which case it falls back to a fresh directory under /tmp.
+func socketPathIn(t *testing.T, base, filename string) string {
+	t.Helper()
+	path := filepath.Join(base, filename)
+	if len(path) <= maxUnixSocketPath {
 		return path
 	}
-	dir, err := os.MkdirTemp("", "ap")
+	dir, err := os.MkdirTemp("/tmp", "ap-sock-")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return filepath.Join(dir, "broker.sock")
+	path = filepath.Join(dir, filename)
+	if len(path) > maxUnixSocketPath {
+		t.Fatalf("socket path %q is %d bytes, over the %d-byte limit", path, len(path), maxUnixSocketPath)
+	}
+	return path
+}
+
+func TestShortSocketDirFallsBackForLongBase(t *testing.T) {
+	base := filepath.Join(t.TempDir(), strings.Repeat("x", maxUnixSocketPath))
+	path := socketPathIn(t, base, "broker.sock")
+	if !strings.HasPrefix(path, "/tmp/") {
+		t.Fatalf("socket path = %q, want a /tmp fallback", path)
+	}
+	if len(path) > maxUnixSocketPath {
+		t.Fatalf("socket path %q is %d bytes, want at most %d", path, len(path), maxUnixSocketPath)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); err != nil {
+		t.Fatalf("fallback directory: %v", err)
+	}
 }
 
 func TestBindLocalSocketReplacesStaleSocket(t *testing.T) {
-	path := localSocketTestPath(t)
+	path := shortSocketDir(t, "broker.sock")
 	stale, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
 	if err != nil {
 		t.Fatalf("ListenUnix stale: %v", err)
@@ -57,7 +87,7 @@ func TestBindLocalSocketReplacesStaleSocket(t *testing.T) {
 }
 
 func TestBindLocalSocketRefusesRegularFile(t *testing.T) {
-	path := localSocketTestPath(t)
+	path := shortSocketDir(t, "broker.sock")
 	content := []byte("do not replace")
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -84,7 +114,7 @@ func TestBindLocalSocketRefusesRegularFile(t *testing.T) {
 }
 
 func TestBindLocalSocketPermission(t *testing.T) {
-	path := localSocketTestPath(t)
+	path := shortSocketDir(t, "broker.sock")
 	sock, err := BindLocalSocket(path, 0o600)
 	if err != nil {
 		t.Fatalf("BindLocalSocket: %v", err)
@@ -101,7 +131,7 @@ func TestBindLocalSocketPermission(t *testing.T) {
 }
 
 func TestLocalSocketCloseDoesNotRemoveReplacement(t *testing.T) {
-	path := localSocketTestPath(t)
+	path := shortSocketDir(t, "broker.sock")
 	a, err := BindLocalSocket(path, 0o600)
 	if err != nil {
 		t.Fatalf("BindLocalSocket A: %v", err)
@@ -131,7 +161,7 @@ func TestLocalSocketCloseDoesNotRemoveReplacement(t *testing.T) {
 }
 
 func TestLocalSocketPresent(t *testing.T) {
-	path := localSocketTestPath(t)
+	path := shortSocketDir(t, "broker.sock")
 	sock, err := BindLocalSocket(path, 0o600)
 	if err != nil {
 		t.Fatalf("BindLocalSocket: %v", err)

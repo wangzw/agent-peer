@@ -417,19 +417,6 @@ func TestRunRefusesInsideSession(t *testing.T) {
 	}
 }
 
-func TestRunSystemModeUnavailable(t *testing.T) {
-	rt := newRunTest(t, func(rt *runTest) { rt.opts.System = true })
-	rt.start()
-
-	err := rt.waitErr()
-	if !errors.Is(err, ErrSystemModeUnavailable) {
-		t.Fatalf("Run error = %v, want ErrSystemModeUnavailable", err)
-	}
-	if got := rt.readyLine(); !strings.Contains(got, "--system") {
-		t.Errorf("readiness line = %q, want it to mention --system", got)
-	}
-}
-
 func TestRunSentinels(t *testing.T) {
 	t.Run("runtime dir", func(t *testing.T) {
 		rt := newRunTest(t)
