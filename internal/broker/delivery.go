@@ -125,6 +125,7 @@ func newDelivery(deps deliveryDeps) *delivery {
 		return d.deps.Settings.Send().DedupeWindow
 	})
 	d.waiter = newLinkWaiter(deps.Link)
+	d.toPeer = d.sendToPeer
 	return d
 }
 

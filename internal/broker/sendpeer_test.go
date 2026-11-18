@@ -1,0 +1,675 @@
+package broker
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/wangzw/agent-peer/internal/broker/deliverpb"
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/agent-peer/internal/pairing"
+)
+
+// sendPeerMsgID is a fixed message id so a resend can be checked to reuse it.
+const sendPeerMsgID = "3f2a1c4e-5b6d-4e8f-9a0b-1c2d3e4f5a6b"
+
+// sendPeerFixture wires a sending delivery to a fake network. The peer end
+// answers with whatever handler a test registers; no real receiving delivery is
+// involved here.
+type sendPeerFixture struct {
+	t        *testing.T
+	net      *fakeNet
+	self     peerID
+	peer     peerID
+	delivery *delivery
+	topics   *deliveryTopics
+	peers    *deliveryPeers
+	settings *fakeSettings
+}
+
+func newSendPeerFixture(t *testing.T, role pairing.Role) *sendPeerFixture {
+	t.Helper()
+	net := newFakeNet(t)
+	self, peer := fakenetPeer(10), fakenetPeer(20)
+
+	topics := &deliveryTopics{
+		local:  make(map[string][]string),
+		remote: make(map[peerID][]deliveryRemoteEntry),
+	}
+	peers := &deliveryPeers{
+		aliases:   map[string]peerID{"hostB": peer},
+		roles:     map[peerID]pairing.Role{peer: role},
+		effective: map[peerID]string{peer: "hostB"},
+	}
+	settings := newFakeSettings(sendSettings{
+		RequestTimeout: 2 * time.Second,
+		LinkBackoff:    10 * time.Millisecond,
+		InboxBackoff:   5 * time.Millisecond,
+		InboxTimeout:   time.Second,
+		DedupeWindow:   time.Minute,
+		LinkRetries:    3,
+		InboxRetries:   2,
+	}, "hostA")
+
+	d := newDelivery(deliveryDeps{
+		Topics:   topics,
+		Peers:    peers,
+		Link:     net.end(self),
+		Settings: settings,
+	})
+	return &sendPeerFixture{
+		t:        t,
+		net:      net,
+		self:     self,
+		peer:     peer,
+		delivery: d,
+		topics:   topics,
+		peers:    peers,
+		settings: settings,
+	}
+}
+
+// caller returns a local Agent with the given name and ref, and an id that
+// starts with the ref so the ref grammar holds.
+func (f *sendPeerFixture) caller(name, ref string) agentView {
+	return agentView{
+		ID:   ref + strings.Repeat("0", 64-len(ref)),
+		Name: name,
+		Ref:  ref,
+	}
+}
+
+// share gives a local Agent the listed topics.
+func (f *sendPeerFixture) share(id string, shared ...string) {
+	f.topics.local[id] = shared
+}
+
+// member adds one roster entry for the peer.
+func (f *sendPeerFixture) member(m remoteMember, shared ...string) {
+	f.topics.remote[f.peer] = append(f.topics.remote[f.peer], deliveryRemoteEntry{
+		Member: m,
+		Topics: shared,
+	})
+}
+
+// handle registers the peer's answer to kind-400 requests.
+func (f *sendPeerFixture) handle(fn func(context.Context, peerID, link.Frame) link.Frame) {
+	f.net.end(f.peer).HandleRequest(link.FrameKind(deliverpb.KindDeliver), fn)
+}
+
+// send runs one sendToPeer with the fixture's peer and settings.
+func (f *sendPeerFixture) send(caller agentView, to, text string) error {
+	f.t.Helper()
+	addr, ok := parseTarget(to)
+	if !ok {
+		f.t.Fatalf("parseTarget(%q) rejected the address", to)
+	}
+	return f.delivery.sendToPeer(context.Background(), peerSend{
+		Caller:    caller,
+		Peer:      f.peer,
+		Addr:      addr,
+		MessageID: sendPeerMsgID,
+		Text:      text,
+		Deadline:  time.Now().Add(f.settings.Send().RequestTimeout),
+	})
+}
+
+// requireSendPeerError extracts the *Error a send returned.
+func requireSendPeerError(t *testing.T, err error) *Error {
+	t.Helper()
+	if err == nil {
+		t.Fatal("sendToPeer = nil, want an error")
+	}
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatalf("sendToPeer = %T %v, want *broker.Error", err, err)
+	}
+	return e
+}
+
+// deliveredAnswer decodes the request and reports success.
+func deliveredAnswer(t *testing.T, got *deliverRequest) func(context.Context, peerID, link.Frame) link.Frame {
+	return func(_ context.Context, _ peerID, fr link.Frame) link.Frame {
+		req, err := decodeDeliverRequest(fr)
+		if err != nil {
+			t.Errorf("receiver could not decode the request: %v", err)
+			return encodeDeliverResult(err)
+		}
+		if got != nil {
+			*got = req
+		}
+		return encodeDeliverResult(nil)
+	}
+}
+
+// TestSendPeerDelivered checks a successful delivery: the request is pinned to
+// the resolved roster entry and carries a positive budget (REQ-agent-messaging-013).
+func TestSendPeerDelivered(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleDialer)
+	f.net.setUp(f.self, f.peer, true)
+
+	caller := f.caller("api-worker", "1a2b3c")
+	f.share(caller.ID, "t1")
+	f.member(remoteMember{Name: "frontend", Ref: "abc123"}, "t1")
+
+	var got deliverRequest
+	f.handle(deliveredAnswer(t, &got))
+
+	if err := f.send(caller, "frontend@hostB", "hello"); err != nil {
+		t.Fatalf("sendToPeer = %v, want nil", err)
+	}
+	if got.TargetName != "frontend" || got.TargetRef != "abc123" {
+		t.Fatalf("target = %q [%s], want frontend [abc123]: the request must pin the resolved member", got.TargetName, got.TargetRef)
+	}
+	if got.MessageID != sendPeerMsgID || got.SenderName != "api-worker" || got.SenderRef != "1a2b3c" {
+		t.Fatalf("request = %+v, want the caller's name, ref and message id", got)
+	}
+	budget := f.settings.Send().RequestTimeout
+	if got.Remaining <= 0 || got.Remaining > budget {
+		t.Fatalf("remaining budget = %v, want (0, %v]", got.Remaining, budget)
+	}
+}
+
+// TestSendPeerErrorCarriesOrigin checks that a peer's error keeps its code and
+// message, and that the originating fingerprint is the peer, never a
+// fingerprint the peer claimed (REQ-agent-messaging-018, architecture.md:216).
+func TestSendPeerErrorCarriesOrigin(t *testing.T) {
+	setup := func(t *testing.T) *sendPeerFixture {
+		f := newSendPeerFixture(t, pairing.RoleDialer)
+		f.net.setUp(f.self, f.peer, true)
+		caller := f.caller("api-worker", "1a2b3c")
+		f.share(caller.ID, "t1")
+		f.member(remoteMember{Name: "frontend", Ref: "abc123"}, "t1")
+		return f
+	}
+
+	t.Run("peer error", func(t *testing.T) {
+		f := setup(t)
+		f.handle(func(context.Context, peerID, link.Frame) link.Frame {
+			return encodeDeliverResult(&Error{
+				Code:    localpb.ErrorCode_ERROR_CODE_INBOX_UNWRITABLE,
+				Message: "Not sent: the session is gone",
+			})
+		})
+
+		err := f.send(f.caller("api-worker", "1a2b3c"), "frontend@hostB", "hello")
+		e := requireSendPeerError(t, err)
+		if e.Code != localpb.ErrorCode_ERROR_CODE_INBOX_UNWRITABLE {
+			t.Fatalf("Code = %v, want INBOX_UNWRITABLE", e.Code)
+		}
+		if e.Message != "Not sent: the session is gone" {
+			t.Fatalf("Message = %q, want the peer's message", e.Message)
+		}
+		if !bytes.Equal(e.Origin, f.peer[:]) {
+			t.Fatalf("Origin = %x, want the peer fingerprint %x", e.Origin, f.peer)
+		}
+
+		st, ok := status.FromError(toStatus(err))
+		if !ok {
+			t.Fatal("toStatus did not return a status error")
+		}
+		details := st.Details()
+		if len(details) != 1 {
+			t.Fatalf("details = %d, want exactly 1", len(details))
+		}
+		d, ok := details[0].(*localpb.ErrorDetail)
+		if !ok {
+			t.Fatalf("detail type = %T, want *localpb.ErrorDetail", details[0])
+		}
+		if !bytes.Equal(d.GetOriginatingBrokerFingerprint(), f.peer[:]) {
+			t.Fatalf("originating_broker_fingerprint = %x, want %x", d.GetOriginatingBrokerFingerprint(), f.peer)
+		}
+	})
+
+	t.Run("peer claims another origin", func(t *testing.T) {
+		f := setup(t)
+		f.handle(func(context.Context, peerID, link.Frame) link.Frame {
+			msg := &deliverpb.DeliverResult{Result: &deliverpb.DeliverResult_Error{Error: &localpb.ErrorDetail{
+				Code:                         localpb.ErrorCode_ERROR_CODE_INBOX_UNWRITABLE,
+				Message:                      "Not sent: relayed claim",
+				OriginatingBrokerFingerprint: []byte{0xde, 0xad, 0xbe, 0xef},
+			}}}
+			payload, err := proto.Marshal(msg)
+			if err != nil {
+				t.Fatalf("marshal result: %v", err)
+			}
+			return link.Frame{Kind: link.FrameKind(deliverpb.KindDeliverResult), Payload: payload}
+		})
+
+		err := f.send(f.caller("api-worker", "1a2b3c"), "frontend@hostB", "hello")
+		e := requireSendPeerError(t, err)
+		if !bytes.Equal(e.Origin, f.peer[:]) {
+			t.Fatalf("Origin = %x, want the peer fingerprint %x, not the claimed one", e.Origin, f.peer)
+		}
+		if bytes.Contains(e.Origin, []byte{0xde, 0xad, 0xbe, 0xef}) {
+			t.Fatal("Origin carries the peer's claimed fingerprint")
+		}
+	})
+}
+
+// TestSendPeerNoRetryOnPeerError checks that a definite peer error ends the
+// send: the peer has decided, so a retry cannot change the result
+// (design-broker.md:244).
+func TestSendPeerNoRetryOnPeerError(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleDialer)
+	f.net.setUp(f.self, f.peer, true)
+	caller := f.caller("api-worker", "1a2b3c")
+	f.share(caller.ID, "t1")
+	f.member(remoteMember{Name: "frontend", Ref: "abc123"}, "t1")
+	f.handle(func(context.Context, peerID, link.Frame) link.Frame {
+		return encodeDeliverResult(notSent(localpb.ErrorCode_ERROR_CODE_NOT_VISIBLE, "not visible"))
+	})
+
+	err := f.send(caller, "frontend@hostB", "hello")
+	e := requireSendPeerError(t, err)
+	if e.Code != localpb.ErrorCode_ERROR_CODE_NOT_VISIBLE {
+		t.Fatalf("Code = %v, want NOT_VISIBLE", e.Code)
+	}
+	if n := len(f.net.requests(f.self, f.peer)); n != 1 {
+		t.Fatalf("requests = %d, want 1: a definite peer error must not be retried", n)
+	}
+}
+
+// TestSendPeerDialerKicksAndGivesUp checks that a dialer spends its retry
+// budget on kicks and reports peer_unreachable without ever sending
+// (REQ-agent-messaging-017, REQ-agent-messaging-019).
+func TestSendPeerDialerKicksAndGivesUp(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleDialer)
+	f.settings.SetSettings(sendSettings{
+		RequestTimeout: 2 * time.Second,
+		LinkBackoff:    10 * time.Millisecond,
+		LinkRetries:    3,
+	})
+
+	start := time.Now()
+	err := f.send(f.caller("api-worker", "1a2b3c"), "frontend@hostB", "hello")
+	elapsed := time.Since(start)
+
+	e := requireSendPeerError(t, err)
+	if e.Code != localpb.ErrorCode_ERROR_CODE_PEER_UNREACHABLE {
+		t.Fatalf("Code = %v, want PEER_UNREACHABLE", e.Code)
+	}
+	if !strings.HasPrefix(e.Message, "Not sent") {
+		t.Fatalf("Message = %q, want it to start with %q", e.Message, "Not sent")
+	}
+	if kicks := f.net.kicks(f.self, f.peer); kicks != 3 {
+		t.Fatalf("kicks = %d, want 3", kicks)
+	}
+	if n := len(f.net.requests(f.self, f.peer)); n != 0 {
+		t.Fatalf("requests = %d, want 0: nothing was ever sent", n)
+	}
+	if elapsed >= time.Second {
+		t.Fatalf("elapsed = %v, want under 1s: retries must not wait out the budget", elapsed)
+	}
+}
+
+// TestSendPeerDialerRecoversAfterKick checks that a dialer sends once the link
+// comes up through a kick.
+func TestSendPeerDialerRecoversAfterKick(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleDialer)
+	f.settings.SetSettings(sendSettings{
+		RequestTimeout: 2 * time.Second,
+		LinkBackoff:    10 * time.Millisecond,
+		LinkRetries:    5,
+	})
+	caller := f.caller("api-worker", "1a2b3c")
+	f.share(caller.ID, "t1")
+	f.member(remoteMember{Name: "frontend", Ref: "abc123"}, "t1")
+	f.handle(deliveredAnswer(t, nil))
+
+	var kicks atomic.Int32
+	f.net.onKick(f.self, f.peer, func() {
+		if kicks.Add(1) == 2 {
+			f.net.setUp(f.self, f.peer, true)
+		}
+	})
+
+	if err := f.send(caller, "frontend@hostB", "hello"); err != nil {
+		t.Fatalf("sendToPeer = %v, want nil after the link recovers", err)
+	}
+	if n := len(f.net.requests(f.self, f.peer)); n != 1 {
+		t.Fatalf("requests = %d, want 1 after the link recovers", n)
+	}
+}
+
+// upDuringEstablishedLink reports the link down once and brings it up before
+// returning, so the up event lands after the sender read the link as down but
+// before it takes the generation for the wait. The generation is taken at the
+// start of each attempt, before Established, so this up must satisfy that wait.
+type upDuringEstablishedLink struct {
+	*fakeEnd
+	once atomic.Bool
+}
+
+func (l *upDuringEstablishedLink) Established(p peerID) bool {
+	if l.once.CompareAndSwap(false, true) {
+		l.net.setUp(l.self, p, true)
+		return false
+	}
+	return true
+}
+
+// TestSendPeerUpRaceWithGeneration checks that an up event landing after the
+// link read as down but before the wait begins still wakes the wait. A dialer
+// must not sit out one backoff, and an acceptor must not run into its deadline
+// and report peer_unreachable, when the link is already back.
+func TestSendPeerUpRaceWithGeneration(t *testing.T) {
+	for _, role := range []pairing.Role{pairing.RoleDialer, pairing.RoleAcceptor} {
+		name, wantKicks := "dialer", 1
+		if role == pairing.RoleAcceptor {
+			name, wantKicks = "acceptor", 0
+		}
+		t.Run(name, func(t *testing.T) {
+			f := newSendPeerFixture(t, role)
+			f.settings.SetSettings(sendSettings{
+				RequestTimeout: 2 * time.Second,
+				LinkBackoff:    time.Second,
+				LinkRetries:    3,
+			})
+			caller := f.caller("api-worker", "1a2b3c")
+			f.share(caller.ID, "t1")
+			f.member(remoteMember{Name: "frontend", Ref: "abc123"}, "t1")
+			f.handle(deliveredAnswer(t, nil))
+
+			lnk := &upDuringEstablishedLink{fakeEnd: f.net.end(f.self)}
+			f.delivery.deps.Link = lnk
+			f.delivery.waiter = newLinkWaiter(lnk)
+
+			start := time.Now()
+			err := f.send(caller, "frontend@hostB", "hello")
+			elapsed := time.Since(start)
+
+			if err != nil {
+				t.Fatalf("sendToPeer = %v, want nil once the link is up", err)
+			}
+			if elapsed >= 100*time.Millisecond {
+				t.Fatalf("elapsed = %v, want under 100ms: the wait must see the up event that landed before it began", elapsed)
+			}
+			if n := len(f.net.requests(f.self, f.peer)); n != 1 {
+				t.Fatalf("requests = %d, want 1", n)
+			}
+			if kicks := f.net.kicks(f.self, f.peer); kicks != wantKicks {
+				t.Fatalf("kicks = %d, want %d: the wait must not burn the retry budget", kicks, wantKicks)
+			}
+		})
+	}
+}
+
+// TestSendPeerBackoffDoubles checks that the wait between kicks doubles: the
+// dialer must not wake the peer at a fixed short interval.
+func TestSendPeerBackoffDoubles(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleDialer)
+	f.settings.SetSettings(sendSettings{
+		RequestTimeout: 2 * time.Second,
+		LinkBackoff:    10 * time.Millisecond,
+		LinkRetries:    4,
+	})
+
+	var mu sync.Mutex
+	var at []time.Time
+	f.net.onKick(f.self, f.peer, func() {
+		mu.Lock()
+		defer mu.Unlock()
+		at = append(at, time.Now())
+	})
+
+	err := f.send(f.caller("api-worker", "1a2b3c"), "frontend@hostB", "hello")
+	requireSendPeerError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(at) != 4 {
+		t.Fatalf("kicks = %d, want 4", len(at))
+	}
+	want := []time.Duration{10 * time.Millisecond, 20 * time.Millisecond, 40 * time.Millisecond}
+	for i := range want {
+		if gap := at[i+1].Sub(at[i]); gap < want[i] {
+			t.Fatalf("gap %d = %v, want at least %v", i+1, gap, want[i])
+		}
+	}
+}
+
+// TestSendPeerAcceptorWaitsBudget checks that an acceptor never kicks and waits
+// the full budget for the dialer to connect (REQ-agent-messaging-017).
+func TestSendPeerAcceptorWaitsBudget(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleAcceptor)
+	f.settings.SetSettings(sendSettings{
+		RequestTimeout: 300 * time.Millisecond,
+		LinkBackoff:    10 * time.Millisecond,
+		LinkRetries:    3,
+	})
+
+	start := time.Now()
+	err := f.send(f.caller("api-worker", "1a2b3c"), "frontend@hostB", "hello")
+	elapsed := time.Since(start)
+
+	e := requireSendPeerError(t, err)
+	if e.Code != localpb.ErrorCode_ERROR_CODE_PEER_UNREACHABLE {
+		t.Fatalf("Code = %v, want PEER_UNREACHABLE", e.Code)
+	}
+	if kicks := f.net.kicks(f.self, f.peer); kicks != 0 {
+		t.Fatalf("kicks = %d, want 0: an acceptor does not dial", kicks)
+	}
+	if elapsed < 300*time.Millisecond {
+		t.Fatalf("elapsed = %v, want at least the 300ms budget", elapsed)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("elapsed = %v, want under 1s: the budget must bound the wait", elapsed)
+	}
+}
+
+// TestSendPeerAcceptorDeliversWhenDialerConnects checks that an acceptor waits
+// for the peer to connect and then delivers.
+func TestSendPeerAcceptorDeliversWhenDialerConnects(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleAcceptor)
+	f.settings.SetSettings(sendSettings{
+		RequestTimeout: time.Second,
+		LinkBackoff:    10 * time.Millisecond,
+		LinkRetries:    3,
+	})
+	caller := f.caller("api-worker", "1a2b3c")
+	f.share(caller.ID, "t1")
+	f.member(remoteMember{Name: "frontend", Ref: "abc123"}, "t1")
+	f.handle(deliveredAnswer(t, nil))
+
+	// Wait until the acceptor is blocked on the link, then bring it up: the
+	// registration is the synchronization point, not a fixed delay.
+	done := make(chan error, 1)
+	go func() { done <- f.send(caller, "frontend@hostB", "hello") }()
+	waitForRegistrations(t, f.delivery.waiter, f.peer, 1)
+	f.net.setUp(f.self, f.peer, true)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("sendToPeer = %v, want nil once the dialer connects", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("sendToPeer did not finish once the dialer connected")
+	}
+}
+
+// TestSendPeerUnsupportedReply checks that an unsupported-kind reply becomes
+// version_mismatch, is not retried and is never treated as delivered.
+func TestSendPeerUnsupportedReply(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleDialer)
+	f.net.setUp(f.self, f.peer, true)
+	caller := f.caller("api-worker", "1a2b3c")
+	f.share(caller.ID, "t1")
+	f.member(remoteMember{Name: "frontend", Ref: "abc123"}, "t1")
+	// No kind-400 handler on the peer: the fake link answers UnsupportedError.
+
+	err := f.send(caller, "frontend@hostB", "hello")
+	e := requireSendPeerError(t, err)
+	if e.Code != localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH {
+		t.Fatalf("Code = %v, want VERSION_MISMATCH", e.Code)
+	}
+	if !strings.HasPrefix(e.Message, "Not sent") {
+		t.Fatalf("Message = %q, want it to start with %q", e.Message, "Not sent")
+	}
+	if !bytes.Equal(e.Origin, f.peer[:]) {
+		t.Fatalf("Origin = %x, want the peer fingerprint %x", e.Origin, f.peer)
+	}
+	if n := len(f.net.requests(f.self, f.peer)); n != 1 {
+		t.Fatalf("requests = %d, want 1: an unsupported reply must not be retried", n)
+	}
+}
+
+// TestSendPeerMalformedReply checks that a reply that cannot be decoded is an
+// unknown result, never a success.
+func TestSendPeerMalformedReply(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleDialer)
+	f.net.setUp(f.self, f.peer, true)
+	caller := f.caller("api-worker", "1a2b3c")
+	f.share(caller.ID, "t1")
+	f.member(remoteMember{Name: "frontend", Ref: "abc123"}, "t1")
+	f.handle(func(context.Context, peerID, link.Frame) link.Frame {
+		return link.Frame{Kind: link.FrameKind(deliverpb.KindDeliverResult), Payload: []byte("not a result")}
+	})
+
+	err := f.send(caller, "frontend@hostB", "hello")
+	e := requireSendPeerError(t, err)
+	if e.Code != localpb.ErrorCode_ERROR_CODE_DELIVERY_UNKNOWN {
+		t.Fatalf("Code = %v, want DELIVERY_UNKNOWN", e.Code)
+	}
+	if !strings.HasPrefix(e.Message, "Delivery unknown") {
+		t.Fatalf("Message = %q, want it to start with %q", e.Message, "Delivery unknown")
+	}
+}
+
+// unreadableReplyLink is a link that reports every request as sent but whose
+// reply cannot be read. The error is not a link drop, and the link stays
+// established throughout.
+type unreadableReplyLink struct {
+	*fakeEnd
+	requests atomic.Int32
+}
+
+func (l *unreadableReplyLink) Request(context.Context, peerID, link.Frame) (link.Frame, bool, error) {
+	l.requests.Add(1)
+	return link.Frame{}, true, errors.New("undecodable reply")
+}
+
+// TestSendPeerUnreadableReplyIsDeliveryUnknown checks that an error other than a
+// link drop after the frame left becomes delivery_unknown after one request:
+// only a dropped link is waited out and resent with the same id
+// (design-broker.md:259).
+func TestSendPeerUnreadableReplyIsDeliveryUnknown(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleDialer)
+	f.net.setUp(f.self, f.peer, true)
+	f.settings.SetSettings(sendSettings{
+		RequestTimeout: 200 * time.Millisecond,
+		LinkBackoff:    10 * time.Millisecond,
+		LinkRetries:    3,
+	})
+	caller := f.caller("api-worker", "1a2b3c")
+	f.share(caller.ID, "t1")
+	f.member(remoteMember{Name: "frontend", Ref: "abc123"}, "t1")
+
+	lnk := &unreadableReplyLink{fakeEnd: f.net.end(f.self)}
+	f.delivery.deps.Link = lnk
+	f.delivery.waiter = newLinkWaiter(lnk)
+
+	err := f.send(caller, "frontend@hostB", "hello")
+	e := requireSendPeerError(t, err)
+	if e.Code != localpb.ErrorCode_ERROR_CODE_DELIVERY_UNKNOWN {
+		t.Fatalf("Code = %v, want DELIVERY_UNKNOWN", e.Code)
+	}
+	if !strings.HasPrefix(e.Message, "Delivery unknown") {
+		t.Fatalf("Message = %q, want it to start with %q", e.Message, "Delivery unknown")
+	}
+	if n := lnk.requests.Load(); n != 1 {
+		t.Fatalf("requests = %d, want 1: an unreadable reply must not be resent", n)
+	}
+}
+
+// TestSendPeerRemoteAmbiguous checks that duplicate remote names fail before a
+// request is sent and list both ref-forced addresses with the peer's effective
+// alias (REQ-agent-messaging-007, REQ-agent-messaging-004).
+func TestSendPeerRemoteAmbiguous(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleDialer)
+	f.net.setUp(f.self, f.peer, true)
+	caller := f.caller("api-worker", "1a2b3c")
+	f.share(caller.ID, "t1")
+	f.member(remoteMember{Name: "api-worker", Ref: "111111"}, "t1")
+	f.member(remoteMember{Name: "api-worker", Ref: "222222"}, "t1")
+
+	err := f.send(caller, "api-worker@hostB", "hello")
+	e := requireSendPeerError(t, err)
+	if e.Code != localpb.ErrorCode_ERROR_CODE_AMBIGUOUS {
+		t.Fatalf("Code = %v, want AMBIGUOUS", e.Code)
+	}
+	for _, want := range []string{"api-worker [111111]@hostB", "api-worker [222222]@hostB"} {
+		if !strings.Contains(e.Message, want) {
+			t.Fatalf("Message = %q, want it to list %q", e.Message, want)
+		}
+	}
+	if n := len(f.net.requests(f.self, f.peer)); n != 0 {
+		t.Fatalf("requests = %d, want 0: ambiguity is found before sending", n)
+	}
+}
+
+// TestSendPeerRemotePrevName checks that sending to a remote Agent's previous
+// name names its current address (REQ-agent-messaging-031).
+func TestSendPeerRemotePrevName(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleDialer)
+	f.net.setUp(f.self, f.peer, true)
+	caller := f.caller("api-worker", "1a2b3c")
+	f.share(caller.ID, "t1")
+	f.member(remoteMember{Name: "api-v2", Ref: "222222", PrevName: "api-worker"}, "t1")
+
+	err := f.send(caller, "api-worker@hostB", "hello")
+	e := requireSendPeerError(t, err)
+	if e.Code != localpb.ErrorCode_ERROR_CODE_NOT_FOUND {
+		t.Fatalf("Code = %v, want NOT_FOUND", e.Code)
+	}
+	if !strings.Contains(e.Message, "api-v2@hostB") {
+		t.Fatalf("Message = %q, want it to name the current address api-v2@hostB", e.Message)
+	}
+	if n := len(f.net.requests(f.self, f.peer)); n != 0 {
+		t.Fatalf("requests = %d, want 0: the rename is decided before sending", n)
+	}
+}
+
+// TestSendPeerRemoteNotVisible checks that a roster member without a shared
+// topic fails before any request (REQ-agent-messaging-014).
+func TestSendPeerRemoteNotVisible(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleDialer)
+	f.net.setUp(f.self, f.peer, true)
+	caller := f.caller("api-worker", "1a2b3c")
+	f.share(caller.ID, "t1")
+	f.member(remoteMember{Name: "api-worker", Ref: "111111"}, "t2")
+
+	err := f.send(caller, "api-worker@hostB", "hello")
+	e := requireSendPeerError(t, err)
+	if e.Code != localpb.ErrorCode_ERROR_CODE_NOT_VISIBLE {
+		t.Fatalf("Code = %v, want NOT_VISIBLE", e.Code)
+	}
+	if n := len(f.net.requests(f.self, f.peer)); n != 0 {
+		t.Fatalf("requests = %d, want 0: visibility is decided before sending", n)
+	}
+}
+
+// TestSendPeerUnpairedDuringSend checks that a peer that is no longer paired is
+// not dialed.
+func TestSendPeerUnpairedDuringSend(t *testing.T) {
+	f := newSendPeerFixture(t, pairing.RoleUnknown)
+
+	err := f.send(f.caller("api-worker", "1a2b3c"), "frontend@hostB", "hello")
+	e := requireSendPeerError(t, err)
+	if e.Code != localpb.ErrorCode_ERROR_CODE_NOT_FOUND {
+		t.Fatalf("Code = %v, want NOT_FOUND", e.Code)
+	}
+	if kicks := f.net.kicks(f.self, f.peer); kicks != 0 {
+		t.Fatalf("kicks = %d, want 0: an unpaired peer must not be dialed", kicks)
+	}
+}
