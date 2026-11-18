@@ -101,15 +101,15 @@ Agent 对配置的每次修改必须写入审计日志，记录发起修改的 A
 
 - **验收**：以有读权限的账户在终端执行查看审计日志的命令，输出包含此前产生的全部审计记录；以没有读权限的账户执行，得到权限不足的错误。
 - **状态**：未实现
-- **端到端测试**：未实现
+- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker`（系统级一半）
 
 ### REQ-broker-config-010
 
 用户必须能在本机终端查看 Broker 的状态，包括已登记的 Agent、各 Agent 所在的 topic、全部对端及其连接状态。所属账户对配置文件没有读权限的用户，只能看到自己账户下的 Agent。
 
 - **验收**：登记两个 Agent 并让它们加入不同的 topic，与一个对端配对后断开网络；以有读权限的账户在终端执行查看状态的命令，输出列出这两个 Agent 及各自的 topic，并显示该对端未连接。在系统级 Broker 上以没有读权限的账户执行，输出只含该账户自己的 Agent。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents`（系统级一半）
 
 ### REQ-broker-config-011
 
@@ -172,8 +172,8 @@ Broker 必须以结构化格式输出运行日志。
 以特权身份作为系统服务运行的 Broker，即系统级 Broker，必须能同时服务本机多个账户下的 Agent。
 
 - **验收**：主机上运行着一个系统级 Broker，两个不同的账户各启动一个启用了工具的会话，两个会话都登记在这个 Broker 上；两者加入同一个 topic 后互相可见，并能互发消息。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/multi_account_test.go` 的 `TestREQBrokerConfig018_TwoAccountsShareSystemBroker`
 
 ### REQ-broker-config-019
 
@@ -188,32 +188,32 @@ Broker 必须以结构化格式输出运行日志。
 系统级 Broker 必须拒绝把不属于调用方账户的会话登记为 Agent。
 
 - **验收**：账户乙的进程向系统级 Broker 要求登记账户甲的一个会话，所报出的会话信息与该会话自己的 MCP 服务进程报出的完全相同，登记被拒绝，任何 Agent 的列表中都不出现由此产生的 Agent。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/foreign_session_test.go` 的 `TestREQBrokerConfig020_ForeignSocketOwnerRejected/unreadable record`、`TestREQBrokerConfig020_ForeignSocketOwnerRejected/record readable but socket owned by another account`
 
 ### REQ-broker-config-021
 
 修改配置、生成配对密钥、发起配对、解除配对，只有在调用方账户对该 Broker 的配置文件有写权限时才能执行；没有写权限时必须返回权限不足，并且不改变任何状态。
 
 - **验收**：在系统级 Broker 上，以对配置文件没有写权限的账户依次调用这些操作，每次都返回权限不足，配置、对端和有效的配对密钥都没有变化；管理员把配置文件的写权限授予该账户所属的组之后，同样的调用全部成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig021_WriteNeedsConfigWritePermission`
 
 ### REQ-broker-config-022
 
 读取配置，只有在调用方账户对该 Broker 的配置文件有读权限时才能返回配置内容；没有读权限时必须返回权限不足。
 
 - **验收**：在系统级 Broker 上，以对配置文件没有读权限的账户读取配置，返回权限不足，结果中不含任何配置项的值；以有读权限的账户读取，返回当前配置。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig022_ReadNeedsConfigReadPermission`
 
 ### REQ-broker-config-023
 
 登记、列出 Agent、列出 topic、列出 Broker、加入与退出 topic、发送消息，不得以对配置文件的任何权限为前提。
 
 - **验收**：在系统级 Broker 上，一个对配置文件既没有读权限也没有写权限的账户启动会话，该会话完成登记，并成功执行列出 Agent、列出 topic、列出 Broker、加入 topic、退出 topic 和发送消息。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig023_NoPermissionStillWorksOnSystemBroker`
 
 ### REQ-broker-config-024
 
@@ -244,8 +244,8 @@ Broker 必须以结构化格式输出运行日志。
 系统级 Broker 的管理员必须能以文件权限限定哪些账户可以使用它。
 
 - **验收**：管理员把系统级 Broker 的使用权限限定到某个组。组内账户的会话照常登记在它上面；组外账户已在自己的配置中把监听地址设为 `:17444`，它的会话不能登记在系统级 Broker 上，按 `REQ-broker-config-012` 改为启动自己的用户级 Broker。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/socket_group_test.go` 的 `TestREQBrokerConfig027_GroupRestrictsUse`、`TestSystemSocketGroupReappliedOnReload`、`TestSystemSocketGroupUnknownRejected`
 
 ### REQ-broker-config-028
 
