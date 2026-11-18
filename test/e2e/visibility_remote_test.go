@@ -99,6 +99,12 @@ func TestRemoteVisibility(t *testing.T) {
 			}
 			return true, ""
 		})
+
+		// Positive control: the helper every negative check below relies on
+		// must find the entries this listing already shows.
+		if !vrSees(t, a1, "b1") || !vrSees(t, b1, "a1") {
+			t.Fatal("vrSees does not find the pair that list_agents shows")
+		}
 	})
 
 	t.Run("REQ-topics-007 same name across brokers", func(t *testing.T) {
@@ -595,12 +601,14 @@ func vrListTopics(t *testing.T, s *harness.Session) (mcpserver.ListTopicsOut, st
 	return out, ""
 }
 
-// vrSees reports whether the session's listing contains name.
+// vrSees reports whether the session's listing contains name. A failed
+// list_agents call fails the test: treating an error as "not visible" would
+// let a broken or unreachable Broker satisfy every negative assertion.
 func vrSees(t *testing.T, s *harness.Session, name string) bool {
 	t.Helper()
 	out, state := vrListAgents(t, s)
 	if state != "" {
-		return false
+		t.Fatalf("list_agents failed while looking for %q: %s", name, state)
 	}
 	_, ok := vrFindAgent(out, name)
 	return ok
