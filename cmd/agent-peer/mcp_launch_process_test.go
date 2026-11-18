@@ -41,11 +41,10 @@ func TestMCPLaunchesBroker(t *testing.T) {
 
 	// broker.listen defaults to :17443, and a second bound Broker fails startup,
 	// so each attempt configures a port no other test claims. That port can be
-	// taken between freePort's close and the launched Broker's bind. The
-	// failure only shows up as the status poll not getting an answer, so retry
-	// once with a fresh port: stop the mcp process and any Broker it launched,
-	// rewrite the configuration and start again. Each attempt keeps the 3s
-	// limit.
+	// taken between freePort's close and the launched Broker's bind. Only that
+	// race earns a retry: the Broker's own log must say the address is already
+	// in use. Any other launch failure is reported at once instead of being
+	// hidden behind a second attempt.
 	const attempts = 2
 	var failures []string
 	for attempt := 1; attempt <= attempts; attempt++ {
@@ -59,13 +58,18 @@ func TestMCPLaunchesBroker(t *testing.T) {
 			return
 		}
 
-		failures = append(failures, fmt.Sprintf("attempt %d on %s: %s", attempt, listenAddr(port), p.stderr.String()))
+		failure := fmt.Sprintf("attempt %d on %s: %s", attempt, listenAddr(port), p.stderr.String())
+		failures = append(failures, failure)
 		// Stop the mcp process before the Broker: its connection loop would
 		// otherwise launch another Broker after the Broker cleanup ran.
 		p.stop()
 		stopLaunchedBroker(t, sb)
+
+		if attempt == attempts || !strings.Contains(failure, "address already in use") {
+			break
+		}
 	}
-	t.Fatalf("agent-peer status did not exit 0 within 3s of the MCP initialize in either attempt: %s",
+	t.Fatalf("agent-peer status did not exit 0 within 3s of the MCP initialize; the Broker log must show the port race for a retry: %s",
 		strings.Join(failures, "; "))
 }
 
