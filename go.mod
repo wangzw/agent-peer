@@ -32,3 +32,4 @@ tool (
 )
 
 replace github.com/PeterSR/claude-code-socket-transport => ./third_party/claude-code-socket-transport
+replace github.com/fsnotify/fsnotify => ./third_party/fsnotify
