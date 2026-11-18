@@ -56,8 +56,8 @@ test:
 	root="$$(mktemp -d)"; home="$$(mktemp -d)"; \
 	AGENT_PEER_TEST_RUNTIME_ROOT="$$root" AGENT_PEER_TEST_HOME="$$home" \
 		go test -race -count=1 -tags agentpeer_testenv -p $(JOBS) -parallel $(JOBS) \
-			-run 'TestTestRuntimeRoot|TestTestEnvHooksInstalled|TestRuntimeDirFromTestEnv' \
-			./internal/config ./internal/mcpserver; \
+			-run 'TestTestRuntimeRoot|TestTestEnvHooksInstalled|TestRuntimeDirFromTestEnv|TestParseProtocolOverrides|TestProtocolOverridesInstalled' \
+			./internal/config ./internal/mcpserver ./cmd/agent-peer; \
 	status=$$?; rm -rf "$$root" "$$home"; exit $$status
 	@if [ "$$(go env GOOS)" = darwin ]; then \
 		go -C $(CURDIR)/third_party/fsnotify test -race -count=1 -p $(JOBS) -parallel $(JOBS) -run '^Test(KqueueCloseDoesNotCloseAReusedDescriptor|AddWatchKeepsAnExistingDescriptorWhenReregisterFails)$$' ./; \
