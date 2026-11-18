@@ -147,9 +147,11 @@ var TopoFlatV6 = Topology{
 	file:     "flatv6.yaml",
 	nodes:    []string{"hostA", "hostB"},
 	networks: map[string]string{"hostA": "net", "hostB": "net"},
-	env: map[string]string{
-		"V6_NET":  randomULA(1),
-		"V6_VIRT": randomULA(2),
+	envFunc: func() map[string]string {
+		return map[string]string{
+			"V6_NET":  randomULA(1),
+			"V6_VIRT": randomULA(2),
+		}
 	},
 	init: func(t *testing.T, c *Cluster) {
 		for _, node := range []string{"hostA", "hostB"} {

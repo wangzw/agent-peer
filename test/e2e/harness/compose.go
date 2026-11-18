@@ -35,6 +35,11 @@ type Topology struct {
 	networks map[string]string
 	// env adds compose variables on top of E2E_IMAGE and CTL_<NODE>.
 	env map[string]string
+	// envFunc adds compose variables computed for this project. It runs on
+	// every Up, so a topology whose values must differ per project, such as
+	// randomly chosen IPv6 subnets, does not share them between two
+	// concurrent projects in one test process.
+	envFunc func() map[string]string
 	// init runs once every node agent answers, before Up returns.
 	init func(t *testing.T, c *Cluster)
 }
@@ -113,6 +118,11 @@ func Up(t *testing.T, topo Topology) *Cluster {
 	}
 	for name, value := range topo.env {
 		env = append(env, name+"="+value)
+	}
+	if topo.envFunc != nil {
+		for name, value := range topo.envFunc() {
+			env = append(env, name+"="+value)
+		}
 	}
 	c.env = append(os.Environ(), env...)
 
