@@ -116,8 +116,8 @@ topic 在未声明为公开时必须是不公开的。
 公开 topic 的声明必须遵守与名片相同的有效期和续签规则（`REQ-broker-discovery-007`、`REQ-broker-discovery-008`）。
 
 - **验收**：声明方离线且不再续签，超过有效期后，其他 Broker 上列出公开 topic 的结果不含该 topic。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_expiry_test.go` 的 `TestPublicTopicExpiresWithDeclarer`
 
 ### REQ-topics-013
 

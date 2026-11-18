@@ -77,16 +77,16 @@ Broker 必须拒绝内容被传递者改动过的名片，以及并非由名片�
 名片的有效期必须为 7 天，自发布或最近一次续签起算。
 
 - **验收**：一张名片在发布后第 6 天仍出现在其他 Broker 的结果中；发布者此后一直离线，第 8 天该名片不再出现。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_expiry_test.go` 的 `TestCardExpiresAfterSevenDays`
 
 ### REQ-broker-discovery-008
 
 在线的公开 Broker 必须每天续签一次自己的名片。
 
 - **验收**：公开 Broker 持续在线 10 天，期间它的名片始终出现在其他 Broker 的结果中。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_expiry_test.go` 的 `TestCardRenewedDaily`
 
 ### REQ-broker-discovery-009
 
