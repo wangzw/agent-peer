@@ -9,8 +9,9 @@ import (
 
 // Status returns the local part of the process status: every local agent with
 // its membership, plus the peers reported by Deps.Peers. It deliberately does
-// not reread session records; read-permission filtering is added by the
-// configuration unit in this handler, not here. Status needs no agent identity.
+// not reread session records. A caller without read permission on the
+// configuration file gets only the agents it owns and no peers. Status needs no
+// agent identity.
 func (b *Broker) Status(ctx context.Context, req *localpb.StatusRequest) (*localpb.StatusResponse, error) {
 	b.mu.Lock()
 	agents := make([]*localpb.AgentStatusEntry, 0, len(b.agents))
@@ -33,6 +34,21 @@ func (b *Broker) Status(ctx context.Context, req *localpb.StatusRequest) (*local
 	var peers []*localpb.BrokerInfo
 	if b.deps.Peers != nil {
 		peers = b.deps.Peers.Peers(ctx)
+	}
+
+	if !readAccessGranted(ctx) {
+		caller, ok := CallerFrom(ctx)
+		kept := agents[:0]
+		if ok {
+			for _, entry := range agents {
+				snapshot, found := b.lookupAgent(AgentID(entry.AgentId))
+				if found && snapshot.Caller.UID == caller.UID {
+					kept = append(kept, entry)
+				}
+			}
+		}
+		agents = kept
+		peers = nil
 	}
 	return &localpb.StatusResponse{Agents: agents, Peers: peers}, nil
 }
