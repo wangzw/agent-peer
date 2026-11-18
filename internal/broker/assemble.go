@@ -26,6 +26,7 @@ type Assembler interface {
 	Assemble(ctx context.Context, cfg ConfigSource, deps *Deps, asm *Assembly) ([]Component, error)
 }
 
-// DefaultAssemblers is used when RunOptions.Assemblers is nil. Later units add,
-// in order: directory, delivery, config subscriptions.
+// DefaultAssemblers is used when RunOptions.Assemblers is nil. It builds pairing
+// and link first, then the topic registry; the directory, delivery and
+// config-subscription assemblers follow them.
 func DefaultAssemblers() []Assembler { return []Assembler{newPeerAssembler(), topicAssembler{}} }

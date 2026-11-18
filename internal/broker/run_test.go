@@ -709,6 +709,9 @@ func TestRunNilAssemblersUsesDefaults(t *testing.T) {
 	if !strings.HasPrefix(got, "pairing and link: ") {
 		t.Fatalf("readiness line = %q, want the default assembler's failure", got)
 	}
+	if !strings.Contains(got, "loading identity and peer table") {
+		t.Fatalf("readiness line = %q, want it to name loading identity and peer table", got)
+	}
 	rt.cancel()
 	if err := rt.waitErr(); err == nil {
 		t.Fatal("Run error = nil, want the default assembler's failure")
