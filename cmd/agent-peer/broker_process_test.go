@@ -388,17 +388,27 @@ func TestBrokerInvalidListenValue(t *testing.T) {
 	}
 }
 
-func TestBrokerSystemModeUnavailable(t *testing.T) {
+// TestBrokerSystemRequiresRoot checks that --system without root ends with the
+// dedicated exit code and names the reason. As root the command is supposed to
+// proceed and serve the system Broker, so the case is skipped instead.
+func TestBrokerSystemRequiresRoot(t *testing.T) {
 	t.Parallel()
+
+	if euid := os.Geteuid(); euid == 0 {
+		t.Skip("the test process runs as root: --system is expected to proceed and serve the system Broker")
+	}
 
 	sb := newSandbox(t)
 	p := startBroker(t, sb, "--system")
 	ready := p.readyLine(3 * time.Second)
-	if code := p.wait(3 * time.Second); code != exitFailure {
-		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitFailure, p.stderr.String())
+	if code := p.wait(3 * time.Second); code != exitNotRoot {
+		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitNotRoot, p.stderr.String())
 	}
-	if !strings.Contains(ready, "system Broker is not available") {
-		t.Fatalf("ready line = %q, want it to contain %q", ready, "system Broker is not available")
+	if stderr := p.stderr.String(); !strings.Contains(stderr, "must run as root") {
+		t.Fatalf("stderr = %q, want it to name the root requirement", stderr)
+	}
+	if !strings.Contains(ready, "must run as root") {
+		t.Fatalf("ready line = %q, want it to name the root requirement", ready)
 	}
 	if want := "agent-peer broker: " + ready; p.lastStderrLine("agent-peer broker: ") != want {
 		t.Fatalf("stderr line = %q, want %q", p.lastStderrLine("agent-peer broker: "), want)
