@@ -166,7 +166,7 @@ type PathSet struct {
 | `directory.reconcile_interval` | 时长 | `10m` | 定期对账的间隔 |
 | `directory.max_records` | 整数 | `1000` | 名录记录总数的上限（`REQ-broker-discovery-011`） |
 | `directory.max_records_per_link` | 整数 | `250` | 经同一条链路接受的记录数上限（`REQ-broker-discovery-015`） |
-| `directory.max_topics_per_publisher` | 整数 | `16` | 同一发布者的公开 topic 声明与未知种类记录合计上限（名片不计） |
+| `directory.max_topics_per_publisher` | 整数 | `16` | 同一发布者的公开 topic 声明与未知种类记录合计上限（名片与撤回不计） |
 | `send.link_retries` | 整数 | `5` | 链路未建立时的重试次数（`REQ-agent-messaging-017`） |
 | `send.link_backoff` | 时长 | `500ms` | 首次重试前的等待，之后每次翻倍，单次不超过 8 秒 |
 | `send.request_timeout` | 时长 | `20s` | 一次发送的预算，即发送调用的总时限（`REQ-agent-messaging-017`、`REQ-agent-messaging-018`） |
