@@ -155,8 +155,8 @@ Agent 必须能向一个 Agent 地址发送一条纯文本消息。
 目标所在的 Broker 不可达时，发送调用必须在发送时限之内返回未送达的错误；发送时限由 Broker 的配置给出。
 
 - **验收**：把双方 Broker 的发送时限都配置为 10 秒，先断开两台主机之间的网络并等待链路断开，再从拨号方和接受方的主机上各发送一条消息，两次调用都在 10 秒之内返回说明对端不可达的错误，网络恢复后目标会话中不出现这两条消息。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_remote_test.go` 的 `TestRemoteSendFaults/REQ-agent-messaging-017 unreachable within budget`
 
 ### REQ-agent-messaging-018
 
@@ -171,16 +171,16 @@ Agent 必须能向一个 Agent 地址发送一条纯文本消息。
 发送调用返回未送达的错误后，系统不得在之后的任何时刻投递这条消息。
 
 - **验收**：在链路已断开时发送并得到未送达的错误，恢复网络后目标会话中不出现该消息。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_remote_test.go` 的 `TestRemoteSendFaults/REQ-agent-messaging-019 never delivered later`
 
 ### REQ-agent-messaging-020
 
 在接收方 Broker 不重启的情况下，一次发送调用不得使目标会话收到多于一份该消息。
 
 - **验收**：让目标所在的 Broker 写入成功但其应答在返回途中丢失，期间不重启接收方 Broker，发送方的调用在内部重试后返回，目标会话中该消息只出现一次。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_remote_test.go` 的 `TestRemoteSendFaults/REQ-agent-messaging-020 reply lost, one copy`
 
 ### REQ-agent-messaging-021
 
@@ -227,16 +227,16 @@ Agent 必须能向一个 Agent 地址发送一条纯文本消息。
 消息连同署名编码成写入 inbox socket 的一行之后超过 1 000 000 字节的，系统必须在发送端拒绝并说明超出上限，不得尝试投递；署名按该次投递可能使用的最长署名计算。这一上限按编码后的字节数计；Claude Code 自带的会话间发送对约一百万个字符的正文拒绝发送（[REF-claude-code-cross-session-messaging](../../references.md)），因此对多字节正文，本系统的限制更严。
 
 - **验收**：发送一条按最长可能的署名编码后为 1 000 001 字节的消息，调用返回说明超出上限的错误，目标所在的 Broker 没有收到投递请求；按最长可能的署名编码后为 1 000 000 字节的消息发送成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_remote_test.go` 的 `TestRemoteSendFaults/REQ-agent-messaging-026 size limit`
 
 ### REQ-agent-messaging-027
 
 系统无法确定消息是否已经写入目标会话时，发送调用必须返回与未送达不同的结果，并说明消息可能已经送达。
 
 - **验收**：让目标所在的 Broker 写入成功，并使它的应答和此后全部重试的应答都无法到达发送方；调用返回的结果标明送达情况未知，而不是未送达。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_remote_test.go` 的 `TestRemoteSendFaults/REQ-agent-messaging-027 delivery unknown`
 
 ### REQ-agent-messaging-028
 

@@ -181,8 +181,8 @@ Broker 重启后，系统必须在没有用户操作的情况下在重启后 60 
 发起配对的一方能主动连到另一方时，双方必须能互相发送消息。
 
 - **验收**：主机 B 位于 NAT 之后，没有主机 A 能连上的对外地址，主机 A 有 B 能连上的对外地址；B 向 A 发起配对后，A 上的 Agent 向 B 上的 Agent 发送消息成功，反向同样成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_remote_test.go` 的 `TestRemoteSendFaults/REQ-broker-pairing-020 both directions behind NAT`
 
 ### REQ-broker-pairing-021
 
