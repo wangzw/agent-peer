@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package internal.directory.directorypb;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/wangzw/agent-peer/internal/directory/directorypb;directorypb";
+
+message RecordList {
+  repeated RecordVersion records = 1;
+}
+
+message RecordVersion {
+  RecordId id = 1;
+  uint64 version = 2;
+}
+
+message RecordRequest {
+  repeated RecordId records = 1;
+}
+
+message Records {
+  repeated Record records = 1;
+}
+
+message RecordId {
+  bytes publisher = 1;
+  RecordKind kind = 2;
+  string object = 3;
+}
+
+message Record {
+  // raw is the serialized RecordBody. The receiver reads the publisher public
+  // key from raw, verifies the signature over raw, then parses the remaining
+  // fields.
+  bytes raw = 1;
+  bytes signature = 2;
+}
+
+// A revocation is not a kind of its own: its RecordId takes the kind and
+// object of the record it revokes, and its RecordBody payload is Revocation.
+enum RecordKind {
+  RECORD_KIND_UNSPECIFIED = 0;
+  RECORD_KIND_BROKER_CARD = 1;
+  RECORD_KIND_TOPIC_ANNOUNCEMENT = 2;
+}
+
+message AdvertisedAddress {
+  string kind = 1;
+  string addr = 2;
+}
+
+message RecordBody {
+  bytes publisher = 1;
+  bytes public_key = 2;
+  RecordKind kind = 3;
+  string object = 4;
+  uint64 version = 5;
+  google.protobuf.Timestamp expires = 6;
+  oneof payload {
+    BrokerCard broker_card = 7;
+    TopicAnnouncement topic_announcement = 8;
+    Revocation revocation = 9;
+  }
+}
+
+message BrokerCard {
+  string alias = 1;
+  repeated AdvertisedAddress addresses = 2;
+}
+
+message TopicAnnouncement {
+  string name = 1;
+  string description = 2;
+}
+
+message Revocation {
+  RecordKind revoked_kind = 1;
+}

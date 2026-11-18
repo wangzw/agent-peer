@@ -47,11 +47,11 @@ func RetirePublicTopic(name string)                       // 为本机的该声�
 func Brokers() []KnownBroker      // 全部对端，加上持有名片的非对端
 func PublicTopics() []PublicTopic
 func CardByAddress(address string) (Fingerprint, bool)    // 名片所载列表含该地址的发布者，供 broker 在配对后比对指纹
-func OnCard(func(fp Fingerprint, addresses []string))     // 接受一张名片时回调
+func OnCard(func(fp Fingerprint, addresses []config.AdvertisedAddr)) // 接受一张名片时回调
 func Reissue()                                            // 别名或对外地址列表变化时由 broker 调用，本 Broker 公开时立即签发新名片
 ```
 
-`KnownBroker` 给出指纹、生效别名或名片所载的别名、对外地址列表、是否对端、本方在这对对端中的角色、状态，以及链路处在被拒绝状态或因角色不符而退避时的说明（`REQ-broker-pairing-035`）。对外地址列表：本方是拨号方的对端取接受方告知的列表与名片所载的列表，不含发起配对时拨通的地址；本方是接受方的对端和非对端取名片所载的列表中本版本认识的地址项；都没有时为空；同一主机上的多个 Broker 是各自独立的条目，靠列表中的端口和别名区分（`REQ-broker-discovery-012`）。对外地址不参与身份的判定，条目以指纹为准。状态取值是封闭集合（`REQ-broker-discovery-013`）：
+`KnownBroker` 给出指纹、生效别名或名片所载的别名、对外地址列表（`[]config.AdvertisedAddr`）、是否对端、本方在这对对端中的角色、状态，以及链路处在被拒绝状态或因角色不符而退避时的说明（`REQ-broker-pairing-035`）。对外地址列表：本方是拨号方的对端取接受方告知的列表与名片所载的列表，不含发起配对时拨通的地址；本方是接受方的对端和非对端取名片所载的列表中本版本认识的地址项；都没有时为空；同一主机上的多个 Broker 是各自独立的条目，靠列表中的端口和别名区分（`REQ-broker-discovery-012`）。对外地址不参与身份的判定，条目以指纹为准。状态取值是封闭集合（`REQ-broker-discovery-013`）：
 
 | 状态 | 条件 |
 |---|---|
@@ -65,20 +65,25 @@ func Reissue()                                            // 别名或对外地�
 
 ## UML 图
 
-下图是记录的结构。名片、公开 topic 声明和撤回共用同一个信封，对账与验证只看信封，不区分载荷的种类。一条记录在链路上由两部分组成：发布者产生的原始字节，以及发布者对这段原始字节的签名；图中 `raw` 与 `signature` 之外的字段都编码在原始字节里，由收到记录的 Broker 在验签之后解析得到。
+下图是记录的结构。名片、公开 topic 声明和撤回共用同一个信封。记录标识中的种类只有名片与公开 topic 声明，撤回不是第三种：撤回是原始字节载荷的一种，它的身份取它撤回的那条记录的种类与对象名，因此与它撤回的记录占用同一个位置，所撤回的种类也记在载荷里。载荷的种类不影响对账与验证。一条记录在链路上由两部分组成：发布者产生的原始字节，以及发布者对这段原始字节的签名；图中 `raw` 与 `signature` 之外的字段都编码在原始字节里，由收到记录的 Broker 在验签之后解析得到。
 
 ```mermaid
 classDiagram
     class Record {
         +raw 发布者产生的原始字节
-        +kind 种类
+        +signature 发布者对原始字节的签名
+    }
+    class Raw {
         +publisher 发布者指纹
         +publicKey 发布者公钥
+        +kind 记录标识中的种类，名片或公开 topic 声明
         +object 对象名
         +version 版本号
         +expires 到期时间
         +payload 载荷
-        +signature 发布者对原始字节的签名
+    }
+    class Payload {
+        <<载荷>>
     }
     class BrokerCard {
         +alias 别名
@@ -91,10 +96,14 @@ classDiagram
     class Revocation {
         +revokedKind 所撤回记录的种类
     }
-    Record <|-- BrokerCard
-    Record <|-- TopicAnnouncement
-    Record <|-- Revocation
+    Record *-- Raw : raw 字段
+    Raw *-- Payload : payload 字段
+    Payload <|-- BrokerCard
+    Payload <|-- TopicAnnouncement
+    Payload <|-- Revocation
 ```
+
+上图与 `directorypb` 中的消息定义一致，图中的 `Raw` 即 `RecordBody`。`raw` 是 `RecordBody` 的序列化结果；`RecordBody` 给出发布者指纹、发布者公钥、记录标识中的种类、对象名、版本号、到期时间，以及恰好一个载荷：名片、公开 topic 声明或撤回。名片载荷是 `BrokerCard`，给出别名与对外地址列表，列表中的每一项是带种类的 `AdvertisedAddress`；公开 topic 声明载荷是 `TopicAnnouncement`，给出 topic 名与简介；撤回载荷是 `Revocation`，给出所撤回记录的种类。
 
 ## 核心数据结构
 
@@ -107,9 +116,9 @@ classDiagram
 | `expires` | 签发时刻加 7 天，撤回记录同样如此 |
 | `signature` | 发布者用私钥对原始字节的签名；原始字节由发布者产生，编码了其余全部字段 |
 
-收到记录的 Broker 先从原始字节中取出发布者公钥，以它对收到的原始字节验签，通过后才解析其余字段；保存记录和继续传播给其他对端时，原样使用收到的原始字节与签名，不重新编码。记录的具体编码方式因此属于实现：不同版本的 Broker 对同一条记录不需要产生相同的字节，记录中出现本版本不认识的字段时，记录仍然可以被验证和传播。
+收到记录的 Broker 先从 `RecordBody` 中取出发布者公钥，以它对收到的原始字节验签，通过后才解析其余字段；保存记录和继续传播给其他对端时，原样使用收到的原始字节与签名，不重新编码。记录的具体编码方式因此属于实现：不同版本的 Broker 对同一条记录不需要产生相同的字节，记录中出现本版本不认识的字段时，记录仍然可以被验证和传播。
 
-名片的 `addresses` 是签发时 `config` 给出的本机对外地址列表，至多 8 项，本机不监听时为空；列表在发布者的签名之内，途中经手的 Broker 不能改动它（[ADR-advertised-address](../../adr/adr-advertised-address.md)）。列表中的每一项带有种类，见 [config](design-config.md) 的“对外地址”。本包使用名片中的地址时只取本版本认识的项：`OnCard` 交给订阅者的列表、`CardByAddress` 的比对、`KnownBroker` 的对外地址列表与状态的判定，都跳过种类不认识的项；这些项仍留在原始字节中，随名片原样保存与传播。
+名片的 `addresses` 是签发时 `config` 给出的本机对外地址列表，每项是 `config.AdvertisedAddr`，至多 8 项，本机不监听时为空；列表在发布者的签名之内，途中经手的 Broker 不能改动它（[ADR-advertised-address](../../adr/adr-advertised-address.md)）。列表中的每一项带有种类，本版本产生的只有直连（`direct`），见 [config](design-config.md) 的“对外地址”。本包使用名片中的地址时只取本版本认识的项：`OnCard` 交给订阅者的列表、`CardByAddress` 的比对、`KnownBroker` 的对外地址列表与状态的判定，都跳过种类不认识的项；这些项仍留在原始字节中，随名片原样保存与传播。
 
 名录保存在数据目录内的 `directory.json`，数据目录的位置由 `config` 按部署形态给出，其中另存本机已签发的最高版本号，以及每条记录是经哪条链路接受的。Broker 重启后加载并立即清除已到期的记录。有效期 7 天与续签间隔 1 天不可配置。
 
@@ -117,11 +126,13 @@ classDiagram
 
 对账用的帧：
 
-| 帧 | 内容 |
-|---|---|
-| `RecordList` | 发送方持有的每条记录的标识与版本号 |
-| `RecordRequest` | 要向对方索取的记录的标识 |
-| `Records` | 若干条完整的记录 |
+| 帧 | 类别 | 内容 |
+|---|---|---|
+| `RecordList` | 状态帧 | 发送方持有的每条记录的标识与版本号 |
+| `RecordRequest` | 请求帧 | 要向对方索取的记录的标识 |
+| `Records` | 应答帧 | `RecordRequest` 的应答，若干条完整的记录 |
+
+`RecordRequest` 是请求帧，`Records` 是它的应答帧，两者以链路的请求标识对应；`RecordList` 是状态帧。
 
 ## 核心算法与流程
 
