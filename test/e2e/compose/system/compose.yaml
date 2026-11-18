@@ -1,0 +1,23 @@
+services:
+  plain:
+    image: ${AGENT_PEER_E2E_SYSTEM_IMAGE:?}
+    init: true
+    user: root
+    entrypoint: []
+    command: ["sleep", "infinity"]
+    environment:
+      AGENT_PEER_E2E_IN_CONTAINER: "1"
+    volumes:
+      - ${AGENT_PEER_E2E_BIN:?}:/opt/agent-peer-test:ro
+  systemd:
+    image: ${AGENT_PEER_E2E_SYSTEM_IMAGE:?}
+    privileged: true
+    cgroup: host
+    tmpfs:
+      - /run
+      - /run/lock
+    environment:
+      AGENT_PEER_E2E_IN_CONTAINER: "1"
+    volumes:
+      - ${AGENT_PEER_E2E_BIN:?}:/opt/agent-peer-test:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw

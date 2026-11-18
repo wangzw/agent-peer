@@ -1,0 +1,360 @@
+//go:build e2e
+
+package syscontainer
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"os/user"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+)
+
+const (
+	// agentPeerBinary is the release build in the base image.
+	agentPeerBinary = "/usr/local/bin/agent-peer"
+	// systemConfigPath is the system Broker's configuration file.
+	systemConfigPath = "/etc/agent-peer/config.yaml"
+	// systemSocketPath is the system Broker's local socket.
+	systemSocketPath = "/run/agent-peer/broker.sock"
+	// accountPath is the environment of every account process.
+	accountPath = "/usr/bin:/bin:/usr/sbin:/sbin"
+)
+
+// Proc is one Broker process started by a test.
+type Proc struct {
+	Cmd    *exec.Cmd
+	PID    int
+	Stdout *bytes.Buffer
+	Stderr *bytes.Buffer
+
+	exited  chan struct{}
+	waitErr error
+}
+
+// Result is the outcome of one process run to completion.
+type Result struct {
+	Stdout   string
+	Stderr   string
+	ExitCode int
+}
+
+// ProcInfo is one process found by Pids.
+type ProcInfo struct {
+	PID  int
+	PPID int
+	UID  uint32
+}
+
+// StartSystemBroker writes configYAML to the system configuration file when it
+// is non-empty, runs "agent-peer broker --system" as root, and waits for
+// /run/agent-peer/broker.sock. The process is terminated when the test ends.
+func StartSystemBroker(t *testing.T, configYAML string) *Proc {
+	t.Helper()
+	if !InContainer() {
+		t.Fatalf("syscontainer: StartSystemBroker runs inside the container")
+	}
+	if configYAML != "" {
+		writeSystemConfig(t, configYAML)
+	}
+	cmd := Command("root", nil, agentPeerBinary, "broker", "--system")
+	return startAndWait(t, cmd, systemSocketPath, "the system Broker")
+}
+
+// StartUserBroker runs "agent-peer broker <args>" as account and waits for that
+// account's user-level socket. The process is terminated when the test ends.
+func StartUserBroker(t *testing.T, account string, args ...string) *Proc {
+	t.Helper()
+	if !InContainer() {
+		t.Fatalf("syscontainer: StartUserBroker runs inside the container")
+	}
+	uid := AccountUID(t, account)
+	socket := filepath.Join(fmt.Sprintf("/tmp/agent-peer-%d", uid), "broker.sock")
+	cmd := Command(account, nil, agentPeerBinary, append([]string{"broker"}, args...)...)
+	return startAndWait(t, cmd, socket, "the "+account+" user Broker")
+}
+
+// startAndWait starts cmd and waits for socket to appear. A process that exits
+// before the socket exists fails the test with its standard error.
+func startAndWait(t *testing.T, cmd *exec.Cmd, socket, what string) *Proc {
+	t.Helper()
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("syscontainer: starting %s: %v", what, err)
+	}
+
+	p := &Proc{
+		Cmd:    cmd,
+		PID:    cmd.Process.Pid,
+		Stdout: stdout,
+		Stderr: stderr,
+		exited: make(chan struct{}),
+	}
+	go func() {
+		p.waitErr = cmd.Wait()
+		close(p.exited)
+	}()
+	t.Cleanup(func() { p.stop(t) })
+
+	WaitFor(t, what+" socket "+socket, func() bool {
+		if _, err := os.Stat(socket); err == nil {
+			return true
+		}
+		select {
+		case <-p.exited:
+			t.Fatalf("syscontainer: %s exited before creating %s: %v\n%s",
+				what, socket, p.waitErr, strings.TrimSpace(stderr.String()))
+		default:
+		}
+		return false
+	})
+
+	return p
+}
+
+// stop terminates the process with SIGTERM and escalates to SIGKILL after five
+// seconds.
+func (p *Proc) stop(t *testing.T) {
+	t.Helper()
+	select {
+	case <-p.exited:
+		return
+	default:
+	}
+	if err := p.Cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		_ = p.Cmd.Process.Kill()
+	}
+	select {
+	case <-p.exited:
+		return
+	case <-time.After(5 * time.Second):
+	}
+	_ = p.Cmd.Process.Kill()
+	select {
+	case <-p.exited:
+	case <-time.After(5 * time.Second):
+		t.Logf("syscontainer: process %d did not exit after SIGKILL", p.PID)
+	}
+}
+
+// AccountUID returns the uid of account from the account database.
+func AccountUID(t *testing.T, account string) uint32 {
+	t.Helper()
+	_, uid, _ := accountIDs(t, account)
+	return uid
+}
+
+// accountIDs looks account up in the account database and returns the entry
+// with its primary uid and gid.
+func accountIDs(t *testing.T, account string) (*user.User, uint32, uint32) {
+	t.Helper()
+	u, err := user.Lookup(account)
+	if err != nil {
+		t.Fatalf("syscontainer: looking up account %q: %v", account, err)
+	}
+	uid, err := strconv.ParseUint(u.Uid, 10, 32)
+	if err != nil {
+		t.Fatalf("syscontainer: account %q has a non-numeric uid %q", account, u.Uid)
+	}
+	gid, err := strconv.ParseUint(u.Gid, 10, 32)
+	if err != nil {
+		t.Fatalf("syscontainer: account %q has a non-numeric gid %q", account, u.Gid)
+	}
+	return u, uint32(uid), uint32(gid)
+}
+
+// RunAs runs the release agent-peer binary as account ("root" is allowed) and
+// returns its output and exit code.
+func RunAs(t *testing.T, account string, env []string, args ...string) Result {
+	t.Helper()
+	if len(args) == 0 {
+		t.Fatalf("syscontainer: RunAs needs a command")
+	}
+	return runCommand(t, account, env, agentPeerBinary, args...)
+}
+
+// runCommand runs name as account and returns its output and exit code. A
+// process that cannot be started fails the test; a non-zero exit is returned.
+func runCommand(t *testing.T, account string, env []string, name string, args ...string) Result {
+	t.Helper()
+	cmd := Command(account, env, name, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+
+	result := Result{Stdout: stdout.String(), Stderr: stderr.String()}
+	if err == nil {
+		return result
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("syscontainer: running %s as %s: %v", name, account, err)
+	}
+	result.ExitCode = exitErr.ExitCode()
+	return result
+}
+
+// Command builds a command that runs as account. The environment is built from
+// an empty one: HOME, USER, LOGNAME, PATH, then env. The working directory is
+// the account's home. The credential is set from the account database, and it
+// is left alone when the target account is the current one, because changing
+// the group list then fails.
+func Command(account string, env []string, name string, args ...string) *exec.Cmd {
+	u, uid, gid := lookupAccount(account)
+	cmd := exec.Command(name, args...)
+	cmd.Dir = u.HomeDir
+	cmd.Env = append([]string{
+		"HOME=" + u.HomeDir,
+		"USER=" + u.Username,
+		"LOGNAME=" + u.Username,
+		"PATH=" + accountPath,
+	}, env...)
+	if euid := os.Geteuid(); uint32(euid) != uid {
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Credential: &syscall.Credential{
+				Uid:    uid,
+				Gid:    gid,
+				Groups: accountGroups(u),
+			},
+		}
+	}
+	return cmd
+}
+
+// lookupAccount is Command's account lookup. Command has no *testing.T, so a
+// missing account panics; every account it is used with comes from the image.
+func lookupAccount(account string) (*user.User, uint32, uint32) {
+	u, err := user.Lookup(account)
+	if err != nil {
+		panic(fmt.Sprintf("syscontainer: looking up account %q: %v", account, err))
+	}
+	uid, err := strconv.ParseUint(u.Uid, 10, 32)
+	if err != nil {
+		panic(fmt.Sprintf("syscontainer: account %q has a non-numeric uid %q", account, u.Uid))
+	}
+	gid, err := strconv.ParseUint(u.Gid, 10, 32)
+	if err != nil {
+		panic(fmt.Sprintf("syscontainer: account %q has a non-numeric gid %q", account, u.Gid))
+	}
+	return u, uint32(uid), uint32(gid)
+}
+
+// accountGroups returns the supplementary groups of u.
+func accountGroups(u *user.User) []uint32 {
+	ids, err := u.GroupIds()
+	if err != nil {
+		return nil
+	}
+	groups := make([]uint32, 0, len(ids))
+	for _, id := range ids {
+		n, err := strconv.ParseUint(id, 10, 32)
+		if err != nil {
+			continue
+		}
+		groups = append(groups, uint32(n))
+	}
+	return groups
+}
+
+// writeSystemConfig writes configYAML to the system configuration file, owned
+// by root with mode 0600.
+func writeSystemConfig(t *testing.T, configYAML string) {
+	t.Helper()
+	dir := filepath.Dir(systemConfigPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("syscontainer: creating %s: %v", dir, err)
+	}
+	if err := os.WriteFile(systemConfigPath, []byte(configYAML), 0o600); err != nil {
+		t.Fatalf("syscontainer: writing %s: %v", systemConfigPath, err)
+	}
+	if err := os.Chmod(systemConfigPath, 0o600); err != nil {
+		t.Fatalf("syscontainer: chmod %s: %v", systemConfigPath, err)
+	}
+	if err := os.Chown(systemConfigPath, 0, 0); err != nil {
+		t.Fatalf("syscontainer: chown %s: %v", systemConfigPath, err)
+	}
+}
+
+// Pids returns the processes whose command line contains every word.
+func Pids(words ...string) []ProcInfo {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	var procs []ProcInfo
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil || pid <= 0 {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join("/proc", entry.Name(), "cmdline"))
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		cmdline := strings.ReplaceAll(string(data), "\x00", " ")
+		matched := true
+		for _, word := range words {
+			if !strings.Contains(cmdline, word) {
+				matched = false
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		ppid, ok := parentPID(pid)
+		if !ok {
+			continue
+		}
+		procs = append(procs, ProcInfo{PID: pid, PPID: ppid, UID: processUID(pid)})
+	}
+	return procs
+}
+
+// parentPID reads the parent PID from /proc/<pid>/stat.
+func parentPID(pid int) (int, bool) {
+	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return 0, false
+	}
+	// The command name is parenthesised and may contain spaces and parentheses,
+	// so the fields that matter start after the last ')'.
+	i := bytes.LastIndexByte(data, ')')
+	if i < 0 {
+		return 0, false
+	}
+	fields := strings.Fields(string(data[i+1:]))
+	// fields[0] is the state and fields[1] the parent PID.
+	if len(fields) < 2 {
+		return 0, false
+	}
+	ppid, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return 0, false
+	}
+	return ppid, true
+}
+
+// processUID returns the effective uid of pid from its /proc directory.
+func processUID(pid int) uint32 {
+	info, err := os.Stat(filepath.Join("/proc", strconv.Itoa(pid)))
+	if err != nil {
+		return 0
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0
+	}
+	return st.Uid
+}
