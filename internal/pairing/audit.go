@@ -13,6 +13,7 @@ const (
 	auditReasonKeyInvalid         = "key invalid"
 	auditReasonVerificationFailed = "verification failed"
 	auditReasonTryLater           = "try later"
+	auditReasonKeyExpired         = "key expired"
 	auditReasonTimeout            = "handshake timeout"
 	auditReasonNotConnected       = "not connected"
 )

@@ -97,8 +97,8 @@ var (
 	ErrDialFailed = errors.New("pairing: dial failed")
 )
 
-// RejectReason is the local reason a pairing was refused. The last two values
-// are local only and never travel on the wire.
+// RejectReason is the local reason a pairing was refused. ReasonTimeout and
+// ReasonNotConnected are local only and never travel on the wire.
 type RejectReason uint8
 
 const (
@@ -107,6 +107,7 @@ const (
 	ReasonTryLater
 	ReasonTimeout
 	ReasonNotConnected
+	ReasonKeyExpired
 )
 
 // PairingError is a refusal with a reason and a human-readable detail. Its

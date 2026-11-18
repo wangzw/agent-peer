@@ -15,7 +15,7 @@
 ## 职责
 
 - 首次启动时生成身份密钥与自签证书并保存，此后每次启动加载同一份，使指纹保持不变（`REQ-broker-pairing-001`）。
-- 生成一次性配对密钥，并在结果中另附供展示的本机地址；在密钥过期、成功使用一次或验证失败次数达到上限时作废密钥（`REQ-broker-pairing-005` 至 `REQ-broker-pairing-007`、`REQ-broker-pairing-028`）。
+- 生成一次性配对密钥，并在结果中另附供展示的本机地址；在密钥过期、成功使用一次或验证失败次数达到上限时作废密钥，按时间过期的密钥在过期后 24 小时内仍能凭查找标记认出，以便回复密钥已过期（`REQ-broker-pairing-005` 至 `REQ-broker-pairing-007`、`REQ-broker-pairing-028`）。
 - 配置了预置静态密钥时，接受凭它进行的配对；不生成、不保存预置静态密钥（[ADR-static-pairing-key](../../adr/adr-static-pairing-key.md)，`REQ-broker-pairing-008`、`REQ-broker-pairing-009`、`REQ-broker-pairing-025`）。
 - 作为发起方或接受方执行配对握手，成功后把对方写入对端表并记下本方的角色：发起方是拨号方，接受方是接受方；同一对 Broker 重新配对时，角色按新的发起方重新确定（[ADR-initiator-redials](../../adr/adr-initiator-redials.md)，`REQ-broker-pairing-010` 至 `REQ-broker-pairing-012`、`REQ-broker-pairing-027`）。
 - 持久保存对端表，使配对之后的连接只凭指纹认证，Broker 重启后配对关系仍在（`REQ-broker-pairing-016`、`REQ-broker-pairing-017`）。
@@ -119,7 +119,7 @@ type PairConn interface {
 
 下图是一次配对握手。`PairRequest` 中的查找标记是由配对密钥与本次随机数算出的短值，接受方据此找出发起方用的是哪个密钥，算式见核心数据结构。发起方在收到 `PairDone` 后写入对端表；接受方验证通过后先把对方记为待提交的条目，在同一连接上收到发起方的首个 `Hello` 时才写入对端表。只有接受方的应答带对外地址列表，发起方不报告自己的地址。
 
-接受方在找不到相符的密钥、尝试次数超过限制或验证 `mi` 失败时回 `PairReject` 并关闭连接。握手超过期限时只关闭连接，不发帧。发起方收到 `PairReject`，或在 `PairDone` 之前连接被关闭，都得到 `pairing_rejected`，说明以 `Not connected` 开头；发起方本地的握手超时同样映射为 `pairing_rejected`。
+接受方在找不到相符的密钥、密钥已过期、尝试次数超过限制或验证 `mi` 失败时回 `PairReject` 并关闭连接。握手超过期限时只关闭连接，不发帧。发起方收到 `PairReject`，或在 `PairDone` 之前连接被关闭，都得到 `pairing_rejected`，说明以 `Not connected` 开头；发起方本地的握手超时同样映射为 `pairing_rejected`。
 
 ```mermaid
 sequenceDiagram
@@ -127,9 +127,9 @@ sequenceDiagram
     participant R as 接受方 pairing
     Note over I,R: TLS 已建立，双方各自记下对方证书的指纹
     I->>R: PairRequest（发起方随机数 ni，发起方别名，查找标记）
-    R->>R: 在一次性配对密钥与预置静态密钥中按查找标记确定密钥
-    alt 没有相符的密钥或尝试过于频繁
-        R->>I: PairReject（密钥无效或稍后再试）
+    R->>R: 在未过期的一次性配对密钥、已过期密钥记录与预置静态密钥中按查找标记确定密钥
+    alt 没有相符的密钥、密钥已过期或尝试过于频繁
+        R->>I: PairReject（密钥无效、密钥已过期或稍后再试）
         R->>R: 关闭连接
     else 找到密钥
         R->>I: PairChallenge（接受方随机数 nr，接受方别名，接受方的对外地址列表，认证码 mr）
@@ -159,16 +159,17 @@ sequenceDiagram
 | `PairChallenge` | 101 | 状态帧 | 接受方随机数 nr、接受方别名、接受方的对外地址列表、认证码 mr |
 | `PairConfirm` | 102 | 状态帧 | 认证码 mi |
 | `PairDone` | 103 | 状态帧 | 无载荷 |
-| `PairReject` | 104 | 状态帧 | 拒绝原因：密钥无效、验证失败或稍后再试 |
+| `PairReject` | 104 | 状态帧 | 拒绝原因：密钥无效、密钥已过期、验证失败或稍后再试 |
 
-配对握手的帧都是状态帧，不带请求号，也不产生应答。线上的拒绝原因只有密钥无效、验证失败与稍后再试；握手超时不是线上原因，由发起方在本地判定。
+配对握手的帧都是状态帧，不带请求号，也不产生应答。线上的拒绝原因只有密钥无效、密钥已过期、验证失败与稍后再试；握手超时不是线上原因，由发起方在本地判定。
 
 | 结构 | 内容 | 存放 |
 |---|---|---|
 | 身份 | Ed25519 私钥与自签证书，证书不含主机名 | 数据目录内的 `identity.key`、`identity.crt` |
 | 对端表 | 每个对端的指纹、公钥、对方自报的别名、本地别名、本方的角色、配对时间；本方是拨号方的，另有候选地址及其来源和上一次连通的地址 | 数据目录内的 `peers.json` |
 | 一次性配对密钥表 | 密钥、生成时间、验证失败次数 | 仅内存 |
-| 配对尝试计数 | 当前这一分钟内既没有匹配上一次性配对密钥、也没有匹配上预置静态密钥的请求数 | 仅内存 |
+| 已过期密钥的记录 | 按时间过期的一次性配对密钥及其保留截止时间（过期时刻加 24 小时）；只用于计算查找标记，不用于验证，至多 64 条，超出时先丢弃截止时间最早的 | 仅内存 |
+| 配对尝试计数 | 当前这一分钟内既没有匹配上一次性配对密钥、已过期密钥记录，也没有匹配上预置静态密钥的请求数 | 仅内存 |
 | 待提交的条目 | 接受方已验证、尚未收到发起方 `Hello` 的对方信息 | 仅内存，随握手所在的连接存续 |
 
 数据目录的位置由 `config` 按部署形态给出。同一主机上的每个 Broker 实例各有自己的数据目录，因而各有自己的身份与对端表。指纹是证书公钥信息的 SHA-256，显示时取十六进制；监听地址与对外地址都不参与身份的判定。对端的生效别名是它的本地别名，没有本地别名时是它自报的别名。预置静态密钥不在数据目录中，只在配置文件里。
@@ -211,7 +212,7 @@ A 收到 B 的 `Hello` 之前的任何一处失败，A 的对端表都保持不�
 
 `CreateOneTimeKey` 只生成一次性配对密钥，本包不生成其他密钥（`REQ-broker-pairing-025`）。监听地址配置为空的 Broker 无法由对方拨到，不生成密钥，返回 `invalid_argument`，提示由对方生成密钥、本方发起配对（`REQ-broker-pairing-036`）。
 
-一次性配对密钥：密钥在生成 10 分钟后从表中删除，这个时长不可配置。同一时刻可以有多个未过期的密钥并存。
+一次性配对密钥在生成 10 分钟后过期，这个时长不可配置；过期的密钥移出密钥表，转入已过期密钥的记录，保留 24 小时后删除。成功使用一次或验证失败次数达到上限而作废的密钥直接删除，不留记录。同一时刻可以有多个未过期的密钥并存。
 
 结果中的展示取自 `config` 给出的对外地址列表与系统主机名，见外部接口契约。对外地址列表为空而 Broker 在监听时，即没有配置含主机的对外地址、也没有默认路由，照常生成密钥，`shown` 为空，由 [mcpserver](design-mcpserver.md) 说明没有可展示的地址、需要用户自行告知对方连接地址（`REQ-broker-pairing-028`）。
 
@@ -232,10 +233,11 @@ A 收到 B 的 `Hello` 之前的任何一处失败，A 的对端表都保持不�
 ### 接受方
 
 1. 对密钥表中每个未过期的一次性配对密钥计算查找标记，有与请求相符的即用它，这样的请求不计入配对尝试计数。
-2. 没有相符的一次性配对密钥时，检查配对尝试计数，超过 `pairing.max_attempts_per_minute` 时回 `PairReject`（原因为稍后再试）并关闭；未超过的，对已配置的预置静态密钥计算查找标记，相符即用它且不计入计数，不相符的计数加一并回 `PairReject`（原因为密钥无效），随后关闭。
-3. 计算 `mr`，回 `PairChallenge`，其中带 `config` 给出的本方对外地址列表；收 `PairConfirm`，验证 `mi`。验证时重新取当前的密钥：一次性配对密钥必须仍在密钥表中，预置静态密钥必须仍是 `config` 给出的当前值。验证失败的，回 `PairReject`（原因为验证失败）并关闭；相符的是一次性配对密钥的，其失败次数加一，达到 `pairing.max_failures` 后作废。
-4. 验证通过：一次性配对密钥立即作废；对方自报的别名有冲突或不符合别名的规则时为它准备本地别名；把对方记为待提交的条目，回 `PairDone`。
-5. 在同一连接上收到发起方的首个 `Hello` 后提交：写入对端表，本方是接受方，不记任何地址；对方指纹已在表中时覆盖，角色按本次重新确定，全部候选地址与上一次连通的地址删除，同一对端原有的链路被关闭。连接在此之前关闭或握手超过期限的，丢弃待提交的条目，对端表与原有的链路都不变。
+2. 没有相符的一次性配对密钥时，对已过期密钥的记录计算查找标记，相符的回 `PairReject`（原因为密钥已过期）并关闭，这样的请求不计入配对尝试计数，也不受它限制。
+3. 也没有相符的已过期密钥记录时，检查配对尝试计数，超过 `pairing.max_attempts_per_minute` 时回 `PairReject`（原因为稍后再试）并关闭；未超过的，对已配置的预置静态密钥计算查找标记，相符即用它且不计入计数，不相符的计数加一并回 `PairReject`（原因为密钥无效），随后关闭。
+4. 计算 `mr`，回 `PairChallenge`，其中带 `config` 给出的本方对外地址列表；收 `PairConfirm`，验证 `mi`。验证时重新取当前的密钥：一次性配对密钥必须仍在密钥表中，预置静态密钥必须仍是 `config` 给出的当前值。一次性配对密钥在验证时已过期的，回 `PairReject`（原因为密钥已过期）并关闭，不计失败次数。验证失败的，回 `PairReject`（原因为验证失败）并关闭；相符的是一次性配对密钥的，其失败次数加一，达到 `pairing.max_failures` 后作废。
+5. 验证通过：一次性配对密钥立即作废；对方自报的别名有冲突或不符合别名的规则时为它准备本地别名；把对方记为待提交的条目，回 `PairDone`。
+6. 在同一连接上收到发起方的首个 `Hello` 后提交：写入对端表，本方是接受方，不记任何地址；对方指纹已在表中时覆盖，角色按本次重新确定，全部候选地址与上一次连通的地址删除，同一对端原有的链路被关闭。连接在此之前关闭或握手超过期限的，丢弃待提交的条目，对端表与原有的链路都不变。
 
 一次配对握手从发出或收到 `PairRequest` 起，到接受方提交为止，整体以 10 秒为限。接受方超过期限时只关闭连接，不发帧；发起方超时在本地判定，映射为 `pairing_rejected`。
 
@@ -267,7 +269,8 @@ A 收到 B 的 `Hello` 之前的任何一处失败，A 的对端表都保持不�
 
 | 情形 | 发起方得到 | 接受方的处理 |
 |---|---|---|
-| 没有与查找标记相符的密钥：密钥错误、已过期或已使用 | `pairing_rejected`：密钥无效 | 回 `PairReject`（原因：密钥无效），关闭连接；尝试计数加一，写审计 |
+| 没有与查找标记相符的密钥：密钥错误、已使用、因验证失败作废、因 64 条上限被挤掉的过期记录，或过期已超过 24 小时 | `pairing_rejected`：密钥无效 | 回 `PairReject`（原因：密钥无效），关闭连接；尝试计数加一，写审计 |
+| 查找标记与过期不满 24 小时的一次性配对密钥相符，或密钥在验证时已过期 | `pairing_rejected`：密钥已过期，说明以 `key expired` 开头 | 回 `PairReject`（原因：密钥已过期），关闭连接；不计入尝试计数，写审计 |
 | 接受方验证 `mi` 失败 | `pairing_rejected`：验证失败 | 回 `PairReject`（原因：验证失败），关闭连接；相符的是一次性配对密钥的，其失败次数加一；写审计 |
 | 发起方验证 `mr` 失败 | `pairing_rejected`：验证失败 | 无，连接由发起方关闭 |
 | 尝试过于频繁 | `pairing_rejected`：稍后再试 | 回 `PairReject`（原因：稍后再试），关闭连接；写审计，同一来源的重复记录由 `config` 合并 |
@@ -286,7 +289,7 @@ A 收到 B 的 `Hello` 之前的任何一处失败，A 的对端表都保持不�
 
 | 错误 | 返回情形 |
 |---|---|
-| `*PairingError`（`errors.Is(err, ErrPairingRejected)`） | 对方拒绝，或握手在 `PairDone` 之前中止。`Reason` 为密钥无效、验证失败、稍后再试、握手超时或未连接；`Error()` 以 `Not connected` 开头。 |
+| `*PairingError`（`errors.Is(err, ErrPairingRejected)`） | 对方拒绝，或握手在 `PairDone` 之前中止。`Reason` 为密钥无效、密钥已过期、验证失败、稍后再试、握手超时或未连接；`Error()` 以 `Not connected` 开头。 |
 | `ErrPeerUnreachable` | `Connect` 经 `PairDial` 拨号失败，且该错误包装了 `ErrDialFailed`。 |
 | `ErrDialFailed` | `Transport` 实现的拨号失败标记，由 `link` 包装；`pairing` 的方法不直接返回它。 |
 | `ErrProtocol` | 帧的 kind、顺序、长度或拒绝原因不符合协议，连接随后关闭。 |
@@ -306,16 +309,16 @@ A 收到 B 的 `Hello` 之前的任何一处失败，A 的对端表都保持不�
 
 校验通过到订阅推入 `SetOwnAlias` 之间存在窄窗口：`config` 已提交新的本机别名，而 `pairing` 的缓存仍是旧值。窗口内提交的握手可能拿到与新本机别名相同的生效别名。窗口结束后缓存更新，之后的提交复核会拒绝这个别名。这个窗口是消除锁序反转所接受的代价：`config` 的通知队列异步、按提交顺序送达，窗口的长度取决于队列的排队情况。
 
-预置静态密钥的删除或更换与进行中的握手之间，以验证 `mi` 的时刻为准：验证时重新取当前的密钥，此前已删除或已更换的密钥不能完成握手（`REQ-broker-pairing-032`、`REQ-broker-pairing-033`）。一次性配对密钥同理，验证时已过期或已作废的不能完成握手。
+预置静态密钥的删除或更换与进行中的握手之间，以验证 `mi` 的时刻为准：验证时重新取当前的密钥，此前已删除或已更换的密钥不能完成握手（`REQ-broker-pairing-032`、`REQ-broker-pairing-033`）。一次性配对密钥同理，验证时已过期的不能完成握手，回密钥已过期；已作废的回密钥无效。
 
 ## 实现状态
 
 | 能力 | 状态 | 代码 |
 |---|---|---|
 | 身份生成与加载 | 已实现 | `internal/pairing/identity.go`（`loadIdentity`、`generateIdentity`） |
-| 一次性配对密钥的生成、展示与作废 | 已实现 | `internal/pairing/pairkey.go`（`CreateOneTimeKey`、`keyTable`） |
+| 一次性配对密钥的生成、展示与作废 | 已实现 | `internal/pairing/pairkey.go`（`CreateOneTimeKey`、`keyTable`、`expireLocked`、`expiredKey`） |
 | 预置静态密钥的启用、更换与禁用 | 已实现 | `internal/pairing/pairkey.go`（`lookupAtRequest`、`verifyAtConfirm`） |
-| 配对握手 | 已实现 | `internal/pairing/handshake.go`（`Connect`、`Accept`） |
+| 配对握手 | 已实现 | `internal/pairing/handshake.go`（`Connect`、`Accept`、`rejectReasonFromPB`） |
 | 配对尝试的限制 | 已实现 | `internal/pairing/pairkey.go`（`attemptCounter`、`lookupAtRequest`） |
 | 对端表与角色的持久化 | 已实现 | `internal/pairing/peers.go`、`internal/pairing/store.go`（`peerTable`、`atomicWrite`） |
 | 候选地址的记录 | 已实现 | `internal/pairing/addresses.go`（`filterKnown`、`mergeCandidates`） |

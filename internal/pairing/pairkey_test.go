@@ -209,7 +209,10 @@ func TestREQBrokerPairing006_KeyExpiredAtExactlyTenMinutes(t *testing.T) {
 	_, _, connectErr, acceptErr := hsPair(t, initP, accP, tr, key, "", func(ctx context.Context, raw PairConn) error {
 		return hsSendHello(raw)
 	})
-	assertRejectedReason(t, connectErr, ReasonKeyInvalid)
+	assertRejectedReason(t, connectErr, ReasonKeyExpired)
+	if !strings.Contains(connectErr.Error(), "key expired") {
+		t.Fatalf("Connect error = %q, want it to mention key expired", connectErr.Error())
+	}
 	if acceptErr == nil {
 		t.Fatal("Accept succeeded with a key at its exact expiry")
 	}
@@ -218,6 +221,9 @@ func TestREQBrokerPairing006_KeyExpiredAtExactlyTenMinutes(t *testing.T) {
 	}
 	if got := len(accP.keys.keys); got != 0 {
 		t.Fatalf("expired key remains in the table: %d entries", got)
+	}
+	if got := len(accP.keys.expired); got != 1 {
+		t.Fatalf("expired-key records = %d, want 1", got)
 	}
 }
 
@@ -237,7 +243,10 @@ func TestREQBrokerPairing006_KeyExpiredAtElevenMinutes(t *testing.T) {
 	_, _, connectErr, acceptErr := hsPair(t, initP, accP, tr, key, "", func(ctx context.Context, raw PairConn) error {
 		return hsSendHello(raw)
 	})
-	assertRejectedReason(t, connectErr, ReasonKeyInvalid)
+	assertRejectedReason(t, connectErr, ReasonKeyExpired)
+	if !strings.Contains(connectErr.Error(), "key expired") {
+		t.Fatalf("Connect error = %q, want it to mention key expired", connectErr.Error())
+	}
 	if acceptErr == nil {
 		t.Fatal("Accept succeeded with an expired one-time key")
 	}
@@ -246,6 +255,9 @@ func TestREQBrokerPairing006_KeyExpiredAtElevenMinutes(t *testing.T) {
 	}
 	if got := len(accP.keys.keys); got != 0 {
 		t.Fatalf("expired key remains in the table: %d entries", got)
+	}
+	if got := len(accP.keys.expired); got != 1 {
+		t.Fatalf("expired-key records = %d, want 1", got)
 	}
 }
 

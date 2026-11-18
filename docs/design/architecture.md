@@ -187,7 +187,7 @@ sequenceDiagram
 | `peer_unreachable` | 链路未建立，投递请求一次也没有发出；或配对时对方的地址无法连接 | `broker`、`link`、`pairing` |
 | `inbox_unwritable` | 确定没有写入目标会话的 inbox socket | `broker`、`inbox` |
 | `delivery_unknown` | 无法确定消息是否已写入目标会话 | `broker` |
-| `pairing_rejected` | 配对密钥无效、验证失败或尝试过于频繁 | `pairing` |
+| `pairing_rejected` | 配对密钥无效或已过期、验证失败或尝试过于频繁 | `pairing` |
 | `needs_local_alias` | 发起配对时别名冲突，需要调用方提供本地别名 | `pairing` |
 | `permission_denied` | 调用方账户对 Broker 的配置文件没有该调用所需的读或写权限 | `broker` |
 | `not_registered` | 调用需要 Agent 身份，而所在会话没有完成登记：找不到会话记录、会话名不可用、登记首帧没有 socket 路径，或 socket 不属于调用方账户；或给出的 Agent 标识无效、不属于调用方账户 | `broker`、`mcpserver` |
@@ -211,7 +211,7 @@ sequenceDiagram
 
 kind 常量手写在相应 proto 包目录内的 `kind.go` 中，不用 proto enum，使对端能够接收不认识的 kind 而无需枚举转换。每个 kind 的载荷消息及其类别（状态帧、请求帧或应答帧），见 [link](modules/design-link.md)、[topic](modules/design-topic.md)、[directory](modules/design-directory.md)、[pairing](modules/design-pairing.md) 与 [broker](modules/design-broker.md)。
 
-协议版本有两个常量，初值都是 1：本机接口版本用于本机 `Local` 服务，链路版本用于链路握手。新增 kind 或给已有帧增加字段是兼容变化，不提升版本；改变已有 kind 或已有字段的含义才提升。版本比较与不兼容时的处理见 [broker](modules/design-broker.md) 与 [link](modules/design-link.md)。
+协议版本有两个常量，初值都是 1：本机接口版本用于本机 `Local` 服务，链路版本用于链路握手。新增 kind 或给已有帧增加字段是兼容变化，不提升版本；改变已有 kind 或已有字段的含义才提升。给已有枚举追加取值同样是兼容变化，例如配对拒绝原因追加的密钥已过期；旧版本收到不认识的取值时按各模块的规则处理，`pairing` 按协议错误处理。版本比较与不兼容时的处理见 [broker](modules/design-broker.md) 与 [link](modules/design-link.md)。
 
 对未知输入的处理是统一的：不认识的状态帧与应答帧丢弃；不认识的请求帧以“不支持”应答回复，应答中指明该请求的 kind；已知帧中的未知字段直接忽略；对外地址列表中种类不认识的项逐项跳过，不影响其余项（[link](modules/design-link.md)、[pairing](modules/design-pairing.md)）。
 

@@ -362,7 +362,7 @@ func TestREQBrokerPairing011_ExpiredAndUsedKeysRejected(t *testing.T) {
 		clk.Advance(11 * time.Minute)
 
 		_, _, connectErr, acceptErr := hsPair(t, initP, accP, tr, key, "", nil)
-		assertRejectedReason(t, connectErr, ReasonKeyInvalid)
+		assertRejectedReason(t, connectErr, ReasonKeyExpired)
 		if acceptErr == nil {
 			t.Fatal("Accept succeeded with an expired key")
 		}

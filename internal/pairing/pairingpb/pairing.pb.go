@@ -28,6 +28,7 @@ const (
 	PairingRejectReason_PAIRING_REJECT_REASON_KEY_INVALID         PairingRejectReason = 1
 	PairingRejectReason_PAIRING_REJECT_REASON_VERIFICATION_FAILED PairingRejectReason = 2
 	PairingRejectReason_PAIRING_REJECT_REASON_TRY_LATER           PairingRejectReason = 3
+	PairingRejectReason_PAIRING_REJECT_REASON_KEY_EXPIRED         PairingRejectReason = 4
 )
 
 // Enum value maps for PairingRejectReason.
@@ -37,12 +38,14 @@ var (
 		1: "PAIRING_REJECT_REASON_KEY_INVALID",
 		2: "PAIRING_REJECT_REASON_VERIFICATION_FAILED",
 		3: "PAIRING_REJECT_REASON_TRY_LATER",
+		4: "PAIRING_REJECT_REASON_KEY_EXPIRED",
 	}
 	PairingRejectReason_value = map[string]int32{
 		"PAIRING_REJECT_REASON_UNSPECIFIED":         0,
 		"PAIRING_REJECT_REASON_KEY_INVALID":         1,
 		"PAIRING_REJECT_REASON_VERIFICATION_FAILED": 2,
 		"PAIRING_REJECT_REASON_TRY_LATER":           3,
+		"PAIRING_REJECT_REASON_KEY_EXPIRED":         4,
 	}
 )
 
@@ -401,12 +404,13 @@ const file_internal_pairing_pairingpb_pairing_proto_rawDesc = "" +
 	"\x06reason\x18\x01 \x01(\x0e2/.internal.pairing.pairingpb.PairingRejectReasonR\x06reason\";\n" +
 	"\x11AdvertisedAddress\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x12\n" +
-	"\x04addr\x18\x02 \x01(\tR\x04addr*\xb7\x01\n" +
+	"\x04addr\x18\x02 \x01(\tR\x04addr*\xde\x01\n" +
 	"\x13PairingRejectReason\x12%\n" +
 	"!PAIRING_REJECT_REASON_UNSPECIFIED\x10\x00\x12%\n" +
 	"!PAIRING_REJECT_REASON_KEY_INVALID\x10\x01\x12-\n" +
 	")PAIRING_REJECT_REASON_VERIFICATION_FAILED\x10\x02\x12#\n" +
-	"\x1fPAIRING_REJECT_REASON_TRY_LATER\x10\x03BCZAgithub.com/wangzw/agent-peer/internal/pairing/pairingpb;pairingpbb\x06proto3"
+	"\x1fPAIRING_REJECT_REASON_TRY_LATER\x10\x03\x12%\n" +
+	"!PAIRING_REJECT_REASON_KEY_EXPIRED\x10\x04BCZAgithub.com/wangzw/agent-peer/internal/pairing/pairingpb;pairingpbb\x06proto3"
 
 var (
 	file_internal_pairing_pairingpb_pairing_proto_rawDescOnce sync.Once

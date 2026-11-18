@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
@@ -21,7 +22,21 @@ const (
 	// pairHintLabel is the HMAC label for the lookup tag. It has no NUL
 	// terminator.
 	pairHintLabel = "agent-peer pair hint"
+	// expiredKeyRetention is how long an expired one-time key is remembered so
+	// the acceptor can answer KEY_EXPIRED instead of KEY_INVALID.
+	expiredKeyRetention = 24 * time.Hour
+	// maxExpiredKeyRecords caps the expired-key records; the records with the
+	// earliest cutoff are dropped first.
+	maxExpiredKeyRecords = 64
 )
+
+// expiredKey remembers a one-time key that expired by time. key is kept only
+// to recompute lookup tags; it never verifies a proof or completes a
+// handshake.
+type expiredKey struct {
+	key   string
+	until time.Time // expiry + expiredKeyRetention
+}
 
 // oneTimeKey is one unexpired key and its verification failure count.
 type oneTimeKey struct {
@@ -47,12 +62,14 @@ type attemptCounter struct {
 	count  int
 }
 
-// keyTable holds the one-time keys and the per-minute attempt counter. One
-// mutex covers both. Verification and removal of a one-time key happen under
-// the same lock, so two concurrent handshakes cannot both consume one key.
+// keyTable holds the one-time keys, the expired-key records and the per-minute
+// attempt counter. One mutex covers all three. Verification and removal of a
+// one-time key happen under the same lock, so two concurrent handshakes cannot
+// both consume one key.
 type keyTable struct {
 	mu       sync.Mutex
 	keys     []oneTimeKey
+	expired  []expiredKey
 	attempts attemptCounter
 }
 
@@ -93,26 +110,49 @@ func computeHint(key, ni []byte) []byte {
 func (k *keyTable) add(key string, now time.Time) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
-	k.keys = purgeExpired(k.keys, now)
+	k.expireLocked(now)
 	k.keys = append(k.keys, oneTimeKey{key: key, expires: now.Add(oneTimeKeyLifetime)})
 }
 
-// purgeExpired returns the keys that are still valid at now.
-func purgeExpired(keys []oneTimeKey, now time.Time) []oneTimeKey {
-	kept := keys[:0]
-	for _, key := range keys {
+// expireLocked moves keys whose lifetime has ended into the expired-key
+// records, drops records past their cutoff, and caps the records at
+// maxExpiredKeyRecords by dropping the earliest cutoff first. The caller must
+// hold k.mu.
+func (k *keyTable) expireLocked(now time.Time) {
+	kept := k.keys[:0]
+	for _, key := range k.keys {
 		if now.Before(key.expires) {
 			kept = append(kept, key)
+		} else {
+			k.expired = append(k.expired, expiredKey{key: key.key, until: key.expires.Add(expiredKeyRetention)})
 		}
 	}
-	return kept
+	k.keys = kept
+
+	live := k.expired[:0]
+	for _, e := range k.expired {
+		if now.Before(e.until) {
+			live = append(live, e)
+		}
+	}
+	k.expired = live
+
+	if len(k.expired) > maxExpiredKeyRecords {
+		sort.SliceStable(k.expired, func(i, j int) bool {
+			return k.expired[i].until.Before(k.expired[j].until)
+		})
+		k.expired = k.expired[len(k.expired)-maxExpiredKeyRecords:]
+	}
 }
 
 // lookupAtRequest selects the key for an incoming PairRequest. It first looks
-// for a matching one-time key, then checks the per-minute attempt limit, then
-// the preset static key. A request that matches nothing increments the counter.
-// found is false on rejection; the returned error is a PairingError whose reason
-// maps to the PairReject reason.
+// for a matching one-time key, then the expired-key records, then checks the
+// per-minute attempt limit, then the preset static key. A request that matches
+// nothing increments the counter. found is false on rejection; the returned
+// error is a PairingError whose reason maps to the PairReject reason.
+//
+// A hit on an expired-key record answers KEY_EXPIRED and does not touch the
+// counter: the caller holds that key, and the counter exists to stop guessing.
 //
 // The per-key failure limit is not consulted here: recordVerificationFailure
 // already discards a one-time key once its failures reach that limit, so any key
@@ -121,10 +161,16 @@ func (k *keyTable) lookupAtRequest(ni, hint []byte, now time.Time, staticKey str
 	k.mu.Lock()
 	defer k.mu.Unlock()
 
-	k.keys = purgeExpired(k.keys, now)
+	k.expireLocked(now)
 	for i := range k.keys {
 		if hmac.Equal(computeHint([]byte(k.keys[i].key), ni), hint) {
 			return keyMatch{key: k.keys[i].key, oneTime: true, index: i}, true, nil
+		}
+	}
+
+	for _, e := range k.expired {
+		if hmac.Equal(computeHint([]byte(e.key), ni), hint) {
+			return keyMatch{}, false, &PairingError{Reason: ReasonKeyExpired, Detail: rejectDetail(ReasonKeyExpired)}
 		}
 	}
 
@@ -148,15 +194,17 @@ func (k *keyTable) lookupAtRequest(ni, hint []byte, now time.Time, staticKey str
 }
 
 // verifyAtConfirm checks the initiator's proof against the key selected at
-// request time. A one-time key must still be in the table and unexpired; when it
-// is gone or expired, keyGone is true and the caller answers KEY_INVALID without
-// counting a failure. A successful one-time key is removed atomically with the
-// check.
-func (k *keyTable) verifyAtConfirm(m keyMatch, ni, nr []byte, acceptorFP, initiatorSeen Fingerprint, staticKey string, now time.Time) (ok, keyGone bool) {
+// request time. A one-time key must still be in the table; when it expired
+// during the handshake, gone is KEY_EXPIRED, and when it was removed some other
+// way, gone is KEY_INVALID. In both cases the caller answers with that reason
+// and counts no failure. A successful one-time key is removed atomically with
+// the check. gone is 0 when the key is still usable.
+func (k *keyTable) verifyAtConfirm(m keyMatch, ni, nr []byte, acceptorFP, initiatorSeen Fingerprint, staticKey string, now time.Time) (ok bool, gone RejectReason) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 
 	if m.oneTime {
+		k.expireLocked(now)
 		idx := -1
 		for i := range k.keys {
 			if k.keys[i].key == m.key {
@@ -164,27 +212,29 @@ func (k *keyTable) verifyAtConfirm(m keyMatch, ni, nr []byte, acceptorFP, initia
 				break
 			}
 		}
-		if idx < 0 || !now.Before(k.keys[idx].expires) {
-			if idx >= 0 {
-				k.keys = append(k.keys[:idx], k.keys[idx+1:]...)
+		if idx < 0 {
+			for _, e := range k.expired {
+				if e.key == m.key {
+					return false, ReasonKeyExpired
+				}
 			}
-			return false, true
+			return false, ReasonKeyInvalid
 		}
 		want := initiatorProof([]byte(m.key), ni, nr, initiatorSeen, acceptorFP)
 		if !hmac.Equal(want, m.proof) {
-			return false, false
+			return false, 0
 		}
 		k.keys = append(k.keys[:idx], k.keys[idx+1:]...)
-		return true, false
+		return true, 0
 	}
 
 	// The preset static key must still equal its current configured value. A
 	// rotated or deleted key cannot finish a handshake that started before it.
 	if staticKey == "" || staticKey != m.key {
-		return false, false
+		return false, 0
 	}
 	want := initiatorProof([]byte(staticKey), ni, nr, initiatorSeen, acceptorFP)
-	return hmac.Equal(want, m.proof), false
+	return hmac.Equal(want, m.proof), 0
 }
 
 // recordVerificationFailure counts one failed verification against a one-time

@@ -287,12 +287,12 @@ func (p *Pairing) Accept(conn PairConn) error {
 	}
 
 	verifiedAt := p.clock.Now()
-	ok, keyGone := func() (bool, bool) {
+	ok, gone := func() (bool, RejectReason) {
 		match.proof = confirm.GetProof()
 		return p.keys.verifyAtConfirm(match, ni, nr, p.identity.fingerprint(), initiatorFP, p.settings.StaticKey(), verifiedAt)
 	}()
-	if keyGone {
-		return p.rejectAcceptor(conn, ctx, initiatorFP, initiatorAlias, ReasonKeyInvalid, verifiedAt)
+	if gone != 0 {
+		return p.rejectAcceptor(conn, ctx, initiatorFP, initiatorAlias, gone, verifiedAt)
 	}
 	if !ok {
 		p.keys.recordVerificationFailure(match, maxFailures, verifiedAt)
@@ -400,6 +400,8 @@ func (p *Pairing) rejectAcceptor(conn PairConn, ctx context.Context, fp Fingerpr
 		auditPairingFailed(p.settings, now, fp, alias, auditReasonTryLater, mergeKey)
 	case ReasonVerificationFailed:
 		auditPairingFailed(p.settings, now, fp, alias, auditReasonVerificationFailed, "")
+	case ReasonKeyExpired:
+		auditPairingFailed(p.settings, now, fp, alias, auditReasonKeyExpired, "")
 	default:
 		auditPairingFailed(p.settings, now, fp, alias, auditReasonKeyInvalid, "")
 	}
@@ -557,6 +559,8 @@ func rejectReasonToPB(reason RejectReason) (pairingpb.PairingRejectReason, bool)
 		return pairingpb.PairingRejectReason_PAIRING_REJECT_REASON_VERIFICATION_FAILED, true
 	case ReasonTryLater:
 		return pairingpb.PairingRejectReason_PAIRING_REJECT_REASON_TRY_LATER, true
+	case ReasonKeyExpired:
+		return pairingpb.PairingRejectReason_PAIRING_REJECT_REASON_KEY_EXPIRED, true
 	default:
 		return pairingpb.PairingRejectReason_PAIRING_REJECT_REASON_UNSPECIFIED, false
 	}
@@ -571,6 +575,8 @@ func rejectReasonFromPB(reason pairingpb.PairingRejectReason) (RejectReason, boo
 		return ReasonVerificationFailed, true
 	case pairingpb.PairingRejectReason_PAIRING_REJECT_REASON_TRY_LATER:
 		return ReasonTryLater, true
+	case pairingpb.PairingRejectReason_PAIRING_REJECT_REASON_KEY_EXPIRED:
+		return ReasonKeyExpired, true
 	default:
 		return 0, false
 	}
@@ -589,6 +595,8 @@ func rejectDetail(reason RejectReason) string {
 		return "handshake timed out"
 	case ReasonNotConnected:
 		return "not connected"
+	case ReasonKeyExpired:
+		return "key expired; ask the other side to generate a new pairing key"
 	default:
 		return "pairing rejected"
 	}
