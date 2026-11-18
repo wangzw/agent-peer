@@ -195,6 +195,32 @@ sequenceDiagram
 | `quota_exceeded` | 名录的数量限制已满 | `directory` |
 | `internal` | 不属于以上各类的内部错误 | 各模块 |
 
+### 接口契约约定
+
+跨模块的二进制接口由各包的 proto 定义固定下来。proto 包位于 `internal/broker/localpb`、`internal/broker/deliverpb`、`internal/link/linkpb`、`internal/pairing/pairingpb`、`internal/topic/topicpb`、`internal/directory/directorypb`；每个目录一份 proto，proto 包名是该目录相对仓库根的路径，以点分隔（如 `internal.link.linkpb`），生成的 Go 代码与 proto 放在同一目录并提交进仓库。proto 包之间只沿模块依赖方向引用，没有共享的地址包：带对外地址的 `localpb`、`linkpb`、`pairingpb`、`directorypb` 各自定义 `AdvertisedAddress` 消息，`topicpb` 与 `deliverpb` 不定义。名录记录的载荷是 `directorypb` 定义的 `RecordBody` 消息，记录中的 `raw` 是它的序列化结果，签名针对 `raw` 计算。
+
+帧的 `kind` 字段按包划分编号区段，区段分配是封闭的：
+
+| 区段 | 所属包 |
+|---|---|
+| 1–99 | 链路（`linkpb`） |
+| 100–199 | 配对（`pairingpb`） |
+| 200–299 | topic（`topicpb`） |
+| 300–399 | 名录（`directorypb`） |
+| 400–499 | `broker` 的投递包（`deliverpb`） |
+
+kind 常量手写在相应 proto 包目录内的 `kind.go` 中，不用 proto enum，使对端能够接收不认识的 kind 而无需枚举转换。每个 kind 的载荷消息及其类别（状态帧、请求帧或应答帧），见 [link](modules/design-link.md)、[topic](modules/design-topic.md)、[directory](modules/design-directory.md)、[pairing](modules/design-pairing.md) 与 [broker](modules/design-broker.md)。
+
+协议版本有两个常量，初值都是 1：本机接口版本用于本机 `Local` 服务，链路版本用于链路握手。新增 kind 或给已有帧增加字段是兼容变化，不提升版本；改变已有 kind 或已有字段的含义才提升。版本比较与不兼容时的处理见 [broker](modules/design-broker.md) 与 [link](modules/design-link.md)。
+
+对未知输入的处理是统一的：不认识的状态帧与应答帧丢弃；不认识的请求帧以“不支持”应答回复，应答中指明该请求的 kind；已知帧中的未知字段直接忽略；对外地址列表中种类不认识的项逐项跳过，不影响其余项（[link](modules/design-link.md)、[pairing](modules/design-pairing.md)）。
+
+Local 的错误放在 gRPC status 的 details 里，恰好携带一个 `ErrorDetail`，含稳定的错误码、一段给模型看的说明，以及产生该错误的 Broker 指纹，本机产生的错误该指纹为空。`Register` 的等待或已撤销状态不是错误，而是登记流上的事件。错误码的取值与映射见 [broker](modules/design-broker.md)。跨 Broker 的投递应答是 `deliverpb` 的 `DeliverResult`，其 `result` 是 `delivered` 与 `error` 的 oneof，`delivered` 携带 `Delivered`，`error` 携带 `localpb.ErrorDetail`；发送方 Broker 把它转成本机 `Send` 应答中的 `ErrorDetail` 时，填入产生该错误的 Broker 指纹。
+
+指纹在线上是 32 字节原始二进制，不是十六进制字符串；十六进制只用于展示。Agent 标识放在请求消息的字段里，不放在 gRPC metadata 中。
+
+对外地址消息由一个种类和一个地址组成，本版本只产生直连这一种类。种类是字符串而不是枚举，使不认识的种类能够原样携带并在使用处跳过（[ADR-advertised-address](../adr/adr-advertised-address.md)，[config](modules/design-config.md)）。
+
 ### 认证与授权边界
 
 | 边界 | 认证方式 | 授权范围 |
