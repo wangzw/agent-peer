@@ -231,8 +231,9 @@ func loopBaseDeps(st *statusStore, clock *loopClock) loopDeps {
 	}
 }
 
-// loopStart runs runLoop in the background and stops it at cleanup.
-func loopStart(t *testing.T, deps loopDeps) {
+// loopStart runs runLoop in the background. It returns a stop function that
+// cancels the loop and waits for it, also registered as a cleanup.
+func loopStart(t *testing.T, deps loopDeps) (stop func()) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -240,14 +241,19 @@ func loopStart(t *testing.T, deps loopDeps) {
 		defer close(done)
 		runLoop(ctx, deps)
 	}()
-	t.Cleanup(func() {
-		cancel()
-		select {
-		case <-done:
-		case <-time.After(3 * time.Second):
-			t.Errorf("runLoop did not return within 3s of cancelling its context")
-		}
-	})
+	var once sync.Once
+	stop = func() {
+		once.Do(func() {
+			cancel()
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				t.Errorf("runLoop did not return within 3s of cancelling its context")
+			}
+		})
+	}
+	t.Cleanup(stop)
+	return stop
 }
 
 func TestRunLoop(t *testing.T) {
@@ -264,15 +270,20 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindUser}, nil
 		}
-		launcher := &loopLauncher{fn: func(context.Context) error {
-			newServers <- fakelocal.Start(t, path, fakelocal.Handlers{})
-			return nil
+		launcher := &loopLauncher{fn: func(ctx context.Context) error {
+			s := fakelocal.Start(t, path, fakelocal.Handlers{})
+			select {
+			case newServers <- s:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}}
 		deps.launch = launcher
 		deps.onComplete = func(_ context.Context, _ localpb.LocalClient, agentID string, _ bool) {
 			completed <- agentID
 		}
-		loopStart(t, deps)
+		stop := loopStart(t, deps)
 
 		first := loopNextRegister(t, srv)
 		if got := first.First.GetInboxSocketPath(); got != "/s" {
@@ -309,6 +320,11 @@ func TestRunLoop(t *testing.T) {
 		if got := loopAwaitString(t, completed, "the second completion"); got != "id1" {
 			t.Fatalf("second onComplete agent ID = %q, want id1", got)
 		}
+		// Cancel while the replacement Broker still serves the second Register
+		// stream. Letting the Broker's cleanup stop the stream first makes the
+		// loop launch another Broker during cleanup, whose own cleanup then runs
+		// before this loop's cancel.
+		stop()
 	})
 
 	t.Run("user-level reconnect never selects a different Broker", func(t *testing.T) {
@@ -326,14 +342,19 @@ func TestRunLoop(t *testing.T) {
 			return target{Path: userPath, Kind: kindUser}, nil
 		}
 		var launches atomic.Int32
-		deps.launch = &loopLauncher{fn: func(context.Context) error {
+		deps.launch = &loopLauncher{fn: func(ctx context.Context) error {
 			if launches.Add(1) == 1 {
 				return &launchError{Reason: "the first launch failed"}
 			}
-			newServers <- fakelocal.Start(t, userPath, fakelocal.Handlers{})
-			return nil
+			s := fakelocal.Start(t, userPath, fakelocal.Handlers{})
+			select {
+			case newServers <- s:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		}}
-		loopStart(t, deps)
+		stop := loopStart(t, deps)
 
 		first := loopNextRegister(t, userSrv)
 		if err := first.Complete("id1", "me@h", false); err != nil {
@@ -362,6 +383,8 @@ func TestRunLoop(t *testing.T) {
 		if calls := systemSrv.Calls(); len(calls) != 0 {
 			t.Errorf("the system-level Broker received %d calls, want none: %v", len(calls), calls)
 		}
+		// Cancel while the replacement still serves the second Register stream.
+		stop()
 	})
 
 	t.Run("system-level Broker is retried, never launched or replaced", func(t *testing.T) {
@@ -376,7 +399,7 @@ func TestRunLoop(t *testing.T) {
 			return target{Path: path, Kind: kindSystem}, nil
 		}
 		deps.launch = &loopNoLaunch{t: t}
-		loopStart(t, deps)
+		stop := loopStart(t, deps)
 
 		first := loopNextRegister(t, srv)
 		if err := first.Complete("id1", "me@h", false); err != nil {
@@ -395,6 +418,8 @@ func TestRunLoop(t *testing.T) {
 		if got, want := second.First.GetInboxSocketPath(), first.First.GetInboxSocketPath(); got != want {
 			t.Errorf("first frame after the restart = %q, want %q", got, want)
 		}
+		// Cancel while the replacement still serves the second Register stream.
+		stop()
 	})
 
 	t.Run("AGENT_PEER_SOCKET Broker unavailable then up", func(t *testing.T) {
@@ -412,7 +437,7 @@ func TestRunLoop(t *testing.T) {
 			return target{Path: path, Kind: kindEnv}, nil
 		}
 		deps.launch = &loopNoLaunch{t: t}
-		loopStart(t, deps)
+		stop := loopStart(t, deps)
 
 		status := loopWaitStatus(t, st, "PhaseUnavailable", func(s Status) bool {
 			return s.Phase == PhaseUnavailable
@@ -432,6 +457,8 @@ func TestRunLoop(t *testing.T) {
 			t.Fatalf("sending registration_complete: %v", err)
 		}
 		loopWaitStatus(t, st, "the registered agent", func(s Status) bool { return s.AgentID == "id1" })
+		// Cancel while the Broker still serves the Register stream.
+		stop()
 	})
 
 	t.Run("a launch failure backs off and retries the full selection", func(t *testing.T) {

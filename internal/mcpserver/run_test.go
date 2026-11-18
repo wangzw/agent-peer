@@ -485,10 +485,18 @@ func TestRunForgetsManualTopicsAcrossProcesses(t *testing.T) {
 	}
 	second := startRunClient(t, opts)
 	conn2 := runNextRegister(t, srv, clock)
+	// The fake Broker keeps the first process's JoinTopic calls, so waiting
+	// for any "team" request returns the first process's one. Wait for the
+	// second process's own restore instead: it runs only after the new agent
+	// ID is in the status store, so this wait also orders the join_topic below.
+	skip := len(topicsJoinRequests(srv))
 	if err := conn2.Complete("agent-2", "me2@b", true); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
-	runWaitJoinTopic(t, srv, "team")
+	restored := runWaitJoinTopicAfter(t, srv, "team", skip)
+	if got := restored.GetAgentId(); got != "agent-2" {
+		t.Fatalf("the restored team join was sent for %q, want agent-2", got)
+	}
 
 	// A new process must not replay a topic the old one joined by hand. Join a
 	// marker and restart the Broker: the restore replays the memory in
