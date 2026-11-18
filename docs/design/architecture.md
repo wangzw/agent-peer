@@ -83,7 +83,7 @@ graph TD
     pairing --> config
 ```
 
-箭头从使用方指向被使用方。本项目自己的包之间只沿箭头引用；标准库、外部依赖和 `third_party` 下纳入的源码不在此列。`config` 与 `inbox` 不引用本项目自己的任何其他包。`link` 只提供带身份认证的帧通道，不解析 topic 和名录的帧；`topic` 与 `directory` 各自在 `link` 上注册自己的帧类型。
+箭头从使用方指向被使用方。本项目自己的包之间只沿箭头引用；标准库、外部依赖和 `third_party` 下纳入的源码不在此列。`config` 与 `inbox` 不引用本项目自己的任何其他包。`internal/testkit` 下的包只由 `_test.go` 文件引用；非测试文件引用它会被依赖检查拒绝。`link` 只提供带身份认证的帧通道，不解析 topic 和名录的帧；`topic` 与 `directory` 各自在 `link` 上注册自己的帧类型。
 
 `localpb` 与 `deliverpb` 是 `broker` 的 proto 包，在图中单列为节点。`mcpserver` 只引用 `localpb`，不引用 `broker` 包本身；`deliverpb` 承载跨 Broker 的投递帧，只由 `broker` 引用。
 
@@ -302,7 +302,7 @@ Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间�
 |---|---|
 | [broker](modules/design-broker.md) | 未实现 |
 | [mcpserver](modules/design-mcpserver.md) | 未实现 |
-| [inbox](modules/design-inbox.md) | 未实现 |
+| [inbox](modules/design-inbox.md) | 已实现 |
 | [topic](modules/design-topic.md) | 未实现 |
 | [link](modules/design-link.md) | 未实现 |
 | [pairing](modules/design-pairing.md) | 未实现 |

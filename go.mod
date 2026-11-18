@@ -3,6 +3,7 @@ module github.com/wangzw/agent-peer
 go 1.27
 
 require (
+	github.com/PeterSR/claude-code-socket-transport v0.1.1
 	github.com/fsnotify/fsnotify v1.10.1
 	golang.org/x/sys v0.48.0
 	google.golang.org/grpc v1.85.0

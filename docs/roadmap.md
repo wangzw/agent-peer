@@ -93,6 +93,7 @@
 | 以实验确认署名清洗的规则：含 `"`、`<`、`>` 或超过 64 个码点的署名不被识别；本系统生成的、带消歧标识并截短了名字的署名原样到达会话，模型按它回复时能够解析 | `REQ-agent-messaging-022`、`REQ-agent-messaging-025`、`REQ-agent-messaging-037` | M1 |
 | 以实验确认停用 MCP 服务时 MCP 服务进程依次收到 SIGINT、SIGTERM，重新启用时启动新进程 | `REQ-agent-messaging-034` | M1 |
 | 以实验确认接收方的限速与去重：经同一个 Broker 写入的消息共用一个令牌桶，容量 30，每秒补充 0.5 个；同一写入进程 30 秒内发来与上一条内容完全相同的消息时后一条被丢弃；未处理的会话间消息至多排队 50 条 | Agent 消息的假设与依赖 | M2 |
+| 以实验确认 `CleanSignature` 去掉的不可见字符集与真实接收方一致 | `REQ-agent-messaging-022`、`REQ-agent-messaging-029`、`REQ-agent-messaging-037` | 真实会话验证 |
 
 Claude Code 每次升级后，核对 inbox 帧格式与会话注册表的字段是否仍与观测记录一致。
 
