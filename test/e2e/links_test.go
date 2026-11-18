@@ -34,6 +34,11 @@ const (
 	// peer status within one reconnect interval; a healthy idle Broker keeps
 	// both assertions true for the whole window.
 	lkBrokerIdleWindow = 2000 * time.Millisecond
+	// lkRelinkSlack is added to lkRelinkBound when a reconnect has one more
+	// hop to make, such as finding a second advertised address. No product
+	// timer governs the extra second; it only keeps the bound from turning a
+	// slow first address into a second-address failure.
+	lkRelinkSlack = time.Second
 )
 
 // lkTopic is the topic the sessions use.
@@ -51,18 +56,19 @@ func TestLinks(t *testing.T) {
 	opA, opB := lkOperator(t, aNode), lkOperator(t, bNode)
 
 	// The counter is installed before pairing so any dial A ever makes is
-	// counted, including one made while the link is being set up.
-	outSYN := c.SYNCounter(t, "hostA", harness.Outbound, "", 17443)
-	// B is the dialer. Its counter is the positive control: the same rule on
-	// the same port has to see B's pairing dial, or a zero on A proves nothing.
-	bSYN := c.SYNCounter(t, "hostB", harness.Outbound, "", 17443)
+	// counted, including one made while the link is being set up. Port 0
+	// watches every destination port: an acceptor that wrongly dials could aim
+	// at a port other than the one under test, and the count must not miss it.
+	outSYN := c.SYNCounter(t, "hostA", harness.Outbound, "", 0)
+	// B is the dialer. Its counter is the positive control: the same rule has
+	// to see B's pairing dial, or a zero on A proves nothing.
+	bSYN := c.SYNCounter(t, "hostB", harness.Outbound, "", 0)
 
 	a1 := lkSession(t, aNode, "a1")
 	b1 := lkSession(t, bNode, "b1")
 	var (
-		aSawPeerB bool
-		a1Ended   bool
-		b1Ended   bool
+		a1Ended bool
+		b1Ended bool
 	)
 	defer func() {
 		if !a1Ended {
@@ -96,8 +102,11 @@ func TestLinks(t *testing.T) {
 
 	t.Run("REQ-broker-pairing-018 redial after restore", func(t *testing.T) {
 		lkCutAndWaitDown(t, c, aNode, bNode)
-		start := time.Now()
 		c.Restore(t)
+		// Start the clock after Restore returns, not before it: deleting the
+		// rules is the last part of the outage, and measuring it as rebuild
+		// time would charge the product for the harness's own work.
+		start := time.Now()
 		lkWaitConnected(t, bNode, "hostA-17443", lkRelinkBound)
 		lkWaitConnected(t, aNode, "hostB-17443", lkRelinkBound)
 		if elapsed := time.Since(start); elapsed > lkRelinkBound {
@@ -210,7 +219,6 @@ func TestLinks(t *testing.T) {
 		if len(peerB.GetAdvertisedAddresses()) != 0 {
 			t.Fatalf("A invents addresses for the dialer: %v", lkAddressStrings(peerB.GetAdvertisedAddresses()))
 		}
-		aSawPeerB = true
 	})
 
 	t.Run("REQ-broker-discovery-013 three statuses", func(t *testing.T) {
@@ -231,14 +239,6 @@ func TestLinks(t *testing.T) {
 		c.Restore(t)
 		lkWaitConnected(t, bNode, "hostA-17443", lkRelinkBound)
 		lkWaitConnected(t, aNode, "hostB-17443", lkRelinkBound)
-	})
-
-	t.Run("REQ-broker-discovery-014 peer flag", func(t *testing.T) {
-		// aSawPeerB records the state before the disconnect below; the flag
-		// must have been true while the pair existed.
-		if !aSawPeerB {
-			t.Fatal("A did not mark B as a peer before the disconnect")
-		}
 	})
 
 	t.Run("REQ-broker-pairing-021 disconnect", func(t *testing.T) {
@@ -270,6 +270,25 @@ func TestLinks(t *testing.T) {
 		})
 	})
 
+	t.Run("REQ-broker-discovery-014 peer flag", func(t *testing.T) {
+		// Both readings come from the live lists, one case after A unpaired B.
+		// B still treats A as a peer and must say so; that is the positive
+		// control proving the flag reflects the pairing table rather than a
+		// constant. A must no longer mark anything as a peer, and if B's card
+		// is still listed it must carry is_peer=false.
+		if peerB, ok := lkFindPeer(lkPeers(t, bNode), "hostA-17443"); !ok || !peerB.GetIsPeer() {
+			t.Fatalf("B lists A as present=%v is_peer=%v after A unpaired B; B never unpaired A", ok, peerB.GetIsPeer())
+		}
+		for _, peer := range lkPeers(t, aNode) {
+			if peer.GetIsPeer() {
+				t.Fatalf("A still marks %q as a peer after unpairing B", peer.GetAlias())
+			}
+			if peer.GetAlias() == "hostB-17443" && peer.GetIsPeer() {
+				t.Fatalf("A lists the unpaired B as a peer")
+			}
+		}
+	})
+
 	t.Run("REQ-broker-pairing-035 rejected dialer stops", func(t *testing.T) {
 		harness.Eventually(t, lkWaitBound, "B marks the link to A as rejected", func() (bool, string) {
 			peer, ok := lkFindPeer(lkPeers(t, bNode), "hostA-17443")
@@ -285,7 +304,9 @@ func TestLinks(t *testing.T) {
 			return true, ""
 		})
 
-		inSYN := c.SYNCounter(t, "hostA", harness.Inbound, c.Addr("router", "wan"), 17443)
+		// Port 0 watches every destination port: a rejected dialer that starts
+		// dialing again may aim anywhere, and the acceptor counter must see it.
+		inSYN := c.SYNCounter(t, "hostA", harness.Inbound, c.Addr("router", "wan"), 0)
 		before := inSYN()
 		harness.Consistently(t, lkNoRedialWindow, "B stops dialing A", func() (bool, string) {
 			if got := inSYN(); got != before {
@@ -332,7 +353,7 @@ func TestLinks(t *testing.T) {
 		t.Cleanup(undo)
 		lkCutAndWaitDown(t, c, aNode, bNode)
 		c.Restore(t)
-		lkWaitConnected(t, bNode, "hostA-17443", lkRelinkBound+time.Second)
+		lkWaitConnected(t, bNode, "hostA-17443", lkRelinkBound+lkRelinkSlack)
 		if got := inSYN(); got <= before {
 			t.Fatalf("B never dialed A's second address: %d SYNs, want more than %d", got, before)
 		}
@@ -417,7 +438,9 @@ func lkStartBroker(t *testing.T, node *harness.Node, config string) {
 	if start.ExitCode != 3 {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
-	harness.Eventually(t, 10*time.Second, "the Broker started by another process answers", func() (bool, string) {
+	// The Broker started by the session gets the product's ten-second
+	// readiness allowance plus three seconds, the same bound StartBroker uses.
+	harness.Eventually(t, brokerReadyBound, "the Broker started by another process answers", func() (bool, string) {
 		res := node.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
 		return res.ExitCode == 0, fmt.Sprintf("agent-peer status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 	})

@@ -3,9 +3,11 @@ package harness
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,6 +43,11 @@ var (
 	faultPlanMu sync.Mutex
 	faultPlans  = map[*Cluster]*faultPlan{}
 	activeCuts  = map[*Cluster]*cutState{}
+
+	// counterSeq numbers the counter rules of one test process. The comment it
+	// produces is unique among the rules of every node, so a read cannot pick
+	// up another rule in the same chain.
+	counterSeq atomic.Uint64
 )
 
 // registerFaults records how Cut and Restore should treat c. The topology's
@@ -96,6 +103,11 @@ func (c *Cluster) Cut(t testing.TB, a, b string) {
 	activeCuts[c] = st
 	faultPlanMu.Unlock()
 
+	// Register the teardown as soon as the cut is recorded. A failure while the
+	// rules are being inserted must not leave them behind, so the cleanup runs
+	// even when Cut stops before its last insertion.
+	t.Cleanup(func() { c.restore(t) })
+
 	insert := func(node, chain string, spec ...string) {
 		c.iptables(t, node, append([]string{"-I", chain, "1"}, spec...)...)
 		st.rules = append(st.rules, cutRule{node: node, chain: chain, spec: spec})
@@ -119,8 +131,6 @@ func (c *Cluster) Cut(t testing.TB, a, b string) {
 			insert(pair.node, "OUTPUT", "-d", pair.peer, "-p", "tcp", "-j", "REJECT", "--reject-with", "tcp-reset")
 		}
 	}
-
-	t.Cleanup(func() { c.restore(t) })
 
 	// Break the connections that are already established. gRPC keepalive alone
 	// would take up to its ten-second minimum to notice the cut.
@@ -201,8 +211,10 @@ func (c *Cluster) Unblock(t testing.TB, from, toAddr string) {
 }
 
 // SYNCounter inserts a counting rule for TCP SYNs on node and returns a
-// function that reads the packet count. The counter is not removed when the
-// test ends; the container goes away with the project.
+// function that reads the packet count. port 0 watches every destination port,
+// which is what an acceptor counter needs: a dial it must not make could aim
+// anywhere, not only at the port under test. The counter is not removed when
+// the test ends; the container goes away with the project.
 func (c *Cluster) SYNCounter(t testing.TB, node string, dir Direction, peerAddr string, port int) func() int64 {
 	t.Helper()
 	var (
@@ -216,53 +228,66 @@ func (c *Cluster) SYNCounter(t testing.TB, node string, dir Direction, peerAddr 
 		if peerAddr != "" {
 			spec = append(spec, "-s", peerAddr)
 		}
-		spec = append(spec, "--dport", strconv.Itoa(port), "-j", "ACCEPT")
 	case Outbound:
 		chain = "OUTPUT"
 		spec = []string{"-p", "tcp", "--syn", "!", "-o", "lo"}
 		if peerAddr != "" {
 			spec = append(spec, "-d", peerAddr)
 		}
-		spec = append(spec, "--dport", strconv.Itoa(port), "-j", "ACCEPT")
 	default:
 		t.Fatalf("harness: node %s: unknown direction %d", node, dir)
 		return nil
 	}
-	c.iptables(t, node, append([]string{"-I", chain, "1"}, spec...)...)
-	return func() int64 { return c.counter(t, node, chain, true) }
+	if port > 0 {
+		spec = append(spec, "--dport", strconv.Itoa(port))
+	}
+	return c.addCounter(t, node, chain, spec, true)
 }
 
 // ByteCounter inserts a counting rule for the bytes node receives from
 // fromAddr on port and returns a function that reads the byte count. An empty
-// fromAddr counts every source.
+// fromAddr counts every source; port 0 counts every destination port.
 func (c *Cluster) ByteCounter(t testing.TB, node string, fromAddr string, port int) func() int64 {
 	t.Helper()
 	spec := []string{"-p", "tcp"}
 	if fromAddr != "" {
 		spec = append(spec, "-s", fromAddr)
 	}
-	spec = append(spec, "--dport", strconv.Itoa(port), "-j", "ACCEPT")
-	c.iptables(t, node, append([]string{"-I", "INPUT", "1"}, spec...)...)
-	return func() int64 { return c.counter(t, node, "INPUT", false) }
+	if port > 0 {
+		spec = append(spec, "--dport", strconv.Itoa(port))
+	}
+	return c.addCounter(t, node, "INPUT", spec, false)
 }
 
-// counter reads the packets or bytes of the counter rule on chain. A SYN rule
-// carries the 0x17/0x02 flag mask; the byte rule deliberately does not, which
-// is how the two are told apart when both are present.
-func (c *Cluster) counter(t testing.TB, node, chain string, syn bool) int64 {
+// addCounter inserts one counting rule with a unique comment and returns a
+// reader for it. The comment is what counter matches, so a rule that ACCEPTs
+// other traffic in the same chain cannot be read by mistake.
+func (c *Cluster) addCounter(t testing.TB, node, chain string, spec []string, packets bool) func() int64 {
+	t.Helper()
+	comment := fmt.Sprintf("ape2e-counter-%d-%d", os.Getpid(), counterSeq.Add(1))
+	full := append([]string(nil), spec...)
+	full = append(full, "-m", "comment", "--comment", comment, "-j", "ACCEPT")
+	c.iptables(t, node, append([]string{"-I", chain, "1"}, full...)...)
+	return func() int64 { return c.counter(t, node, chain, comment, packets) }
+}
+
+// counter reads the packets or bytes of the one rule on chain carrying
+// comment. The rule is identified by that comment alone; a listing without it
+// means the rule was lost, not that the count is zero.
+func (c *Cluster) counter(t testing.TB, node, chain, comment string, packets bool) int64 {
 	t.Helper()
 	out := c.Root(t, node, "iptables", "-nvx", "-L", chain)
 	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, comment) {
+			continue
+		}
 		fields := strings.Fields(line)
-		if len(fields) < 3 || !allDigits(fields[0]) || !allDigits(fields[1]) || fields[2] != "ACCEPT" {
-			continue
+		if len(fields) < 2 || !allDigits(fields[0]) || !allDigits(fields[1]) {
+			t.Fatalf("harness: node %s: rule %q has no packet and byte columns: %q", node, comment, line)
 		}
-		if hasSYNMask(line) != syn {
-			continue
-		}
-		column := fields[0]
-		if !syn {
-			column = fields[1]
+		column := fields[1]
+		if packets {
+			column = fields[0]
 		}
 		value, err := strconv.ParseInt(column, 10, 64)
 		if err != nil {
@@ -270,14 +295,8 @@ func (c *Cluster) counter(t testing.TB, node, chain string, syn bool) int64 {
 		}
 		return value
 	}
-	t.Fatalf("harness: node %s: no counter rule in %s: %q", node, chain, out)
+	t.Fatalf("harness: node %s: no counter rule with comment %q in %s: %q", node, comment, chain, out)
 	return 0
-}
-
-// hasSYNMask reports whether an iptables rule listing matches only SYN
-// packets.
-func hasSYNMask(line string) bool {
-	return strings.Contains(line, "flags:0x17/0x02")
 }
 
 // captureBound bounds tcpdump's startup and exit. Both are local process
