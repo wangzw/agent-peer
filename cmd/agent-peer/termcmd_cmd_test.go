@@ -1,0 +1,214 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"strings"
+	"testing"
+)
+
+// termcmdStub records the calls the status and audit commands make into deps.
+type termcmdStub struct {
+	statusCalls int
+	statusOut   io.Writer
+	statusErr   error
+
+	auditCalls int
+	auditOut   io.Writer
+	auditLimit uint32
+	auditErr   error
+}
+
+func (s *termcmdStub) deps() deps {
+	return deps{
+		runStatus: func(_ context.Context, stdout io.Writer) error {
+			s.statusCalls++
+			s.statusOut = stdout
+			return s.statusErr
+		},
+		runAudit: func(_ context.Context, stdout io.Writer, limit uint32) error {
+			s.auditCalls++
+			s.auditOut = stdout
+			s.auditLimit = limit
+			return s.auditErr
+		},
+	}
+}
+
+func newTermcmdApp(s *termcmdStub) (*app, *bytes.Buffer, *bytes.Buffer) {
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	return &app{stdout: stdout, stderr: stderr, deps: s.deps()}, stdout, stderr
+}
+
+func TestStatusCallsRunner(t *testing.T) {
+	stub := &termcmdStub{}
+	a, stdout, stderr := newTermcmdApp(stub)
+
+	if got := a.statusCmd(context.Background(), nil); got != exitOK {
+		t.Fatalf("statusCmd returned %d, want %d", got, exitOK)
+	}
+	if stub.statusCalls != 1 {
+		t.Fatalf("runStatus called %d times, want 1", stub.statusCalls)
+	}
+	if stub.statusOut != stdout {
+		t.Fatalf("runStatus got writer %T, want app.stdout", stub.statusOut)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestStatusErrorExitsOne(t *testing.T) {
+	stub := &termcmdStub{statusErr: errors.New("permission_denied: x")}
+	a, stdout, stderr := newTermcmdApp(stub)
+
+	if got := a.statusCmd(context.Background(), nil); got != exitFailure {
+		t.Fatalf("statusCmd returned %d, want %d", got, exitFailure)
+	}
+	if want := "agent-peer status: permission_denied: x\n"; stderr.String() != want {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+}
+
+// TestStatusRejectsUnknownFlag checks the usage-error contract on the command
+// line: the usage comes first and the last line is "agent-peer status: <reason>".
+func TestStatusRejectsUnknownFlag(t *testing.T) {
+	stub := &termcmdStub{}
+	a, stdout, stderr := newTermcmdApp(stub)
+
+	if got := a.statusCmd(context.Background(), []string{"--bogus"}); got != exitUsage {
+		t.Fatalf("statusCmd returned %d, want %d", got, exitUsage)
+	}
+	if stub.statusCalls != 0 {
+		t.Fatalf("runStatus called %d times, want 0", stub.statusCalls)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.HasPrefix(stderr.String(), statusUsage) {
+		t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
+	}
+	if got, want := brokerLastLine(stderr.String()), "agent-peer status: flag provided but not defined: -bogus"; got != want {
+		t.Fatalf("last stderr line = %q, want %q", got, want)
+	}
+}
+
+func TestStatusRejectsArguments(t *testing.T) {
+	stub := &termcmdStub{}
+	a, _, stderr := newTermcmdApp(stub)
+
+	if got := a.statusCmd(context.Background(), []string{"x"}); got != exitUsage {
+		t.Fatalf("statusCmd returned %d, want %d", got, exitUsage)
+	}
+	if stub.statusCalls != 0 {
+		t.Fatalf("runStatus called %d times, want 0", stub.statusCalls)
+	}
+	if !strings.HasPrefix(stderr.String(), statusUsage) {
+		t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
+	}
+	if got, want := brokerLastLine(stderr.String()), `agent-peer status: unexpected argument "x"`; got != want {
+		t.Fatalf("last stderr line = %q, want %q", got, want)
+	}
+}
+
+func TestAuditRejectsArguments(t *testing.T) {
+	stub := &termcmdStub{}
+	a, _, stderr := newTermcmdApp(stub)
+
+	if got := a.auditCmd(context.Background(), []string{"x"}); got != exitUsage {
+		t.Fatalf("auditCmd returned %d, want %d", got, exitUsage)
+	}
+	if stub.auditCalls != 0 {
+		t.Fatalf("runAudit called %d times, want 0", stub.auditCalls)
+	}
+	if !strings.HasPrefix(stderr.String(), auditUsage) {
+		t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
+	}
+	if got, want := brokerLastLine(stderr.String()), `agent-peer audit: unexpected argument "x"`; got != want {
+		t.Fatalf("last stderr line = %q, want %q", got, want)
+	}
+}
+
+func TestAuditLimit(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want uint32
+	}{
+		{"default is unlimited", nil, 0},
+		{"separate value", []string{"--limit", "5"}, 5},
+		{"equals zero", []string{"--limit=0"}, 0},
+		{"single dash", []string{"-limit", "7"}, 7},
+		{"leading zero is decimal", []string{"--limit", "010"}, 10},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := &termcmdStub{}
+			a, _, _ := newTermcmdApp(stub)
+
+			if got := a.auditCmd(context.Background(), tc.args); got != exitOK {
+				t.Fatalf("auditCmd returned %d, want %d", got, exitOK)
+			}
+			if stub.auditCalls != 1 {
+				t.Fatalf("runAudit called %d times, want 1", stub.auditCalls)
+			}
+			if stub.auditLimit != tc.want {
+				t.Fatalf("runAudit got limit %d, want %d", stub.auditLimit, tc.want)
+			}
+		})
+	}
+}
+
+func TestAuditLimitRange(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"above uint32", []string{"--limit", "4294967296"}},
+		{"negative", []string{"--limit", "-1"}},
+		{"not a number", []string{"--limit", "x"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := &termcmdStub{}
+			a, _, stderr := newTermcmdApp(stub)
+
+			if got := a.auditCmd(context.Background(), tc.args); got != exitUsage {
+				t.Fatalf("auditCmd returned %d, want %d", got, exitUsage)
+			}
+			if stub.auditCalls != 0 {
+				t.Fatalf("runAudit called %d times, want 0", stub.auditCalls)
+			}
+			if !strings.HasPrefix(stderr.String(), auditUsage) {
+				t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
+			}
+			if got := brokerLastLine(stderr.String()); !strings.HasPrefix(got, "agent-peer audit: ") {
+				t.Fatalf("last stderr line = %q, want it to start with %q", got, "agent-peer audit: ")
+			}
+		})
+	}
+}
+
+func TestAuditErrorExitsOne(t *testing.T) {
+	stub := &termcmdStub{auditErr: errors.New("permission_denied: x")}
+	a, stdout, stderr := newTermcmdApp(stub)
+
+	if got := a.auditCmd(context.Background(), nil); got != exitFailure {
+		t.Fatalf("auditCmd returned %d, want %d", got, exitFailure)
+	}
+	if want := "agent-peer audit: permission_denied: x\n"; stderr.String() != want {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+}
