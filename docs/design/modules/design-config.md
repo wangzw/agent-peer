@@ -177,7 +177,7 @@ type PathSet struct {
 | `link.dial_timeout` | 时长 | `5s` | 拨号时对每个地址的连接期限 |
 | `link.reconnect_min` | 时长 | `1s` | 重建链路的初始退避间隔 |
 | `link.reconnect_max` | 时长 | `60s` | 重建链路的最大退避间隔 |
-| `link.keepalive_interval` | 时长 | `15s` | 保活探测的间隔 |
+| `link.keepalive_interval` | 时长 | `15s` | 保活探测的间隔；gRPC 客户端的实际下限 10 秒，小于 10 秒按 10 秒探测 |
 | `link.keepalive_timeout` | 时长 | `10s` | 保活探测的应答期限 |
 | `log.level` | 字符串 | `info` | 运行日志级别 |
 
@@ -298,6 +298,8 @@ type PathSet struct {
 
 订阅者使修改立即生效，订阅在 `broker` 装配完成后交给各包：`broker.alias` 的变更使各链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片，同时调用 `pairing` 的 `SetOwnAlias` 推入新的本机别名，`broker` 在装配时也推入一次当前值；`broker.listen` 的变更使 `link` 改在新地址上监听，没有配置别名时默认别名随端口变化，按别名变更处理；对外地址列表的变化，不论来自 `broker.listen`、`broker.advertise`、`broker.advertise_extra` 的修改还是定期的重新枚举，都经 `SubscribeAdvertised` 送达，使本方是[接受方](../../glossary.md)的各条链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片；`broker.public` 的变更使 `directory` 发布或撤回本机的记录；改为公开时，`broker` 另行按各 Agent 的公开 topic 集合重新声明。`pairing.static_key` 没有订阅者，`pairing` 在下一次握手查找密钥时读取新值；`Secret` 返回取值之前读取配置文件并比较内容哈希，内容不同即重新加载，文件变化通知丢失时删除或更换仍能生效。各项间隔、次数与上限在下一次使用时取新值。
 
+`link.keepalive_interval` 与 `link.keepalive_timeout` 的生效时机与其余间隔不同：[link](design-link.md) 在接受方一侧于第一次监听、创建 gRPC 服务端时读取，修改后接受方一侧重启才生效；拨号方一侧对下一条拨出的连接生效。只修改 `broker.listen` 的主机部分（例如把 `:17443` 改为 `127.0.0.1:17443`）会被拒绝：校验以新值探测绑定时，`link` 的旧监听仍占着同一端口，探测因此失败；修改这一项需要同时改端口，或改配置文件后重启 Broker，修改失败时继续在原地址监听（`REQ-broker-config-034`）。
+
 ### 配置文件的监视
 
 本包监视配置文件，重载只由文件系统通知驱动，没有周期性重扫。文件内容变化时重新解析，与内存中的值逐键比较：
@@ -315,6 +317,8 @@ type PathSet struct {
 每行一个 JSON 对象，UTF-8。`time` 是 UTC 的 RFC 3339 纳秒时间；`event` 是事件类型的字符串值；`actor`、`account`、`key`、`detail` 为空时省略。`peer` 是 `{"fingerprint":"<64 位小写十六进制>","alias":"..."}`。`old` 与 `new` 是带类型的对象 `{"kind":"...","value":...}`，`kind` 取 `string`、`bool`、`int`、`duration`、`string_list`：时长的 `value` 是 `10m` 这样的字符串，整数的 `value` 是 JSON 数字。审计文件是 config 的私有格式；`GetConfig` 与 `SetConfig` 的应答使用 `ConfigValue`，与此处的类型对应，密钥类配置项另以是否已设置表示。密钥类配置项的变化只保留 `key`，不写 `old` 与 `new`。打开审计文件时，如果文件末尾不是换行，先追加一个换行；崩溃留下的半行仍然无法解析，但不会吞掉下一条记录。
 
 `connection_rejected` 与由尝试过于频繁引起的 `pairing_failed` 在写入前于内存中合并。合并键由事件类型与来源标识组成：`connection_rejected` 用对端指纹，没有指纹时用调用方给出的来源地址；这类 `pairing_failed` 用调用方给出的合并键，`pairing` 在尝试频率超限时填入对端指纹。同一合并键上，第一个事件开启一个 10 分钟窗口，窗口从这条事件的时间起算，后续事件不顺延窗口。窗口内的后续事件只在内存中累加，不写文件。窗口到期或 `Close` 时，窗口汇总为一条记录追加到文件，记录的时间是窗口第一条事件的时间：窗口内只有一条事件时不带 `count`，多于一条时 `count` 是事件条数。`ReadAudit` 返回文件中的记录加上尚在内存中的窗口记录，按时间排序。审计文件始终只追加，不改写已有行。合并键只存在于内存，不写入文件。进程在窗口落盘前崩溃时，该窗口的记录丢失，包括窗口中只有一条的事件；这是保持文件只追加所接受的代价。`Close` 期间与之后产生的审计事件不得静默丢弃：审计日志已关闭或尚未打开时，事件至少以错误级别写入运行日志。
+
+`link_up`、`link_down` 不合并：对端已经认证，属于受信任范围（[architecture](../architecture.md) 的“认证与授权边界”）。
 
 ### 实现约定
 
