@@ -34,4 +34,12 @@ type Link struct {
 
 	mu     sync.Mutex // guards the fields marked "guarded by mu" in later blocks
 	closed bool       // guarded by mu
+
+	// --- records and link up/down notifications ---
+	records  map[Fingerprint]*record       // guarded by mu
+	dropGen  map[Fingerprint]uint64        // guarded by mu
+	dropping map[Fingerprint]chan struct{} // guarded by mu
+	subMu    sync.RWMutex
+	subs     []subscription
+	notifier *notifier
 }

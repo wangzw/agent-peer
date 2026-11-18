@@ -34,7 +34,7 @@ func New(opts Options) (*Link, error) {
 	}
 
 	rootCtx, cancelRoot := context.WithCancel(context.Background())
-	return &Link{
+	l := &Link{
 		peers:    opts.Peers,
 		settings: opts.Settings,
 		clock:    clock,
@@ -54,5 +54,12 @@ func New(opts Options) (*Link, error) {
 
 		rootCtx:    rootCtx,
 		cancelRoot: cancelRoot,
-	}, nil
+
+		// records and link up/down notifications
+		records:  make(map[Fingerprint]*record),
+		dropGen:  make(map[Fingerprint]uint64),
+		dropping: make(map[Fingerprint]chan struct{}),
+	}
+	l.notifier = newNotifier(l)
+	return l, nil
 }
