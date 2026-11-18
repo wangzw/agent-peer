@@ -82,6 +82,7 @@ Scope names the module or the part of the tree the change belongs to. The module
 
 - `repo` — `CLAUDE.md`, `.claude/skills/`, `.gitignore`, `go.mod`, CI configuration and other repository-level configuration
 - `deps` — vendored third-party source under `third_party/` and dependency version changes
+- `e2e` — `test/e2e/`, the end-to-end tests, the node agent and the compose topologies
 
 **One scope per commit.** When a module change also updates an ADR, the requirements, the glossary and the roadmap for consistency, the scope stays the module; incidental consistency edits elsewhere do not get a scope of their own. A change that touches several modules for one reason takes the scope of the module whose contract changed, or `design` when it is a documentation-only alignment.
 
