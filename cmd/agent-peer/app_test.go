@@ -28,11 +28,6 @@ func newDispatchApp(ver string) (*app, *bytes.Buffer, *bytes.Buffer, *stubDeps) 
 	return a, stdout, stderr, stub
 }
 
-// dispatchTotalCalls reports how many upstream operations the app performed.
-func dispatchTotalCalls(s *stubDeps) int {
-	return len(s.brokerCalls) + s.mcpCalls + s.launcherCalls + len(s.statusCalls) + len(s.auditCalls)
-}
-
 func TestVersionPrintsInjectedVersion(t *testing.T) {
 	a, stdout, stderr, _ := newDispatchApp("v1.2.3")
 
@@ -119,29 +114,6 @@ func TestUnknownCommand(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), `unknown command "frobnicate"`) {
 		t.Fatalf("stderr = %q, want it to name the unknown command", stderr.String())
-	}
-}
-
-func TestServiceIsNotImplemented(t *testing.T) {
-	cases := [][]string{
-		{"service", "install"},
-		{"service", "install", "--system"},
-		{"service"},
-	}
-	for _, args := range cases {
-		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			a, _, stderr, stub := newDispatchApp("dev")
-
-			if got := a.run(context.Background(), args); got != exitFailure {
-				t.Fatalf("run(%q) = %d, want %d", args, got, exitFailure)
-			}
-			if !strings.Contains(stderr.String(), "agent-peer service: not implemented") {
-				t.Fatalf("stderr = %q, want the not implemented message", stderr.String())
-			}
-			if n := dispatchTotalCalls(stub); n != 0 {
-				t.Fatalf("service reached upstream %d times, want 0", n)
-			}
-		})
 	}
 }
 

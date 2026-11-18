@@ -73,9 +73,6 @@ func (a *app) run(ctx context.Context, args []string) int {
 		}
 		_, _ = fmt.Fprintf(a.stdout, "agent-peer %s\n", a.version)
 		return exitOK
-	case "service":
-		_, _ = fmt.Fprintln(a.stderr, "agent-peer service: not implemented")
-		return exitFailure
 	case "internal":
 		return a.runInternal(ctx, args[1:])
 	}

@@ -157,7 +157,7 @@ type PathSet struct {
 | `broker.advertise` | 字符串 | 空 | 对外地址的配置，合法写法只有空、`主机`、`主机:端口`、`:端口`，见“对外地址”（[ADR-advertised-address](../../adr/adr-advertised-address.md)，`REQ-broker-config-030` 至 `REQ-broker-config-032`） |
 | `broker.advertise_extra` | 字符串列表 | 空 | 追加的对外地址，每项是 `主机` 或 `主机:端口`（`REQ-broker-config-033`） |
 | `broker.address_check_interval` | 时长 | `1m` | 重新枚举本机地址的间隔（`REQ-broker-discovery-016`） |
-| `broker.local_socket_group` | 字符串 | 空 | 系统级 Broker 本机 socket 的属组；空表示沿用运行时目录的属组，用户级忽略（`REQ-broker-config-027`） |
+| `broker.local_socket_group` | 字符串 | 空 | 系统级 Broker 本机 socket 的属组；空表示沿用运行时目录的属组，用户级忽略；组必须存在于账户数据库，运行期间修改立即生效（`REQ-broker-config-027`） |
 | `broker.local_socket_mode` | 字符串 | `0666` | 系统级 Broker 本机 socket 的文件权限；用户级的固定为 `0600`（`REQ-broker-config-027`） |
 | `pairing.static_key` | 字符串，密钥类 | 空 | 预置静态密钥，长度 16 至 128 个字符，有值即生效（[ADR-static-pairing-key](../../adr/adr-static-pairing-key.md)，`REQ-broker-pairing-008`、`REQ-broker-pairing-009`、`REQ-broker-pairing-029`） |
 | `pairing.max_failures` | 整数 | `5` | 一次性配对密钥作废前允许的验证失败次数 |
@@ -207,7 +207,7 @@ type PathSet struct {
 
 运行时目录内有本机 socket `broker.sock` 和账户锁 `broker.lock`。运行时目录只取决于进程的账户，与形态、环境变量、配置内容和监听地址无关：root 的是 Linux 上的 `/run/agent-peer/`、macOS 上的 `/var/run/agent-peer/`，系统级 Broker 与 root 的用户级 Broker 因此争用同一把锁；其他账户的是 `/tmp/agent-peer-<uid>/`，`<uid>` 是进程的账户。同一账户的两个进程因此总是争用同一把锁，也总在同一个位置找本机 socket（`REQ-broker-config-013`）。root 的运行时目录权限 `0755`；系统级 Broker 的本机 socket 在绑定后按 `broker.local_socket_group` 与 `broker.local_socket_mode` 设置属组与权限，哪些账户能连接由它决定；用户级的 socket 固定为 `0600`；其他账户的运行时目录权限 `0700`。运行时目录的属主必须是本账户，不符时拒绝启动。以上位置规则对发布构建成立。带 `agentpeer_testenv` 构建标签的测试构建例外：`AGENT_PEER_TEST_RUNTIME_ROOT` 非空时运行时目录的根取它的值，`AGENT_PEER_TEST_HOME` 非空时账户家目录取它的值；两者为空时不生效，发布构建不含这段代码。
 
-用户级的数据目录权限 `0700`，其中的文件权限 `0600`。系统级的配置文件默认只有 root 可写；管理员把它的读或写权限授予某个组，即把读取配置或管理操作委托给该组的账户。
+用户级的数据目录权限 `0700`，其中的文件权限 `0600`。系统级的配置文件默认只有 root 可写；它由 `service install --system` 在不存在时以 root 为属主、`0` 为属组、`0600` 为权限创建，内容只有注释，已存在时安装不改动。管理员把它的读或写权限授予某个组，即把读取配置或管理操作委托给该组的账户。
 
 配置文件的结构与键名一一对应，例如 `broker.alias` 对应顶层 `broker` 下的 `alias`。文件中没有出现的键取默认值，文件不存在等同于空文件。`Set` 只改动文件中它所修改的那个键，文件里的其他内容原样保留；文件不存在时，以运行 Broker 的账户创建它，属主与权限按形态设置。
 

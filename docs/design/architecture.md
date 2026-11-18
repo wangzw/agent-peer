@@ -134,8 +134,8 @@ MCP 服务进程由 Claude Code 作为会话的子进程启动，生命周期与
 |---|---|---|---|
 | 系统级 Broker，`agent-peer broker --system` | 由管理员安装的系统服务启动，以 root 运行 | 每台主机至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
 | 用户级 Broker，`agent-peer broker` | MCP 服务进程找不到可用的 Broker 时拉起并使其脱离会话的进程树，或由随登录启动的用户级服务启动 | 每个账户至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
-| 辅助进程 | 系统级 Broker 按需派生，切换到被服务的账户后运行 | 每个被服务的账户一个 | 无 |
-| 权限检查进程 | 系统级 Broker 每次判定调用方对配置文件的权限时派生，以 root 执行后只把有效身份切换到调用方账户，检查后即退出 | 按需 | 无 |
+| 辅助进程 | 系统级 Broker 按需派生（`agent-peer internal account-helper`），切换到被服务的账户后运行 | 每个被服务的账户一个 | 无 |
+| 权限检查进程 | 系统级 Broker 每次判定调用方对配置文件的权限时派生（`agent-peer internal access-check`），以 root 执行后只把有效身份切换到调用方账户，检查后即退出 | 按需 | 无 |
 | MCP 服务进程，`agent-peer mcp` | Claude Code 按会话的工具配置启动 | 每会话一个 | 无 |
 | 终端命令，例如 `agent-peer status` | 用户执行 | 按需 | 无 |
 
@@ -203,11 +203,11 @@ sequenceDiagram
 
 | 区段 | 所属包 |
 |---|---|
-| 1–99 | 链路（`linkpb`） |
-| 100–199 | 配对（`pairingpb`） |
-| 200–299 | topic（`topicpb`） |
-| 300–399 | 名录（`directorypb`） |
-| 400–499 | `broker` 的投递包（`deliverpb`） |
+| 1～99 | 链路（`linkpb`） |
+| 100～199 | 配对（`pairingpb`） |
+| 200～299 | topic（`topicpb`） |
+| 300～399 | 名录（`directorypb`） |
+| 400～499 | `broker` 的投递包（`deliverpb`） |
 
 kind 常量手写在相应 proto 包目录内的 `kind.go` 中，不用 proto enum，使对端能够接收不认识的 kind 而无需枚举转换。每个 kind 的载荷消息及其类别（状态帧、请求帧或应答帧），见 [link](modules/design-link.md)、[topic](modules/design-topic.md)、[directory](modules/design-directory.md)、[pairing](modules/design-pairing.md) 与 [broker](modules/design-broker.md)。
 

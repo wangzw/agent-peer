@@ -324,12 +324,14 @@ func TestBinaryUnknownCommandExitCode(t *testing.T) {
 		t.Fatalf("unknown command exit code = %d, want %d (stderr %q)", res.code, exitUsage, res.stderr)
 	}
 
-	res = runCLI(t, sb, 3*time.Second, "service", "install")
-	if res.code != exitFailure {
-		t.Fatalf("service install exit code = %d, want %d (stderr %q)", res.code, exitFailure, res.stderr)
+	// A bad flag fails before the command reaches the installation, which would
+	// otherwise write a unit file and run systemctl against the real system.
+	res = runCLI(t, sb, 3*time.Second, "service", "install", "--bogus")
+	if res.code != exitUsage {
+		t.Fatalf("service install --bogus exit code = %d, want %d (stderr %q)", res.code, exitUsage, res.stderr)
 	}
-	if !strings.Contains(res.stderr, "not implemented") {
-		t.Fatalf("service install stderr = %q, want it to contain %q", res.stderr, "not implemented")
+	if !strings.Contains(res.stderr, "usage: agent-peer service install") {
+		t.Fatalf("service install --bogus stderr = %q, want the install usage", res.stderr)
 	}
 }
 

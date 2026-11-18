@@ -109,6 +109,8 @@ service Local {
 
 `status` 的输出分 Agent 与对端两段，表格按地址或别名排序，空值写 `-`；topic 按字典序以逗号连接；指纹写完整的 64 位小写十六进制，不截短；枚举取值写去掉前缀的小写蛇形。段内没有条目时写 `Agents: none` 或 `Peers: none`。`audit` 每个事件输出一行，按到达顺序排列，依次是 RFC 3339 UTC 时间、事件名，以及 `actor`、`account`、`peer`、`key`、`old`、`new`、`count`、`detail` 中的非空字段；值为空或含空格、引号、等号时加引号。
 
+`service install` 只安装并启用服务，不立即启动，最后打印立即启动它的命令。Linux 上，用户级单元写到 `~/.config/systemd/user/agent-peer.service`，系统级写到 `/etc/systemd/system/agent-peer.service`，随后执行 `systemctl --user daemon-reload` 与 `systemctl --user enable agent-peer.service`，系统级去掉 `--user`；用户级的配置目录取 `XDG_CONFIG_HOME`，为空或不是绝对路径时取 `~/.config`。macOS 上，用户级 plist 写到 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`，系统级写到 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`，标签为 `io.github.wangzw.agent-peer`，不调用 `launchctl`。`--system` 时按解析符号链接后的真实路径检查二进制及其每一级目录：属主必须是 root，组与其他人不可写，二进制对其他人可执行，各级目录对其他人可进入；二进制位于临时目录下时，用户级与系统级都拒绝安装。`/etc/agent-peer/config.yaml` 不存在时，以 root 为属主、`0` 为属组、`0600` 为权限创建，内容只有注释；已存在时不改动。
+
 `Audit` 是服务端流式调用：审计事件按时间顺序作为一条流逐条到达，读完即结束。请求带一个可选的 `limit`：非 0 时返回最新的 N 条事件，这 N 条仍按时间顺序到达；为 0 表示不限条数。读取不保留游标或分页状态，每次调用各自重新读取，`limit` 只截断这一次流的内容。
 
 Agent 地址的文法是对模型的稳定承诺：
@@ -212,7 +214,8 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 4. 加载配置，把 `--listen` 给出的地址作为本次运行的监听地址。
 5. 按顺序执行各装配器：由装配器依次打开身份与对端表、构造 link 并把拨号与关闭链路的能力注入 `pairing`、构造 topic 与名录，各包实例在此时建立；配置读写与审计的装配器排在最后，把权限拦截器加入本机接口的服务端选项；随后构造本机接口并启动各组件，各组件在此时注册链路帧处理、配置变更的订阅与 `broker.listen` 的校验函数，早于本机 socket 的绑定与 `link` 的启动，因此先于任何入站连接和链路事件生效。
 6. 绑定监听地址。这一步在全部组件启动之后执行，地址取本次运行的生效监听地址。绑定失败时报告该地址不可用并退出，不改用其他地址或端口，也不改为不监听（[ADR-listen-by-default](../../adr/adr-listen-by-default.md)，`REQ-broker-config-024`）。监听地址配置为空时跳过这一步。启动组件之后、各组件的 `AfterReady` 之前送达的 `broker.listen` 变更不立即绑定：`AfterReady` 阶段按当时的生效值与这一步绑定的地址比较，不同则补绑一次，相同则跳过。
-7. 只有持锁的进程删除残留的本机 socket 文件并绑定本机 socket：用户级的权限为 `0600`；系统级的在绑定后按配置设置属组与权限，默认为运行时目录的属组与 `0666`，管理员把它设为某个组与该组可写的权限，即把能连接它的账户限定到该组（`REQ-broker-config-027`）。绑定后关闭 Go 默认的关闭即删除行为；删除本机 socket 文件前核对它仍是本进程绑定的文件。
+7. 只有持锁的进程删除残留的本机 socket 文件并绑定本机 socket：用户级的权限为 `0600`；系统级的在绑定后按配置设置属组与权限，默认为运行时目录的属组与 `0666`，管理员把它设为某个组与该组可写的权限，即把能连接它的账户限定到该组（`REQ-broker-config-027`）。绑定后关闭 Go 默认的关闭即删除行为；删除本机 socket 文件前核对它仍是本进程绑定的文件。系统级先设属组再设权限；`broker.local_socket_group` 指向不存在的组时启动失败并指出该项。这两项经配置文件或 `SetConfig` 变化时立即重新应用到 socket 文件，已建立的连接不受影响。
+
 8. 就绪管道存在时，它是启动结果的出口：以上任何一步失败，向它写入一行失败原因，关闭管道后退出；监听地址与本机 socket 都已绑定之后，写入一行 `ok` 并关闭管道。管道由 MCP 服务进程经两级 re-exec 以文件描述符 3 传下来，隐藏标志 `--ready-fd=3` 将其告知 Broker，从终端启动的进程没有它；监听地址配置为空时第 6 步不执行，`ok` 在绑定本机 socket 之后写入。
 9. 在写出 `ok` 之后启动 `link`：对本方是拨号方的对端拨号，对本方是接受方的对端等待连入（[ADR-initiator-redials](../../adr/adr-initiator-redials.md)，`REQ-broker-pairing-019`）。
 
@@ -233,7 +236,11 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 需要配置文件权限的调用到达时，判定“调用方账户对配置文件有没有读或写的权限”：
 
 - 用户级 Broker 不做判定。它的配置文件属于本账户，调用方就是本账户。
-- 系统级 Broker 每次判定时派生一个权限检查进程：子进程以 root 身份执行，进入协议循环前依次把附属组、有效组与有效 uid 切换为调用方账户此刻在账户数据库中的对应值，真实与保存的 uid 仍为 root，调用方因此既不能停止也不能读取这个进程。子进程以隐藏的子命令运行本二进制，对配置文件做一次读或写的访问检查，返回结果后退出。检查直接调用 `faccessat2`（`AT_EACCESS`），按有效身份判定，读检查 `R_OK`，写检查 `W_OK`；文件不存在、调用方没有权限、路径中有一段不是目录等情形判为不允许。判定不根据权限位推算，检查结果因此包含了组权限和访问控制列表的作用。`faccessat2` 要求 Linux 5.8 及以上；内核返回 `ENOSYS` 或 `EPERM` 时，检查按自身失败处理，调用以 `internal` 失败，不退回按权限位推算，因为那样的回退会绕过访问控制列表。macOS 没有独立的 `faccessat2`，`faccessat(AT_EACCESS)` 由内核直接按有效身份判定，没有按权限位推算的回退。子进程的标准错误不继承 Broker，写入的内容被丢弃。检查超时 5 秒、派生失败或子进程报告的有效 uid 与调用方不符时，调用以 `internal` 失败；账户数据库中没有调用方 uid 时判为不允许。
+- 系统级 Broker 每次判定时派生一个权限检查进程：子进程以 root 身份执行，进入协议循环前依次把附属组、有效组与有效 uid 切换为调用方账户此刻在账户数据库中的对应值，真实与保存的 uid 仍为 root，调用方因此既不能停止也不能读取这个进程。子进程以隐藏的子命令 `agent-peer internal access-check` 运行本二进制，对配置文件做一次读或写的访问检查，返回结果后退出。检查直接调用 `faccessat2`（`AT_EACCESS`），按有效身份判定，读检查 `R_OK`，写检查 `W_OK`；文件不存在、调用方没有权限、路径中有一段不是目录等情形判为不允许。判定不根据权限位推算，检查结果因此包含了组权限和访问控制列表的作用。`faccessat2` 要求 Linux 5.8 及以上；内核返回 `ENOSYS` 或 `EPERM` 时，检查按自身失败处理，调用以 `internal` 失败，不退回按权限位推算，因为那样的回退会绕过访问控制列表。macOS 没有独立的 `faccessat2`，`faccessat(AT_EACCESS)` 由内核直接按有效身份判定，没有按权限位推算的回退。子进程的标准错误不继承 Broker，写入的内容被丢弃。检查超时 5 秒、派生失败或子进程报告的有效 uid 与调用方不符时，调用以 `internal` 失败；账户数据库中没有调用方 uid 时判为不允许。
+
+系统级 Broker 接受所有账户的连接，哪些账户能使用它由本机 socket 的文件权限限定。
+
+以 `CGO_ENABLED=0` 构建时，Linux 上的账户与组只取自 `/etc/passwd` 与 `/etc/group`，经 LDAP、SSSD 等来源的账户无法派生权限检查进程，权限检查判为不允许。
 
 管理员把系统级 Broker 配置文件的写权限授予某个组，即把管理操作委托给该组的账户。判定结果不缓存，文件权限与组成员关系的变更都对下一次调用生效。系统级 Broker 的配置文件在安装系统级服务时创建；文件不存在时，需要权限的调用一律返回 `permission_denied`。
 
@@ -266,11 +273,13 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 
 ### 辅助进程
 
-系统级 Broker 在某个账户的第一个连接需要它时派生该账户的辅助进程：子进程在执行之前切换到该账户，带上该账户在账户数据库中的主组与附属组，并把 `HOME`、`XDG_RUNTIME_DIR`、`TMPDIR` 重置为该账户在账户数据库中的值，然后以隐藏的子命令运行本二进制。辅助进程经管道接受 Broker 的请求，执行 `inbox` 的查找、监听、重读与写入并返回结果。它是系统服务的子进程，不是任何会话的后代。向会话的 inbox socket 写入始终经该会话所属账户的辅助进程进行，调用方即使报出别的账户的 socket 路径也无法写入。
+系统级 Broker 在某个账户的第一个连接需要它时派生该账户的辅助进程：以隐藏的子命令 `agent-peer internal account-helper` 运行本二进制，子进程在执行之前切换到该账户，带上该账户在账户数据库中的主组与附属组。子进程的环境只设 `HOME`、`USER`、`LOGNAME`（取自账户数据库）与固定的 `PATH`，其余环境变量一概不传。辅助进程经管道接受 Broker 的请求，执行 `inbox` 的查找、监听、重读与写入并返回结果。管道上的消息是以 varint 长度为前缀的 protobuf 消息，消息定义在 `internal/broker/helperpb`。子进程启动后先报告协议版本与实际的 uid、gid、附属组，Broker 核对不符即终止它。请求带请求号，同一个连接上的请求可以并发，投递请求可以取消；监听由辅助进程分配监听号并推送事件。它是系统服务的子进程，不是任何会话的后代。向会话的 inbox socket 写入始终经该会话所属账户的辅助进程进行，调用方即使报出别的账户的 socket 路径也无法写入。
 
-该账户的最后一个 Agent 注销、没有等待中的登记且没有待处理的请求时，辅助进程退出；辅助进程意外退出时，Broker 在下一次需要时重新派生，进行中的写入按不确定处理，监听在重新派生后恢复。
+该账户的最后一个 Agent 注销、没有监听、没有等待中的登记且没有待处理的请求时，辅助进程退出。辅助进程意外退出时，仍有监听的立即在后台重新派生，失败按 1 秒起、每次翻倍、单次不超过 30 秒的间隔重试；重新派生后恢复全部监听，并以 `pid=0` 回调一次每个监听，使 Broker 全量重读。没有监听时等下一次调用再派生；进行中的写入按不确定处理。Linux 上 Broker 退出时，子进程收到 SIGKILL。
 
 用户级 Broker 不派生辅助进程，这些操作在 Broker 进程内直接执行。
+
+以 `CGO_ENABLED=0` 构建时，Linux 上的账户与组只取自 `/etc/passwd` 与 `/etc/group`，经 LDAP、SSSD 等来源的账户无法派生辅助进程。
 
 ### 发送
 
@@ -400,15 +409,15 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 
 | 能力 | 状态 | 代码 |
 |---|---|---|
-| 部署形态与启动参数 | 部分实现 | `internal/broker/run.go`（`Run`）、`internal/broker/assemble.go`（`DefaultAssemblers`）；只有用户级 |
+| 部署形态与启动参数 | 已实现 | `internal/broker/run.go`（`Run`）、`internal/broker/assemble.go`（`DefaultAssemblers`）、`internal/broker/system.go`（`applyLocalSocketPerms`、`validateSocketGroup`、`watchSocketPerms`） |
 | 账户锁、进程树检查与监听地址绑定 | 已实现 | `internal/broker/lock.go`（`AcquireAccountLock`）、`internal/broker/localsock.go`（`BindLocalSocket`）、`internal/broker/run.go`（`Run`）；监听地址由 `run.go` 经 link 装配器提供的接口绑定 |
 | 本机接口与版本握手 | 部分实现 | `internal/broker/broker.go`（`New`）、`internal/broker/hello.go`（`Hello`）；“已拒绝”标记与后续调用的 `version_mismatch` 归版本不兼容处理 |
 | 调用方识别 | 已实现 | `internal/broker/caller.go`（`ReadPeerCred`、`CallerFrom`） |
 | 权限判定的挂接与用户级的恒允许 | 已实现 | `internal/broker/access.go`（`methodAccess`、`accessUnaryInterceptor`、`accessStreamInterceptor`、`allowAllAccess`）、`internal/broker/configassemble.go`（`configWiring`） |
-| 系统级的权限检查进程 | 未实现 | — |
+| 系统级的权限检查进程 | 已实现 | `internal/broker/helper/access.go`（`AccessChecker`、`RunAccessCheck`）、`internal/broker/system_wiring.go`（`systemChecker`） |
 | Agent 登记与注销 | 已实现 | `internal/broker/register.go`（`Register`）、`internal/broker/agents.go`（`lookupAgent`）、`internal/broker/localalias.go`（`localAliasChanged`） |
 | 会话变化的跟踪与曾用名 | 已实现 | `internal/broker/tracking.go`（`refreshAgent`） |
-| 账户辅助进程 | 未实现 | — |
+| 账户辅助进程 | 已实现 | `internal/broker/helper/`（`Serve`、`Client`、`Pool`）、`internal/broker/system_wiring.go`（`helperPool`） |
 | 地址生成与解析 | 已实现 | `internal/broker/address.go`（`AgentIDFor`、`FormatAddress`、`ParseAddress`）、`internal/broker/resolve.go`（`parseTarget`、`pickTarget`） |
 | 发送、重试与结果归结 | 已实现 | `internal/broker/send.go`（`Send`）、`internal/broker/sendpeer.go`（`sendToPeer`）、`internal/broker/inboxwrite.go`（`writeInbox`） |
 | 投递请求处理、署名与去重 | 已实现 | `internal/broker/receive.go`（`handleDeliver`）、`internal/broker/signature.go`（`signatureFor`）、`internal/broker/dedupe.go`（`dedupeTable`） |
