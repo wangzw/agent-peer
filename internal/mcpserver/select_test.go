@@ -353,25 +353,26 @@ func TestSelectRejectsForeignEnvSocket(t *testing.T) {
 }
 
 // Root may serve the system-level socket but not the user-level one of a
-// regular account.
+// regular account. The real peer check, not a stub probe, sees uid 0 on the
+// account's socket.
 func TestSelectRejectsRootServedUserSocket(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root's own user-level socket is served by root")
 	}
-	userPath := filepath.Join(t.TempDir(), "user.sock")
-	launcher := &stubLauncher{}
+	userPath := fakelocal.SocketPath(t)
+	fakelocal.Start(t, userPath, fakelocal.Handlers{})
 
+	old := peerUID
+	peerUID = func(net.Conn) (uint32, error) { return 0, nil }
+	t.Cleanup(func() { peerUID = old })
+
+	launcher := &stubLauncher{}
 	s := &selector{
 		getenv:       func(string) string { return "" },
 		userSocket:   userPath,
 		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
-		probe: func(_ context.Context, path string) probeInfo {
-			if path == userPath {
-				return probeInfo{Outcome: probeOK, PeerUID: 0, PeerKnown: true}
-			}
-			return probeInfo{Outcome: probeMissing}
-		},
-		launch: launcher,
+		probe:        inspectSocket,
+		launch:       launcher,
 	}
 
 	_, err := s.Select(context.Background())
