@@ -373,7 +373,10 @@ func TestRunAuditCancel(t *testing.T) {
 
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		// The cancellation is the point of the test; the error itself is
+		// the reported context error and is not asserted here.
+		_ = err
 	case <-time.After(3 * time.Second):
 		t.Fatal("RunAudit did not return within 3s after the context was cancelled")
 	}

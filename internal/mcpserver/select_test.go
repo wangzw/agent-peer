@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
 	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
 )
 
@@ -597,4 +598,49 @@ func TestFindSystemRefusedRetries(t *testing.T) {
 		4*time.Second,
 		2250*time.Millisecond,
 	)
+}
+
+// FindBrokerWithDial returns a dialer that checks the peer of every connection
+// it opens, so a socket taken over by another account after selection is
+// refused before Hello is sent.
+func TestFindBrokerWithDialRefusesForeignPeer(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	srv := fakelocal.Start(t, path, fakelocal.Handlers{})
+	t.Setenv("AGENT_PEER_SOCKET", path)
+
+	gotPath, dial, err := FindBrokerWithDial(context.Background())
+	if err != nil {
+		t.Fatalf("FindBrokerWithDial: %v", err)
+	}
+	if gotPath != path {
+		t.Fatalf("FindBrokerWithDial path = %q, want %q", gotPath, path)
+	}
+
+	// The socket now answers as another account, as if another process had
+	// taken it over between selection and the connection.
+	foreign := uint32(os.Geteuid()) + 1
+	old := peerUID
+	peerUID = func(net.Conn) (uint32, error) { return foreign, nil }
+	t.Cleanup(func() { peerUID = old })
+
+	cc, client, err := dial()
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = cc.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), helloTimeout)
+	defer cancel()
+	_, err = client.Hello(ctx, &localpb.HelloRequest{ProtocolVersion: localpb.ProtocolVersion})
+	if err == nil {
+		t.Fatal("the dialer connected to a Broker socket served by another account")
+	}
+	if !strings.Contains(err.Error(), "served by uid") {
+		t.Fatalf("Hello error = %q, want it to name the peer uid", err)
+	}
+	for _, c := range srv.Calls() {
+		if c.Method == "Hello" {
+			t.Fatal("the fake Broker received Hello over a connection served by another account")
+		}
+	}
 }

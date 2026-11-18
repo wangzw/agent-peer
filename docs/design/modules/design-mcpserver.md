@@ -82,7 +82,7 @@ auto_join: true                               # 设为 false 时不自动加入�
 
 ## 依赖
 
-`mcpserver` 只引用本机接口的 proto 包 `internal/broker/localpb`，不引用 `broker` 包本身，符合模块依赖图的方向。它用系统的 `git` 命令读取 `origin` 地址。两种形态下运行时目录的位置规则与 [config](design-config.md) 所列的一致，`mcpserver` 按这些规则自行算出本机 socket 的路径，不需要引用 `broker` 包。
+`mcpserver` 只引用本机接口的 proto 包 `internal/broker/localpb`，不引用 `broker` 包本身，符合模块依赖图的方向。它用系统的 `git` 命令读取 `origin` 地址。两种形态下运行时目录的位置规则与 [config](design-config.md) 所列的一致，`mcpserver` 按这些规则自行算出本机 socket 的路径，不需要引用 `broker` 包。终端命令 `status` 与 `audit` 的客户端在 `internal/mcpserver/termcmd`，它们复用本模块选定 Broker 的函数 `FindBrokerWithDial`，选定时不拉起 Broker；进程级信号由 `cmd/agent-peer` 处理。
 
 ## 核心算法与流程
 

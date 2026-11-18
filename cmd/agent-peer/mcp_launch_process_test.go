@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+// socketPeerPIDSupported reports whether this platform can find the process
+// serving a Unix socket. socketpeer_other_test.go clears it where it cannot.
+var socketPeerPIDSupported = true
+
 // TestMCPLaunchesBroker exercises the whole launch chain with the real binary:
 // the mcp process finds no Broker, re-executes itself through the intermediate
 // launcher, and the detached Broker then answers a separate status process.
@@ -16,6 +20,9 @@ import (
 // TestMCPHandshakeAndSignal points AGENT_PEER_SOCKET at a missing socket, so
 // neither covers the launch.
 func TestMCPLaunchesBroker(t *testing.T) {
+	if !socketPeerPIDSupported {
+		t.Skip("the launched Broker cannot be found by pid on this platform, and skipping keeps it from being leaked")
+	}
 	t.Parallel()
 
 	sb := newSandbox(t)
@@ -39,20 +46,25 @@ func TestMCPLaunchesBroker(t *testing.T) {
 
 	// The connection loop runs in the background, so the first status may
 	// still find no Broker. Poll until it answers or the 3s deadline passes.
-	// Each attempt gets a fixed timeout and starts only while enough of the
-	// deadline is left; shrinking the timeout along with the remaining time
-	// would race runCLI's own limit against a status process that is exiting.
-	const statusTimeout = time.Second
+	// Each iteration recomputes the remaining time and uses it as the limit of
+	// the next status command, so the whole loop stays within 3s.
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		if time.Until(deadline) < statusTimeout/2 {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
 			t.Fatalf("agent-peer status did not exit 0 within 3s of the MCP initialize (stderr: %s)",
 				p.stderr.String())
 		}
-		if res := runCLI(t, sb, statusTimeout, "status"); res.code == exitOK {
+		if res := runCLI(t, sb, remaining, "status"); res.code == exitOK {
 			return
 		}
-		time.Sleep(20 * time.Millisecond)
+		if rest := time.Until(deadline); rest > 0 {
+			pause := 20 * time.Millisecond
+			if rest < pause {
+				pause = rest
+			}
+			time.Sleep(pause)
+		}
 	}
 }
 
@@ -71,29 +83,25 @@ func stopLaunchedBroker(t *testing.T, sb *sandbox) {
 	}
 
 	_ = syscall.Kill(pid, syscall.SIGTERM)
-	if waitLaunchedBrokerGone(pid, sock, 3*time.Second) {
+	if waitPIDGone(pid, 3*time.Second) {
 		return
 	}
 	_ = syscall.Kill(pid, syscall.SIGKILL)
-	if !waitLaunchedBrokerGone(pid, sock, 3*time.Second) {
+	if !waitPIDGone(pid, 3*time.Second) {
 		t.Errorf("the launched Broker %d is still running after SIGKILL", pid)
 	}
 }
 
-// waitLaunchedBrokerGone reports whether the Broker has exited. A process that
-// no longer exists and a socket that no longer accepts connections both count:
-// the Broker removes its socket while shutting down, and an orphaned process
-// may linger as a zombie until the init process reaps it.
-func waitLaunchedBrokerGone(pid int, sock string, timeout time.Duration) bool {
+// waitPIDGone reports whether pid has exited. kill(pid, 0) returning ESRCH is
+// the only sign used: a socket that no longer accepts connections says nothing
+// about the process, which may still be running without its listener.
+func waitPIDGone(pid int, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for {
 		if err := syscall.Kill(pid, 0); errors.Is(err, syscall.ESRCH) {
 			return true
 		}
-		if _, err := socketPeerPID(sock); err != nil {
-			return true
-		}
-		if time.Now().After(deadline) {
+		if !time.Now().Before(deadline) {
 			return false
 		}
 		time.Sleep(20 * time.Millisecond)
