@@ -31,13 +31,14 @@ type Observations struct {
 // method set link requires, so a test can start several identities in one
 // process.
 type FakePeers struct {
-	mu       sync.Mutex
-	identity Identity
-	peers    map[pairing.Fingerprint]*fakePeer
-	observed map[pairing.Fingerprint]*Observations
-	accept   func(pairing.PairConn) error
-	roleHook func(fp pairing.Fingerprint)
-	changed  chan struct{}
+	mu            sync.Mutex
+	identity      Identity
+	peers         map[pairing.Fingerprint]*fakePeer
+	observed      map[pairing.Fingerprint]*Observations
+	accept        func(pairing.PairConn) error
+	roleHook      func(fp pairing.Fingerprint)
+	connectedHook func(fp pairing.Fingerprint, address string)
+	changed       chan struct{}
 }
 
 type fakePeer struct {
@@ -115,6 +116,16 @@ func (p *FakePeers) SetRoleHook(f func(fp pairing.Fingerprint)) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.roleHook = f
+	p.notifyLocked()
+}
+
+// SetConnectedHook installs a function called by ObserveConnected after the
+// address is recorded. A test uses it to drop the peer between link's install
+// of a paired connection and the start of its dial loop.
+func (p *FakePeers) SetConnectedHook(f func(fp pairing.Fingerprint, address string)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.connectedHook = f
 	p.notifyLocked()
 }
 
@@ -278,13 +289,18 @@ func (p *FakePeers) ObserveAcceptorAddresses(fp pairing.Fingerprint, addresses [
 	p.notifyLocked()
 }
 
-// ObserveConnected records the address link used to reach fp.
+// ObserveConnected records the address link used to reach fp. The connected
+// hook, when set, runs after the address is recorded.
 func (p *FakePeers) ObserveConnected(fp pairing.Fingerprint, address string) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	obs := p.observationsLocked(fp)
 	obs.Connected = append(obs.Connected, address)
+	hook := p.connectedHook
 	p.notifyLocked()
+	p.mu.Unlock()
+	if hook != nil {
+		hook(fp, address)
+	}
 }
 
 func (p *FakePeers) observationsLocked(fp pairing.Fingerprint) *Observations {

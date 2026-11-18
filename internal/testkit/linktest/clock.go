@@ -119,6 +119,26 @@ func (c *FakeClock) Pending() int {
 	return c.pendingLocked()
 }
 
+// Earliest returns the deadline of the timer that will fire first among the
+// pending ones, and reports whether any timer is pending. It is read-only and
+// lets a test compare the scheduled instant with the link's NextDial.
+func (c *FakeClock) Earliest() (time.Time, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var earliest time.Time
+	found := false
+	for _, tm := range c.timers {
+		if tm.fired || tm.stopped {
+			continue
+		}
+		if !found || tm.deadline.Before(earliest) {
+			earliest = tm.deadline
+			found = true
+		}
+	}
+	return earliest, found
+}
+
 func (c *FakeClock) pendingLocked() int {
 	n := 0
 	for _, tm := range c.timers {

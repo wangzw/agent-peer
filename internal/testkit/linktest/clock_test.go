@@ -65,6 +65,32 @@ func TestFakeClockStop(t *testing.T) {
 	}
 }
 
+func TestFakeClockEarliest(t *testing.T) {
+	start := time.Unix(0, 0)
+	clock := NewFakeClock(start)
+	if _, ok := clock.Earliest(); ok {
+		t.Fatal("Earliest reported a timer on an empty clock")
+	}
+
+	clock.AfterFunc(3*time.Second, func() {})
+	stopped := clock.AfterFunc(time.Second, func() {})
+	if earliest, ok := clock.Earliest(); !ok || !earliest.Equal(start.Add(time.Second)) {
+		t.Fatalf("Earliest = %v, %v; want %v, true", earliest, ok, start.Add(time.Second))
+	}
+
+	if !stopped() {
+		t.Fatal("stop of the earliest timer returned false")
+	}
+	if earliest, ok := clock.Earliest(); !ok || !earliest.Equal(start.Add(3*time.Second)) {
+		t.Fatalf("Earliest after stop = %v, %v; want %v, true", earliest, ok, start.Add(3*time.Second))
+	}
+
+	clock.Advance(3 * time.Second)
+	if earliest, ok := clock.Earliest(); ok {
+		t.Fatalf("Earliest after firing = %v, true; want the zero time, false", earliest)
+	}
+}
+
 func TestFakeClockWaitPending(t *testing.T) {
 	clock := NewFakeClock(time.Unix(0, 0))
 	registered := make(chan struct{})
