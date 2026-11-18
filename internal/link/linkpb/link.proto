@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package internal.link.linkpb;
+
+option go_package = "github.com/wangzw/agent-peer/internal/link/linkpb;linkpb";
+
+service Link {
+  // buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc Connect(stream Frame) returns (stream Frame);
+}
+
+message Frame {
+  uint32 kind = 1;
+  uint64 request_id = 2;
+  bool is_reply = 3;
+  bytes payload = 4;
+}
+
+message Hello {
+  uint32 protocol_version = 1;
+  string alias = 2;
+  bytes nonce = 3;
+  repeated AdvertisedAddress advertised_addresses = 4;
+}
+
+message PeerInfo {
+  string alias = 1;
+  repeated AdvertisedAddress advertised_addresses = 2;
+}
+
+message Reject {
+  RejectReason reason = 1;
+}
+
+enum RejectReason {
+  REJECT_REASON_UNSPECIFIED = 0;
+  REJECT_REASON_PROTOCOL_VERSION_INCOMPATIBLE = 1;
+  REJECT_REASON_NOT_A_PEER = 2;
+  REJECT_REASON_ROLE_MISMATCH = 3;
+}
+
+message Unsupported {
+  uint32 request_kind = 1;
+}
+
+message AdvertisedAddress {
+  string kind = 1;
+  string addr = 2;
+}
