@@ -245,8 +245,8 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 生成一次性配对密钥的结果必须在密钥之外另行展示本机的系统主机名与对外地址列表中的每一项，首项在前，展示的内容不是密钥的一部分；对外地址列表为空而 Broker 在监听时，必须仍然生成密钥并说明没有可展示的地址。
 
 - **验收**：在系统主机名为 `hostA`、默认路由所在接口的地址为 `192.0.2.10`、未配置对外地址的 Broker 上生成一次性配对密钥，结果中密钥与 `hostA(192.0.2.10:17443)` 分开给出，密钥本身不含主机名或地址；把对外地址配置为 `a.example:443` 后生成，展示的是 `hostA(a.example:443)`；再追加对外地址 `a.vpn.example` 后生成，依次展示 `hostA(a.example:443)` 与 `hostA(a.vpn.example:443)`；主机没有默认路由、监听全部地址且未配置对外地址时，生成照常成功，结果说明没有可展示的地址、需要用户自行告知对方连接地址。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/journey_pair_test.go` 的 `TestJourneyPairBrokers`；`test/e2e/addresses_test.go` 的 `TestAdvertisedAddresses/REQ-broker-pairing-028 shown addresses`
 
 ### REQ-broker-pairing-029
 
@@ -309,8 +309,8 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 监听地址为空的 Broker 生成配对密钥必须失败，并提示改由对方生成配对密钥。
 
 - **验收**：把监听地址配置为空后让 Broker 生成一次性配对密钥，调用返回错误，提示由对方生成配对密钥，本方发起配对；此后凭任何字符串向它发起配对都不成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/addresses_test.go` 的 `TestAdvertisedAddresses/REQ-broker-pairing-036 no listen no key`
 
 ### REQ-broker-pairing-037
 
