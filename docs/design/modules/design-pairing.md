@@ -67,6 +67,7 @@ func (p *Pairing) ObserveConnected(fp Fingerprint, address string)              
 func (p *Pairing) UpdateCardAddresses(fp Fingerprint, addresses []config.AdvertisedAddr)      // 由 broker 在接受对端的名片时调用
 func (p *Pairing) Candidates(fp Fingerprint) (addresses []string, last string)                // 供 link 拨号；只含直连地址；本方是接受方时为空
 
+func (p *Pairing) PublicKey() []byte              // 本机 32 字节裸 Ed25519 公钥的副本；没有身份时为 nil
 func (p *Pairing) Sign(data []byte) []byte
 func Verify(pub, data, sig []byte) bool
 func FingerprintOf(pub []byte) Fingerprint
@@ -320,4 +321,4 @@ A 收到 B 的 `Hello` 之前的任何一处失败，A 的对端表都保持不�
 | 候选地址的记录 | 已实现 | `internal/pairing/addresses.go`（`filterKnown`、`mergeCandidates`） |
 | 别名的解析、冲突检查与本地别名 | 已实现 | `internal/pairing/alias.go`、`internal/pairing/peers.go`（`assignLocalAlias`、`peerTable.resolveAlias`、`SetOwnAlias`、`AliasConflict`） |
 | 解除配对 | 已实现 | `internal/pairing/peers.go`（`Unpair`） |
-| 签名与验签 | 已实现 | `internal/pairing/queries.go`、`internal/pairing/api.go`（`Sign`、`Verify`、`FingerprintOf`） |
+| 签名与验签 | 已实现 | `internal/pairing/queries.go`、`internal/pairing/api.go`（`PublicKey`、`Sign`、`Verify`、`FingerprintOf`） |

@@ -2,6 +2,7 @@ package pairing
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"crypto/tls"
 	"testing"
 )
@@ -109,5 +110,41 @@ func TestZeroPairingSignIsNil(t *testing.T) {
 	var zero Pairing
 	if sig := zero.Sign([]byte("data")); sig != nil {
 		t.Fatalf("zero Pairing Sign() = %x, want nil", sig)
+	}
+}
+
+func TestPairingPublicKey(t *testing.T) {
+	p := hsNewPairing(t, newHSSettings(t), &hsTransport{}, newHSClock())
+	data := []byte("agent-peer pairing public key")
+
+	pub := p.PublicKey()
+	if len(pub) != ed25519.PublicKeySize {
+		t.Fatalf("public key length = %d, want %d", len(pub), ed25519.PublicKeySize)
+	}
+	if got, want := FingerprintOf(pub), p.Fingerprint(); got != want {
+		t.Fatalf("FingerprintOf(PublicKey()) = %s, want %s", got, want)
+	}
+	if !ed25519.Verify(pub, data, p.Sign(data)) {
+		t.Fatal("Sign does not verify with PublicKey")
+	}
+
+	before := append([]byte(nil), pub...)
+	pub[0] ^= 0xff
+	if again := p.PublicKey(); !bytes.Equal(again, before) {
+		t.Fatal("mutating the key returned by PublicKey changed the next call: " +
+			"the returned key must be a copy")
+	}
+}
+
+func TestZeroPairingPublicKeyIsNil(t *testing.T) {
+	var zero Pairing
+	if got := zero.PublicKey(); got != nil {
+		t.Fatalf("zero Pairing PublicKey() = %x, want nil", got)
+	}
+	if got := (*Pairing)(nil).PublicKey(); got != nil {
+		t.Fatalf("nil Pairing PublicKey() = %x, want nil", got)
+	}
+	if got := (&Pairing{}).PublicKey(); got != nil {
+		t.Fatalf("empty Pairing PublicKey() = %x, want nil", got)
 	}
 }

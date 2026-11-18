@@ -45,6 +45,15 @@ func cloneTLSCertificate(cert tls.Certificate) tls.Certificate {
 	return out
 }
 
+// PublicKey returns a copy of this Broker's raw 32-byte Ed25519 public key.
+// It returns nil when the instance has no identity.
+func (p *Pairing) PublicKey() []byte {
+	if p == nil || p.identity == nil {
+		return nil
+	}
+	return p.identity.publicKey()
+}
+
 // Sign signs data with this Broker's Ed25519 private key. It returns nil when
 // the instance has no identity.
 func (p *Pairing) Sign(data []byte) []byte {
