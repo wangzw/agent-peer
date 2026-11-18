@@ -19,6 +19,7 @@ lint:
       - internal/pairing/pairingpb/pairing.proto
       - internal/topic/topicpb/topic.proto
       - internal/directory/directorypb/directory.proto
+      - internal/broker/helperpb/helper.proto
     # The design keeps the service names Local and Link.
     SERVICE_SUFFIX:
       - internal/broker/localpb/local.proto

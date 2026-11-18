@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package internal.broker.helperpb;
+
+option go_package = "github.com/wangzw/agent-peer/internal/broker/helperpb;helperpb";
+
+import "google/protobuf/duration.proto";
+
+// Broker -> account helper. Every message is one request; id is non-zero and
+// unique among the requests still in flight on the connection.
+message HelperRequest {
+  uint64 id = 1;
+  oneof op {
+    LookupRequest lookup = 2;
+    RereadRequest reread = 3;
+    WatchRequest watch = 4;
+    UnwatchRequest unwatch = 5;
+    DeliverRequest deliver = 6;
+    CancelRequest cancel = 7;
+  }
+}
+
+message Session {
+  string config_dir = 1;
+  int64 pid = 2;
+  string name = 3;
+  string status = 4;
+  string socket_path = 5;
+}
+
+message LookupRequest {
+  string config_dir = 1;
+  string socket_path = 2;
+}
+
+message RereadRequest {
+  Session session = 1;
+}
+
+message WatchRequest {
+  string config_dir = 1;
+}
+
+message UnwatchRequest {
+  uint64 watch_id = 1;
+}
+
+message DeliverRequest {
+  Session session = 1;
+  string signature = 2;
+  string text = 3;
+  string message_id = 4;
+  google.protobuf.Duration timeout = 5;
+}
+
+// Cancels the Deliver request whose id is request_id. It has no response of
+// its own; the cancelled request still gets exactly one response.
+message CancelRequest {
+  uint64 request_id = 1;
+}
+
+// Account helper -> Broker. The first message on a connection is Ready.
+message HelperMessage {
+  oneof body {
+    Ready ready = 1;
+    HelperResponse response = 2;
+    WatchEvent watch_event = 3;
+  }
+}
+
+message Ready {
+  uint32 protocol_version = 1;
+  uint32 uid = 2;
+  uint32 gid = 3;
+  repeated uint32 groups = 4;
+}
+
+message HelperResponse {
+  uint64 id = 1;
+  oneof result {
+    Session session = 2;
+    WatchStarted watch_started = 3;
+    Done done = 4;
+    HelperError error = 5;
+  }
+}
+
+message WatchStarted {
+  uint64 watch_id = 1;
+}
+
+message Done {}
+
+message WatchEvent {
+  uint64 watch_id = 1;
+  int64 pid = 2;
+}
+
+enum HelperErrorCode {
+  HELPER_ERROR_CODE_UNSPECIFIED = 0;
+  HELPER_ERROR_CODE_NO_RECORD = 1;
+  HELPER_ERROR_CODE_PARTIAL = 2;
+  HELPER_ERROR_CODE_BAD_SIGNATURE = 3;
+  HELPER_ERROR_CODE_NOT_WRITTEN = 4;
+  HELPER_ERROR_CODE_UNCERTAIN = 5;
+  HELPER_ERROR_CODE_CANCELED = 6;
+  HELPER_ERROR_CODE_BAD_REQUEST = 7;
+  HELPER_ERROR_CODE_FAILED = 8;
+}
+
+message HelperError {
+  HelperErrorCode code = 1;
+  string message = 2;
+}
+
+enum Access {
+  ACCESS_UNSPECIFIED = 0;
+  ACCESS_READ = 1;
+  ACCESS_WRITE = 2;
+}
+
+// Broker -> access-check process, exactly one message on stdin.
+message AccessCheckRequest {
+  uint32 protocol_version = 1;
+  string path = 2;
+  Access access = 3;
+}
+
+// Access-check process -> Broker, exactly one message on stdout.
+message AccessCheckResponse {
+  uint32 protocol_version = 1;
+  uint32 uid = 2;
+  bool allowed = 3;
+  // Non-empty when the check itself failed; allowed is then false.
+  string error = 4;
+}
