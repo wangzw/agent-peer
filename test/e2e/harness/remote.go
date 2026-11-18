@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"syscall"
 	"testing"
@@ -110,6 +111,36 @@ func (r *remoteNode) startSession(tb testing.TB, spec SessionSpec) *Session {
 		return nil
 	}
 
+	return r.newSession(spec, info, tb)
+}
+
+// tryStartSession starts a session without failing the test, for a caller in
+// another goroutine that reports the error itself.
+func (r *remoteNode) tryStartSession(spec SessionSpec) (*Session, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+	info, err := r.client.StartSession(ctx, ctl.SessionStartRequest{
+		Name:            spec.Name,
+		Status:          spec.Status,
+		ConfigDir:       spec.ConfigDir,
+		ExportConfigDir: spec.ExportConfigDir,
+		Workdir:         spec.Workdir,
+		Mode:            modeName(spec.Mode),
+		BusyDelayMS:     spec.BusyDelay.Milliseconds(),
+		NoBind:          spec.NoBind,
+		SocketPath:      spec.SocketPath,
+		NoSocketEnv:     spec.NoSocketEnv,
+		Env:             spec.Env,
+		StartMCP:        spec.StartMCP,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("harness: node %s: starting session %s: %w", r.name, spec.Name, err)
+	}
+	return r.newSession(spec, info, r.t), nil
+}
+
+// newSession builds the harness session for a start answer.
+func (r *remoteNode) newSession(spec SessionSpec, info ctl.SessionInfo, tb testing.TB) *Session {
 	return &Session{
 		name: spec.Name,
 		impl: &remoteSession{
@@ -245,6 +276,15 @@ type remoteSession struct {
 
 func (s *remoteSession) call(tb testing.TB, tool string, args map[string]any) Result {
 	tb.Helper()
+	result, err := s.callErr(tool, args)
+	if err != nil {
+		tb.Fatalf("%v", err)
+		return Result{}
+	}
+	return result
+}
+
+func (s *remoteSession) callErr(tool string, args map[string]any) (Result, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), sessionCallBound)
 	defer cancel()
 	res, err := s.client.Call(ctx, ctl.SessionCallRequest{
@@ -254,8 +294,7 @@ func (s *remoteSession) call(tb testing.TB, tool string, args map[string]any) Re
 		TimeoutMS: sessionCallBound.Milliseconds(),
 	})
 	if err != nil {
-		tb.Fatalf("harness: session %s: calling %s: %v", s.name, tool, err)
-		return Result{}
+		return Result{}, fmt.Errorf("harness: session %s: calling %s: %w", s.name, tool, err)
 	}
 	result := Result{ToolResult: node.ToolResult{
 		IsError: res.IsError,
@@ -265,7 +304,7 @@ func (s *remoteSession) call(tb testing.TB, tool string, args map[string]any) Re
 	if len(res.Structured) > 0 {
 		result.Structured = json.RawMessage(res.Structured)
 	}
-	return result
+	return result, nil
 }
 
 func (s *remoteSession) tools(tb testing.TB) []string {

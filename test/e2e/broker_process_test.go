@@ -101,20 +101,33 @@ func TestBrokerProcessLocal(t *testing.T) {
 
 		// The five sessions start at the same time, so several MCP server
 		// processes may try to launch a Broker before the first one is ready.
-		sessions := make([]*harness.Session, 5)
+		// The goroutines must not touch testing.T; they hand their errors back
+		// and the test goroutine reports them.
+		type startResult struct {
+			session *harness.Session
+			err     error
+		}
+		results := make([]startResult, 5)
 		var wg sync.WaitGroup
-		for i := range sessions {
+		for i := range results {
 			i := i
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				sessions[i] = host.StartSession(t, harness.SessionSpec{
+				results[i].session, results[i].err = host.TryStartSession(harness.SessionSpec{
 					Name:     fmt.Sprintf("worker-%d", i),
 					StartMCP: true,
 				})
 			}()
 		}
 		wg.Wait()
+		sessions := make([]*harness.Session, len(results))
+		for i, result := range results {
+			if result.err != nil {
+				t.Fatalf("session worker-%d did not start: %v", i, result.err)
+			}
+			sessions[i] = result.session
+		}
 
 		harness.Eventually(t, brokerReadyBound, "the five sessions reach their Broker", func() (bool, string) {
 			for i, session := range sessions {
@@ -239,6 +252,9 @@ func TestBrokerProcessInContainer(t *testing.T) {
 		if !strings.Contains(start.StderrLast, brokerDefaultListen) {
 			t.Fatalf("the Broker's last standard error line is %q, want it to name %s", start.StderrLast, brokerDefaultListen)
 		}
+		if !strings.Contains(start.StderrLast, "is unavailable") {
+			t.Fatalf("the Broker's last standard error line is %q, want it to say the address is unavailable", start.StderrLast)
+		}
 
 		harness.Consistently(t, brokerAbsenceWindow, "no Broker process lingers after the failed start", func() (bool, string) {
 			if n := len(bpContainerProcs(t, c, "hostA", "broker")); n != 0 {
@@ -329,7 +345,7 @@ func TestBrokerProcessInContainer(t *testing.T) {
 				t.Fatalf("signalling Broker %d: exit code %d: %s", proc.PID, kill.ExitCode, strings.TrimSpace(kill.Stderr))
 			}
 		}
-		harness.Eventually(t, 5*time.Second, "the launched Broker exits", func() (bool, string) {
+		harness.Eventually(t, 3*time.Second, "the launched Broker exits", func() (bool, string) {
 			if n := len(bpContainerProcs(t, c, "hostA", "broker")); n != 0 {
 				return false, fmt.Sprintf("%d Broker processes", n)
 			}
@@ -418,7 +434,7 @@ func bpContainerProcs(t *testing.T, c *harness.Cluster, name, kind string) []bpP
 	client := ctl.Dial(filepath.Join(c.CTLDir(t, name), "ctl.sock"))
 	defer client.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	infos, err := client.Procs(ctx, ctl.ProcsRequest{Kind: kind})
 	if err != nil {

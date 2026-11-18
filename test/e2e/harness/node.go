@@ -199,6 +199,7 @@ type backend interface {
 	stopBroker(t testing.TB, sig syscall.Signal) int
 	brokerLog(t testing.TB) []byte
 	startSession(t testing.TB, spec SessionSpec) *Session
+	tryStartSession(spec SessionSpec) (*Session, error)
 	exec(t testing.TB, argv []string, env map[string]string) ExecResult
 	oracle() *OracleClient
 	freeAddr(t testing.TB) string
@@ -238,6 +239,14 @@ func (n *Node) BrokerLog(t testing.TB) []byte {
 func (n *Node) StartSession(t testing.TB, spec SessionSpec) *Session {
 	t.Helper()
 	return n.impl.startSession(t, spec)
+}
+
+// TryStartSession starts one simulated Claude Code session and returns the
+// error instead of failing the test. It is the entry point for a caller in
+// another goroutine: testing.T must not be failed from a goroutine the test
+// still has to join, so that caller reports the error on the test goroutine.
+func (n *Node) TryStartSession(spec SessionSpec) (*Session, error) {
+	return n.impl.tryStartSession(spec)
 }
 
 // Exec runs argv once as the node's account and returns its output and exit
@@ -295,6 +304,7 @@ func (n *Node) Workspace(t testing.TB, kind, origin, projectYAML string) string 
 // sessionBackend is what a Session delegates to.
 type sessionBackend interface {
 	call(t testing.TB, tool string, args map[string]any) Result
+	callErr(tool string, args map[string]any) (Result, error)
 	tools(t testing.TB) []string
 	stopMCP(t testing.TB, sig syscall.Signal) int
 	restartMCP(t testing.TB)
@@ -317,6 +327,14 @@ type Session struct {
 func (s *Session) Call(t testing.TB, tool string, args map[string]any) Result {
 	t.Helper()
 	return s.impl.call(t, tool, args)
+}
+
+// CallErr invokes a tool and returns a transport or protocol error instead of
+// failing the test. A tool that reports an error inside its result still
+// returns a nil error, as Call does. Callers in another goroutine use this and
+// report the error on the test goroutine.
+func (s *Session) CallErr(tool string, args map[string]any) (Result, error) {
+	return s.impl.callErr(tool, args)
 }
 
 // Tools lists the tool names of the session's current MCP server process.

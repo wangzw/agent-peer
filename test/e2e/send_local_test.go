@@ -244,14 +244,20 @@ func TestLocalSend(t *testing.T) {
 		if body := slEnvelopeBody(t, frame.Content); body != marker {
 			t.Fatalf("the held frame carries %q, want %q", body, marker)
 		}
-		select {
-		case result, open := <-ch:
-			if open {
-				t.Fatalf("the send returned before the inbox write completed: is_error=%v text=%s", result.res.IsError, result.res.Text)
+		// The channel must stay empty for a window, not for one instant: a
+		// send that returns a moment later would still have completed before
+		// the inbox released the write.
+		harness.Consistently(t, 500*time.Millisecond, "the send does not return while the inbox holds the write", func() (bool, string) {
+			select {
+			case result := <-ch:
+				if result.err != nil {
+					return false, fmt.Sprintf("the send failed before the inbox write completed: %v", result.err)
+				}
+				return false, fmt.Sprintf("the send returned before the inbox write completed: is_error=%v text=%s", result.res.IsError, result.res.Text)
+			default:
+				return true, ""
 			}
-			t.Fatal("the send ended without a result before the inbox write completed")
-		default:
-		}
+		})
 
 		// Releasing the connection completes the write, and only then may the
 		// send return success.
@@ -595,34 +601,38 @@ func slSameSet(got, want []string) bool {
 	return true
 }
 
-// slAsyncResult carries one asynchronous tool result.
+// slAsyncResult carries one asynchronous tool result or the error that ended
+// the call.
 type slAsyncResult struct {
 	res harness.Result
-	ok  bool
+	err error
 }
 
-// slSendAsync sends one message in the background. The result channel is
-// buffered and closed after the call returns; a closed channel with no value
-// means the goroutine ended inside the harness failure path.
+// slSendAsync sends one message in the background. The goroutine must not call
+// testing.T, so it uses CallErr and hands any error to slAwait on the test
+// goroutine.
 func slSendAsync(t *testing.T, s *harness.Session, to, message string) <-chan slAsyncResult {
 	t.Helper()
 	ch := make(chan slAsyncResult, 1)
 	go func() {
 		defer close(ch)
-		res := s.Call(t, "send_message", map[string]any{"to": to, "message": message})
-		ch <- slAsyncResult{res: res, ok: true}
+		res, err := s.CallErr("send_message", map[string]any{"to": to, "message": message})
+		ch <- slAsyncResult{res: res, err: err}
 	}()
 	return ch
 }
 
 // slAwait waits for an asynchronous result and fails the test when it does not
-// arrive in bound.
+// arrive in bound or the call failed.
 func slAwait(t *testing.T, ch <-chan slAsyncResult, bound time.Duration, what string) harness.Result {
 	t.Helper()
 	select {
 	case result, open := <-ch:
-		if !open || !result.ok {
+		if !open {
 			t.Fatalf("%s: the asynchronous call ended without a result", what)
+		}
+		if result.err != nil {
+			t.Fatalf("%s: %v", what, result.err)
 		}
 		return result.res
 	case <-time.After(bound):

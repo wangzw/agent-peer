@@ -264,23 +264,107 @@ func (l *localNode) startSession(tb testing.TB, spec SessionSpec) *Session {
 	return s
 }
 
+// tryStartSession starts a session without failing the test. Everything
+// fakesession would report through the test goes into a deferredTB instead:
+// a test that drove the start from another goroutine reports those errors
+// after it has joined the goroutine.
+func (l *localNode) tryStartSession(spec SessionSpec) (*Session, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+
+	tb := &deferredTB{TB: l.t}
+	var (
+		session  *node.Session
+		startErr error
+	)
+	if err := node.Guard(func() {
+		session, startErr = node.StartSession(ctx, tb, l.env, node.MCPCommand{Path: l.bin, Args: []string{"mcp"}}, spec)
+	}); err != nil {
+		return nil, fmt.Errorf("harness: node %s: starting session %s: %w", l.name, spec.Name, err)
+	}
+	if startErr != nil {
+		return nil, fmt.Errorf("harness: node %s: starting session %s: %w", l.name, spec.Name, startErr)
+	}
+	if errs := tb.TakeErrors(); len(errs) > 0 {
+		return nil, fmt.Errorf("harness: node %s: starting session %s: %s", l.name, spec.Name, strings.Join(errs, "; "))
+	}
+
+	s := &Session{
+		name: spec.Name,
+		impl: &localSession{name: spec.Name, session: session, deferred: tb},
+	}
+	l.mu.Lock()
+	l.sessions = append(l.sessions, s)
+	l.mu.Unlock()
+	return s, nil
+}
+
+// deferredTB records the failures fakesession reports, so a session started
+// from another goroutine can hand them to the test goroutine instead of
+// failing the test from that goroutine. Temporary directories, cleanups and
+// the test name still come from the real testing.TB.
+type deferredTB struct {
+	testing.TB
+
+	mu   sync.Mutex
+	errs []string
+}
+
+func (d *deferredTB) Helper() {}
+
+func (d *deferredTB) Errorf(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	d.mu.Lock()
+	d.errs = append(d.errs, msg)
+	d.mu.Unlock()
+}
+
+func (d *deferredTB) Fatalf(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	d.mu.Lock()
+	d.errs = append(d.errs, msg)
+	d.mu.Unlock()
+	panic(node.FatalError{Msg: msg})
+}
+
+// TakeErrors returns the recorded failures and forgets them.
+func (d *deferredTB) TakeErrors() []string {
+	d.mu.Lock()
+	errs := d.errs
+	d.errs = nil
+	d.mu.Unlock()
+	return errs
+}
+
 // localSession adapts node.Session to the harness session interface, turning
 // errors into test failures.
 type localSession struct {
 	name    string
 	session *node.Session
+	// deferred carries the failures fakesession reports when the session was
+	// started through TryStartSession. A session started on the test goroutine
+	// reports them through the real testing.T immediately.
+	deferred *deferredTB
 }
 
 func (s *localSession) call(t testing.TB, tool string, args map[string]any) Result {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), sessionCallBound)
-	defer cancel()
-	result, err := s.session.Call(ctx, tool, args)
+	result, err := s.callErr(tool, args)
 	if err != nil {
 		t.Fatalf("harness: session %s: calling %s: %v", s.name, tool, err)
 		return Result{}
 	}
-	return Result{ToolResult: result}
+	return result
+}
+
+func (s *localSession) callErr(tool string, args map[string]any) (Result, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), sessionCallBound)
+	defer cancel()
+	result, err := s.session.Call(ctx, tool, args)
+	if err != nil {
+		return Result{}, fmt.Errorf("harness: session %s: calling %s: %w", s.name, tool, err)
+	}
+	return Result{ToolResult: result}, nil
 }
 
 func (s *localSession) tools(t testing.TB) []string {
@@ -335,7 +419,20 @@ func (s *localSession) inboxConnections(t testing.TB) int {
 
 func (s *localSession) fake() FakeSession { return s.session.Fake() }
 
-func (s *localSession) end() error { return s.session.End() }
+func (s *localSession) end() error {
+	err := s.session.End()
+	if s.deferred == nil {
+		return err
+	}
+	if errs := s.deferred.TakeErrors(); len(errs) > 0 {
+		background := fmt.Errorf("harness: session %s: simulated session failures: %s", s.name, strings.Join(errs, "; "))
+		if err == nil {
+			return background
+		}
+		return fmt.Errorf("%v; %w", err, background)
+	}
+	return err
+}
 
 // cleanup ends the node's sessions, stops its Broker, kills every process that
 // still carries this node's runtime root and removes the root. It is
@@ -537,7 +634,9 @@ func (l *localNode) stopBroker(tb testing.TB, sig syscall.Signal) int {
 	// A signal to a process that already exited reports an error; the exit
 	// code below still tells the caller what happened.
 	_ = broker.Signal(sig)
-	code, err := broker.Wait(10 * time.Second)
+	// The Broker exits as soon as its context is cancelled and has no drain
+	// timer; the same bound the container path uses applies here.
+	code, err := broker.Wait(brokerStopBound)
 	if err != nil {
 		_ = broker.Signal(syscall.SIGKILL)
 		code, _ = broker.Wait(2 * time.Second)
