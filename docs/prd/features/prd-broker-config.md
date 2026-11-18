@@ -116,24 +116,24 @@ Agent 对配置的每次修改必须写入审计日志，记录发起修改的 A
 Broker 必须以结构化格式输出运行日志。
 
 - **验收**：运行日志的每一行都能被解析为一条记录，记录中有时间、级别和事件名这几个字段。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessInContainer/REQ-broker-config-011 structured log`
 
 ### REQ-broker-config-012
 
 会话尚未选定 Broker 时，MCP 服务进程按 `REQ-broker-config-026` 的顺序找不到可用的 Broker 的，系统必须自动启动一个用户级 Broker。
 
 - **验收**：在没有任何 Broker 进程的主机上启动一个启用了工具的会话，该会话的工具调用成功，主机上出现一个以该会话所属账户运行的 Broker 进程。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessLocal/REQ-broker-config-012 auto launch`
 
 ### REQ-broker-config-013
 
 同一账户下至多运行一个 Broker 实例。已有实例在运行时，以任何监听地址或配置再启动一个都必须失败，并说明已有实例在运行。
 
 - **验收**：在没有 Broker 进程的主机上，以同一个账户同时启动五个启用了工具的会话，该账户名下只有一个 Broker 进程，五个会话都登记在它上面；随后以同一个账户指定另一个监听地址手动再启动一个 Broker，启动失败，错误说明已有实例在运行，原有的 Broker 不受影响。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessLocal/REQ-broker-config-013 single instance`
 
 ### REQ-broker-config-014
 
@@ -220,8 +220,8 @@ Broker 必须以结构化格式输出运行日志。
 配置或启动参数给出的监听地址无法绑定时，Broker 必须启动失败并报告该地址不可用，不得改用其他地址或端口，也不得改为不监听。
 
 - **验收**：先让另一个进程在本机全部地址的 17443 端口上监听，再以默认配置启动 Broker：启动失败，错误指出该地址不可用，主机上没有留下这个 Broker 的进程，也没有它在其他端口上的监听。这次启动由 MCP 服务进程触发时，会话的工具调用返回同一原因的错误。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessInContainer/REQ-broker-config-024 default address taken`
 
 ### REQ-broker-config-025
 
