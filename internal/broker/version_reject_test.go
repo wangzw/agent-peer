@@ -2,12 +2,14 @@ package broker
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
 	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
@@ -82,6 +84,27 @@ func TestRejectedConnStaysRejected(t *testing.T) {
 	}
 	if uids := tb.sessions.AcquiredUIDs(); len(uids) != 0 {
 		t.Fatalf("the session backend was acquired %d times, want none: the rejected Register must not have reached the handler", len(uids))
+	}
+}
+
+func TestRejectionCarriesNoBrokerVersionField(t *testing.T) {
+	// REQ-broker-config-016: the version_mismatch detail carries the code and
+	// the message only. It has no field for the Broker's protocol version, so
+	// a client that reads the structured detail alone learns no version. The
+	// fakelocal fake in mcpserver models exactly these two fields.
+	tb := newTestBroker(t)
+
+	_, err := callTestHello(t, tb.client, 2)
+	detail := wantErrorDetail(t, err, localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH)
+
+	var fields []string
+	detail.ProtoReflect().Range(func(fd protoreflect.FieldDescriptor, _ protoreflect.Value) bool {
+		fields = append(fields, string(fd.Name()))
+		return true
+	})
+	slices.Sort(fields)
+	if want := []string{"code", "message"}; !slices.Equal(fields, want) {
+		t.Fatalf("version_mismatch detail carries fields %v, want exactly %v: the rejection must not carry the Broker's protocol version", fields, want)
 	}
 }
 

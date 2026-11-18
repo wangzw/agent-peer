@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -208,6 +209,40 @@ func TestMismatchNoHelloPolling(t *testing.T) {
 	}
 	if waits := after.recorded(); len(waits) != 0 {
 		t.Errorf("the loop backed off %v while the mismatched connection was still up; it must wait for READY to change", waits)
+	}
+}
+
+// startMismatchBroker serves a fake Broker on path that rejects the handshake
+// the way a real Broker at a different local protocol version does: a
+// version_mismatch status carrying the code and the message, and no field for
+// the Broker's protocol version.
+func startMismatchBroker(t *testing.T, path string) {
+	t.Helper()
+	fakelocal.Start(t, path, versionMismatchRejecter(new(atomic.Int64)))
+}
+
+// REQ-broker-config-016
+func TestMismatchRejectionNamesNoBrokerVersion(t *testing.T) {
+	sock := fakelocal.SocketPath(t)
+	startMismatchBroker(t, sock)
+
+	opts, _, _ := versionOptions(t, sock, fakelocal.SocketPath(t))
+	h := startRunClient(t, opts)
+
+	text := versionWaitMismatch(t, h.cs)
+	if strings.Contains(text, "version 0") {
+		t.Errorf("list_agents error = %q, must not report a broker version the Broker never sent", text)
+	}
+	want := fmt.Sprintf("the running Broker speaks a different local protocol version, this MCP server speaks %d",
+		localpb.ProtocolVersion)
+	if !strings.Contains(text, want) {
+		t.Errorf("list_agents error = %q, want %q", text, want)
+	}
+	if !strings.Contains(text, "restart the Broker") {
+		t.Errorf("list_agents error = %q, want a \"restart the Broker\" hint", text)
+	}
+	if !strings.HasSuffix(text, " (code: version_mismatch)") {
+		t.Errorf("list_agents error = %q, want the version_mismatch code suffix", text)
 	}
 }
 

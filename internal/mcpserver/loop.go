@@ -198,8 +198,16 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 		}
 
 		if !res.Compatible {
-			detail := fmt.Sprintf("the running Broker speaks local protocol version %d, this MCP server speaks %d",
-				res.BrokerVersion, d.version)
+			// hello reports BrokerVersion 0 when the Broker refused the
+			// handshake with a version_mismatch error, whose detail carries no
+			// version field. Naming version 0 would claim something the Broker
+			// never said, so that path describes the mismatch without it.
+			detail := fmt.Sprintf("the running Broker speaks a different local protocol version, this MCP server speaks %d",
+				d.version)
+			if res.BrokerVersion != 0 {
+				detail = fmt.Sprintf("the running Broker speaks local protocol version %d, this MCP server speaks %d",
+					res.BrokerVersion, d.version)
+			}
 			loopSetStatus(d.st, PhaseVersionMismatch, detail, loopRemedy(t), nil)
 			// The Broker keeps this connection open on a version mismatch, so
 			// waiting for it to leave READY is the only reliable sign that the
