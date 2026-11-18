@@ -1,0 +1,174 @@
+package broker
+
+import (
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/wangzw/agent-peer/internal/config"
+)
+
+// wireRecorder implements linkControl, CardIssuer and agentAddressNotifier and
+// appends every call to one shared list, so a test can assert the exact
+// forwarding order.
+type wireRecorder struct {
+	calls     []string
+	addresses []string
+	listenErr error
+}
+
+func (r *wireRecorder) Listen(address string) error {
+	r.calls = append(r.calls, "Listen")
+	r.addresses = append(r.addresses, address)
+	return r.listenErr
+}
+
+func (r *wireRecorder) AnnounceAlias()     { r.calls = append(r.calls, "AnnounceAlias") }
+func (r *wireRecorder) AnnounceAddresses() { r.calls = append(r.calls, "AnnounceAddresses") }
+func (r *wireRecorder) Reissue()           { r.calls = append(r.calls, "Reissue") }
+func (r *wireRecorder) localAliasChanged() { r.calls = append(r.calls, "localAliasChanged") }
+
+var (
+	_ linkControl          = (*wireRecorder)(nil)
+	_ CardIssuer           = (*wireRecorder)(nil)
+	_ agentAddressNotifier = (*wireRecorder)(nil)
+)
+
+// newWireLog returns a logger that renders records the way the Broker's
+// runtime logger does, plus the buffer that collects them.
+func newWireLog() (*slog.Logger, *syncBuffer) {
+	buf := &syncBuffer{}
+	return NewLogger(buf, &slog.LevelVar{}), buf
+}
+
+// TestAliasChangeAnnouncesAndReissues covers REQ-broker-pairing-003: a new
+// alias reaches the peers, a fresh card is signed, and registered agents get
+// their new addresses.
+func TestAliasChangeAnnouncesAndReissues(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		f := newFakeConfig(t.TempDir())
+		rec := &wireRecorder{}
+		log, _ := newWireLog()
+		subscribeConfigChanges(f, rec, rec, rec, log)
+
+		f.fireKey("broker.alias", stringValue("hostA"), stringValue("hostB"))
+
+		want := []string{"AnnounceAlias", "Reissue", "localAliasChanged"}
+		if !reflect.DeepEqual(rec.calls, want) {
+			t.Errorf("calls = %v, want %v", rec.calls, want)
+		}
+	})
+
+	t.Run("nil card issuer", func(t *testing.T) {
+		f := newFakeConfig(t.TempDir())
+		rec := &wireRecorder{}
+		log, _ := newWireLog()
+		subscribeConfigChanges(f, rec, nil, rec, log)
+
+		f.fireKey("broker.alias", stringValue("hostA"), stringValue("hostB"))
+
+		want := []string{"AnnounceAlias", "localAliasChanged"}
+		if !reflect.DeepEqual(rec.calls, want) {
+			t.Errorf("calls = %v, want %v", rec.calls, want)
+		}
+	})
+}
+
+// TestAdvertisedChangeAnnouncesAndReissues covers REQ-broker-discovery-016: a
+// changed advertised address list is announced and re-signed.
+func TestAdvertisedChangeAnnouncesAndReissues(t *testing.T) {
+	f := newFakeConfig(t.TempDir())
+	rec := &wireRecorder{}
+	log, _ := newWireLog()
+	subscribeConfigChanges(f, rec, rec, rec, log)
+
+	f.fireAdvertised(nil, []config.AdvertisedAddr{{Kind: config.AdvertisedKindDirect, Addr: "10.0.0.1:7000"}})
+
+	want := []string{"AnnounceAddresses", "Reissue"}
+	if !reflect.DeepEqual(rec.calls, want) {
+		t.Errorf("calls = %v, want %v", rec.calls, want)
+	}
+}
+
+// TestListenChangeRebinds covers REQ-broker-config-034: a new listen address
+// is bound, and a rebind failure is logged without stopping the Broker.
+func TestListenChangeRebinds(t *testing.T) {
+	t.Run("rebinds", func(t *testing.T) {
+		f := newFakeConfig(t.TempDir())
+		rec := &wireRecorder{}
+		log, _ := newWireLog()
+		subscribeConfigChanges(f, rec, rec, rec, log)
+
+		f.fireKey("broker.listen", stringValue("127.0.0.1:7000"), stringValue("127.0.0.1:7001"))
+
+		if want := []string{"Listen"}; !reflect.DeepEqual(rec.calls, want) {
+			t.Fatalf("calls = %v, want %v", rec.calls, want)
+		}
+		if want := []string{"127.0.0.1:7001"}; !reflect.DeepEqual(rec.addresses, want) {
+			t.Errorf("Listen addresses = %v, want %v", rec.addresses, want)
+		}
+	})
+
+	t.Run("logs failure", func(t *testing.T) {
+		f := newFakeConfig(t.TempDir())
+		rec := &wireRecorder{listenErr: errors.New("address already in use")}
+		log, buf := newWireLog()
+		subscribeConfigChanges(f, rec, rec, rec, log)
+
+		f.fireKey("broker.listen", stringValue("127.0.0.1:7000"), stringValue("127.0.0.1:7001"))
+
+		lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+		if len(lines) != 1 || lines[0] == "" {
+			t.Fatalf("log has %d lines, want exactly 1: %q", len(lines), buf.String())
+		}
+		var got struct {
+			Level   string `json:"level"`
+			Event   string `json:"event"`
+			Address string `json:"address"`
+			Error   string `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(lines[0]), &got); err != nil {
+			t.Fatalf("parsing log line: %v\n%s", err, lines[0])
+		}
+		if got.Level != "ERROR" {
+			t.Errorf("level = %q, want ERROR", got.Level)
+		}
+		if got.Event != "listen_rebind_failed" {
+			t.Errorf("event = %q, want listen_rebind_failed", got.Event)
+		}
+		if got.Address != "127.0.0.1:7001" {
+			t.Errorf("address = %q, want 127.0.0.1:7001", got.Address)
+		}
+		if !strings.Contains(got.Error, "address already in use") {
+			t.Errorf("error = %q, want it to contain the Listen error", got.Error)
+		}
+	})
+}
+
+func TestSubscribesExactlyThree(t *testing.T) {
+	f := newFakeConfig(t.TempDir())
+	rec := &wireRecorder{}
+	log, _ := newWireLog()
+	subscribeConfigChanges(f, rec, rec, rec, log)
+
+	f.mu.Lock()
+	keys := append([]string(nil), f.subscribedKeys...)
+	advertised := len(f.advertised)
+	f.mu.Unlock()
+
+	wantKeys := []string{"broker.listen", "broker.alias"}
+	if !reflect.DeepEqual(keys, wantKeys) {
+		t.Errorf("subscribed keys = %v, want %v", keys, wantKeys)
+	}
+	if advertised != 1 {
+		t.Errorf("advertised subscriptions = %d, want 1", advertised)
+	}
+	for _, key := range keys {
+		if key == "broker.public" {
+			t.Error("subscribed to broker.public, which the directory unit owns")
+		}
+	}
+}
