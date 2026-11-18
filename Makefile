@@ -37,6 +37,7 @@ lint:
 		fi; \
 	fi
 	golangci-lint run ./...
+	golangci-lint run --build-tags agentpeer_testenv ./...
 	go mod tidy -diff
 	go run ./scripts/check-deps -goos linux
 	go run ./scripts/check-deps -goos darwin
