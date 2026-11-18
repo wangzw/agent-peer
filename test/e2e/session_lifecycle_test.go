@@ -289,7 +289,7 @@ func TestLocalSessionChanges(t *testing.T) {
 			Name:       "x",
 			StartMCP:   true,
 			Workdir:    workspace,
-			SocketPath: first.Fake().SocketPath(),
+			SocketPath: socketPath,
 		})
 		defer second.End(t)
 		harness.Eventually(t, 3*time.Second, "the new session has only the default topic", func() (bool, string) {
