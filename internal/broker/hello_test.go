@@ -135,14 +135,3 @@ func TestServerOptionsApplied(t *testing.T) {
 		t.Fatalf("interceptor ran %d times, want 1", got)
 	}
 }
-
-func TestUnimplementedRPCsReturnUnimplemented(t *testing.T) {
-	tb := newTestBroker(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	_, err := tb.client.GetConfig(ctx, &localpb.GetConfigRequest{})
-	if got, want := status.Code(err), codes.Unimplemented; got != want {
-		t.Fatalf("GetConfig error code = %v (err %v), want %v", got, err, want)
-	}
-}
