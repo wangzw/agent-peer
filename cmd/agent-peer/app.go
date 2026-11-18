@@ -36,6 +36,12 @@ type app struct {
 // The hidden internal helper commands use keys such as "internal broker-launcher".
 var subcommands = map[string]func(*app, context.Context, []string) int{}
 
+// signalRestoreHook runs after the first signal has cancelled ctx and the
+// default signal handling has been restored. Production builds keep the no-op
+// value; the agentpeer_testenv build points it at a channel so a subprocess
+// test can observe the restore instead of waiting a fixed interval.
+var signalRestoreHook = func() {}
+
 // newSignalContext cancels the returned context on SIGINT or SIGTERM. After the
 // first signal restores the default handling, so a second signal terminates the
 // process immediately.
@@ -44,6 +50,7 @@ func newSignalContext(parent context.Context) (context.Context, context.CancelFu
 	go func() {
 		<-ctx.Done()
 		stop()
+		signalRestoreHook()
 	}()
 	return ctx, stop
 }

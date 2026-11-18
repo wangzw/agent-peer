@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -9,12 +10,47 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
 )
+
+// lineWriter is a concurrency-safe io.Writer for a child's standard error that
+// delivers each complete line on lines. os/exec copies the child's output from
+// its own goroutine while the test reads, so both the buffer and the line
+// splitting are guarded. Using cmd.Stderr rather than cmd.StderrPipe leaves the
+// pipe owned by os/exec, so Wait may run concurrently with the test's reads
+// without racing a pipe close.
+type lineWriter struct {
+	mu    sync.Mutex
+	buf   bytes.Buffer
+	lines chan string
+}
+
+func newLineWriter() *lineWriter {
+	return &lineWriter{lines: make(chan string, 16)}
+}
+
+func (w *lineWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.buf.Write(p)
+	for {
+		data := w.buf.Bytes()
+		i := bytes.IndexByte(data, '\n')
+		if i < 0 {
+			break
+		}
+		line := strings.TrimRight(string(data[:i]), "\r")
+		w.buf.Next(i + 1)
+		w.lines <- line
+	}
+	return len(p), nil
+}
 
 // cliResult is one finished terminal command.
 type cliResult struct {
@@ -501,11 +537,10 @@ func TestSecondSignalTerminates(t *testing.T) {
 	sb := newSandbox(t)
 	cmd := exec.Command(testBinary, "internal", "signal-block")
 	cmd.Env = sb.env()
+	cmd.WaitDelay = waitDelay
+	stderr := newLineWriter()
+	cmd.Stderr = stderr
 
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		t.Fatalf("stderr pipe: %v", err)
-	}
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start signal-block: %v", err)
 	}
@@ -529,21 +564,13 @@ func TestSecondSignalTerminates(t *testing.T) {
 		}
 	})
 
-	lines := make(chan string, 4)
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			lines <- scanner.Text()
-		}
-		close(lines)
-	}()
+	// Read the lines the child hands to cmd.Stderr's writer while Wait runs in
+	// its own goroutine; os/exec's copy goroutine drains the pipe into the
+	// writer before Wait returns.
 	nextLine := func(want string) {
 		t.Helper()
 		select {
-		case line, ok := <-lines:
-			if !ok {
-				t.Fatalf("stderr closed before %q", want)
-			}
+		case line := <-stderr.lines:
 			if line != want {
 				t.Fatalf("stderr line = %q, want %q", line, want)
 			}
