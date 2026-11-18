@@ -42,13 +42,25 @@ func (l *Link) timerCtx(d time.Duration) (context.Context, func()) {
 // rejectAndLinger sends a Reject and keeps the connection open for at most
 // rejectLinger after which it is closed. The same deadline bounds the write, so
 // a peer that stops reading cannot keep the connection alive. A write failure
-// closes at once.
+// closes at once. The linger also ends when the connection closes or the Link
+// closes: its goroutine must not outlive either, and it stops the timer when it
+// exits instead of leaving it scheduled.
 func (l *Link) rejectAndLinger(c *conn, reason linkpb.RejectReason) {
-	ctx, cancel := context.WithCancel(context.Background())
-	l.clock.AfterFunc(l.rejectLinger, cancel)
+	ctx, cancel := context.WithCancel(l.rootCtx)
+	stop := l.clock.AfterFunc(l.rejectLinger, cancel)
 	go func() {
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-c.done():
+		}
+		if stop != nil {
+			stop()
+		}
+		cancel()
 		c.closeAsync(FailProtocol)
+		if l.onRejectLingerExit != nil {
+			l.onRejectLingerExit()
+		}
 	}()
 	if err := c.sendDirect(ctx, encodeReject(reason)); err != nil {
 		cancel()

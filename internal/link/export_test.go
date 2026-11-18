@@ -17,10 +17,14 @@ type TestKnobs struct {
 	EnforcementMinTime time.Duration
 	LocalNets          func() ([]*net.IPNet, error)
 	OnDial             func(address string)
+	BeforeDialLoop     func()
+	OnRejectLingerExit func()
 }
 
 // SetTestKnobs applies k to l. Zero fields keep the current value. Tests call
-// it before Listen or Start, while the knobs are still read by nobody else.
+// it before the goroutine that reads a knob starts: before Listen or Start for
+// the knobs those paths read, and before the PairDial or inbound connection
+// whose goroutine reads BeforeDialLoop or OnRejectLingerExit.
 func SetTestKnobs(l *Link, k TestKnobs) {
 	if k.SendQueueSize != 0 {
 		l.sendQueueSize = k.SendQueueSize
@@ -45,5 +49,11 @@ func SetTestKnobs(l *Link, k TestKnobs) {
 	}
 	if k.OnDial != nil {
 		l.onDial = k.OnDial
+	}
+	if k.BeforeDialLoop != nil {
+		l.beforeDialLoop = k.BeforeDialLoop
+	}
+	if k.OnRejectLingerExit != nil {
+		l.onRejectLingerExit = k.OnRejectLingerExit
 	}
 }

@@ -66,4 +66,14 @@ type Link struct {
 
 	// --- dial loop, Start, rejection and PairDial ---
 	started bool // guarded by mu
+
+	// beforeDialLoop, when not nil, runs at the start of the goroutine
+	// startDialLoop launches, before it runs the connection install accepted
+	// or enters the dial loop. Tests use it to hold that goroutine in the
+	// window where Drop can cancel its context.
+	beforeDialLoop func()
+	// onRejectLingerExit, when not nil, runs when the goroutine rejectAndLinger
+	// started exits. Tests use it to observe that exit without advancing the
+	// linger timer.
+	onRejectLingerExit func()
 }

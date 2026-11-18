@@ -386,6 +386,53 @@ func TestRoleMismatchRejected(t *testing.T) {
 	}
 }
 
+// TestRejectLingerExitsWhenLinkCloses checks that the goroutine rejectAndLinger
+// starts does not outlive the Link. Close must end the linger without waiting
+// for its timer, and the exiting goroutine must stop that timer instead of
+// leaving it scheduled.
+func TestRejectLingerExitsWhenLinkCloses(t *testing.T) {
+	h := newHandshakeHarness(t)
+	exited := make(chan struct{})
+	var exitOnce sync.Once
+	SetTestKnobs(h.l, TestKnobs{
+		RejectLinger: time.Hour,
+		OnRejectLingerExit: func() {
+			exitOnce.Do(func() { close(exited) })
+		},
+	})
+
+	peer := Fingerprint{0xB1}
+	h.peers.Add(peer, pairing.RoleDialer, "peer")
+	c, _, p := h.newConn(t, peer)
+	res := h.serve(c, nil)
+
+	hsSend(t, p, encodeHello(linkpb.ProtocolVersion, "peer", hsNonce(21), nil))
+	rej := hsRecv(t, p)
+	reason, err := decodeReject(rej)
+	if err != nil {
+		t.Fatalf("decode reject: %v", err)
+	}
+	if reason != linkpb.RejectReason_REJECT_REASON_ROLE_MISMATCH {
+		t.Fatalf("reject reason = %v, want role mismatch", reason)
+	}
+	h.clock.WaitPending(t, 1)
+
+	h.l.Close()
+
+	select {
+	case <-exited:
+	case <-time.After(3 * time.Second):
+		t.Fatal("reject linger goroutine did not exit within 3s of Close")
+	}
+	if n := h.clock.Pending(); n != 0 {
+		t.Fatalf("%d timers still pending after the linger goroutine exited, want none", n)
+	}
+	hsWaitClosed(t, c)
+	if r := waitHSResult(t, res); r.ok {
+		t.Fatal("role mismatch was installed")
+	}
+}
+
 // TestVersionMismatchRejected checks that the accepting side refuses a
 // different protocol version, stays waiting, and records the peer's version.
 func TestVersionMismatchRejected(t *testing.T) {

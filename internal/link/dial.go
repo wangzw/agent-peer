@@ -63,10 +63,10 @@ func (l *Link) localNetworks() []*net.IPNet {
 
 // startDialLoop starts the dial loop of one record. initial, when not nil, is a
 // connection that was already paired and must run before the first backoff,
-// even when Drop removed the record between install and this call;
-// startWithBackoff makes the loop wait one reconnect interval before dialing,
-// which is what a PairDial whose Hello exchange failed uses. A loop that is
-// already running for the same peer is canceled first.
+// even when Drop removed the record or canceled the loop context between
+// install and this call; startWithBackoff makes the loop wait one reconnect
+// interval before dialing, which is what a PairDial whose Hello exchange failed
+// uses. A loop that is already running for the same peer is canceled first.
 func (l *Link) startDialLoop(fp Fingerprint, initial *conn, delivered <-chan struct{}, startWithBackoff bool) {
 	l.mu.Lock()
 	rec := l.records[fp]
@@ -111,7 +111,22 @@ func (l *Link) startDialLoop(fp Fingerprint, initial *conn, delivered <-chan str
 
 	go func() {
 		defer l.wg.Done()
-		l.dialLoop(ctx, rec, initial, delivered, startWithBackoff)
+		if l.beforeDialLoop != nil {
+			l.beforeDialLoop()
+		}
+		// install accepted the connection, so it must run whatever happened to
+		// the record or this loop's context since: Drop waits for its state
+		// handler before posting onDown, and every later install of the peer
+		// waits for that Drop. Running it only inside the loop, after the
+		// context check, left the peer stuck when Drop canceled the context
+		// before this goroutine was scheduled.
+		if initial != nil {
+			l.runConn(initial, delivered)
+			// The connection that just ended was established, so the next dial
+			// waits one reconnect interval.
+			startWithBackoff = true
+		}
+		l.dialLoop(ctx, rec, startWithBackoff)
 	}()
 }
 
@@ -128,7 +143,7 @@ const (
 // rejects the Broker. The reconnect interval starts at the configured minimum
 // after a successful link ends or a failed round, and doubles with every
 // consecutive failure up to the configured maximum.
-func (l *Link) dialLoop(ctx context.Context, rec *record, initial *conn, delivered <-chan struct{}, startWithBackoff bool) {
+func (l *Link) dialLoop(ctx context.Context, rec *record, startWithBackoff bool) {
 	failures := 0
 	for {
 		if ctx.Err() != nil {
@@ -137,10 +152,6 @@ func (l *Link) dialLoop(ctx context.Context, rec *record, initial *conn, deliver
 
 		if startWithBackoff {
 			startWithBackoff = false
-		} else if initial != nil {
-			l.runConn(initial, delivered)
-			initial, delivered = nil, nil
-			failures = 0
 		} else {
 			switch l.dialRound(ctx, rec) {
 			case roundRejected:

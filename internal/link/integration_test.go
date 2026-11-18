@@ -193,6 +193,22 @@ func waitUntil(t testing.TB, what string, changed func() <-chan struct{}, cond f
 	}
 }
 
+// waitWithin polls cond until it holds or d passes and reports whether it
+// held. Unlike waitUntil it lets a test collect several independent failures
+// before it ends.
+func waitWithin(d time.Duration, cond func() bool) bool {
+	deadline := time.Now().Add(d)
+	for {
+		if cond() {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 // waitState watches a LinkState that has no notification surface of its own.
 // It polls the public State method until cond holds, with the same three-second
 // bound as the event-driven waits.
@@ -956,5 +972,94 @@ func TestTopicStyleLockingDoesNotDeadlock(t *testing.T) {
 	case <-done:
 	case <-time.After(integrationWait):
 		t.Fatal("send goroutines did not stop within three seconds")
+	}
+}
+
+// TestPairDialRunsInstalledConnAfterDropCancelsLoop covers the window between
+// startDialLoop launching its goroutine and that goroutine reaching the dial
+// loop. Drop during the window cancels the loop context, but the connection was
+// already installed, so it must still run. Drop posts onDown only after the
+// connection's state handler exits, and every later install of the peer waits
+// for that Drop. A loop that checks its context first leaves the connection
+// unrun and the peer stuck behind an unfinished Drop: onDown never arrives and
+// a later PairDial never returns.
+func TestPairDialRunsInstalledConnAfterDropCancelsLoop(t *testing.T) {
+	dialer := newNode(t, "dialer")
+	acceptor := newNode(t, "acceptor")
+	addr := listenAt(t, acceptor)
+	proxy := linktest.NewProxy(t, addr)
+	connectVia(t, dialer, acceptor, proxy.Addr())
+
+	fpAcceptor := acceptor.Peers.Fingerprint()
+	acceptor.Peers.SetAccept(linktest.FakePairAccept(acceptor.Peers, "dialer"))
+
+	// Hold the goroutine the next startDialLoop launches just before it runs
+	// the installed connection and enters the dial loop.
+	loopHeld := make(chan struct{})
+	releaseLoop := make(chan struct{})
+	var heldOnce sync.Once
+	link.SetTestKnobs(dialer.Link, link.TestKnobs{
+		BeforeDialLoop: func() {
+			heldOnce.Do(func() {
+				close(loopHeld)
+				<-releaseLoop
+			})
+		},
+	})
+
+	if err := dialer.PairDial(context.Background(), proxy.Addr(), linktest.FakePairRun(dialer.Peers, "acceptor")); err != nil {
+		t.Fatalf("PairDial: %v", err)
+	}
+	select {
+	case <-loopHeld:
+	case <-time.After(integrationWait):
+		t.Fatal("the dial loop goroutine did not reach the test hook")
+	}
+
+	// The repair replaced the old connection, whose down event is queued
+	// before the new up event. Wait for the up event so the down count below
+	// measures the Drop, not that replacement.
+	dialer.waitUp(t, fpAcceptor, 2)
+	downBeforeDrop := dialer.downCount(fpAcceptor)
+
+	dialer.Drop(fpAcceptor)
+	close(releaseLoop)
+
+	var failed bool
+	if !waitWithin(integrationWait, func() bool { return dialer.downCount(fpAcceptor) > downBeforeDrop }) {
+		t.Errorf("Drop did not post onDown within %v: down count stayed at %d", integrationWait, downBeforeDrop)
+		failed = true
+	}
+
+	// The Drop finished with the onDown; the same peer must now be installable
+	// again instead of waiting on that Drop forever.
+	pairdialDone := make(chan error, 1)
+	go func() {
+		pairdialDone <- dialer.PairDial(context.Background(), proxy.Addr(), linktest.FakePairRun(dialer.Peers, "acceptor"))
+	}()
+	select {
+	case err := <-pairdialDone:
+		if err != nil {
+			t.Errorf("PairDial after Drop: %v", err)
+			failed = true
+		}
+	case <-time.After(integrationWait):
+		t.Errorf("PairDial after Drop did not return within %v", integrationWait)
+		failed = true
+	}
+
+	closed := make(chan struct{})
+	go func() {
+		dialer.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(integrationWait):
+		t.Errorf("Close did not return within %v", integrationWait)
+		failed = true
+	}
+	if failed {
+		t.FailNow()
 	}
 }
