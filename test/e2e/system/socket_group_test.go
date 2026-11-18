@@ -84,10 +84,7 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 		}
 	}
 
-	if res := syscontainer.RunAs(t, "other",
-		[]string{"AGENT_PEER_SOCKET=" + sgSocketPath}, "status"); res.ExitCode == 0 {
-		t.Errorf("status as other through the system socket succeeded; stdout:\n%s", res.Stdout)
-	}
+	sgAssertNotPermitted(t, "other", sgSocketPath)
 
 	out, err := syscontainer.Command("root", nil, "ss", "-ltn").Output()
 	if err != nil {
@@ -121,10 +118,7 @@ func TestSystemSocketGroupReappliedOnReload(t *testing.T) {
 		return mode == 0o660 && gid == sgUsersGID
 	})
 
-	if res := syscontainer.RunAs(t, "other",
-		[]string{"AGENT_PEER_SOCKET=" + sgSocketPath}, "status"); res.ExitCode == 0 {
-		t.Errorf("status as other through the reloaded system socket succeeded; stdout:\n%s", res.Stdout)
-	}
+	sgAssertNotPermitted(t, "other", sgSocketPath)
 	if res := syscontainer.RunAs(t, "peer",
 		[]string{"AGENT_PEER_SOCKET=" + sgSocketPath}, "status"); res.ExitCode != 0 {
 		t.Errorf("status as peer through the reloaded system socket: exit %d\n%s", res.ExitCode, res.Stderr)
@@ -195,6 +189,22 @@ func TestSystemSocketGroupUnknownRejected(t *testing.T) {
 		return mode == 0o660 && gid == sgUsersGID,
 			"mode " + mode.String() + " gid " + strconv.FormatUint(uint64(gid), 10)
 	})
+}
+
+// sgAssertNotPermitted checks that a status call through the system socket as
+// account fails and that the error names the missing permission. A failure
+// alone would not prove the group check produced it rather than some other
+// problem.
+func sgAssertNotPermitted(t *testing.T, account, path string) {
+	t.Helper()
+	res := syscontainer.RunAs(t, account, []string{"AGENT_PEER_SOCKET=" + path}, "status")
+	if res.ExitCode == 0 {
+		t.Errorf("status as %s through the system socket succeeded; stdout:\n%s", account, res.Stdout)
+		return
+	}
+	if !strings.Contains(res.Stderr, "may not connect") {
+		t.Errorf("status as %s through the system socket does not explain the refusal:\n%s", account, res.Stderr)
+	}
 }
 
 // sgSocketModeGID returns the permission bits and group of path.
