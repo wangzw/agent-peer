@@ -1,0 +1,1304 @@
+package config
+
+import (
+	"bytes"
+	"encoding/json"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+)
+
+const auditTestClockText = "2026-11-18T12:00:00.123456789Z"
+
+// auditTestSecretKey is the only key the key table marks as secret.
+const auditTestSecretKey = "pairing.static_key"
+
+func auditTestClock(t *testing.T) time.Time {
+	t.Helper()
+	when, err := time.Parse(time.RFC3339Nano, auditTestClockText)
+	if err != nil {
+		t.Fatalf("parse test clock: %v", err)
+	}
+	return when
+}
+
+// newAuditTestLog opens an audit log under t.TempDir and returns it with its
+// path and the log buffer. The cleanup closes the log.
+func newAuditTestLog(t *testing.T, dirMode os.FileMode) (*auditLog, string, *bytes.Buffer) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "data", "audit.log")
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	clock := auditTestClock(t)
+	log, err := openAuditWithDirMode(path, dirMode, func() time.Time { return clock }, logger)
+	if err != nil {
+		t.Fatalf("open audit log: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := log.close(); err != nil {
+			t.Errorf("close audit log: %v", err)
+		}
+	})
+	return log, path, &logs
+}
+
+func testFingerprint(seed byte) [32]byte {
+	var fingerprint [32]byte
+	for i := range fingerprint {
+		fingerprint[i] = seed + byte(i)
+	}
+	return fingerprint
+}
+
+func TestREQBrokerConfig006_SetWritesAudit(t *testing.T) {
+	log, path, _ := newAuditTestLog(t, 0o700)
+	when := auditTestClock(t)
+	oldValue := Value{Kind: KindString, String: "old"}
+	newValue := Value{Kind: KindString, String: "new"}
+
+	err := log.append(Event{
+		Time:    when,
+		Event:   EventConfigSet,
+		Actor:   "buildbox-17443/ana",
+		Account: "ana",
+		Key:     "broker.alias",
+		Old:     &oldValue,
+		New:     &newValue,
+	})
+	if err != nil {
+		t.Fatalf("append config_set: %v", err)
+	}
+
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	got := events[0]
+	if !got.Time.Equal(when) {
+		t.Errorf("time = %s, want %s", got.Time, when)
+	}
+	if got.Event != EventConfigSet {
+		t.Errorf("event = %q, want %q", got.Event, EventConfigSet)
+	}
+	if got.Actor != "buildbox-17443/ana" || got.Account != "ana" {
+		t.Errorf("actor/account = %q/%q", got.Actor, got.Account)
+	}
+	if got.Key != "broker.alias" {
+		t.Errorf("key = %q", got.Key)
+	}
+	if got.Old == nil || !reflect.DeepEqual(*got.Old, oldValue) {
+		t.Errorf("old = %#v, want %#v", got.Old, oldValue)
+	}
+	if got.New == nil || !reflect.DeepEqual(*got.New, newValue) {
+		t.Errorf("new = %#v, want %#v", got.New, newValue)
+	}
+	if got.Count != 0 {
+		t.Errorf("count = %d, want 0 for an unmerged record", got.Count)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if !strings.Contains(string(data), `"event":"config_set"`) {
+		t.Errorf("raw record does not contain the event name: %s", data)
+	}
+	if !strings.Contains(string(data), `"kind":"string"`) {
+		t.Errorf("raw record does not carry the value kind: %s", data)
+	}
+}
+
+func TestREQBrokerConfig006_SecretAuditOnlyKey(t *testing.T) {
+	log, path, _ := newAuditTestLog(t, 0o700)
+	const sentinel = "SENTINEL-secret-value-0123456789"
+	oldValue := Value{Kind: KindString, String: sentinel}
+	newValue := Value{Kind: KindString, String: sentinel}
+	for _, kind := range []EventKind{EventConfigSet, EventConfigFileChanged} {
+		if err := log.append(Event{
+			Time:  auditTestClock(t).Add(time.Duration(len(kind)) * time.Second),
+			Event: kind,
+			Key:   auditTestSecretKey,
+			Old:   &oldValue,
+			New:   &newValue,
+		}); err != nil {
+			t.Fatalf("append %s: %v", kind, err)
+		}
+	}
+
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("got %d events, want 2", len(events))
+	}
+	for _, event := range events {
+		if event.Key != auditTestSecretKey {
+			t.Errorf("key = %q, want %q", event.Key, auditTestSecretKey)
+		}
+		if event.Old != nil || event.New != nil {
+			t.Errorf("secret record carried old/new: %#v %#v", event.Old, event.New)
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if bytes.Contains(data, []byte(sentinel)) {
+		t.Errorf("secret value was written to the audit log")
+	}
+}
+
+func TestREQBrokerConfig007_AllEventKinds(t *testing.T) {
+	log, _, _ := newAuditTestLog(t, 0o700)
+	kinds := []EventKind{
+		EventConfigSet,
+		EventConfigFileChanged,
+		EventPairingKeyCreated,
+		EventPairingSucceeded,
+		EventPairingFailed,
+		EventLinkUp,
+		EventLinkDown,
+		EventUnpaired,
+		EventConnectionRejected,
+		EventRejectedByPeer,
+		EventLocalAliasAssigned,
+	}
+	base := auditTestClock(t)
+	for index, kind := range kinds {
+		if err := log.append(Event{
+			Time:  base.Add(time.Duration(index) * time.Second),
+			Event: kind,
+		}); err != nil {
+			t.Fatalf("append %q: %v", kind, err)
+		}
+	}
+
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != len(kinds) {
+		t.Fatalf("got %d events, want %d", len(events), len(kinds))
+	}
+	for index, kind := range kinds {
+		if events[index].Event != kind {
+			t.Errorf("event[%d] = %q, want %q", index, events[index].Event, kind)
+		}
+	}
+}
+
+func TestREQBrokerConfig007_ActorAccountPeer(t *testing.T) {
+	log, _, _ := newAuditTestLog(t, 0o700)
+	fingerprint := testFingerprint(0x10)
+	when := auditTestClock(t)
+	if err := log.append(Event{
+		Time:    when,
+		Event:   EventPairingSucceeded,
+		Actor:   "buildbox-17443/ana",
+		Account: "ana",
+		Peer:    &PeerRef{Fingerprint: fingerprint, Alias: "peer-17443"},
+	}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	if err := log.append(Event{
+		Time:   when.Add(time.Second),
+		Event:  EventConnectionRejected,
+		Peer:   &PeerRef{Fingerprint: testFingerprint(0x40)},
+		Detail: "unknown fingerprint",
+	}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("got %d events, want 2", len(events))
+	}
+	if events[0].Actor != "buildbox-17443/ana" || events[0].Account != "ana" {
+		t.Errorf("actor/account = %q/%q", events[0].Actor, events[0].Account)
+	}
+	if events[0].Peer == nil {
+		t.Fatal("peer is nil")
+	}
+	if events[0].Peer.Fingerprint != fingerprint {
+		t.Errorf("fingerprint = %x, want %x", events[0].Peer.Fingerprint, fingerprint)
+	}
+	if events[0].Peer.Alias != "peer-17443" {
+		t.Errorf("alias = %q", events[0].Peer.Alias)
+	}
+	if events[1].Peer == nil || events[1].Peer.Alias != "" {
+		t.Errorf("rejected connection peer = %#v, want an empty alias", events[1].Peer)
+	}
+	if events[1].Detail != "unknown fingerprint" {
+		t.Errorf("detail = %q", events[1].Detail)
+	}
+}
+
+func TestREQBrokerConfig008_SecretNeverPersisted(t *testing.T) {
+	log, path, logs := newAuditTestLog(t, 0o700)
+	const sentinel = "PAIRING-KEY-SENTINEL-0123456789abcdef"
+	when := auditTestClock(t)
+
+	// A direct caller must not be able to smuggle the value through old/new.
+	if err := log.append(Event{
+		Time:  when,
+		Event: EventConfigSet,
+		Key:   auditTestSecretKey,
+		Old:   &Value{Kind: KindString, String: sentinel},
+		New:   &Value{Kind: KindString, String: sentinel},
+	}); err != nil {
+		t.Fatalf("append config_set: %v", err)
+	}
+	// A secret-kind Value must never be encoded at all.
+	if err := log.append(Event{
+		Time:  when.Add(time.Second),
+		Event: EventConfigFileChanged,
+		Key:   auditTestSecretKey,
+		Old:   &Value{Kind: KindSecret, SecretIsSet: true},
+		New:   &Value{Kind: KindSecret, SecretIsSet: true},
+	}); err != nil {
+		t.Fatalf("append config_file_changed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if bytes.Contains(data, []byte(sentinel)) {
+		t.Fatalf("sentinel secret appears in the audit file")
+	}
+	if bytes.Contains(logs.Bytes(), []byte(sentinel)) {
+		t.Fatalf("sentinel secret appears in the run log")
+	}
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	for _, event := range events {
+		if event.Old != nil || event.New != nil {
+			t.Errorf("secret event carries old/new: %#v %#v", event.Old, event.New)
+		}
+	}
+}
+
+func TestREQBrokerConfig008_NoMessageBodyField(t *testing.T) {
+	log, path, _ := newAuditTestLog(t, 0o700)
+	if err := log.append(Event{
+		Time:   auditTestClock(t),
+		Event:  EventLinkUp,
+		Detail: "connection reset",
+	}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	if err := log.append(Event{
+		Time:  auditTestClock(t).Add(time.Second),
+		Event: EventLinkDown,
+	}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	allowed := map[string]bool{
+		"time": true, "event": true, "actor": true, "account": true,
+		"peer": true, "key": true, "old": true, "new": true,
+		"count": true, "detail": true,
+	}
+	for _, line := range bytes.Split(bytes.TrimSpace(data), []byte{'\n'}) {
+		var record map[string]json.RawMessage
+		if err := json.Unmarshal(line, &record); err != nil {
+			t.Fatalf("decode record: %v", err)
+		}
+		for field := range record {
+			if !allowed[field] {
+				t.Errorf("audit record has unexpected field %q", field)
+			}
+		}
+		for _, forbidden := range []string{"body", "message", "payload", "content"} {
+			if _, ok := record[forbidden]; ok {
+				t.Errorf("audit record has forbidden field %q", forbidden)
+			}
+		}
+	}
+}
+
+func TestREQBrokerConfig009_ReadAuditSinceAndOrder(t *testing.T) {
+	log, _, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	// Append out of chronological order; read must sort by time.
+	for _, offset := range []time.Duration{2 * time.Minute, 0, time.Minute} {
+		if err := log.append(Event{
+			Time:   base.Add(offset),
+			Event:  EventLinkUp,
+			Detail: offset.String(),
+		}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("got %d events, want 3", len(events))
+	}
+	for index := 1; index < len(events); index++ {
+		if events[index].Time.Before(events[index-1].Time) {
+			t.Fatalf("events are not in ascending time order: %s before %s",
+				events[index].Time, events[index-1].Time)
+		}
+	}
+
+	since := base.Add(time.Minute)
+	filtered, err := log.read(since)
+	if err != nil {
+		t.Fatalf("read audit log with since: %v", err)
+	}
+	if len(filtered) != 2 {
+		t.Fatalf("got %d events at or after since, want 2", len(filtered))
+	}
+	if filtered[0].Time.Before(since) {
+		t.Errorf("first filtered time %s is before since %s", filtered[0].Time, since)
+	}
+
+	// Equal timestamps keep their file order.
+	if err := log.append(Event{Time: base, Event: EventLinkDown, Detail: "first"}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	if err := log.append(Event{Time: base, Event: EventLinkDown, Detail: "second"}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	events, err = log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	var sameTime []string
+	for _, event := range events {
+		if event.Time.Equal(base) && event.Event == EventLinkDown {
+			sameTime = append(sameTime, event.Detail)
+		}
+	}
+	if !reflect.DeepEqual(sameTime, []string{"first", "second"}) {
+		t.Errorf("equal-time order = %v, want [first second]", sameTime)
+	}
+}
+
+func TestConfigAuditMergeCount(t *testing.T) {
+	log, _, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	fingerprint := testFingerprint(0x20)
+	peer := &PeerRef{Fingerprint: fingerprint}
+	for _, offset := range []time.Duration{0, 5 * time.Minute, 9*time.Minute + 59*time.Second} {
+		if err := log.append(Event{Time: base.Add(offset), Event: EventConnectionRejected, Peer: peer}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	// Outside the window measured from the first record: a new record.
+	if err := log.append(Event{Time: base.Add(21 * time.Minute), Event: EventConnectionRejected, Peer: peer}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	// A different fingerprint never merges with the others.
+	if err := log.append(Event{
+		Time:  base.Add(time.Minute),
+		Event: EventConnectionRejected,
+		Peer:  &PeerRef{Fingerprint: testFingerprint(0x60)},
+	}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("got %d events, want 3 (one merged group, one later record, one other peer)", len(events))
+	}
+	if events[0].Count != 3 {
+		t.Errorf("first group count = %d, want 3", events[0].Count)
+	}
+	if events[1].Count != 0 {
+		t.Errorf("later record count = %d, want 0", events[1].Count)
+	}
+	if events[2].Count != 0 {
+		t.Errorf("other peer count = %d, want 0", events[2].Count)
+	}
+}
+
+func TestConfigAuditMergePairingFailed(t *testing.T) {
+	log, _, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	for _, offset := range []time.Duration{0, time.Minute, 2 * time.Minute} {
+		if err := log.append(Event{
+			Time:     base.Add(offset),
+			Event:    EventPairingFailed,
+			MergeKey: "fp:abc",
+			Detail:   "too many attempts",
+		}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	// An empty MergeKey means this failure is recorded individually.
+	if err := log.append(Event{
+		Time:   base.Add(3 * time.Minute),
+		Event:  EventPairingFailed,
+		Detail: "bad key",
+	}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	// A different source does not merge with the first group.
+	if err := log.append(Event{
+		Time:     base.Add(4 * time.Minute),
+		Event:    EventPairingFailed,
+		MergeKey: "fp:def",
+	}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("got %d events, want 3", len(events))
+	}
+	if events[0].Count != 3 {
+		t.Errorf("merged count = %d, want 3", events[0].Count)
+	}
+	if events[1].Count != 0 || events[2].Count != 0 {
+		t.Errorf("unmerged records have counts %d and %d", events[1].Count, events[2].Count)
+	}
+}
+
+func TestConfigAuditMergeKeyNotPersisted(t *testing.T) {
+	log, path, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	// The second event is outside the first window, so the first window is
+	// flushed and its line can be inspected on disk.
+	for _, offset := range []time.Duration{0, auditMergeWindow + time.Minute} {
+		if err := log.append(Event{
+			Time:     base.Add(offset),
+			Event:    EventPairingFailed,
+			MergeKey: "source:192.0.2.10",
+		}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if bytes.Contains(data, []byte("merge")) || bytes.Contains(data, []byte("192.0.2.10")) {
+		t.Fatalf("merge key was persisted to the audit file: %s", data)
+	}
+
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("got %d events, want 2", len(events))
+	}
+	for _, event := range events {
+		if event.MergeKey != "" {
+			t.Errorf("ReadAudit returned the internal merge key %q", event.MergeKey)
+		}
+	}
+}
+
+func TestConfigAuditConnectionRejectedBySource(t *testing.T) {
+	log, _, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	for index := 0; index < 3; index++ {
+		if err := log.append(Event{
+			Time:     base.Add(time.Duration(index) * time.Minute),
+			Event:    EventConnectionRejected,
+			MergeKey: "source:192.0.2.10",
+		}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 1 || events[0].Count != 3 {
+		t.Fatalf("got %d events with count %d, want 1 event with count 3",
+			len(events), events[0].Count)
+	}
+}
+
+func TestConfigAuditMergeClockRollback(t *testing.T) {
+	log, _, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	peer := &PeerRef{Fingerprint: testFingerprint(0x30)}
+	if err := log.append(Event{Time: base, Event: EventConnectionRejected, Peer: peer}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	// Appended later in the file but with an earlier timestamp.
+	if err := log.append(Event{Time: base.Add(-time.Minute), Event: EventConnectionRejected, Peer: peer}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("got %d events, want 2 (clock rollback starts a new record)", len(events))
+	}
+}
+
+// auditFileRecords decodes the audit file directly, so a test can tell what
+// has actually been persisted from what ReadAudit returns from memory.
+func auditFileRecords(t *testing.T, path string) []Event {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read audit file: %v", err)
+	}
+	var events []Event
+	for _, line := range bytes.Split(bytes.TrimSpace(data), []byte{'\n'}) {
+		if len(line) == 0 {
+			continue
+		}
+		event, err := decodeEvent(line)
+		if err != nil {
+			t.Fatalf("decode audit record %q: %v", line, err)
+		}
+		events = append(events, event)
+	}
+	return events
+}
+
+// TestConfigAuditMergeHoldsEventsInMemory reproduces the behaviour the ruling
+// removes: repeated rejected connections used to append one file line each and
+// were merged only by ReadAudit. The window's events must stay in memory until
+// the window closes, and ReadAudit must still return the pending record.
+func TestConfigAuditMergeHoldsEventsInMemory(t *testing.T) {
+	log, path, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	peer := &PeerRef{Fingerprint: testFingerprint(0x70)}
+	for _, offset := range []time.Duration{0, time.Minute, 2 * time.Minute} {
+		if err := log.append(Event{Time: base.Add(offset), Event: EventConnectionRejected, Peer: peer}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+
+	if records := auditFileRecords(t, path); len(records) != 0 {
+		t.Fatalf("file has %d records before the window closed, want 0", len(records))
+	}
+
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1 pending merged record", len(events))
+	}
+	if events[0].Count != 3 {
+		t.Errorf("pending record count = %d, want 3", events[0].Count)
+	}
+	if !events[0].Time.Equal(base) {
+		t.Errorf("pending record time = %s, want the first event's time %s", events[0].Time, base)
+	}
+}
+
+// TestConfigAuditMergeWindowStartsAtFirstEvent checks that the window is
+// anchored at the first event, not chained from each adjacent event: 0, 6 and
+// 12 minutes give one two-event window and a new window for the 12-minute
+// event.
+func TestConfigAuditMergeWindowStartsAtFirstEvent(t *testing.T) {
+	log, path, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	peer := &PeerRef{Fingerprint: testFingerprint(0x71)}
+	for _, offset := range []time.Duration{0, 6 * time.Minute, 12 * time.Minute} {
+		if err := log.append(Event{Time: base.Add(offset), Event: EventConnectionRejected, Peer: peer}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+
+	records := auditFileRecords(t, path)
+	if len(records) != 1 {
+		t.Fatalf("file has %d records, want the expired window's one record", len(records))
+	}
+	if records[0].Count != 2 {
+		t.Errorf("expired window count = %d, want 2", records[0].Count)
+	}
+	if !records[0].Time.Equal(base) {
+		t.Errorf("expired window time = %s, want %s", records[0].Time, base)
+	}
+
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("got %d events, want the expired window and the new pending window", len(events))
+	}
+	if events[0].Count != 2 || !events[0].Time.Equal(base) {
+		t.Errorf("first event = time %s count %d, want time %s count 2", events[0].Time, events[0].Count, base)
+	}
+	if events[1].Count != 0 || !events[1].Time.Equal(base.Add(12*time.Minute)) {
+		t.Errorf("second event = time %s count %d, want time %s count 0",
+			events[1].Time, events[1].Count, base.Add(12*time.Minute))
+	}
+}
+
+// TestConfigAuditMergeWindowIncludesBoundary checks the inclusive edge: events
+// exactly ten minutes apart belong to the same window.
+func TestConfigAuditMergeWindowIncludesBoundary(t *testing.T) {
+	log, path, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	peer := &PeerRef{Fingerprint: testFingerprint(0x72)}
+	for _, offset := range []time.Duration{0, auditMergeWindow} {
+		if err := log.append(Event{Time: base.Add(offset), Event: EventConnectionRejected, Peer: peer}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	if records := auditFileRecords(t, path); len(records) != 0 {
+		t.Fatalf("file has %d records, want both events held in one open window", len(records))
+	}
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 1 || events[0].Count != 2 {
+		t.Fatalf("got %d events with counts %v, want one record with count 2", len(events), auditCounts(events))
+	}
+}
+
+// TestConfigAuditCloseFlushesPendingCount reproduces the missing flush on
+// Close: the accumulated count must reach the file before it is closed.
+func TestConfigAuditCloseFlushesPendingCount(t *testing.T) {
+	log, path, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	peer := &PeerRef{Fingerprint: testFingerprint(0x73)}
+	for _, offset := range []time.Duration{0, time.Minute} {
+		if err := log.append(Event{Time: base.Add(offset), Event: EventConnectionRejected, Peer: peer}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	if records := auditFileRecords(t, path); len(records) != 0 {
+		t.Fatalf("file has %d records before close, want 0", len(records))
+	}
+	if err := log.close(); err != nil {
+		t.Fatalf("close audit log: %v", err)
+	}
+
+	records := auditFileRecords(t, path)
+	if len(records) != 1 {
+		t.Fatalf("file has %d records after close, want 1", len(records))
+	}
+	if records[0].Count != 2 {
+		t.Errorf("flushed record count = %d, want 2", records[0].Count)
+	}
+	if !records[0].Time.Equal(base) {
+		t.Errorf("flushed record time = %s, want %s", records[0].Time, base)
+	}
+}
+
+// auditTestClockControl is a mutable clock for the audit log's now seam.
+type auditTestClockControl struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *auditTestClockControl) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *auditTestClockControl) Advance(d time.Duration) {
+	c.mu.Lock()
+	c.now = c.now.Add(d)
+	c.mu.Unlock()
+}
+
+// auditTestTimers records the callbacks scheduled through the afterFunc seam
+// and fires them on command, so a window expiry needs no real wait.
+type auditTestTimers struct {
+	mu        sync.Mutex
+	durations []time.Duration
+	callbacks []func()
+}
+
+func (t *auditTestTimers) afterFunc(d time.Duration, f func()) auditTimer {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.durations = append(t.durations, d)
+	t.callbacks = append(t.callbacks, f)
+	return auditTestTimer{}
+}
+
+type auditTestTimer struct{}
+
+func (auditTestTimer) Stop() {}
+
+func (t *auditTestTimers) fireAll() {
+	t.mu.Lock()
+	callbacks := append([]func(){}, t.callbacks...)
+	t.callbacks = nil
+	t.mu.Unlock()
+	for _, callback := range callbacks {
+		callback()
+	}
+}
+
+// TestConfigAuditWindowExpiryFlushesThroughTimer checks the timer seam: when
+// the injected clock passes the deadline and the scheduled callback fires, the
+// accumulated count is appended and nothing waits for real time.
+func TestConfigAuditWindowExpiryFlushesThroughTimer(t *testing.T) {
+	base := auditTestClock(t)
+	clock := &auditTestClockControl{now: base}
+	timers := &auditTestTimers{}
+	path := filepath.Join(t.TempDir(), "data", "audit.log")
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	log, err := openAudit(path, clock.Now, logger)
+	if err != nil {
+		t.Fatalf("open audit log: %v", err)
+	}
+	log.afterFunc = timers.afterFunc
+	t.Cleanup(func() { _ = log.close() })
+
+	peer := &PeerRef{Fingerprint: testFingerprint(0x75)}
+	for _, offset := range []time.Duration{0, time.Minute} {
+		if err := log.append(Event{Time: base.Add(offset), Event: EventConnectionRejected, Peer: peer}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+	if records := auditFileRecords(t, path); len(records) != 0 {
+		t.Fatalf("file has %d records before the window expired, want 0", len(records))
+	}
+
+	timers.mu.Lock()
+	armed := append([]time.Duration{}, timers.durations...)
+	timers.mu.Unlock()
+	if len(armed) != 1 {
+		t.Fatalf("window scheduled %d timers, want 1", len(armed))
+	}
+	if armed[0] != auditMergeWindow {
+		t.Errorf("timer delay = %s, want %s", armed[0], auditMergeWindow)
+	}
+
+	clock.Advance(auditMergeWindow)
+	timers.fireAll()
+
+	records := auditFileRecords(t, path)
+	if len(records) != 1 {
+		t.Fatalf("file has %d records after the window expired, want 1", len(records))
+	}
+	if records[0].Count != 2 {
+		t.Errorf("flushed record count = %d, want 2", records[0].Count)
+	}
+	if !records[0].Time.Equal(base) {
+		t.Errorf("flushed record time = %s, want %s", records[0].Time, base)
+	}
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 1 || events[0].Count != 2 {
+		t.Fatalf("read returned %d events with counts %v, want one record with count 2",
+			len(events), auditCounts(events))
+	}
+}
+
+// TestConfigAuditReadMergesFileAndPendingInTimeOrder checks that a pending
+// record whose window opened before a written record still comes first.
+func TestConfigAuditReadMergesFileAndPendingInTimeOrder(t *testing.T) {
+	log, _, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	peer := &PeerRef{Fingerprint: testFingerprint(0x74)}
+	if err := log.append(Event{Time: base.Add(5 * time.Minute), Event: EventLinkUp}); err != nil {
+		t.Fatalf("append link_up: %v", err)
+	}
+	for _, offset := range []time.Duration{0, time.Minute} {
+		if err := log.append(Event{Time: base.Add(offset), Event: EventConnectionRejected, Peer: peer}); err != nil {
+			t.Fatalf("append connection_rejected: %v", err)
+		}
+	}
+
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("got %d events, want 2", len(events))
+	}
+	if !events[0].Time.Equal(base) || events[0].Count != 2 {
+		t.Errorf("first event = time %s count %d, want time %s count 2",
+			events[0].Time, events[0].Count, base)
+	}
+	if !events[1].Time.Equal(base.Add(5*time.Minute)) || events[1].Event != EventLinkUp {
+		t.Errorf("second event = time %s kind %q, want the written link_up at %s",
+			events[1].Time, events[1].Event, base.Add(5*time.Minute))
+	}
+}
+
+func auditCounts(events []Event) []uint64 {
+	counts := make([]uint64, len(events))
+	for index, event := range events {
+		counts[index] = event.Count
+	}
+	return counts
+}
+
+// TestConfigAuditAppendOnlyFile checks that flushing a merged window only
+// appends: every byte already in the file is preserved.
+func TestConfigAuditAppendOnlyFile(t *testing.T) {
+	log, path, _ := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	if err := log.append(Event{Time: base, Event: EventLinkUp}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if len(first) == 0 {
+		t.Fatal("first append produced an empty file")
+	}
+
+	peer := &PeerRef{Fingerprint: testFingerprint(0x50)}
+	// Two events open a window; the event twenty minutes later closes it and
+	// forces the merged record to be appended.
+	for _, offset := range []time.Duration{time.Minute, 2 * time.Minute, 20 * time.Minute} {
+		if err := log.append(Event{
+			Time:  base.Add(offset),
+			Event: EventConnectionRejected,
+			Peer:  peer,
+		}); err != nil {
+			t.Fatalf("append: %v", err)
+		}
+		if _, err := log.read(time.Time{}); err != nil {
+			t.Fatalf("read: %v", err)
+		}
+	}
+	if err := log.close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if !bytes.HasPrefix(after, first) {
+		t.Fatalf("flushing or reading rewrote the existing audit bytes")
+	}
+	if len(after) <= len(first) {
+		t.Fatalf("audit file did not grow: %d then %d bytes", len(first), len(after))
+	}
+	records := auditFileRecords(t, path)
+	if len(records) != 3 {
+		t.Fatalf("file has %d records, want link_up, one merged window and one later record", len(records))
+	}
+	if records[1].Count != 2 || !records[1].Time.Equal(base.Add(time.Minute)) {
+		t.Errorf("merged record = time %s count %d, want time %s count 2",
+			records[1].Time, records[1].Count, base.Add(time.Minute))
+	}
+}
+
+func TestConfigAuditFileMode(t *testing.T) {
+	log, path, _ := newAuditTestLog(t, 0o700)
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat audit log: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("audit file mode = %04o, want 0600", got)
+	}
+	dirInfo, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("stat audit directory: %v", err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Errorf("audit directory mode = %04o, want 0700", got)
+	}
+	if err := log.append(Event{Time: auditTestClock(t), Event: EventLinkUp}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+}
+
+func TestConfigAuditPreservesExistingFileMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.log")
+	if err := os.WriteFile(path, nil, 0o640); err != nil {
+		t.Fatalf("seed audit log: %v", err)
+	}
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatalf("chmod audit log: %v", err)
+	}
+	log, err := openAudit(path, time.Now, slog.Default())
+	if err != nil {
+		t.Fatalf("open audit log: %v", err)
+	}
+	defer func() { _ = log.close() }()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat audit log: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o640 {
+		t.Errorf("existing audit file mode = %04o, want 0640", got)
+	}
+}
+
+func TestConfigAuditMalformedLineSkipped(t *testing.T) {
+	log, path, logs := newAuditTestLog(t, 0o700)
+	base := auditTestClock(t)
+	if err := log.append(Event{Time: base, Event: EventLinkUp}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		t.Fatalf("open for raw append: %v", err)
+	}
+	if _, err := file.WriteString("{\"time\":\"not-a-time\",\"event\":\"link_up\"}\n"); err != nil {
+		t.Fatalf("write bad line: %v", err)
+	}
+	if _, err := file.WriteString("truncated-json\n"); err != nil {
+		t.Fatalf("write bad line: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close raw append: %v", err)
+	}
+
+	if err := log.append(Event{Time: base.Add(time.Second), Event: EventLinkDown}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("got %d events, want 2", len(events))
+	}
+	if !strings.Contains(logs.String(), "skipping unreadable audit record") {
+		t.Errorf("bad lines were skipped without an error log entry: %s", logs.String())
+	}
+}
+
+func TestConfigAuditUnknownEventKindDropped(t *testing.T) {
+	log, path, logs := newAuditTestLog(t, 0o700)
+	if err := log.append(Event{Time: auditTestClock(t), Event: EventKind("bogus")}); err == nil {
+		t.Fatal("append of an unknown event kind returned no error")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if len(bytes.TrimSpace(data)) != 0 {
+		t.Errorf("unknown event kind was written: %s", data)
+	}
+	if !strings.Contains(logs.String(), "dropped audit event with unknown kind") {
+		t.Errorf("drop was not logged: %s", logs.String())
+	}
+}
+
+func TestConfigAuditZeroTimeUsesClock(t *testing.T) {
+	log, _, _ := newAuditTestLog(t, 0o700)
+	if err := log.append(Event{Event: EventLinkUp}); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if !events[0].Time.Equal(auditTestClock(t)) {
+		t.Errorf("time = %s, want the injected clock %s", events[0].Time, auditTestClock(t))
+	}
+}
+
+func TestConfigAuditValueKindsRoundTrip(t *testing.T) {
+	log, _, _ := newAuditTestLog(t, 0o700)
+	cases := []Value{
+		{Kind: KindString, String: "hello"},
+		{Kind: KindBool, Bool: true},
+		{Kind: KindBool, Bool: false},
+		{Kind: KindInt, Int: -42},
+		{Kind: KindDuration, Duration: 90 * time.Second},
+		{Kind: KindStringList, Strings: []string{"a", "b"}},
+	}
+	base := auditTestClock(t)
+	for index, value := range cases {
+		value := value
+		if err := log.append(Event{
+			Time:  base.Add(time.Duration(index) * time.Second),
+			Event: EventConfigSet,
+			Key:   "broker.alias",
+			New:   &value,
+		}); err != nil {
+			t.Fatalf("append %#v: %v", value, err)
+		}
+	}
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != len(cases) {
+		t.Fatalf("got %d events, want %d", len(events), len(cases))
+	}
+	for index, want := range cases {
+		if events[index].New == nil {
+			t.Fatalf("event %d has no new value", index)
+		}
+		if !reflect.DeepEqual(*events[index].New, want) {
+			t.Errorf("event %d value = %#v, want %#v", index, *events[index].New, want)
+		}
+	}
+}
+
+// TestConfigAuditValueKindSetExcludesUnset pins the documented wire kind set.
+// No valid configuration value has KindUnset, so the audit encoding must not
+// produce or accept an "unset" kind.
+func TestConfigAuditValueKindSetExcludesUnset(t *testing.T) {
+	if _, err := encodeValue(Value{Kind: KindUnset}); err == nil {
+		t.Error("encodeValue accepted KindUnset")
+	}
+	if _, err := decodeValue(wireValue{Kind: "unset"}); err == nil {
+		t.Error("decodeValue accepted the unset kind")
+	}
+}
+
+func TestConfigAuditCloseIsIdempotent(t *testing.T) {
+	log, _, _ := newAuditTestLog(t, 0o700)
+	if err := log.close(); err != nil {
+		t.Fatalf("first close: %v", err)
+	}
+	if err := log.close(); err != nil {
+		t.Fatalf("second close: %v", err)
+	}
+	if err := log.append(Event{Time: auditTestClock(t), Event: EventLinkUp}); err == nil {
+		t.Fatal("append after close returned no error")
+	}
+	if _, err := log.read(time.Time{}); err == nil {
+		t.Fatal("read after close returned no error")
+	}
+}
+
+// TestConfigAuditCloseConcurrentWithAudit checks that Audit and ReadAudit may
+// run while Close clears the audit pointer. Close writes the pointer under the
+// core mutex but the two entry points used to read it without any lock, which
+// is a data race under -race.
+func TestConfigAuditCloseConcurrentWithAudit(t *testing.T) {
+	c, _ := newWatchCore(t, "broker:\n  alias: old\n", false, nil)
+	var logs bytes.Buffer
+	c.logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	when := auditTestClock(t)
+
+	const workers = 8
+	const perWorker = 200
+	var wait sync.WaitGroup
+	start := make(chan struct{})
+	for worker := 0; worker < workers; worker++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			for index := 0; index < perWorker; index++ {
+				c.auditAppend(Event{Time: when, Event: EventLinkUp})
+				_, _ = c.readAudit(time.Time{})
+			}
+		}()
+	}
+	wait.Add(1)
+	go func() {
+		defer wait.Done()
+		<-start
+		c.close()
+	}()
+	close(start)
+	wait.Wait()
+
+	if _, err := c.readAudit(time.Time{}); err != ErrNotLoaded {
+		t.Fatalf("ReadAudit after Close = %v, want ErrNotLoaded", err)
+	}
+}
+
+func TestConfigAuditConcurrentAppendAndRead(t *testing.T) {
+	log, path, _ := newAuditTestLog(t, 0o700)
+	const writers = 6
+	const perWriter = 40
+	base := auditTestClock(t)
+
+	var wait sync.WaitGroup
+	errs := make(chan error, writers)
+	for writer := 0; writer < writers; writer++ {
+		writer := writer
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			for index := 0; index < perWriter; index++ {
+				when := base.Add(time.Duration(writer*perWriter+index) * time.Second)
+				if err := log.append(Event{Time: when, Event: EventLinkUp}); err != nil {
+					errs <- err
+					return
+				}
+			}
+		}()
+	}
+	stop := make(chan struct{})
+	var readers sync.WaitGroup
+	for reader := 0; reader < 2; reader++ {
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if _, err := log.read(time.Time{}); err != nil {
+					errs <- err
+					return
+				}
+			}
+		}()
+	}
+	wait.Wait()
+	close(stop)
+	readers.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent operation: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+	if got := bytes.Count(data, []byte{'\n'}); got != writers*perWriter {
+		t.Fatalf("file has %d lines, want %d", got, writers*perWriter)
+	}
+	events, err := log.read(time.Time{})
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	if len(events) != writers*perWriter {
+		t.Fatalf("read %d events, want %d", len(events), writers*perWriter)
+	}
+}
+
+// TestConfigAuditRepairsMissingTrailingNewline checks the crash-recovery case:
+// a record left half written without a final newline must not swallow the next
+// record. Opening the log terminates the partial line with one newline; every
+// later record then occupies its own line. Without the repair the appended
+// record is spliced onto the truncated tail and both lines become unreadable.
+func TestConfigAuditRepairsMissingTrailingNewline(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	when := auditTestClock(t)
+	first, err := encodeEvent(Event{Time: when, Event: EventLinkUp})
+	if err != nil {
+		t.Fatalf("encode first record: %v", err)
+	}
+	if len(first) == 0 || first[len(first)-1] != '\n' {
+		t.Fatalf("encoded record does not end with a newline: %q", first)
+	}
+	partial := []byte(`{"time":"2026-11-18T12:00:01.000000000Z","event":"link_`)
+	if err := os.WriteFile(path, append(append([]byte(nil), first...), partial...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	log, err := openAudit(path, func() time.Time { return when }, testLogger())
+	if err != nil {
+		t.Fatalf("open audit log: %v", err)
+	}
+	second := Event{Time: when.Add(time.Second), Event: EventLinkDown}
+	if err := log.append(second); err != nil {
+		t.Fatalf("append after the partial line: %v", err)
+	}
+	if err := log.close(); err != nil {
+		t.Fatalf("close audit log: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := bytes.Split(data, []byte{'\n'})
+	if len(lines) != 4 || len(lines[3]) != 0 {
+		t.Fatalf("file has %d line segments %q, want first record, partial tail, second record and a final newline", len(lines), data)
+	}
+	if !bytes.Equal(lines[1], partial) {
+		t.Errorf("partial tail changed from %q to %q; the log must stay append-only", partial, lines[1])
+	}
+	event, err := decodeEvent(lines[2])
+	if err != nil {
+		t.Fatalf("the appended record is not on its own decodable line: %v (%q)", err, lines[2])
+	}
+	if event.Event != EventLinkDown || !event.Time.Equal(second.Time) {
+		t.Errorf("appended record = %+v, want %+v", event, second)
+	}
+}
+
+// TestConfigAuditKeepsTerminatedFileUnchanged checks the counterpart: a log
+// that already ends with a newline gets no extra blank line when it opens.
+func TestConfigAuditKeepsTerminatedFileUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	when := auditTestClock(t)
+	first, err := encodeEvent(Event{Time: when, Event: EventLinkUp})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, first, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	log, err := openAudit(path, func() time.Time { return when }, testLogger())
+	if err != nil {
+		t.Fatalf("open audit log: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, first) {
+		t.Errorf("opening a terminated log changed it:\nbefore %q\nafter  %q", first, data)
+	}
+	if err := log.close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestConfigAuditAfterCloseIsLogged checks that an event produced after the
+// audit log closed is reported. append returns errAuditClosed, and the package
+// entry point must log it instead of dropping the event silently.
+func TestConfigAuditAfterCloseIsLogged(t *testing.T) {
+	c, _ := newNCCore(t, "broker:\n  alias: old\n", nil)
+	var logs bytes.Buffer
+	c.logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	c.auditMu.RLock()
+	log := c.audit
+	c.auditMu.RUnlock()
+	if log == nil {
+		t.Fatal("the test core has no audit log")
+	}
+	if err := log.close(); err != nil {
+		t.Fatalf("close audit log: %v", err)
+	}
+
+	c.auditAppend(Event{Event: EventLinkUp})
+	if got := logs.String(); !strings.Contains(got, "the audit log is closed") {
+		t.Fatalf("an event after Close was dropped silently; log = %q", got)
+	}
+}

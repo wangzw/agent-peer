@@ -5,7 +5,7 @@
 ## 职责
 
 - 按账户与部署形态给出运行时目录、配置文件、数据目录、审计日志和账户锁的路径（[ADR-broker-deployment-modes](../../adr/adr-broker-deployment-modes.md)）。
-- 启动时加载配置文件，对缺失的键取默认值，键的类型或取值不合法时拒绝启动并指出该键；监听地址与对外地址配置的组合非法时拒绝启动并同时指出这两项，对外地址列表超过 8 项、或对外地址的配置写出本版本不认识的地址种类时拒绝启动并指出该项，运行期间的这类修改不提交（`REQ-broker-config-032`、`REQ-broker-config-036`）。
+- 启动时加载配置文件，对缺失的键取默认值，键的类型或取值不合法时拒绝启动并指出该键；监听地址与对外地址配置的组合非法时拒绝启动并同时指出这两项，对外地址列表超过 8 项时拒绝启动并指出该项，运行期间的这类修改不提交（`REQ-broker-config-032`、`REQ-broker-config-036`）。
 - 把启动参数给出的监听地址作为本次运行的取值，不把它写入配置文件，配置文件中的 `broker.listen` 在本次运行中不起作用；其间经本机接口修改 `broker.listen` 的调用失败（`REQ-broker-config-025`、`REQ-broker-config-029`）。
 - 在没有配置别名时按监听地址得出默认别名（`REQ-broker-pairing-002`）。
 - 由监听地址、`broker.advertise` 与 `broker.advertise_extra` 得出本次运行的对外地址列表，监听全部地址时取默认路由所在接口的地址，供 [link](design-link.md)、[pairing](design-pairing.md) 与 [directory](design-directory.md) 使用（[ADR-advertised-address](../../adr/adr-advertised-address.md)，`REQ-broker-config-030`、`REQ-broker-config-031`、`REQ-broker-config-033`、`REQ-broker-config-035`）。
@@ -68,6 +68,7 @@ type Actor struct {
 }
 
 // Validate 注册某个键的附加校验；Set 与文件重载在提交之前调用它，返回错误则不提交。
+// 校验在包内互斥锁持有期间执行，校验函数不得调用本包的其他导出函数。
 func Validate(key string, check func(old, new Value) error)
 
 // Subscribe 注册某个键的变更通知；各次通知按提交的顺序逐个送达。
@@ -75,7 +76,75 @@ func Subscribe(key string, onChange func(old, new Value))
 
 func Audit(e Event)
 func ReadAudit(since time.Time) ([]Event, error)
+
+// Close 停止监视与通知协程并关闭审计日志；可重复调用，未加载时无动作。
+func Close()
+
+// ParseValue 把 SetConfig 请求中的文字按键的类型解析成 Value，只检查类型，不校验取值与组合。
+func ParseValue(key, text string) (Value, error)
+
+// CheckRuntimeDir 创建并检查运行时目录的属主与权限，供 broker 在取账户锁之前调用。
+func CheckRuntimeDir() error
+
+// ProbeListen 探测 addr 能否绑定，addr 使用 broker.listen 的写法。它绑定后立即关闭，
+// 不保留 listener；校验通过后端口仍可被真正的监听绑定。空地址表示不监听，总是成功。
+func ProbeListen(addr string) error
+
+type ValueKind uint8
+const (
+    KindUnset ValueKind = iota
+    KindString
+    KindBool
+    KindInt
+    KindDuration
+    KindStringList
+    KindSecret
+)
+
+// KeyKind 是配置键的类型，取值由包内的键表定义；包外不需要构造它。
+type KeyKind uint8
+
+// Value 是配置值的带类型表示，只有 Kind 对应的字段有意义。Strings 由调用方持有副本。
+// 密钥类配置项的取值只保存在包内，Get 与 All 返回 KindSecret 与 SecretIsSet。
+type Value struct {
+    Kind        ValueKind
+    String      string
+    Bool        bool
+    Int         int64
+    Duration    time.Duration
+    Strings     []string
+    SecretIsSet bool
+}
+
+type Entry struct {
+    Key   string
+    Value Value
+}
+
+// Event 是一条审计记录。MergeKey 只参与合并判断，不属于审计文件的公开字段。
+type Event struct {
+    Time     time.Time
+    Event    EventKind
+    Actor    string
+    Account  string
+    Peer     *PeerRef
+    Key      string
+    Old      *Value
+    New      *Value
+    Count    uint64
+    Detail   string
+    MergeKey string
+}
+
+type PathSet struct {
+    RuntimeDir string
+    ConfigFile string
+    DataDir    string
+    AuditLog   string
+}
 ```
+
+加载之前调用导出函数的语义：`Get`、`Set`、`ReadAudit` 返回 `ErrNotLoaded`；`All` 与 `Advertised` 返回 `nil`；`Secret` 返回空字符串；`Paths` 返回零值；`Validate`、`Subscribe`、`SubscribeAdvertised` 是装配错误，直接 panic；`Audit` 以错误级别写一条运行日志并丢弃该事件；`Close` 无动作。`Load` 只能成功一次，第二次返回 `ErrAlreadyLoaded`。`Close` 之后本包回到未加载的状态，各导出函数按上面的语义处理：`Set` 返回 `ErrNotLoaded`，`Secret` 返回空字符串，其余同未加载时。错误以哨兵值导出（`ErrNotLoaded`、`ErrAlreadyLoaded`、`ErrUnknownKey`、`ErrSecretKey`、`ErrListenOverridden`、`ErrInvalidValue`、`ErrInvalidCombination`、`ErrTooManyAddresses`、`ErrFileWrite`），调用方用 `errors.Is` 区分。
 
 下表是配置键的完整集合：
 
@@ -113,9 +182,11 @@ func ReadAudit(since time.Time) ([]Event, error)
 
 `broker.listen` 的默认值只是默认配置中的一个取值，代码不对这个端口做任何特殊处理。一次性配对密钥的有效期、名录记录的有效期和续签间隔由需求固定（`REQ-broker-pairing-006`、`REQ-broker-discovery-007`、`REQ-broker-discovery-008`），不是配置键；消息编码成 inbox 帧后的字节数上限 1 000 000 同样固定（`REQ-agent-messaging-026`），Agent 曾用名的保留时间 10 分钟是常量，两者见 [broker](design-broker.md)。表中其余默认值是实现选定的初值。
 
+两组跨键约束由本包自己检查：`link.reconnect_max` 不小于 `link.reconnect_min`，`link.keepalive_timeout` 小于 `link.keepalive_interval`。它们是纯值规则，`Set` 与文件重载都把一组键放在一起按候选值检查：组合合法时组内各键一起采用新值，非法时组内各键都保留原值。逐个键与尚未更新的同组键比较会使结果取决于键名的字典序，例如把合法的 `15s`、`10s` 改成 `5s`、`3s` 时只采用其中一项，得到用户从未写过的组合，因此按组判定。需要其他包判断的约束（监听地址能否绑定、别名是否与对端冲突）仍由 `broker` 注册的校验函数完成。
+
 ### SetConfig 的取值
 
-`SetConfig` 请求中的 `value` 是一个字符串，原样携带模型给出的文字，不按键的类型预先编码。Broker 按该键在配置键表中的类型解析它：字符串、布尔、整数与时长键的取值是一个 YAML 标量，例如 `10m`、`true`；字符串列表键的取值是一个 YAML 流式序列（flow sequence），例如 `[a, b]`。解析结果转成 `Value` 后交给 `Set`；字符串不能按该键的类型解析时，调用以 `invalid_argument` 失败，错误信息指出该键与原因，不改动任何状态。
+`SetConfig` 请求中的 `value` 是一个字符串，原样携带模型给出的文字，不按键的类型预先编码。Broker 按键的类型把它交给 `ParseValue` 解析：字符串、布尔、整数与时长键的取值是一个 YAML 标量，例如 `10m`、`true`；字符串列表键的取值是一个 YAML 流式序列（flow sequence），例如 `[a, b]`。`ParseValue` 要求输入是单个 YAML 文档、一个根节点，节点的标签与键的类型一致；未知键返回 `ErrUnknownKey`，多余文档、类型不符或列表不是流式序列返回 `ErrInvalidValue`，错误指出键与原因。密钥类配置项按字符串标量解析，随后由 `Set` 以 `ErrSecretKey` 拒绝。解析只检查类型，别名长度、端口范围、8 项上限与组合规则由 `Set` 判断。解析结果转成 `Value` 后交给 `Set`；字符串不能按该键的类型解析时，调用以 `invalid_argument` 失败，不改动任何状态。
 
 `GetConfig` 的应答、`SetConfig` 的应答与审计记录中的取值仍用 `ConfigValue` 表示。`Set` 接收解析后的 `Value`，不接收字符串。
 
@@ -156,9 +227,9 @@ func ReadAudit(since time.Time) ([]Event, error)
 
 表外的组合非法，例如监听特定地址而 `broker.advertise` 只有端口，或不监听而 `broker.advertise` 非空；不监听时 `broker.advertise_extra` 也必须为空（`REQ-broker-config-032`）。组合按本次运行生效的监听地址判定，监听地址来自启动参数时以它为准。`broker.advertise_extra` 中不带端口的项取对外地址所用的端口：`broker.advertise` 写出了端口时取它，否则取监听端口。主机是 IP 地址或域名，IPv6 地址写成带方括号的形式。列表中重复的项只保留首次出现的。
 
-对外地址列表中的每一项有一个种类，种类决定其他 Broker 怎样经这一项连到本 Broker。Go 接口以 `AdvertisedAddr` 表示一项，`Kind` 是种类，`Addr` 是该种类下的地址写法。本版本产生的种类只有直连，取值为 `direct`，其地址写作 `主机:端口`，表示可以直接向该地址建立连接，IPv6 主机带方括号；本包得出的列表只含直连的项。`broker.advertise` 与 `broker.advertise_extra` 中写出本版本不认识的种类的项属于非法配置，与组合非法同样处理。线路上种类的具体表示法属于实现。其他 Broker 告知的列表与名片所载的列表中出现不认识的种类时怎样处理，见 [link](design-link.md)、[pairing](design-pairing.md) 与 [directory](design-directory.md)。
+对外地址列表中的每一项有一个种类，种类决定其他 Broker 怎样经这一项连到本 Broker。Go 接口以 `AdvertisedAddr` 表示一项，`Kind` 是种类，`Addr` 是该种类下的地址写法。本版本产生的种类只有直连，取值为 `direct`，其地址写作 `主机:端口`，表示可以直接向该地址建立连接，IPv6 主机带方括号；本包得出的列表只含直连的项。配置文本没有表示种类的语法：`broker.advertise` 与 `broker.advertise_extra` 的合法写法只有上表列出的形式，其他写法一律按写法不合法处理，因此本版本的配置文本没有可表达的未知种类。线路上种类的具体表示法属于实现。其他 Broker 告知的列表与名片所载的列表中出现不认识的种类时怎样处理，见 [link](design-link.md)、[pairing](design-pairing.md) 与 [directory](design-directory.md)。
 
-默认路由所在接口的地址：度量值最小的默认 IPv4 路由所在接口上的 IPv4 地址，不含 `169.254.0.0/16` 中的链路本地地址；存在默认 IPv6 路由时，另加度量值最小的那条所在接口上的全局单播 IPv6 地址，不含链路本地地址与临时地址。没有默认路由时这部分为空。主机接入的其他网络上的地址不列入。
+默认路由所在接口的地址：度量值最小的默认 IPv4 路由所在接口上的 IPv4 地址，不含 `169.254.0.0/16` 中的链路本地地址；存在默认 IPv6 路由时，另加度量值最小的那条所在接口上的全局单播 IPv6 地址，不含链路本地地址与临时地址。默认 IPv4 路由按目的地址与掩码都为零且路由处于启用状态判定，不要求带网关标志，因此只指定设备的默认路由（例如 `default dev wg0`）也算。没有默认路由时这部分为空。主机接入的其他网络上的地址不列入。启动时枚举默认路由失败不拒绝启动：这部分地址取空，运行日志以错误级别记录，周期枚举在后续轮次补上。
 
 列表至多 8 项。`broker.advertise` 含主机时的一项加上 `broker.advertise_extra` 的项数超过 8 的配置非法（`REQ-broker-config-036`）；默认路由所在接口的地址使列表超过 8 项时，舍去这部分中排在后面的地址，`broker.advertise_extra` 的各项全部保留。
 
@@ -211,66 +282,94 @@ func ReadAudit(since time.Time) ([]Event, error)
 
 `Set` 依次做下面的事，前一件失败则不做后面的：
 
-- 检查键存在且不是密钥类配置项，值的类型与取值范围合法，与其他键的组合合法，再调用为该键注册的校验函数。修改 `broker.listen`、`broker.advertise` 或 `broker.advertise_extra` 时，以新值与另外两项的当前值核对“对外地址”中的组合规则、项数上限与地址种类。
-- 读取配置文件的当前内容，只替换这个键，在原文件上就地改写：截断后写入完整内容并同步到磁盘。文件不存在时以本账户的身份创建它；文件存在时就地改写，原文件的属主、组、权限位与访问控制列表因此保持不变。
+- 先按“配置文件的监视”中的同一套规则采用磁盘上尚未采纳的外部改动，并为每个采用了新值的键写 `config_file_changed` 审计记录。校验因此从磁盘上的当前值出发，去抖期内保存的外部改动不会被这次写入吞掉。
+- 检查键存在且不是密钥类配置项，值的类型与取值范围合法，与其他键的组合合法，再调用为该键注册的校验函数。修改 `broker.listen`、`broker.advertise` 或 `broker.advertise_extra` 时，以新值与另外两项的当前值核对“对外地址”中的组合规则与项数上限。
+- 读取配置文件的当前内容，只替换这个键，在原文件上就地改写：截断后写入完整内容并同步到磁盘。写回要重写整个文件，文件中的其他内容原样保留，原文件的属主、组、权限位与访问控制列表因此保持不变。文件不存在时以本账户的身份创建它。
 - 更新内存中的值。
 - 追加 `config_set` 审计记录。
 - 把这次变更放入通知队列。
 
-通知队列由一个协程按提交的顺序逐个调用订阅者，对同一个键的两次修改因此按修改的先后生效。校验函数用于需要别的包判断的情形，由 `broker` 注册：`broker.listen` 的新值先尝试绑定，绑定失败则修改不提交，原有的监听不受影响（`REQ-broker-config-034`）；`broker.alias` 的新值与某个对端的生效别名相同时修改不提交。本次运行的监听地址来自启动参数时，`Set` 对 `broker.listen` 的修改在校验之前即以 `invalid_argument` 拒绝，错误说明本次运行的监听地址由启动参数给定，配置文件与内存中的值都不变（`REQ-broker-config-029`）。
+读取与写回之间不是原子的：另一个程序在这段窗口内写入的内容会被本次写回覆盖而丢失，这是就地改写接受的代价。磁盘上的配置文件为空或不存在时，写回的内容只包含本次修改的键和文件原有的注释；其他键只留在内存中，本次运行按内存值生效，重启后回到默认值。
 
-订阅者使修改立即生效，订阅在 `broker` 装配完成后交给各包：`broker.alias` 的变更使各链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片；`broker.listen` 的变更使 `link` 改在新地址上监听，没有配置别名时默认别名随端口变化，按别名变更处理；对外地址列表的变化，不论来自 `broker.listen`、`broker.advertise`、`broker.advertise_extra` 的修改还是定期的重新枚举，都经 `SubscribeAdvertised` 送达，使本方是[接受方](../../glossary.md)的各条链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片；`broker.public` 的变更使 `directory` 发布或撤回本机的记录；改为公开时，`broker` 另行按各 Agent 的公开 topic 集合重新声明。`pairing.static_key` 没有订阅者，`pairing` 在下一次握手查找密钥时读取新值；`Secret` 返回取值之前核对配置文件的修改时间与大小，与上次读取不同即重新读取，文件变化通知丢失时删除或更换仍能生效。各项间隔、次数与上限在下一次使用时取新值。
+写文件失败时返回 `internal`，内存与审计不变：本包尽力把原字节写回文件；无论写回是否成功，都把内存中记录的文件哈希改成磁盘当前内容的哈希，使本进程不把这次留下的空文件或残缺内容当作外部改动采纳。
+
+通知队列由一个协程按提交的顺序逐个调用订阅者，对同一个键的两次修改因此按修改的先后生效。校验函数用于需要别的包判断的情形，由 `broker` 注册：`broker.listen` 的新值只做绑定探测，校验函数绑定后立即关闭，不保留 listener，变更提交后由订阅者实际绑定；探测失败则修改不提交，原有的监听不受影响（`REQ-broker-config-034`）。探测与真正的绑定之间存在时间差，期间端口可能被其他进程占用。校验函数在包内互斥锁持有期间执行，不得调用本包的其他导出函数。`broker.alias` 的新值与某个对端的生效别名相同时修改不提交。本次运行的监听地址来自启动参数时，`Set` 对 `broker.listen` 的修改在校验之前即以 `invalid_argument` 拒绝，错误说明本次运行的监听地址由启动参数给定，配置文件与内存中的值都不变（`REQ-broker-config-029`）。
+
+订阅者使修改立即生效，订阅在 `broker` 装配完成后交给各包：`broker.alias` 的变更使各链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片；`broker.listen` 的变更使 `link` 改在新地址上监听，没有配置别名时默认别名随端口变化，按别名变更处理；对外地址列表的变化，不论来自 `broker.listen`、`broker.advertise`、`broker.advertise_extra` 的修改还是定期的重新枚举，都经 `SubscribeAdvertised` 送达，使本方是[接受方](../../glossary.md)的各条链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片；`broker.public` 的变更使 `directory` 发布或撤回本机的记录；改为公开时，`broker` 另行按各 Agent 的公开 topic 集合重新声明。`pairing.static_key` 没有订阅者，`pairing` 在下一次握手查找密钥时读取新值；`Secret` 返回取值之前读取配置文件并比较内容哈希，内容不同即重新加载，文件变化通知丢失时删除或更换仍能生效。各项间隔、次数与上限在下一次使用时取新值。
 
 ### 配置文件的监视
 
-本包监视配置文件。文件内容变化时重新解析，与内存中的值逐键比较：
+本包监视配置文件，重载只由文件系统通知驱动，没有周期性重扫。文件内容变化时重新解析，与内存中的值逐键比较：
 
-- 解析失败：不采用任何改动，内存中的值不变，运行日志以错误级别记录原因。
-- 解析成功：逐键判定。取值合法并通过校验函数的键采用新值；不合法或未通过校验函数的键保留原值，运行日志以错误级别记录。`broker.listen`、`broker.advertise` 与 `broker.advertise_extra` 作为一组判定：按改动后的整体检查组合规则、项数上限与地址种类，合法则一起采用，否则三项都保留原值。
+- 解析失败或读到空文件：不采用任何改动，内存中的值不变，运行日志以错误级别记录原因。空文件包括其他程序就地改写时落在截断与写入之间的窗口；只有启动加载把空文件当作空配置。截断恰好落在行边界时，剩下的一段仍可能是合法的 YAML 文档，重载会把它当作删除了其余键的外部改动采用，不再出现的键因此取默认值；这是只凭文件内容判断改动所接受的代价。
+- 解析成功：逐键判定。取值合法并通过校验函数的键采用新值；不合法或未通过校验函数的键保留原值，运行日志以错误级别记录。成对约束的键作为一组判定，组合合法时一起采用，否则整组保留原值，结果与键名的字典序无关。`broker.listen`、`broker.advertise` 与 `broker.advertise_extra` 另作为一组判定：按改动后的整体检查组合规则与项数上限，合法则一起采用，否则三项都保留原值。
 - 对每个采用了新值的键更新内存、追加一条 `config_file_changed` 审计记录、放入通知队列。
 
-本包自己写入文件期间不处理文件变化；写入完成后文件内容与内存中的值相同，不产生记录。
+本包自己写入文件期间不处理文件变化；写入完成后把文件内容的哈希记为已采纳，不产生记录。文件变化通知丢失时由 `Secret` 在返回取值前比对文件内容哈希兜底，因此没有周期性重扫也不会让旧密钥一直生效。
 
 本次运行的监听地址来自启动参数时，`broker.listen` 不参与比较与校验：文件中这一项的值变化时不采用，不写审计记录，运行日志记录一次；其他键照常重载（`REQ-broker-config-017`）。
 
-### 审计记录的合并
+### 审计日志的表示与合并
 
-`connection_rejected` 与由尝试过于频繁引起的 `pairing_failed`，在 10 分钟内来自同一指纹或同一来源地址的，只保留一条记录并累加其 `count`，使持续重连的一方不能无限追加审计日志。其余事件逐条记录。
+每行一个 JSON 对象，UTF-8。`time` 是 UTC 的 RFC 3339 纳秒时间；`event` 是事件类型的字符串值；`actor`、`account`、`key`、`detail` 为空时省略。`peer` 是 `{"fingerprint":"<64 位小写十六进制>","alias":"..."}`。`old` 与 `new` 是带类型的对象 `{"kind":"...","value":...}`，`kind` 取 `string`、`bool`、`int`、`duration`、`string_list`：时长的 `value` 是 `10m` 这样的字符串，整数的 `value` 是 JSON 数字。审计文件是 config 的私有格式；`GetConfig` 与 `SetConfig` 的应答使用 `ConfigValue`，与此处的类型对应，密钥类配置项另以是否已设置表示。密钥类配置项的变化只保留 `key`，不写 `old` 与 `new`。打开审计文件时，如果文件末尾不是换行，先追加一个换行；崩溃留下的半行仍然无法解析，但不会吞掉下一条记录。
+
+`connection_rejected` 与由尝试过于频繁引起的 `pairing_failed` 在写入前于内存中合并。合并键由事件类型与来源标识组成：`connection_rejected` 用对端指纹，没有指纹时用调用方给出的来源地址；这类 `pairing_failed` 用调用方给出的合并键，`pairing` 在尝试频率超限时填入对端指纹。同一合并键上，第一个事件开启一个 10 分钟窗口，窗口从这条事件的时间起算，后续事件不顺延窗口。窗口内的后续事件只在内存中累加，不写文件。窗口到期或 `Close` 时，窗口汇总为一条记录追加到文件，记录的时间是窗口第一条事件的时间：窗口内只有一条事件时不带 `count`，多于一条时 `count` 是事件条数。`ReadAudit` 返回文件中的记录加上尚在内存中的窗口记录，按时间排序。审计文件始终只追加，不改写已有行。合并键只存在于内存，不写入文件。进程在窗口落盘前崩溃时，该窗口的记录丢失，包括窗口中只有一条的事件；这是保持文件只追加所接受的代价。`Close` 期间与之后产生的审计事件不得静默丢弃：审计日志已关闭或尚未打开时，事件至少以错误级别写入运行日志。
+
+### 实现约定
+
+以下约定是设计未写死、由实现确定的细节：
+
+- `All` 按键名的字典序返回；`Get`、`All`、`Set` 返回的列表与字符串切片都是副本。
+- `Validate` 与 `Subscribe` 的键必须在键表中且 `Load` 已完成；未知键或未加载是装配错误，直接 panic。
+- `Load` 第二次调用返回 `ErrAlreadyLoaded`。
+- `log.level` 的取值集合是 `debug`、`info`、`warn`、`error`，不认识的取值非法。
+- `broker.advertise` 与 `broker.advertise_extra` 拒绝 `0.0.0.0` 与 `::` 作为主机，其他 Broker 无法连接通配地址。
+- `broker.local_socket_mode` 接受不带引号的整数写法（如 `0666`），取值按八进制校验；其他字符串键写成数字仍然非法。
+- 同值 `Set` 照常写文件、写审计、发通知，因为这是一次经本机接口完成的修改。
+- 当前配置文件在结构上无法解析时 `Set` 失败，不覆盖文件；单个键的取值不合法不阻止其他键的修改。
+- 任何段中重复出现的键（包括未知段与未知键）、顶层已知段不是映射、YAML 合并键 `<<` 都按解析错误处理；其余未知段与未知键保留在文件里，不参与加载，`Set` 也不改动它们。
+- 特定地址监听且未配置 `broker.advertise` 时，监听地址这一隐含项计入 8 项上限；默认路由来源的地址超过上限时舍去排在后面的项，`broker.advertise_extra` 的项全部保留。
+- 审计合并的分组依据包含事件类型，两种不同事件不会因字符串相同而合并。
+- 文件监视的去抖时长与地址枚举的周期 ticker 都通过包内字段注入；测试用假 ticker 驱动重载与周期枚举，不依赖真实等待。
+- 每个平台的 `defaultRouteAddresses` 都有一条冒烟测试直接调用它，只断言 `err == nil`；macOS 的 IPv4 与 IPv6 路由夹具取自 CI 运行 44329785438 在 macOS runner 上采集的真实 `route -n get default` 输出：IPv4 是带 `gateway: 192.168.64.1` 与 `interface: en0` 的正常路由描述；IPv6 没有默认路由，输出为 `route: writing to routing socket: not in table`，退出码为零；并另有 `ifconfig` 失败分支的测试。
 
 ## 错误与失败语义
 
 | 情形 | 行为 |
 |---|---|
-| 启动时配置文件无法解析或含不合法的值 | 拒绝启动；无法解析时错误信息只给出行号与列号，不引用文件内容；含不合法的值时指出键与原因，不含密钥类配置项的取值 |
-| 启动时监听地址与对外地址配置的组合非法，对外地址的配置超过 8 项，或写出本版本不认识的地址种类 | 拒绝启动；组合非法时错误信息同时指出 `broker.listen` 与 `broker.advertise` 或 `broker.advertise_extra`，超过 8 项时指出 `broker.advertise_extra`，种类不认识时指出写出该项的键 |
+| 启动时配置文件无法解析或含不合法的值 | 拒绝启动；无法解析时错误信息给出行号与列号，或指出出错的段名、键名，或说明失败的原因，不引用文件中的取值；含不合法的值时指出键与原因，不含密钥类配置项的取值 |
+| 启动时监听地址与对外地址配置的组合非法，或对外地址的配置超过 8 项 | 拒绝启动；组合非法时错误信息同时指出 `broker.listen` 与 `broker.advertise` 或 `broker.advertise_extra`，超过 8 项时指出 `broker.advertise_extra` |
+| 启动时枚举默认路由失败 | 不拒绝启动，这部分地址取空，运行日志以错误级别记录，周期枚举在后续轮次补上 |
 | 运行时目录或账户锁所在目录的属主、权限不符 | 拒绝启动，错误信息指出目录 |
 | `SetConfig` 请求中的 `value` 无法按该键的类型解析 | 返回 `invalid_argument`，指出该键与原因，不改动任何状态 |
 | `Set` 的键不存在，值不合法，或校验函数拒绝 | 返回 `invalid_argument`，不改动任何状态 |
 | `Set` 修改密钥类配置项 | 返回 `invalid_argument`，说明该项只能在配置文件中设置，不改动任何状态 |
-| `Set` 使监听地址与对外地址配置的组合非法，使对外地址的配置超过 8 项，或写出本版本不认识的地址种类 | 返回 `invalid_argument`，说明与哪一项冲突或哪一项的种类不认识，不改动任何状态 |
+| `Set` 使监听地址与对外地址配置的组合非法，或使对外地址的配置超过 8 项 | 返回 `invalid_argument`，说明与哪一项冲突，不改动任何状态 |
 | 本次运行的监听地址来自启动参数时 `Set` 修改 `broker.listen` | 返回 `invalid_argument`，说明本次运行的监听地址由启动参数给定，不改动任何状态 |
-| 配置文件写入失败 | 返回 `internal`，内存中的值不变，不写审计记录；就地改写中途失败或进程崩溃时文件可能不完整，下次加载时按无法解析处理 |
+| 配置文件写入失败 | 返回 `internal`，内存中的值不变，不写审计记录；本包尽力把原字节写回，写回失败时文件可能为空或不完整。无论写回是否成功，本包都把内存记录的文件哈希改为磁盘当前内容的哈希，本进程不采纳这次留下的内容；进程崩溃或写回也失败时，下次启动按文件的现有内容加载，截断恰好落在行边界时，文件可能被读成一份合法的残缺配置，这是就地改写所接受的代价 |
+| 运行期间读到的配置文件为空 | 按无法解析处理，保留全部原值，运行日志以错误级别记录 |
 | 运行期间配置文件改成了不合法的内容，包括组合非法 | 不合法的项保留原值，其余合法的项照常采用，运行日志记录 |
 | 本次运行的监听地址来自启动参数时，配置文件中的 `broker.listen` 改变 | 不采用，其他键照常重载，运行日志记录 |
 | 审计日志写入失败 | 触发它的操作照常完成，运行日志以错误级别记录 |
+| 审计日志已关闭或尚未打开时收到事件 | 事件以错误级别写入运行日志后丢弃，不静默丢失 |
 
 能够写配置文件的账户不经本机接口也能直接改写它，这正是管理权限以该文件的写权限为准的含义；用户级形态下审计日志与配置文件属于同一账户，该账户下的其他进程能够改写它们，本包不防范这一途径。系统级形态下审计日志只有 root 可写。
 
 ## 并发与事务边界
 
-`Set` 与文件重载的各项动作由一把互斥锁串行化，订阅者在锁外由通知协程调用。`Get` 读取内存中的值，不访问磁盘。审计日志的追加由独立的锁保护，每条记录以一次写调用写入完整的一行。
+`Set` 与文件重载的各项动作由一把互斥锁串行化，订阅者在锁外由通知协程调用。为某个键注册的校验函数在 `Set` 与文件重载提交之前、持锁期间执行，因此不得调用本包的其他导出函数。`Get` 读取内存中的值，不访问磁盘。审计日志的追加由独立的锁保护，每条记录以一次写调用写入完整的一行。
 
 ## 实现状态
 
 | 能力 | 状态 | 代码 |
 |---|---|---|
-| 两种形态的路径与账户锁路径 | 未实现 | — |
-| 配置的加载、默认值与校验 | 未实现 | — |
-| 启动参数对监听地址的取代与默认别名 | 未实现 | — |
-| 对外地址列表的计算与组合校验 | 未实现 | — |
-| 密钥类配置项的读取、修改限制与长度校验 | 未实现 | — |
-| 本机地址的定期重新枚举与变更通知 | 未实现 | — |
-| 配置的读取与修改 | 未实现 | — |
-| 附加校验与变更通知 | 未实现 | — |
-| 配置文件的监视 | 未实现 | — |
-| 审计日志的追加、合并与读取 | 未实现 | — |
+| 两种形态的路径与账户锁路径 | 已实现 | `internal/config/paths.go`（`resolvePaths`、`prepareDataDirs`、`CheckRuntimeDir`、`AccountLock`） |
+| 配置的加载、默认值与校验 | 已实现 | `internal/config/keys.go`、`internal/config/file.go`、`internal/config/load.go`（`load`、`adoptValues`、`validateLoadedValues`） |
+| 启动参数对监听地址的取代与默认别名 | 已实现 | `internal/config/load.go`、`internal/config/alias.go`（`adoptValues`、`defaultAlias`） |
+| 对外地址列表的计算与组合校验 | 已实现 | `internal/config/advertise.go`、`internal/config/routes_common.go`、`internal/config/routes_linux.go`、`internal/config/routes_darwin.go`、`internal/config/routes_other.go`（`computeAdvertised`、`platformAddressSource`、`defaultRouteAddresses`） |
+| 密钥类配置项的读取、修改限制与长度校验 | 已实现 | `internal/config/keys.go`、`internal/config/state.go`、`internal/config/api.go`（`validateValue`、`secretLocked`、`Secret`、`setLocked`） |
+| 本机地址的定期重新枚举与变更通知 | 已实现 | `internal/config/state.go`、`internal/config/load.go`、`internal/config/notify.go`（`startAddressTickerLocked`、`reevaluateAdvertised`、`newNotifier`） |
+| 配置的读取与修改 | 已实现 | `internal/config/api.go`、`internal/config/state.go`、`internal/config/file.go`（`Get`、`Set`、`setLocked`、`setKey`） |
+| 附加校验与变更通知 | 已实现 | `internal/config/api.go`、`internal/config/notify.go`（`Validate`、`ProbeListen`、`Subscribe`、`newNotifier`） |
+| 配置文件的监视 | 已实现 | `internal/config/watch.go`、`internal/config/state.go`（`startWatch`、`startWatchWithDebounce`、`reloadFromDisk`、`reloadLocked`） |
+| 审计日志的追加、合并与读取 | 已实现 | `internal/config/audit.go`（`openAudit`、`append`、`mergeLocked`、`flushExpiredLocked`、`read`、`terminatePartialLine`） |
