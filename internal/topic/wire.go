@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"errors"
 	"slices"
+	"unicode"
 
 	"github.com/wangzw/agent-peer/internal/topic/topicpb"
 )
@@ -65,6 +66,43 @@ func memberFromWire(p *topicpb.Member) Member {
 		Status:   statusFromWire(p.Status),
 		PrevName: p.PreviousName,
 	}
+}
+
+// validMemberEntry reports whether an inbound roster entry follows the broker's
+// rules for names, disambiguators and previous names: a Ref of 6 to 12 lowercase
+// hex digits, a non-empty name without whitespace, '@', '*' or control
+// characters, and a previous name that is either empty or follows the same name
+// rule.
+func validMemberEntry(m Member) bool {
+	if len(m.Ref) < 6 || len(m.Ref) > 12 {
+		return false
+	}
+	for i := 0; i < len(m.Ref); i++ {
+		if c := m.Ref[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	if !validMemberName(m.Name) {
+		return false
+	}
+	if m.PrevName != "" && !validMemberName(m.PrevName) {
+		return false
+	}
+	return true
+}
+
+// validMemberName reports whether name is a non-empty member name: no
+// whitespace, '@', '*' or control characters.
+func validMemberName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if unicode.IsSpace(r) || unicode.IsControl(r) || r == '@' || r == '*' {
+			return false
+		}
+	}
+	return true
 }
 
 // digestsMsg builds a TopicDigests with the digests in ascending byte order.
