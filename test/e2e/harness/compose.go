@@ -37,9 +37,10 @@ type Topology struct {
 	env map[string]string
 	// envFunc adds compose variables computed for this project. It runs on
 	// every Up, so a topology whose values must differ per project, such as
-	// randomly chosen IPv6 subnets, does not share them between two
-	// concurrent projects in one test process.
-	envFunc func() map[string]string
+	// the IPv4 subnets of the routed topologies or the randomly chosen IPv6
+	// subnets, does not share them between two concurrent projects in one
+	// test process.
+	envFunc func(t *testing.T) map[string]string
 	// init runs once every node agent answers, before Up returns.
 	init func(t *testing.T, c *Cluster)
 }
@@ -120,7 +121,7 @@ func Up(t *testing.T, topo Topology) *Cluster {
 		env = append(env, name+"="+value)
 	}
 	if topo.envFunc != nil {
-		for name, value := range topo.envFunc() {
+		for name, value := range topo.envFunc(t) {
 			env = append(env, name+"="+value)
 		}
 	}

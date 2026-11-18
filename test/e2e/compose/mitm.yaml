@@ -29,14 +29,26 @@ services:
     networks: [lanb]
 
 # See nat.yaml: routed gateway mode is what lets the router container forward
-# between the networks on Docker 29.
+# between the networks on Docker 29, and the subnets are pinned inside
+# 198.18.0.0/15 so a bridge route never captures this k8s node's own networks.
+# The harness overrides them per project because concurrent copies of the
+# topology cannot share a subnet.
 networks:
   wan:
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: routed
+    ipam:
+      config:
+        - subnet: ${MITM_WAN_SUBNET:-198.18.5.0/24}
   wan2:
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: routed
+    ipam:
+      config:
+        - subnet: ${MITM_WAN2_SUBNET:-198.18.6.0/24}
   lanb:
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: routed
+    ipam:
+      config:
+        - subnet: ${MITM_LANB_SUBNET:-198.18.7.0/24}

@@ -35,13 +35,29 @@ services:
 # ever sees it. Routed gateway mode keeps Docker's per-container direct-access
 # drop out of the way while the router still has no default route, so the
 # containers reach no network beyond these three.
+#
+# Every subnet is pinned inside 198.18.0.0/15 instead of letting Docker pick
+# from its default pool, because this host is a k8s node whose pod and service
+# networks (10.12.72.0/24, 10.244.0.0/16, 172.17.0.0/16, 10.96.0.0/12) must not
+# be captured by a bridge route. The harness overrides the variables below with
+# a per-project block of that range, because Docker refuses two live networks
+# with the same subnet and several tests run this topology at once.
 networks:
   wan:
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: routed
+    ipam:
+      config:
+        - subnet: ${NAT_WAN_SUBNET:-198.18.0.0/24}
   wan2:
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: routed
+    ipam:
+      config:
+        - subnet: ${NAT_WAN2_SUBNET:-198.18.1.0/24}
   lanb:
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: routed
+    ipam:
+      config:
+        - subnet: ${NAT_LANB_SUBNET:-198.18.2.0/24}
