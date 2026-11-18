@@ -2,6 +2,7 @@ package helper
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -11,28 +12,18 @@ import (
 var testRoleHooks = map[string]func() int{}
 
 // TestMain lets this test binary act as a real helper child. Tests that need a
-// child spawn os.Args[0] with AGENT_PEER_TEST_HELPER_ROLE set; see
-// testExecStart. It also runs the access-check body when invoked with the
-// production argument list, so a test can start the real command path.
+// child either spawn os.Args[0] with AGENT_PEER_TEST_HELPER_ROLE set (see
+// testExecStart), or let the default derivation function run it with the real
+// "internal account-helper" / "internal access-check" arguments so that the
+// credential change in accountCommand is exercised too.
 func TestMain(m *testing.M) {
+	if role, extra, ok := helperRoleFromArgs(os.Args); ok {
+		os.Exit(runHelperRole(role, extra))
+	}
 	switch role := os.Getenv("AGENT_PEER_TEST_HELPER_ROLE"); role {
-	case "account-helper":
-		if err := RunAccountHelper(context.Background(), os.Stdin, os.Stdout); err != nil {
-			os.Exit(1)
-		}
-		os.Exit(0)
-	case "access-check":
-		if err := RunAccessCheck(os.Stdin, os.Stdout); err != nil {
-			os.Exit(1)
-		}
-		os.Exit(0)
+	case "account-helper", "access-check":
+		os.Exit(runHelperRole(role, nil))
 	case "":
-		if isAccessCheckArgs(os.Args) {
-			if err := RunAccessCheck(os.Stdin, os.Stdout); err != nil {
-				os.Exit(1)
-			}
-			os.Exit(0)
-		}
 		os.Exit(m.Run())
 	default:
 		if hook := testRoleHooks[role]; hook != nil {
@@ -42,10 +33,39 @@ func TestMain(m *testing.M) {
 	}
 }
 
-// isAccessCheckArgs reports whether args are the production access-check
-// command line.
-func isAccessCheckArgs(args []string) bool {
-	return len(args) == 3 && args[1] == "internal" && args[2] == "access-check"
+// helperRoleFromArgs recognizes the real hidden subcommand form, which is what
+// accountCommand produces when a test sets Exe to this binary.
+func helperRoleFromArgs(args []string) (role string, extra []string, ok bool) {
+	if len(args) < 3 || args[1] != "internal" {
+		return "", nil, false
+	}
+	switch args[2] {
+	case "account-helper", "access-check":
+		return args[2], args[3:], true
+	}
+	return "", nil, false
+}
+
+func runHelperRole(role string, extra []string) int {
+	switch role {
+	case "account-helper":
+		for _, arg := range extra {
+			if arg == "stderr-marker" {
+				fmt.Fprintln(os.Stderr, "helper stderr marker")
+			}
+		}
+		if err := RunAccountHelper(context.Background(), os.Stdin, os.Stdout); err != nil {
+			return 1
+		}
+		return 0
+	case "access-check":
+		if err := RunAccessCheck(os.Stdin, os.Stdout); err != nil {
+			return 1
+		}
+		return 0
+	default:
+		return 2
+	}
 }
 
 // testExecStart returns a Start function for PoolOptions or AccessChecker that
