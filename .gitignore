@@ -1,0 +1,47 @@
+# Build output
+/agent-peer
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries, built with `go test -c`
+*.test
+
+# Coverage and profiling output
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+*.prof
+*.pprof
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Debugger binaries
+__debug_bin*
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Claude Code local state
+.claude/settings.local.json
+.claude/worktrees/
