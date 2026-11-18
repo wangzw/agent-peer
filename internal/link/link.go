@@ -42,4 +42,26 @@ type Link struct {
 	subMu    sync.RWMutex
 	subs     []subscription
 	notifier *notifier
+
+	// --- TLS dialing, server credentials and gRPC streams ---
+	unauth *unauthRegistry // created in New with maxUnauthenticated, firstFrameTimeout and clock.AfterFunc
+	// onConnect runs at the start of every Connect handler. Tests use it to hold
+	// a stream before the handler checks whether the Link closed.
+	onConnect func()
+	// closeClientConn, when not nil, replaces the asynchronous close of a dialed
+	// link's gRPC client connection. Tests use it to block that close and show
+	// that abort returns without waiting for it.
+	closeClientConn func(*grpc.ClientConn) error
+
+	// --- frame dispatch and send API ---
+	regMu           sync.RWMutex
+	stateHandlers   map[FrameKind]func(peer Fingerprint, f Frame)
+	requestHandlers map[FrameKind]func(ctx context.Context, peer Fingerprint, f Frame) Frame
+
+	// --- listening and closing ---
+	server *grpc.Server      // guarded by mu; created by the first non-empty Listen
+	lis    *trackingListener // guarded by mu; nil when not listening
+
+	// --- dial loop, Start, rejection and PairDial ---
+	started bool // guarded by mu
 }

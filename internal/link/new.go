@@ -61,5 +61,8 @@ func New(opts Options) (*Link, error) {
 		dropping: make(map[Fingerprint]chan struct{}),
 	}
 	l.notifier = newNotifier(l)
+
+	// TLS dialing, server credentials and gRPC streams
+	l.unauth = newUnauthRegistry(l.maxUnauthenticated, l.firstFrameTimeout, l.clock.AfterFunc)
 	return l, nil
 }
