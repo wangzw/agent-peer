@@ -21,6 +21,11 @@ import (
 // exit codes, the standard streams and the signal handling are the real ones.
 var testBinary string
 
+// waitDelay bounds how long Wait waits for the child's I/O pipes after the
+// process has exited, so a grandchild that inherited one of them cannot hang
+// the test harness. It is also the backstop after the SIGKILL fallback in stop.
+const waitDelay = 3 * time.Second
+
 // TestMain builds the binary every subprocess test runs. The build uses
 // os.Environ because go build is a tool here, not the process under test; the
 // process under test gets a clean environment from sandbox.env.
@@ -161,6 +166,33 @@ func freePort(t *testing.T) int {
 	return port
 }
 
+// freePorts returns n distinct ports that were bound at the same time and then
+// released together. Binding every listener before closing any guarantees the
+// ports differ, which two separate freePort calls cannot.
+func freePorts(t *testing.T, n int) []int {
+	t.Helper()
+
+	listeners := make([]net.Listener, n)
+	ports := make([]int, n)
+	for i := range listeners {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			for _, open := range listeners[:i] {
+				_ = open.Close()
+			}
+			t.Fatalf("listen on an ephemeral port: %v", err)
+		}
+		listeners[i] = l
+		ports[i] = l.Addr().(*net.TCPAddr).Port
+	}
+	for _, l := range listeners {
+		if err := l.Close(); err != nil {
+			t.Fatalf("close ephemeral listener: %v", err)
+		}
+	}
+	return ports
+}
+
 // lockedBuffer is the standard error sink for a child process. os/exec copies
 // the child's output from another goroutine, and tests read the buffer while
 // the child may still write, so every access is guarded.
@@ -207,6 +239,7 @@ func startBroker(t *testing.T, sb *sandbox, args ...string) *brokerProc {
 	cmdArgs = append(cmdArgs, "--ready-fd=3")
 	cmd := exec.Command(testBinary, cmdArgs...)
 	cmd.Env = sb.env()
+	cmd.WaitDelay = waitDelay
 	// ExtraFiles are inherited starting at fd 3, matching the --ready-fd=3
 	// argument and mcpserver.ReadyFD.
 	cmd.ExtraFiles = []*os.File{w}
@@ -243,12 +276,27 @@ func startBroker(t *testing.T, sb *sandbox, args ...string) *brokerProc {
 func (p *brokerProc) readyLine(timeout time.Duration) string {
 	p.t.Helper()
 
-	if err := p.ready.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+	deadline := time.Now().Add(timeout)
+	if err := p.ready.SetReadDeadline(deadline); err != nil {
 		p.t.Fatalf("set readiness deadline: %v", err)
 	}
 	line, err := p.reader.ReadString('\n')
 	if err != nil {
-		p.t.Fatalf("read readiness line: %v (stderr: %s)", err, p.stderr.String())
+		// A closed pipe usually means the process is exiting. Wait for the same
+		// deadline rather than adding a fixed delay, so the whole call stays
+		// within timeout; the failure message can then carry the exit code and
+		// the complete standard error instead of racing the copy goroutine.
+		select {
+		case <-p.exited:
+		case <-time.After(time.Until(deadline)):
+		}
+		state := "still running"
+		select {
+		case <-p.exited:
+			state = fmt.Sprintf("exit code %d (%v)", p.cmd.ProcessState.ExitCode(), p.waitErr)
+		default:
+		}
+		p.t.Fatalf("read readiness line: %v (process: %s; stderr: %s)", err, state, p.stderr.String())
 	}
 	return strings.TrimRight(line, "\r\n")
 }
@@ -286,7 +334,9 @@ func (p *brokerProc) lastStderrLine(prefix string) string {
 // stop is the cleanup registered by startBroker: terminate a still running
 // Broker with SIGTERM and fall back to SIGKILL after three seconds.
 func (p *brokerProc) stop() {
-	_ = p.ready.Close()
+	if p.ready != nil {
+		_ = p.ready.Close()
+	}
 
 	select {
 	case <-p.exited:
@@ -297,8 +347,16 @@ func (p *brokerProc) stop() {
 	_ = p.cmd.Process.Signal(syscall.SIGTERM)
 	select {
 	case <-p.exited:
+		return
 	case <-time.After(3 * time.Second):
-		_ = p.cmd.Process.Kill()
-		<-p.exited
+	}
+	_ = p.cmd.Process.Kill()
+	// WaitDelay bounds the wait for the child's pipes; a process that still
+	// refuses to exit after SIGKILL is reported instead of being signalled
+	// again by pid.
+	select {
+	case <-p.exited:
+	case <-time.After(waitDelay):
+		p.t.Errorf("broker process %d did not exit after SIGKILL", p.cmd.Process.Pid)
 	}
 }

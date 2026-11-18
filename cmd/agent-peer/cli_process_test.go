@@ -35,6 +35,7 @@ func runCLI(t *testing.T, sb *sandbox, timeout time.Duration, args ...string) cl
 	cmd.Dir = sb.home
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.WaitDelay = waitDelay
 
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start agent-peer %s: %v", strings.Join(args, " "), err)
@@ -94,6 +95,7 @@ func startMCP(t *testing.T, sb *sandbox) *mcpProc {
 	cmd.Stdin = inR
 	cmd.Stdout = outW
 	cmd.Stderr = stderr
+	cmd.WaitDelay = waitDelay
 
 	if err := cmd.Start(); err != nil {
 		inR.Close()

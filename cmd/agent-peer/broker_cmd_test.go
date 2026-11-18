@@ -9,8 +9,11 @@ import (
 	"io"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // newBrokerCmdApp builds an app whose broker subcommand talks to stub.
@@ -23,6 +26,23 @@ func newBrokerCmdApp(stub *stubDeps) (*app, *bytes.Buffer, *bytes.Buffer) {
 		version: "v-test",
 		deps:    stub.deps(),
 	}, stdout, stderr
+}
+
+// passReadyFD duplicates w's descriptor for brokerCmd, which takes ownership of
+// the descriptor and closes it. The test's own w is closed here instead of
+// being left to its finalizer: the finalizer would close the descriptor number
+// again later, after another goroutine may have reused it.
+func passReadyFD(t *testing.T, w *os.File) uintptr {
+	t.Helper()
+
+	fd, err := syscall.Dup(int(w.Fd()))
+	if err != nil {
+		t.Fatalf("dup readiness pipe: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close readiness pipe write end: %v", err)
+	}
+	return uintptr(fd)
 }
 
 // brokerLastLine returns the last non-empty line of s.
@@ -182,7 +202,7 @@ func TestBrokerOwnFailureReachesReadyPipe(t *testing.T) {
 	}
 	defer r.Close()
 
-	code := a.brokerCmd(context.Background(), []string{"--listen=", fmt.Sprintf("--ready-fd=%d", w.Fd())})
+	code := a.brokerCmd(context.Background(), []string{"--listen=", fmt.Sprintf("--ready-fd=%d", passReadyFD(t, w))})
 	if code != exitUsage {
 		t.Fatalf("brokerCmd returned %d, want %d", code, exitUsage)
 	}
@@ -221,7 +241,7 @@ func TestBrokerClosesReadyPipeAfterRun(t *testing.T) {
 	}
 	defer r.Close()
 
-	if code := a.brokerCmd(context.Background(), []string{fmt.Sprintf("--ready-fd=%d", w.Fd())}); code != exitFailure {
+	if code := a.brokerCmd(context.Background(), []string{fmt.Sprintf("--ready-fd=%d", passReadyFD(t, w))}); code != exitFailure {
 		t.Fatalf("brokerCmd returned %d, want %d", code, exitFailure)
 	}
 	waitBrokerPipeEOF(t, r)
@@ -231,17 +251,14 @@ func TestBrokerClosesReadyPipeAfterRun(t *testing.T) {
 }
 
 func TestBrokerRejectsClosedReadyFd(t *testing.T) {
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
+	var limit syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &limit); err != nil {
+		t.Fatalf("get RLIMIT_NOFILE: %v", err)
 	}
-	fd := w.Fd()
-	if err := r.Close(); err != nil {
-		t.Fatalf("close read end: %v", err)
-	}
-	if err := w.Close(); err != nil {
-		t.Fatalf("close write end: %v", err)
-	}
+	// A descriptor number above the limit cannot have been opened, so no other
+	// test running in parallel can reuse the closed pipe's number between the
+	// close and this call.
+	fd := limit.Cur + 1
 
 	stub := &stubDeps{}
 	a, _, stderr := newBrokerCmdApp(stub)
@@ -253,6 +270,44 @@ func TestBrokerRejectsClosedReadyFd(t *testing.T) {
 	}
 	if len(stub.brokerCalls) != 0 {
 		t.Errorf("runBroker called %d times, want 0", len(stub.brokerCalls))
+	}
+}
+
+func TestBrokerRejectsStandardStreamReadyFd(t *testing.T) {
+	// A readiness pipe is inherited at fd 3 or higher; 0, 1 and 2 are the
+	// standard streams. Before the check existed, brokerCmd accepted them and
+	// closed them as the readiness pipe. Duplicate the test process's own
+	// streams so a run against the unfixed code does not shut down its output.
+	saved := make([]int, 3)
+	for fd := range saved {
+		dup, err := syscall.Dup(fd)
+		if err != nil {
+			t.Fatalf("dup fd %d: %v", fd, err)
+		}
+		saved[fd] = dup
+	}
+	t.Cleanup(func() {
+		for fd, dup := range saved {
+			if err := unix.Dup2(dup, fd); err != nil {
+				t.Errorf("restore fd %d: %v", fd, err)
+			}
+			_ = syscall.Close(dup)
+		}
+	})
+
+	for _, fd := range []uintptr{0, 1, 2} {
+		stub := &stubDeps{}
+		a, _, stderr := newBrokerCmdApp(stub)
+
+		if code := a.brokerCmd(context.Background(), []string{fmt.Sprintf("--ready-fd=%d", fd)}); code != exitUsage {
+			t.Fatalf("--ready-fd=%d returned %d, want %d", fd, code, exitUsage)
+		}
+		if !strings.Contains(stderr.String(), "standard stream") {
+			t.Errorf("--ready-fd=%d stderr = %q, want the standard stream explanation", fd, stderr.String())
+		}
+		if len(stub.brokerCalls) != 0 {
+			t.Errorf("--ready-fd=%d: runBroker called %d times, want 0", fd, len(stub.brokerCalls))
+		}
 	}
 }
 
@@ -311,7 +366,7 @@ func TestBrokerReadyFdEqualsForm(t *testing.T) {
 			}
 			defer r.Close()
 
-			if code := a.brokerCmd(context.Background(), form.args(w.Fd())); code != exitOK {
+			if code := a.brokerCmd(context.Background(), form.args(passReadyFD(t, w))); code != exitOK {
 				t.Fatalf("brokerCmd returned %d, want %d", code, exitOK)
 			}
 			if len(stub.brokerCalls) != 1 {
