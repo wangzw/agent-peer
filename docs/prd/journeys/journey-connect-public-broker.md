@@ -52,4 +52,4 @@ C 与 A 互为对端，并且已连接。C 上的 Agent 与 A 上同在 `infra-h
 
 ## 端到端测试
 
-未实现
+`test/e2e/journey_public_broker_test.go` 中的 `TestJourneyConnectPublicBroker`

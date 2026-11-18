@@ -100,16 +100,16 @@ topic 在未声明为公开时必须是不公开的。
 所在 Broker 为公开时，Agent 必须能在加入 topic 时把它声明为公开。声明可以附一段简介，也可以不附。
 
 - **验收**：公开 Broker 上的 Agent 以公开方式加入 topic 并给出简介后，已连接的其他 Broker 上列出公开 topic 的结果包含该名字和简介；不给简介时，结果包含该名字，简介为空。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestPublicTopicVisibleAcrossNetwork`；`test/e2e/journey_public_broker_test.go` 的 `TestJourneyConnectPublicBroker/main`
 
 ### REQ-topics-011
 
 公开 topic 的名字和简介必须对连通网络内所有 Broker 上的 Agent 可见，不限于声明方的对端。
 
 - **验收**：A 与 B 已连接，B 与 C 已连接，A 与 C 之间没有链路；A 上声明的公开 topic 出现在 C 上列出公开 topic 的结果中。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestPublicTopicVisibleAcrossNetwork`；`test/e2e/journey_public_broker_test.go` 的 `TestJourneyConnectPublicBroker/main`
 
 ### REQ-topics-012
 
@@ -124,8 +124,8 @@ topic 在未声明为公开时必须是不公开的。
 Agent 必须能列出自己已加入的 topic 和本 Broker 已知的公开 topic。
 
 - **验收**：结果区分“已加入”和“公开但未加入”，分别与实际情况一致。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestPublicTopicVisibleAcrossNetwork`；`test/e2e/journey_public_broker_test.go` 的 `TestJourneyConnectPublicBroker/main`
 
 ### REQ-topics-014
 

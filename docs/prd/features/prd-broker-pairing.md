@@ -205,8 +205,8 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 配对时对方出示的指纹，与本 Broker 此前从名片获知的、该对外地址对应的指纹不一致时，系统必须在配对结果中向用户给出警告。
 
 - **验收**：本 Broker 已持有某公开 Broker 的名片；向该名片所载对外地址发起配对而对方实际出示了另一个指纹时，调用结果包含指纹不一致的警告。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/journey_public_broker_test.go` 的 `TestJourneyConnectPublicBroker/fingerprint_mismatch`
 
 ### REQ-broker-pairing-024
 

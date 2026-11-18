@@ -45,8 +45,8 @@ Broker 设为公开后必须发布名片，名片的内容是它的指纹、别�
 公开 Broker 的名片必须到达连通网络内的每一个 Broker，不限于它的对端。
 
 - **验收**：A 与 B 已连接，B 与 C 已连接，C 与 D 已连接，其余各对之间没有链路；A 设为公开后，D 列出已知 Broker 的结果包含 A。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestDiscoveryCardReachesWholeNetwork`；`test/e2e/journey_public_broker_test.go` 的 `TestJourneyConnectPublicBroker/main`
 
 ### REQ-broker-discovery-004
 
