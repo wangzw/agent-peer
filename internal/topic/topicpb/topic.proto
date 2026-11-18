@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package internal.topic.topicpb;
+
+option go_package = "github.com/wangzw/agent-peer/internal/topic/topicpb;topicpb";
+
+message TopicDigests {
+  repeated bytes digests = 1;
+}
+
+message Roster {
+  bytes digest = 1;
+  repeated Member members = 2;
+}
+
+message RosterDelta {
+  bytes digest = 1;
+  repeated Member added = 2;
+  repeated MemberKey removed = 3;
+  repeated Member changed = 4;
+}
+
+message Member {
+  string name = 1;
+  string ref = 2;
+  AgentStatus status = 3;
+  string previous_name = 4;
+}
+
+message MemberKey {
+  string name = 1;
+  string ref = 2;
+}
+
+enum AgentStatus {
+  // AGENT_STATUS_UNSPECIFIED means the agent's status is unknown.
+  AGENT_STATUS_UNSPECIFIED = 0;
+  AGENT_STATUS_IDLE = 1;
+  AGENT_STATUS_BUSY = 2;
+  AGENT_STATUS_WAITING = 3;
+  AGENT_STATUS_SHELL = 4;
+}
