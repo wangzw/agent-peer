@@ -87,9 +87,27 @@ service Local {
 | `agent-peer audit [--limit <条数>]` | `Audit` | 以流的方式查看审计日志，`--limit` 指定取最新的多少条，为 0 表示不限条数（`REQ-broker-config-009`） |
 | `agent-peer service install [--system]` | — | 安装随登录启动的用户级服务，或随系统启动的系统级服务（`REQ-broker-config-015`） |
 
-从 MCP 服务进程拉起时，命令带隐藏标志 `--ready-fd=3`，标明就绪管道的文件描述符。
+失败时进程以非零退出码结束，标准错误的最后一行是 `agent-peer <子命令>: <原因>`，原因取上游错误的原文；用法错误另附该子命令的用法。命令的结果只写标准输出，Broker 的 JSON 运行日志另行写标准错误。退出码按原因区分：
 
-`status` 与 `audit` 连接哪个 Broker，按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的同一顺序确定，但不拉起 Broker。
+| 退出码 | 含义 |
+|---|---|
+| 0 | 正常结束；Broker 与 MCP 服务进程收到 SIGINT 或 SIGTERM 后正常退出也是 0 |
+| 1 | 其他失败：Broker 运行期错误（含账户锁丢失）、`--system` 而系统级 Broker 不可用、终端命令连不上 Broker、Broker 返回错误、版本不同、尚未实现的子命令 |
+| 2 | 用法错误：未知子命令、未知标志、多余的位置参数、标志取值不合法（含 `--listen` 为空或写法不合法、`--ready-fd` 不是打开的描述符、`--limit` 超出范围） |
+| 3 | 启动失败：已有实例持有账户锁 |
+| 4 | 启动失败：监听地址不可用 |
+| 5 | 启动失败：配置不合法 |
+| 6 | 启动失败：处在会话的进程树内 |
+| 7 | 启动失败：`--system` 而不是 root |
+| 8 | 启动失败：运行时目录属主或权限不符 |
+
+`--listen` 的取值必须非空。要本次运行不监听，把配置中的 `broker.listen` 设为空。地址写法是否合法由 `config` 判定，不合法按用法错误退出。
+
+就绪管道以隐藏标志 `--ready-fd=<n>` 传入，只由 MCP 服务进程的中间进程使用，从终端启动时没有这个标志。进程级信号由 `cmd/agent-peer` 统一处理：第一次 SIGINT 或 SIGTERM 取消运行，第二次直接终止进程。
+
+`status` 与 `audit` 连接哪个 Broker，按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的顺序前三项确定，不拉起 Broker。连上后先调用 `Hello`，本机协议版本不同时报 `version_mismatch` 并退出，说明 Broker 与本二进制各自的版本，提示用本二进制重启 Broker。单个一元调用超时 10 秒；`Audit` 的流不设总时限，靠信号取消。
+
+`status` 的输出分 Agent 与对端两段，表格按地址或别名排序，空值写 `-`；topic 按字典序以逗号连接；指纹写完整的 64 位小写十六进制，不截短；枚举取值写去掉前缀的小写蛇形。段内没有条目时写 `Agents: none` 或 `Peers: none`。`audit` 每个事件输出一行，按到达顺序排列，依次是 RFC 3339 UTC 时间、事件名，以及 `actor`、`account`、`peer`、`key`、`old`、`new`、`count`、`detail` 中的非空字段；值为空或含空格、引号、等号时加引号。
 
 `Audit` 是服务端流式调用：审计事件按时间顺序作为一条流逐条到达，读完即结束。请求带一个可选的 `limit`：非 0 时返回最新的 N 条事件，这 N 条仍按时间顺序到达；为 0 表示不限条数。读取不保留游标或分页状态，每次调用各自重新读取，`limit` 只截断这一次流的内容。
 
@@ -322,7 +340,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 | 请求发出后没有确定应答，或 `inbox` 报告不确定 | `delivery_unknown` | 链路重建后重发；`inbox` 不确定时不重试 |
 | 对端返回的任何错误 | 保留原错误码 | 否 |
 
-启动阶段的失败不经本机接口返回。从终端启动的，进程以非零的退出码结束，并在标准错误输出说明原因：`--system` 而不是 root、处在会话的进程树内、已有实例持有账户锁、配置不合法、监听地址不可用。由 MCP 服务进程拉起的，进程以非零的退出码结束，失败原因经就绪管道交回，由 MCP 服务进程转给模型。
+启动阶段的失败不经本机接口返回。从终端启动的，进程以非零的退出码结束，并在标准错误输出说明原因：`--system` 而不是 root、处在会话的进程树内、已有实例持有账户锁、配置不合法、监听地址不可用。由 MCP 服务进程拉起的，进程以非零的退出码结束，失败原因经就绪管道交回，由 MCP 服务进程转给模型。退出码的取值与标准错误的格式见命令行一节。
 
 发送对同一消息标识是幂等的，幂等只在去重表保留条目的时间内成立；接收方的 Broker 在两次请求之间重启时，同一条消息可能写入两次。返回未送达类错误之后系统不再投递（`REQ-agent-messaging-019`）；返回 `delivery_unknown` 之后同样不再投递，但消息可能已经写入。
 
@@ -382,4 +400,4 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 名片地址交给 pairing 与配对后比对指纹 | 未实现 | — |
 | 配对与对端管理的本机调用 | 已实现 | `internal/broker/connect_rpc.go`、`internal/broker/disconnect_rpc.go`、`internal/broker/pairkey_rpc.go`、`internal/broker/listbrokers.go`、`internal/broker/peerinfo.go`；非对端的列出由名片与公开 topic 接入 |
 | 配置读写与审计的本机调用 | 已实现 | `internal/broker/configrpc.go`、`internal/broker/auditrpc.go` |
-| 终端命令 | 未实现 | — |
+| 终端命令 | 部分实现 | `cmd/agent-peer`、`internal/mcpserver/termcmd`；`service install` 未实现，`broker --system` 由系统级 Broker 单元负责 |

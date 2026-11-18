@@ -228,8 +228,8 @@ Broker 必须以结构化格式输出运行日志。
 启动 Broker 时必须能指定监听地址，以取代配置中的值。
 
 - **验收**：配置保持默认，启动时指定监听 `:17444`：Broker 在本机全部地址的 17444 端口上监听，不在 17443 端口上监听，配置文件的内容没有变化。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`cmd/agent-peer/broker_process_test.go`: `TestBrokerListenFlagOverridesConfig`
 
 ### REQ-broker-config-026
 

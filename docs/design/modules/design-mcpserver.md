@@ -180,7 +180,7 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 | Broker 的选定 | 已实现 | `internal/mcpserver/select.go`（`selector.Select`、`selector.Find`、`FindBroker`） |
 | 拉起用户级 Broker 与失败原因的传递 | 已实现 | `internal/mcpserver/launch.go`（`execLauncher.Launch`、`brokerEnv`）、`internal/mcpserver/launcher.go`（`RunLauncher`、`LauncherArgs`） |
 | 握手、版本握手与会话登记 | 已实现 | `internal/mcpserver/run.go`（`Run`、`Options`）、`internal/mcpserver/conn.go`（`dialLocal`、`hello`）、`internal/mcpserver/register.go`（`runRegistration`） |
-| 信号处理 | 部分实现 | `internal/mcpserver/run.go`（`Run`：上下文取消时先关闭登记流）；信号由“cmd 与终端命令”单元接入（`signal.NotifyContext` 处理 SIGINT 与 SIGTERM） |
+| 信号处理 | 已实现 | `internal/mcpserver/run.go`（`Run`：上下文取消时先关闭登记流）、`cmd/agent-peer/app.go`（`newSignalContext`：`signal.NotifyContext` 处理 SIGINT 与 SIGTERM） |
 | 重新登记与成员关系恢复 | 已实现 | `internal/mcpserver/loop.go`（`runLoop`）、`internal/mcpserver/topics.go`（`topicMemory`、`restorer.onComplete`） |
 | 默认 topic 的确定 | 已实现 | `internal/mcpserver/defaulttopic.go`（`defaultTopics`、`gitOrigin`）、`internal/mcpserver/project.go`（`findProjectConfig`） |
 | 仓库地址的规范化 | 已实现 | `internal/mcpserver/remote.go`（`normalizeRemote`） |

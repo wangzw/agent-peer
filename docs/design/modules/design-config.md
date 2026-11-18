@@ -205,7 +205,7 @@ type PathSet struct {
 | 数据目录：身份、对端表、名录 | `~/.agent-peer/` | `/var/lib/agent-peer/` |
 | 审计日志 | `~/.agent-peer/audit.log` | `/var/log/agent-peer/audit.log` |
 
-运行时目录内有本机 socket `broker.sock` 和账户锁 `broker.lock`。运行时目录只取决于进程的账户，与形态、环境变量、配置内容和监听地址无关：root 的是 Linux 上的 `/run/agent-peer/`、macOS 上的 `/var/run/agent-peer/`，系统级 Broker 与 root 的用户级 Broker 因此争用同一把锁；其他账户的是 `/tmp/agent-peer-<uid>/`，`<uid>` 是进程的账户。同一账户的两个进程因此总是争用同一把锁，也总在同一个位置找本机 socket（`REQ-broker-config-013`）。root 的运行时目录权限 `0755`；系统级 Broker 的本机 socket 在绑定后按 `broker.local_socket_group` 与 `broker.local_socket_mode` 设置属组与权限，哪些账户能连接由它决定；用户级的 socket 固定为 `0600`；其他账户的运行时目录权限 `0700`。运行时目录的属主必须是本账户，不符时拒绝启动。
+运行时目录内有本机 socket `broker.sock` 和账户锁 `broker.lock`。运行时目录只取决于进程的账户，与形态、环境变量、配置内容和监听地址无关：root 的是 Linux 上的 `/run/agent-peer/`、macOS 上的 `/var/run/agent-peer/`，系统级 Broker 与 root 的用户级 Broker 因此争用同一把锁；其他账户的是 `/tmp/agent-peer-<uid>/`，`<uid>` 是进程的账户。同一账户的两个进程因此总是争用同一把锁，也总在同一个位置找本机 socket（`REQ-broker-config-013`）。root 的运行时目录权限 `0755`；系统级 Broker 的本机 socket 在绑定后按 `broker.local_socket_group` 与 `broker.local_socket_mode` 设置属组与权限，哪些账户能连接由它决定；用户级的 socket 固定为 `0600`；其他账户的运行时目录权限 `0700`。运行时目录的属主必须是本账户，不符时拒绝启动。以上位置规则对发布构建成立。带 `agentpeer_testenv` 构建标签的测试构建例外：`AGENT_PEER_TEST_RUNTIME_ROOT` 非空时运行时目录的根取它的值，`AGENT_PEER_TEST_HOME` 非空时账户家目录取它的值；两者为空时不生效，发布构建不含这段代码。
 
 用户级的数据目录权限 `0700`，其中的文件权限 `0600`。系统级的配置文件默认只有 root 可写；管理员把它的读或写权限授予某个组，即把读取配置或管理操作委托给该组的账户。
 

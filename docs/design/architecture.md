@@ -89,7 +89,7 @@ graph TD
 
 图中没有箭头而运行时需要的协作，由 `broker` 以接口注入或转调完成。接口注入用于 `pairing`：它发起握手要拨号，解除配对要关闭链路，拨号与关闭链路由 `link` 实现，`broker` 在装配时以接口的形式交给 `pairing`。其余的协作是转调：配置变更由 `broker` 订阅后分别通知 `link`、`directory`；名片带来的对外地址列表由 `broker` 交给 `pairing` 记入候选地址，本机对外地址列表的变化由 `broker` 通知 `link` 与 `directory`；配对结果与名录的比对、公开 topic 的声明都由 `broker` 依次调用相关的包。
 
-`mcpserver` 只引用 `internal/broker/localpb`，即本机接口的客户端与消息定义所在的 proto 包，从不引用 `broker` 包本身；两者运行在不同进程里。`cmd/agent-peer` 是装配入口，没有自己的设计文档，终端命令的行为记在 [broker](modules/design-broker.md) 的外部接口契约一节。
+`mcpserver` 只引用 `internal/broker/localpb`，即本机接口的客户端与消息定义所在的 proto 包，从不引用 `broker` 包本身；两者运行在不同进程里。`cmd/agent-peer` 是装配入口，没有自己的设计文档，终端命令的行为记在 [broker](modules/design-broker.md) 的外部接口契约一节。`cmd/agent-peer` 不引用 `localpb`；`status` 与 `audit` 的客户端放在 `mcpserver` 的子包 `termcmd` 中，依赖图不变。
 
 ## 逻辑部署架构
 
@@ -285,7 +285,7 @@ Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间�
 - 不公开的 Broker 不签发名片；Broker 只传播自己持有其签名记录的 Broker 的信息（[ADR-brokers-private-by-default](../adr/adr-brokers-private-by-default.md)）。
 - 向 inbox socket 写入的连接上不发送认证行。
 - Broker 进程与它派生的进程都不是任何 Claude Code 会话进程的后代。
-- 同一账户下同一时刻至多有一个 Broker 进程持有账户锁；账户锁的路径不随形态、配置内容、监听地址和环境变量变化。
+- 同一账户下同一时刻至多有一个 Broker 进程持有账户锁；账户锁的路径不随形态、配置内容、监听地址和环境变量变化。带 `agentpeer_testenv` 构建标签的测试构建例外：`AGENT_PEER_TEST_RUNTIME_ROOT` 与 `AGENT_PEER_TEST_HOME` 可以改变运行时目录与账户家目录，发布构建不含这段代码。
 - 配置的监听地址无法绑定时，Broker 不在任何其他地址或端口上监听：启动时退出，运行期间的修改不提交。
 - 修改配置、生成配对密钥、发起配对、解除配对，只在调用方账户对该 Broker 的配置文件有写权限时执行；读取配置与审计只在有读权限时返回。
 - 密钥类配置项的取值不经本机接口返回，也不写入运行日志与审计日志。
