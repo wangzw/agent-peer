@@ -39,14 +39,20 @@ func assertDialFails(t *testing.T, addr string) {
 // waitListen polls until the Broker accepts connections on addr. A process
 // started without a readiness pipe has no other way to report readiness; this
 // polls an external condition rather than replacing a decision with a sleep.
-func waitListen(t *testing.T, p *brokerProc, addr string) {
+// It reports false when the process exits or the deadline passes first.
+func waitListen(t *testing.T, p *brokerProc, addr string) bool {
 	t.Helper()
 
 	deadline := time.Now().Add(3 * time.Second)
 	for {
+		select {
+		case <-p.exited:
+			return false
+		default:
+		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			t.Fatalf("broker did not listen on %s within 3s (stderr: %s)", addr, p.stderr.String())
+			return false
 		}
 		// Cap the dial and the retry interval by the time left, so one last
 		// attempt cannot push the whole wait past the deadline.
@@ -57,7 +63,7 @@ func waitListen(t *testing.T, p *brokerProc, addr string) {
 		conn, err := net.DialTimeout("tcp", addr, dialTimeout)
 		if err == nil {
 			_ = conn.Close()
-			return
+			return true
 		}
 		// Recompute the remaining time after the dial, which may have consumed
 		// all of it; the next iteration reports the timeout.
@@ -94,6 +100,36 @@ func startBrokerTerminal(t *testing.T, sb *sandbox, args ...string) *brokerProc 
 	return p
 }
 
+// startBrokerTerminalOnFreePort starts a terminal Broker with --listen on a
+// port that freePort released and waits until it accepts connections. The port
+// can be taken between freePort's close and the Broker's bind, so a Broker that
+// exits because the address is unavailable is retried once on a fresh port.
+func startBrokerTerminalOnFreePort(t *testing.T, sb *sandbox, args ...string) (*brokerProc, int) {
+	t.Helper()
+
+	const attempts = 2
+	for attempt := 1; ; attempt++ {
+		port := freePort(t)
+		addr := listenAddr(port)
+		p := startBrokerTerminal(t, sb, append([]string{"--listen", addr}, args...)...)
+		if waitListen(t, p, addr) {
+			return p, port
+		}
+		select {
+		case <-p.exited:
+		default:
+			t.Fatalf("broker did not listen on %s within 3s while still running (stderr: %s)", addr, p.stderr.String())
+		}
+		code := p.cmd.ProcessState.ExitCode()
+		if code != exitListenUnavailable || attempt == attempts {
+			t.Fatalf("broker start on %s: exit code %d (stderr: %s)", addr, code, p.stderr.String())
+		}
+		// Another process took the port between freePort's close and the
+		// Broker's bind. The Broker has exited; retry on a fresh port.
+		p.stop()
+	}
+}
+
 // TestBrokerListenFlagOverridesConfig covers REQ-broker-config-025 and
 // REQ-broker-config-029: --listen replaces the configured address for this
 // run, and the configuration file is left untouched.
@@ -108,11 +144,7 @@ func TestBrokerListenFlagOverridesConfig(t *testing.T) {
 		t.Fatalf("read config before start: %v", err)
 	}
 
-	listenPort := freePort(t)
-	p := startBroker(t, sb, "--listen", listenAddr(listenPort))
-	if got := p.readyLine(3 * time.Second); got != "ok" {
-		t.Fatalf("ready line = %q, want %q (stderr: %s)", got, "ok", p.stderr.String())
-	}
+	p, listenPort := startBrokerOnFreePort(t, sb)
 	dialBroker(t, listenAddr(listenPort))
 
 	after, err := os.ReadFile(sb.configPath())
@@ -148,13 +180,13 @@ func TestBrokerSecondInstanceFailsWithAnotherListenAddress(t *testing.T) {
 	t.Parallel()
 
 	sb := newSandbox(t)
-	ports := freePorts(t, 2)
-	firstPort, secondPort := ports[0], ports[1]
+	first, firstPort := startBrokerOnFreePort(t, sb)
 
-	first := startBroker(t, sb, "--listen", listenAddr(firstPort))
-	if got := first.readyLine(3 * time.Second); got != "ok" {
-		t.Fatalf("first ready line = %q, want %q (stderr: %s)", got, "ok", first.stderr.String())
-	}
+	// Pick the second address while the first Broker holds its own port, so
+	// the two addresses differ. The second instance acquires the account lock
+	// before it binds, so a port taken by another process cannot change its
+	// exit code and this start needs no retry.
+	secondPort := freePort(t)
 
 	second := startBroker(t, sb, "--listen", listenAddr(secondPort))
 	ready := second.readyLine(3 * time.Second)
@@ -181,10 +213,9 @@ func TestBrokerSecondInstanceFailsWithAnotherListenAddress(t *testing.T) {
 		t.Fatalf("first exit code after SIGTERM = %d, want %d (stderr: %s)", code, exitOK, first.stderr.String())
 	}
 
-	third := startBroker(t, sb, "--listen", listenAddr(secondPort))
-	if got := third.readyLine(3 * time.Second); got != "ok" {
-		t.Fatalf("third ready line after the lock was released = %q, want %q (stderr: %s)", got, "ok", third.stderr.String())
-	}
+	// The lock is free again, so a Broker can start. The helper retries on a
+	// fresh port if this one was taken after freePort released it.
+	startBrokerOnFreePort(t, sb)
 }
 
 // TestBrokerListenAddressUnavailable covers REQ-broker-config-024: an
@@ -284,14 +315,8 @@ func TestBrokerUsesTestHome(t *testing.T) {
 	first.writeConfig("broker:\n  alias: host-a\n")
 	second.writeConfig("broker:\n  alias: host-b\n")
 
-	firstProc := startBroker(t, first, "--listen", listenAddr(freePort(t)))
-	if got := firstProc.readyLine(3 * time.Second); got != "ok" {
-		t.Fatalf("first ready line = %q, want %q (stderr: %s)", got, "ok", firstProc.stderr.String())
-	}
-	secondProc := startBroker(t, second, "--listen", listenAddr(freePort(t)))
-	if got := secondProc.readyLine(3 * time.Second); got != "ok" {
-		t.Fatalf("second ready line = %q, want %q (stderr: %s)", got, "ok", secondProc.stderr.String())
-	}
+	startBrokerOnFreePort(t, first)
+	startBrokerOnFreePort(t, second)
 
 	for _, sb := range []*sandbox{first, second} {
 		for _, name := range []string{"identity.key", "identity.crt"} {
@@ -384,11 +409,10 @@ func TestBrokerFromTerminalHasNoReadyPipe(t *testing.T) {
 	t.Parallel()
 
 	sb := newSandbox(t)
-	port := freePort(t)
-	addr := listenAddr(port)
+	p, _ := startBrokerTerminalOnFreePort(t, sb)
 
-	p := startBrokerTerminal(t, sb, "--listen", addr)
-	waitListen(t, p, addr)
+	// The helper observed readiness by dialing the listen address; the
+	// process has no readiness pipe to read.
 
 	if err := p.cmd.Process.Signal(os.Interrupt); err != nil {
 		t.Fatalf("signal broker: %v", err)

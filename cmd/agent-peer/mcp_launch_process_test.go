@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -26,9 +27,6 @@ func TestMCPLaunchesBroker(t *testing.T) {
 	t.Parallel()
 
 	sb := newSandbox(t)
-	// The Broker must bind a port no other test claims; broker.listen defaults
-	// to :17443 and a second bound Broker fails startup.
-	sb.writeConfig(fmt.Sprintf("broker:\n  listen: %q\n", listenAddr(freePort(t))))
 	// The process environment of a Claude Code session: the messaging socket is
 	// set and AGENT_PEER_SOCKET is not, so the MCP server has to launch the
 	// user-level Broker. The launcher drops the messaging socket before the
@@ -41,22 +39,61 @@ func TestMCPLaunchesBroker(t *testing.T) {
 	// connection loop cannot launch another Broker while this one is terminated.
 	t.Cleanup(func() { stopLaunchedBroker(t, sb) })
 
-	p := startMCP(t, sb)
-	p.initialize()
+	// broker.listen defaults to :17443, and a second bound Broker fails startup,
+	// so each attempt configures a port no other test claims. That port can be
+	// taken between freePort's close and the launched Broker's bind. The
+	// failure only shows up as the status poll not getting an answer, so retry
+	// once with a fresh port: stop the mcp process and any Broker it launched,
+	// rewrite the configuration and start again. Each attempt keeps the 3s
+	// limit.
+	const attempts = 2
+	var failures []string
+	for attempt := 1; attempt <= attempts; attempt++ {
+		port := freePort(t)
+		sb.writeConfig(fmt.Sprintf("broker:\n  listen: %q\n", listenAddr(port)))
 
-	// The connection loop runs in the background, so the first status may
-	// still find no Broker. Poll until it answers or the 3s deadline passes.
-	// Each iteration recomputes the remaining time and uses it as the limit of
-	// the next status command, so the whole loop stays within 3s.
-	deadline := time.Now().Add(3 * time.Second)
+		p := startMCP(t, sb)
+		p.initialize()
+
+		if waitStatus(t, sb, 3*time.Second) {
+			return
+		}
+
+		failures = append(failures, fmt.Sprintf("attempt %d on %s: %s", attempt, listenAddr(port), p.stderr.String()))
+		// Stop the mcp process before the Broker: its connection loop would
+		// otherwise launch another Broker after the Broker cleanup ran.
+		p.stop()
+		stopLaunchedBroker(t, sb)
+	}
+	t.Fatalf("agent-peer status did not exit 0 within 3s of the MCP initialize in either attempt: %s",
+		strings.Join(failures, "; "))
+}
+
+// waitStatus polls "agent-peer status" until it exits 0 or the deadline
+// passes, reporting whether the Broker answered. When the MCP launch fails,
+// for example because the listen address was taken, status keeps failing for
+// the whole window, and the caller can retry with another port.
+func waitStatus(t *testing.T, sb *sandbox, timeout time.Duration) bool {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
 	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			t.Fatalf("agent-peer status did not exit 0 within 3s of the MCP initialize (stderr: %s)",
-				p.stderr.String())
+			return false
 		}
+		// Leave a process-start margin: a status command started with too
+		// little time left would be killed mid-start and fail the test instead
+		// of reporting a timeout to the caller.
+		if remaining < 100*time.Millisecond {
+			time.Sleep(remaining)
+			return false
+		}
+		// Each iteration recomputes the remaining time and uses it as the
+		// limit of the next status command, so the whole loop stays within the
+		// deadline.
 		if res := runCLI(t, sb, remaining, "status"); res.code == exitOK {
-			return
+			return true
 		}
 		if rest := time.Until(deadline); rest > 0 {
 			pause := 20 * time.Millisecond

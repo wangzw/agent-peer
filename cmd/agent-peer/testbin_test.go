@@ -200,31 +200,33 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-// freePorts returns n distinct ports that were bound at the same time and then
-// released together. Binding every listener before closing any guarantees the
-// ports differ, which two separate freePort calls cannot.
-func freePorts(t *testing.T, n int) []int {
+// startBrokerOnFreePort starts the Broker with --listen on a port that
+// freePort released and waits for its readiness line. The port can be taken
+// between freePort's close and the Broker's bind, so a Broker that exits
+// because the address is unavailable is retried once on a fresh port. Any
+// other failure is reported as it is. The returned port is the one the Broker
+// listens on.
+func startBrokerOnFreePort(t *testing.T, sb *sandbox, args ...string) (*brokerProc, int) {
 	t.Helper()
 
-	listeners := make([]net.Listener, n)
-	ports := make([]int, n)
-	for i := range listeners {
-		l, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			for _, open := range listeners[:i] {
-				_ = open.Close()
-			}
-			t.Fatalf("listen on an ephemeral port: %v", err)
+	const attempts = 2
+	for attempt := 1; ; attempt++ {
+		port := freePort(t)
+		brokerArgs := append([]string{"--listen", listenAddr(port)}, args...)
+		p := startBroker(t, sb, brokerArgs...)
+		line := p.readyLine(3 * time.Second)
+		if line == "ok" {
+			return p, port
 		}
-		listeners[i] = l
-		ports[i] = l.Addr().(*net.TCPAddr).Port
-	}
-	for _, l := range listeners {
-		if err := l.Close(); err != nil {
-			t.Fatalf("close ephemeral listener: %v", err)
+		code := p.wait(3 * time.Second)
+		if code != exitListenUnavailable || attempt == attempts {
+			t.Fatalf("broker start on %s: exit code %d, ready line %q (stderr: %s)",
+				listenAddr(port), code, line, p.stderr.String())
 		}
+		// Another process took the port between freePort's close and the
+		// Broker's bind. The Broker has exited; retry on a fresh port.
+		p.stop()
 	}
-	return ports
 }
 
 // lockedBuffer is the standard error sink for a child process. os/exec copies

@@ -261,6 +261,14 @@ func (p *mcpProc) killIfRunning() {
 	<-p.exited
 }
 
+// stop ends the MCP server: it closes the server's standard input and kills
+// the process if it is still running. The cleanup registered by startMCP
+// repeats both, which is safe.
+func (p *mcpProc) stop() {
+	_ = p.stdin.Close()
+	p.killIfRunning()
+}
+
 // assertNoBrokerFiles fails when root (searched recursively) contains a lock
 // or socket, which proves a Broker was launched.
 func assertNoBrokerFiles(t *testing.T, root string) {

@@ -1,12 +1,14 @@
 package main
 
 import (
+	"errors"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -89,12 +91,27 @@ func TestOccupiedPortRefusesBind(t *testing.T) {
 		t.Fatalf("close held listener: %v", err)
 	}
 
-	free := freePort(t)
-	l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(free)))
-	if err != nil {
-		t.Fatalf("freePort returned %d, which cannot be listened on: %v", free, err)
+	// freePort binds and releases the port, so the environment can take it
+	// before this test binds it again. Retry on EADDRINUSE: the assertion only
+	// checks that the helper yields a usable port within a short window, not
+	// that the port stays untouched until the bind.
+	var listenErr error
+	for attempt := 1; attempt <= 5; attempt++ {
+		free := freePort(t)
+		l, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(free)))
+		if err == nil {
+			_ = l.Close()
+			listenErr = nil
+			break
+		}
+		if !errors.Is(err, syscall.EADDRINUSE) {
+			t.Fatalf("listen on freePort %d: %v", free, err)
+		}
+		listenErr = err
 	}
-	_ = l.Close()
+	if listenErr != nil {
+		t.Fatalf("freePort yielded no bindable port after 5 attempts: %v", listenErr)
+	}
 }
 
 // TestSandboxShortRootUnderLongTMPDIR checks that a long TMPDIR cannot push the
