@@ -203,11 +203,11 @@ sequenceDiagram
 
 | 区段 | 所属包 |
 |---|---|
-| 1～99 | 链路（`linkpb`） |
-| 100～199 | 配对（`pairingpb`） |
-| 200～299 | topic（`topicpb`） |
-| 300～399 | 名录（`directorypb`） |
-| 400～499 | `broker` 的投递包（`deliverpb`） |
+| 1–99 | 链路（`linkpb`） |
+| 100–199 | 配对（`pairingpb`） |
+| 200–299 | topic（`topicpb`） |
+| 300–399 | 名录（`directorypb`） |
+| 400–499 | `broker` 的投递包（`deliverpb`） |
 
 kind 常量手写在相应 proto 包目录内的 `kind.go` 中，不用 proto enum，使对端能够接收不认识的 kind 而无需枚举转换。每个 kind 的载荷消息及其类别（状态帧、请求帧或应答帧），见 [link](modules/design-link.md)、[topic](modules/design-topic.md)、[directory](modules/design-directory.md)、[pairing](modules/design-pairing.md) 与 [broker](modules/design-broker.md)。
 
@@ -232,7 +232,7 @@ Local 的错误放在 gRPC status 的 details 里，恰好携带一个 `ErrorDet
 | Broker 到 Claude Code 会话 | 不出示会话的认证令牌 | 由该会话的入站控制决定 |
 | 模型到工具 | Claude Code 的权限设置 | 每个工具单独授权；与 Broker 一侧的权限判定各自独立，两者都通过才执行 |
 
-调用方的身份不是任何调用的参数，Broker 不采信调用方的陈述：登记请求所报的 socket 路径与配置目录只用于查找会话记录，不能使调用方登记属于其他账户的会话。进程凭据由操作系统在连接建立时给出，在接受连接时读取一次，该连接上的全部调用都归于这个账户。识别出的是进程的账户，不是人或模型：同一账户下的任何进程都能以该账户的权限调用。用户级 Broker 的配置文件属于本账户，不做权限判定。系统级 Broker 每次判定时派生一个切换到调用方账户的权限检查进程，由它对配置文件做实际的访问检查，不根据权限位推算；附属组在每次判定时取自账户数据库，账户的组成员关系因此对下一次调用生效（[ADR-management-by-config-file-permission](../adr/adr-management-by-config-file-permission.md)，`REQ-broker-config-021` 至 `REQ-broker-config-023`）。
+调用方的身份不是任何调用的参数，Broker 不采信调用方的陈述：登记请求所报的 socket 路径与配置目录只用于查找会话记录，不能使调用方登记属于其他账户的会话。进程凭据由操作系统在连接建立时给出，在接受连接时读取一次，该连接上的全部调用都归于这个账户。识别出的是进程的账户，不是人或模型：同一账户下的任何进程都能以该账户的权限调用。用户级 Broker 的配置文件属于本账户，不做权限判定。系统级 Broker 每次判定时派生一个切换到调用方账户的权限检查进程，由它对配置文件做实际的访问检查，不根据权限位推算；附属组在每次判定时取自账户数据库，账户的组成员关系因此对下一次调用生效（[ADR-management-by-config-file-permission](../adr/adr-management-by-config-file-permission.md)，`REQ-broker-config-021` 至 `REQ-broker-config-023`）。检查进程报告的协议版本不符时，调用以 `internal` 失败。
 
 Broker 无法验证对端报来的 Agent 名字与成员关系，只能信任它们；需要信任的范围仅限于此。对端不能代表别的 Broker 上的 Agent 发言：投递请求中的发送方必须在这条链路对端发来的成员名单中，署名中的别名由接收方按自己对该对端的生效别名选定（本地别名，没有时是对方自报的别名），不取投递请求中的内容。
 
@@ -248,7 +248,7 @@ Broker 内每条链路有一个读协程、一个写协程和一个按序处理�
 
 ### 失败与降级
 
-系统没有降级模式。链路断开期间，远端 Agent 从列表中消失，向它们的发送在重试或等待之后失败。Claude Code 更新导致帧格式不兼容时，全部入站投递失败，由更新 [inbox](modules/design-inbox.md) 依赖的库来恢复。Broker 进程退出后，各 MCP 服务进程的登记连接随之断开，MCP 服务进程按退避重连原来那个 Broker，退避只在登记完成后复位，连上后重新登记（`REQ-broker-config-037`），不等下一次工具调用，空闲的会话因此在 Broker 重启后仍能收到消息：原来连的是用户级 Broker 的，由 MCP 服务进程重新拉起；原来连的是系统级 Broker 的，只退避重连它，等待系统的服务管理机制重新启动，不拉起用户级 Broker，也不改连其他 Broker。配置的监听地址无法绑定时 Broker 启动失败；该 Broker 若由 MCP 服务进程拉起，此后的工具调用返回 Broker 给出的原因，直到用户改用其他地址或端口。默认路由所在接口的地址在地址转换之外连不上时，拨号持续失败，直到用户把对外地址配置为指定的地址或追加地址。接受方在链路断开之后、重新建立之前更换了地址，而拨号方又没有从名片得到新地址时，链路无法自行恢复，要重新配对；链路断开期间，接受方发出的消息只在发送的预算内等待对方连入（[ADR-initiator-redials](../adr/adr-initiator-redials.md)）。辅助进程意外退出时，系统级 Broker 在下一次需要时重新派生，经它进行中的写入按结果未知处理。Broker 不可用或登记未完成时，MCP 服务进程不退出，工具调用返回说明原因的错误，连接在后台持续重试，会话不需要用户重新连接MCP 服务（`REQ-agent-messaging-038`）。
+系统没有降级模式。链路断开期间，远端 Agent 从列表中消失，向它们的发送在重试或等待之后失败。Claude Code 更新导致帧格式不兼容时，全部入站投递失败，由更新 [inbox](modules/design-inbox.md) 依赖的库来恢复。Broker 进程退出后，各 MCP 服务进程的登记连接随之断开，MCP 服务进程按退避重连原来那个 Broker，退避只在登记完成后复位，连上后重新登记（`REQ-broker-config-037`），不等下一次工具调用，空闲的会话因此在 Broker 重启后仍能收到消息：原来连的是用户级 Broker 的，由 MCP 服务进程重新拉起；原来连的是系统级 Broker 的，只退避重连它，等待系统的服务管理机制重新启动，不拉起用户级 Broker，也不改连其他 Broker。配置的监听地址无法绑定时 Broker 启动失败；该 Broker 若由 MCP 服务进程拉起，此后的工具调用返回 Broker 给出的原因，直到用户改用其他地址或端口。默认路由所在接口的地址在地址转换之外连不上时，拨号持续失败，直到用户把对外地址配置为指定的地址或追加地址。接受方在链路断开之后、重新建立之前更换了地址，而拨号方又没有从名片得到新地址时，链路无法自行恢复，要重新配对；链路断开期间，接受方发出的消息只在发送的预算内等待对方连入（[ADR-initiator-redials](../adr/adr-initiator-redials.md)）。辅助进程意外退出时，系统级 Broker 有监听时立即在后台重新派生，没有监听时等下一次调用再派生，经它进行中的写入按结果未知处理。Broker 不可用或登记未完成时，MCP 服务进程不退出，工具调用返回说明原因的错误，连接在后台持续重试，会话不需要用户重新连接MCP 服务（`REQ-agent-messaging-038`）。
 
 ### 可观测性
 

@@ -109,7 +109,7 @@ Agent 对配置的每次修改必须写入审计日志，记录发起修改的 A
 
 - **验收**：登记两个 Agent 并让它们加入不同的 topic，与一个对端配对后断开网络；以有读权限的账户在终端执行查看状态的命令，输出列出这两个 Agent 及各自的 topic，并显示该对端未连接。在系统级 Broker 上以没有读权限的账户执行，输出只含该账户自己的 Agent。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents`（系统级一半）
+- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents`（无读权限的账户只看到自己的 Agent；有读权限的非 root 账户看到两个 Agent 及各自 topic，与对端配对后停掉对端 Broker 代替“断开网络”，对端仍列出且显示为未连接）
 
 ### REQ-broker-config-011
 
@@ -148,8 +148,8 @@ Broker 必须以结构化格式输出运行日志。
 用户必须能把自己账户下的用户级 Broker 安装为随该账户登录而启动的服务。
 
 - **验收**：安装后重新登录，在未启动任何会话的情况下，该账户的 Broker 进程已在运行，并已恢复与对端的链路。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/user_service_test.go` 的 `TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink`（只覆盖 Linux；macOS 的 LaunchAgent 由单元测试覆盖）
 
 ### REQ-broker-config-016
 

@@ -13,11 +13,13 @@ import (
 // register-client role instead opens a Register stream directly, so that a
 // test can observe the Broker's answer for another account's session.
 func TestMain(m *testing.M) {
-	if os.Getenv(registerClientRoleEnv) == registerClientRole {
+	switch os.Getenv(registerClientRoleEnv) {
+	case registerClientRole:
 		os.Exit(runRegisterClientRole())
-	if os.Getenv(registerClientRoleEnv) == forgeAccessCheckRole {
+	case listBrokersRole:
+		os.Exit(runListBrokersRole())
+	case forgeAccessCheckRole:
 		os.Exit(runForgeAccessCheckRole())
-	}
 	}
 	os.Exit(syscontainer.Main(m))
 }
