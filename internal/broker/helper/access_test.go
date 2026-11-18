@@ -76,6 +76,8 @@ func TestRunAccessCheckReadWrite(t *testing.T) {
 	}{
 		{"read-only", 0o400, true, false},
 		{"read-write", 0o600, true, true},
+		{"owner-rwx-other-rwx", 0o757, true, true},
+		{"owner-rwx-group-rx", 0o750, true, true},
 		{"none", 0o000, false, false},
 	}
 	for _, tc := range cases {
