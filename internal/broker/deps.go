@@ -95,6 +95,13 @@ type PostReadyComponent interface {
 	AfterReady(ctx context.Context) error
 }
 
+// listenBoundReporter is implemented by a Component that forwards broker.listen
+// changes. Run reports the address it bound at startup, so the component can
+// reconcile a change delivered between that bind and its AfterReady.
+type listenBoundReporter interface {
+	listenBound(address string)
+}
+
 // CardIssuer re-signs the own directory card; Reissue is a no-op when the
 // Broker is not public.
 type CardIssuer interface {

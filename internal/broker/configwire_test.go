@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/wangzw/agent-peer/internal/config"
@@ -52,7 +53,7 @@ func TestAliasChangeAnnouncesAndReissues(t *testing.T) {
 		f := newFakeConfig(t.TempDir())
 		rec := &wireRecorder{}
 		log, _ := newWireLog()
-		subscribeConfigChanges(f, rec, rec, rec, log)
+		subscribeConfigChanges(f, rec, rec, rec, log, new(atomic.Bool))
 
 		f.fireKey("broker.alias", stringValue("hostA"), stringValue("hostB"))
 
@@ -66,7 +67,7 @@ func TestAliasChangeAnnouncesAndReissues(t *testing.T) {
 		f := newFakeConfig(t.TempDir())
 		rec := &wireRecorder{}
 		log, _ := newWireLog()
-		subscribeConfigChanges(f, rec, nil, rec, log)
+		subscribeConfigChanges(f, rec, nil, rec, log, new(atomic.Bool))
 
 		f.fireKey("broker.alias", stringValue("hostA"), stringValue("hostB"))
 
@@ -83,7 +84,7 @@ func TestAdvertisedChangeAnnouncesAndReissues(t *testing.T) {
 	f := newFakeConfig(t.TempDir())
 	rec := &wireRecorder{}
 	log, _ := newWireLog()
-	subscribeConfigChanges(f, rec, rec, rec, log)
+	subscribeConfigChanges(f, rec, rec, rec, log, new(atomic.Bool))
 
 	f.fireAdvertised(nil, []config.AdvertisedAddr{{Kind: config.AdvertisedKindDirect, Addr: "10.0.0.1:7000"}})
 
@@ -100,7 +101,7 @@ func TestListenChangeRebinds(t *testing.T) {
 		f := newFakeConfig(t.TempDir())
 		rec := &wireRecorder{}
 		log, _ := newWireLog()
-		subscribeConfigChanges(f, rec, rec, rec, log)
+		subscribeConfigChanges(f, rec, rec, rec, log, new(atomic.Bool))
 
 		f.fireKey("broker.listen", stringValue("127.0.0.1:7000"), stringValue("127.0.0.1:7001"))
 
@@ -116,7 +117,7 @@ func TestListenChangeRebinds(t *testing.T) {
 		f := newFakeConfig(t.TempDir())
 		rec := &wireRecorder{listenErr: errors.New("address already in use")}
 		log, buf := newWireLog()
-		subscribeConfigChanges(f, rec, rec, rec, log)
+		subscribeConfigChanges(f, rec, rec, rec, log, new(atomic.Bool))
 
 		f.fireKey("broker.listen", stringValue("127.0.0.1:7000"), stringValue("127.0.0.1:7001"))
 
@@ -152,7 +153,7 @@ func TestSubscribesExactlyThree(t *testing.T) {
 	f := newFakeConfig(t.TempDir())
 	rec := &wireRecorder{}
 	log, _ := newWireLog()
-	subscribeConfigChanges(f, rec, rec, rec, log)
+	subscribeConfigChanges(f, rec, rec, rec, log, new(atomic.Bool))
 
 	f.mu.Lock()
 	keys := append([]string(nil), f.subscribedKeys...)

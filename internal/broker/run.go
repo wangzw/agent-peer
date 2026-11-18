@@ -236,6 +236,13 @@ func Run(ctx context.Context, opts RunOptions) error {
 				return fail(fmt.Errorf("%w: %s: %v", ErrListenUnavailable, v.String, err))
 			}
 		}
+		// Tell the components that forward broker.listen what is bound, so a
+		// change delivered before their AfterReady is reconciled against it.
+		for _, c := range started {
+			if r, ok := c.(listenBoundReporter); ok {
+				r.listenBound(v.String)
+			}
+		}
 	}
 
 	// Step 9: bind the local socket. Only the lock holder reaches this point.
