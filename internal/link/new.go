@@ -1,0 +1,58 @@
+package link
+
+import (
+	"context"
+	"crypto/rand"
+	"errors"
+	"log/slog"
+	"time"
+
+	"github.com/wangzw/agent-peer/internal/link/linkpb"
+)
+
+// New creates a Link. It starts no goroutines, binds no port and does not read
+// the peer table; work begins with Listen or Start.
+func New(opts Options) (*Link, error) {
+	if opts.Peers == nil {
+		return nil, errors.New("link: Options.Peers is nil")
+	}
+	if opts.Settings == nil {
+		return nil, errors.New("link: Options.Settings is nil")
+	}
+
+	clock := opts.Clock
+	if clock == nil {
+		clock = RealClock()
+	}
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	version := opts.ProtocolVersion
+	if version == 0 {
+		version = linkpb.ProtocolVersion
+	}
+
+	rootCtx, cancelRoot := context.WithCancel(context.Background())
+	return &Link{
+		peers:    opts.Peers,
+		settings: opts.Settings,
+		clock:    clock,
+		logger:   logger,
+
+		protocolVersion: version,
+
+		sendQueueSize:      1024,
+		firstFrameTimeout:  10 * time.Second,
+		helloTimeout:       10 * time.Second,
+		rejectLinger:       time.Second,
+		maxUnauthenticated: 64,
+		enforcementMinTime: 5 * time.Second,
+		localNets:          nil,
+		onDial:             nil,
+		randRead:           rand.Read,
+
+		rootCtx:    rootCtx,
+		cancelRoot: cancelRoot,
+	}, nil
+}

@@ -1,0 +1,49 @@
+package link
+
+import (
+	"net"
+	"time"
+)
+
+// TestKnobs overrides Link's fixed constants in tests. Zero fields keep the
+// current value; there is deliberately no protocol version field, which is set
+// through Options.ProtocolVersion.
+type TestKnobs struct {
+	SendQueueSize      int
+	FirstFrameTimeout  time.Duration
+	HelloTimeout       time.Duration
+	RejectLinger       time.Duration
+	MaxUnauthenticated int
+	EnforcementMinTime time.Duration
+	LocalNets          func() ([]*net.IPNet, error)
+	OnDial             func(address string)
+}
+
+// SetTestKnobs applies k to l. Zero fields keep the current value. Tests call
+// it before Listen or Start, while the knobs are still read by nobody else.
+func SetTestKnobs(l *Link, k TestKnobs) {
+	if k.SendQueueSize != 0 {
+		l.sendQueueSize = k.SendQueueSize
+	}
+	if k.FirstFrameTimeout != 0 {
+		l.firstFrameTimeout = k.FirstFrameTimeout
+	}
+	if k.HelloTimeout != 0 {
+		l.helloTimeout = k.HelloTimeout
+	}
+	if k.RejectLinger != 0 {
+		l.rejectLinger = k.RejectLinger
+	}
+	if k.MaxUnauthenticated != 0 {
+		l.maxUnauthenticated = k.MaxUnauthenticated
+	}
+	if k.EnforcementMinTime != 0 {
+		l.enforcementMinTime = k.EnforcementMinTime
+	}
+	if k.LocalNets != nil {
+		l.localNets = k.LocalNets
+	}
+	if k.OnDial != nil {
+		l.onDial = k.OnDial
+	}
+}
