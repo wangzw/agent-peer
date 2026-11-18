@@ -26,6 +26,15 @@ const (
 	adAddressBound = 500*time.Millisecond + 3*time.Second
 	// adPort is the default Broker port.
 	adPort = "17443"
+	// adInvalidConfigBound bounds the wait for a Broker that must reject its
+	// configuration. The product validates the file before its ten-second
+	// readiness wait, so the process exits at once and the project-wide test
+	// wait covers it.
+	adInvalidConfigBound = 3 * time.Second
+	// adPeerBrokerReadyBound is the product's ten-second readiness allowance
+	// for a launched Broker (mcpserver.readyTimeoutDefault). This wait watches
+	// a Broker another process launched, so it uses the same allowance.
+	adPeerBrokerReadyBound = 10 * time.Second
 )
 
 // TestAdvertisedAddresses covers the dual-stack default listener, the
@@ -255,7 +264,7 @@ func TestAdvertisedAddresses(t *testing.T) {
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				start := node.StartBroker(t, harness.BrokerSpec{ConfigYAML: tc.config, Bound: 10 * time.Second})
+				start := node.StartBroker(t, harness.BrokerSpec{ConfigYAML: tc.config, Bound: adInvalidConfigBound})
 				if start.Running {
 					node.StopBroker(t, syscall.SIGTERM)
 					t.Fatalf("the Broker started with an invalid listen/advertise combination")
@@ -367,7 +376,7 @@ func adStartBroker(t *testing.T, node *harness.Node, config string) {
 	if start.ExitCode != 3 {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
-	harness.Eventually(t, 10*time.Second, "the Broker started by another process answers", func() (bool, string) {
+	harness.Eventually(t, adPeerBrokerReadyBound, "the Broker started by another process answers", func() (bool, string) {
 		res := node.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
 		return res.ExitCode == 0, fmt.Sprintf("agent-peer status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 	})

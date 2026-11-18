@@ -38,6 +38,18 @@ const (
 	// has several chances to do so. The checks inside it make no product call
 	// that expects a change.
 	secLeakWindow = 1500 * time.Millisecond
+	// secRelayStartBound bounds starting the relay through the node control
+	// protocol. The request only binds a listener and dials on demand, so no
+	// product timer governs it and the project-wide test wait applies.
+	secRelayStartBound = 3 * time.Second
+	// secCaptureWriteBound bounds the wait for tcpdump to write the bytes the
+	// test has already sent. tcpdump flushes on packet activity and no product
+	// timer governs it; five seconds leave room for the ring to drain.
+	secCaptureWriteBound = 5 * time.Second
+	// secPeerBrokerReadyBound is the product's ten-second readiness allowance
+	// for a launched Broker (mcpserver.readyTimeoutDefault). This wait watches
+	// a Broker another process launched, so it uses the same allowance.
+	secPeerBrokerReadyBound = 10 * time.Second
 )
 
 // secFingerprintPattern matches a stored peer fingerprint of the form the peer
@@ -62,7 +74,7 @@ func TestMITM(t *testing.T) {
 	// The node agent in the router runs the relay; it listens on the port the
 	// REDIRECT rule sends hostB's connection to and dials hostA upstream.
 	router := secStartRelayAgent(t, c)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), secRelayStartBound)
 	defer cancel()
 	if err := router.RelayStart(ctx, ctl.RelayStartRequest{Listen: ":" + secBrokerPort, Upstream: aWan}); err != nil {
 		t.Fatalf("starting the relay on the router: %v", err)
@@ -413,7 +425,7 @@ func secWaitCaptureBytes(t *testing.T, c *harness.Cluster, node string, port, wa
 	t.Helper()
 	path := fmt.Sprintf("/tmp/e2e-capture-%d.pcap", port)
 	var data []byte
-	harness.Eventually(t, 5*time.Second, fmt.Sprintf("tcpdump on %s writes more than %d bytes", node, want), func() (bool, string) {
+	harness.Eventually(t, secCaptureWriteBound, fmt.Sprintf("tcpdump on %s writes more than %d bytes", node, want), func() (bool, string) {
 		data = c.Node(node).ReadFile(t, path)
 		if len(data) > want {
 			return true, ""
@@ -435,7 +447,7 @@ func secStartBroker(t *testing.T, node *harness.Node, config string) {
 	if start.ExitCode != 3 {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
-	harness.Eventually(t, 10*time.Second, "the Broker started by another process answers", func() (bool, string) {
+	harness.Eventually(t, secPeerBrokerReadyBound, "the Broker started by another process answers", func() (bool, string) {
 		res := node.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
 		return res.ExitCode == 0, fmt.Sprintf("agent-peer status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 	})
