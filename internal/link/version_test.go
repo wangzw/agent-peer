@@ -40,6 +40,9 @@ func TestLinkVersionAcceptorNewer(t *testing.T) {
 	if got := acceptor.upCount(fpDialer); got != 0 {
 		t.Fatalf("acceptor reported the link up %d times, want never", got)
 	}
+	if got := dialer.upCount(fpAcceptor); got != 0 {
+		t.Fatalf("dialer reported the link up %d times, want never", got)
+	}
 }
 
 func TestLinkVersionDialerNewer(t *testing.T) {
