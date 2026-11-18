@@ -7,6 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"google.golang.org/grpc"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
 )
 
 // targetKind names which step of the selection order chose the Broker.
@@ -272,4 +276,18 @@ func FindBroker(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return t.Path, nil
+}
+
+// FindBrokerWithDial is FindBroker together with a function that opens a
+// connection to the selected socket. The function checks the peer of every
+// underlying connection with peerUID before gRPC sends a byte, so a socket
+// taken over by another account after selection is never used.
+func FindBrokerWithDial(ctx context.Context) (string, func() (*grpc.ClientConn, localpb.LocalClient, error), error) {
+	path, err := FindBroker(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	return path, func() (*grpc.ClientConn, localpb.LocalClient, error) {
+		return dialLocal(path)
+	}, nil
 }
