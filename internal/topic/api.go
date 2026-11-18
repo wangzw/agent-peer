@@ -1,0 +1,50 @@
+package topic
+
+import (
+	"errors"
+	"log/slog"
+
+	"github.com/wangzw/agent-peer/internal/link"
+)
+
+// AgentID is the broker's agent ID: lowercase hex SHA-256 of "session:" + socket path.
+type AgentID string
+
+// AgentRef names an agent for Visible. Peer is zero for an agent on this
+// Broker, which ID then names; otherwise Ref is the agent's disambiguator as
+// carried in the peer's roster entries and ID is ignored.
+type AgentRef struct {
+	Peer link.Fingerprint
+	ID   AgentID
+	Ref  string
+}
+
+// Member is one roster entry. Status is "idle", "busy", "waiting", "shell",
+// or "" when unknown. PrevName is "" when there is none.
+type Member struct {
+	Name     string
+	Ref      string
+	Status   string
+	PrevName string
+}
+
+// VisibleAgent is one agent visible to a local agent, with the topics they share.
+type VisibleAgent struct {
+	Agent  AgentRef // Peer zero and ID set for a local agent; Peer and Ref set for a remote one
+	Member Member   // the agent's current entry
+	Shared []string // shared topic names, ascending
+}
+
+// Options configures a Registry. A nil Logger means slog.Default().
+type Options struct {
+	Logger *slog.Logger
+}
+
+var (
+	// ErrInvalidTopic: the topic name is empty, longer than 256 bytes, not
+	// valid UTF-8, or contains a control character. broker maps it to invalid_argument.
+	ErrInvalidTopic = errors.New("topic: invalid topic name")
+	// ErrUnknownAgent: Join for an agent that AgentChanged never introduced,
+	// or that LeaveAll removed. A broker bug; broker maps it to internal.
+	ErrUnknownAgent = errors.New("topic: unknown agent")
+)
