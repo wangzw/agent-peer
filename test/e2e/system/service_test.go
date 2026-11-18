@@ -46,6 +46,7 @@ func TestServiceInstall(t *testing.T) {
 			"ExecStart=" + releaseBinary + " broker --system",
 			"Restart=always",
 			"RestartSec=5",
+			"NoNewPrivileges=yes",
 			"WantedBy=multi-user.target",
 		} {
 			if !strings.Contains(content, want) {

@@ -42,6 +42,7 @@ ExecStart=%s broker --system
 Restart=always
 RestartSec=5
 UMask=0022
+NoNewPrivileges=yes
 # The Broker reaches every served account's session registry and inbox
 # sockets through per-account helpers, so it must see the real /home, /tmp
 # and /run. Do not add ProtectHome, PrivateTmp or ProtectSystem.
