@@ -5,10 +5,12 @@ package e2e
 import (
 	"errors"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -21,14 +23,17 @@ const (
 	// found a way out.
 	externalProbeIP      = "198.51.100.1"
 	externalProbeAddress = externalProbeIP + ":443"
-	// gatewayProbePorts are ports likely to be open on a host that the
-	// container must not reach.
-	gatewayProbePort22   = "22"
-	gatewayProbePort6443 = "6443"
-	// hostGatewayEnv carries the host's default gateway, passed in by
-	// syscontainer.Run.
-	hostGatewayEnv = "AGENT_PEER_E2E_HOST_GATEWAY"
+	// systemSubnetEnv carries the internal network's subnet into the container.
+	// syscontainer.Run sets it from the subnet it reserved for the project.
+	systemSubnetEnv = "AGENT_PEER_E2E_SYSTEM_SUBNET"
+	// egressProbeBound bounds one probe of the internal network's gateway.
+	egressProbeBound = 2 * time.Second
 )
+
+// gatewayProbePorts are services this host runs on every address. A container
+// on the internal network must not reach them through the docker bridge
+// gateway, which is the host end of that network.
+var gatewayProbePorts = []string{"22", "6443", "10250"}
 
 // TestHarnessAccountsAndBinary checks that the container provides the release
 // binary and the two accounts with the supplementary groups the permission
@@ -68,8 +73,8 @@ func TestHarnessAccountsAndBinary(t *testing.T) {
 
 // TestHarnessNoEgress checks that the network declared in
 // compose/system/compose.yaml gives the container no way out: there is no
-// default route, or an external address has no route, and both an external
-// address and the network gateway's usual service ports are unreachable.
+// default route, or an external address has no route, and neither an external
+// address nor the internal network's host-side IPAM gateway is reachable.
 func TestHarnessNoEgress(t *testing.T) {
 	if !syscontainer.InContainer() {
 		syscontainer.Run(t, syscontainer.Plain)
@@ -94,20 +99,70 @@ func TestHarnessNoEgress(t *testing.T) {
 		t.Logf("no default route; route get %s: exit %d, %s", externalProbeIP, lookup.ExitCode,
 			strings.TrimSpace(lookup.Stdout+lookup.Stderr))
 	}
-
 	assertDialFails(t, externalProbeAddress)
 
-	// The host's own default gateway is the address an egress path would run
-	// through first. The host test process passes it in; a host without one,
-	// such as a non-Linux host, leaves it empty.
-	gateway := os.Getenv(hostGatewayEnv)
-	if gateway == "" {
-		t.Logf("the host reported no default gateway to probe; routes in the container:\n%s",
-			strings.TrimSpace(routes.Stdout))
-		return
+	// The host end of the internal network is its IPAM gateway. Probing it is
+	// discriminating: the container has a connected route to it, so a
+	// successful connection or a refusal both mean the packet reached the host.
+	gateway := internalGateway(t)
+	reached := false
+	for _, port := range gatewayProbePorts {
+		addr := net.JoinHostPort(gateway, port)
+		if outcome, ok := dialGateway(addr); ok {
+			reached = true
+			t.Logf("the container reached the internal network's host-side gateway at %s: %s", addr, outcome)
+		}
 	}
-	assertDialFails(t, net.JoinHostPort(gateway, gatewayProbePort22))
-	assertDialFails(t, net.JoinHostPort(gateway, gatewayProbePort6443))
+	if reached {
+		// The gateway is the host's bridge address. Block it inside this
+		// container only; the host's own iptables and routes are never touched.
+		cmd := syscontainer.Command("root", nil, "iptables", "-A", "OUTPUT", "-d", gateway, "-j", "DROP")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("blocking the internal network gateway %s in the container: %v\n%s",
+				gateway, err, strings.TrimSpace(string(out)))
+		}
+	}
+	for _, port := range gatewayProbePorts {
+		addr := net.JoinHostPort(gateway, port)
+		if outcome, ok := dialGateway(addr); ok {
+			t.Errorf("dialing the internal network's host-side gateway at %s %s; the container must not reach the host's services",
+				addr, outcome)
+		}
+	}
+}
+
+// internalGateway returns the first host address of the internal network's
+// subnet, which is the address docker assigns to the bridge on the host side.
+func internalGateway(t *testing.T) string {
+	t.Helper()
+	cidr := os.Getenv(systemSubnetEnv)
+	if cidr == "" {
+		t.Fatalf("the internal network's subnet is not in %s", systemSubnetEnv)
+	}
+	prefix, err := netip.ParsePrefix(cidr)
+	if err != nil {
+		t.Fatalf("parsing %s = %q: %v", systemSubnetEnv, cidr, err)
+	}
+	gateway := prefix.Masked().Addr().Next()
+	if !gateway.IsValid() {
+		t.Fatalf("%s = %q has no gateway address", systemSubnetEnv, cidr)
+	}
+	return gateway.String()
+}
+
+// dialGateway reports whether a TCP connection to addr succeeded or was
+// refused. Both outcomes mean the packet reached the host; a timeout or an
+// unreachable route means it did not.
+func dialGateway(addr string) (string, bool) {
+	conn, err := net.DialTimeout("tcp", addr, egressProbeBound)
+	if err == nil {
+		_ = conn.Close()
+		return "accepted the connection", true
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return "refused the connection, so the packet reached the host", true
+	}
+	return "", false
 }
 
 // parseDefaultRoute reports whether routes has a default route and returns the

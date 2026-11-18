@@ -3,6 +3,10 @@ services:
     image: ${AGENT_PEER_E2E_SYSTEM_IMAGE:?}
     init: true
     user: root
+    # The no-egress check installs an OUTPUT DROP rule inside this container
+    # when the internal network's gateway is reachable. Only this container's
+    # netns is changed.
+    cap_add: [NET_ADMIN, NET_RAW]
     entrypoint: []
     command: ["sleep", "infinity"]
     environment:
@@ -28,9 +32,10 @@ services:
 
 networks:
   # Explicitly declared and internal so the containers have no way out. The
-  # network is pinned inside 198.18.0.0/15, the range the routed topologies and
-  # the tests' address allocator already use, at its high end: Docker then
-  # never picks an address from the host's own networks for a bridge route.
+  # subnet lies in the high-end block of 198.18.0.0/15 that the harness routed
+  # allocator reserves for these networks, so the two allocators never hand out
+  # overlapping subnets. Docker therefore never picks an address from the host's
+  # own networks for a bridge route.
   # syscontainer.Run overrides the subnet per compose project because Docker
   # refuses two live networks with overlapping subnets and system tests run in
   # parallel; the default is what a manual compose invocation uses.

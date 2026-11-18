@@ -3,6 +3,7 @@ package harness
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,9 +21,15 @@ const (
 	// routedSubnetSkip reserves the first eight /24s for the compose files'
 	// defaults, so a manual "docker compose up" never takes a block the
 	// allocator hands out.
-	routedSubnetSkip = 8
+	routedSubnetSkip   = 8
+	routedSubnetStride = 3
 	// routedSubnetCount is the number of /24s in 198.18.0.0/15.
 	routedSubnetCount = 512
+	// routedSubnetLimit stops the routed allocator before the last 32 /24s,
+	// which are reserved for the system container network. Both allocators
+	// stay inside 198.18.0.0/15, so neither can capture traffic for a public
+	// address.
+	routedSubnetLimit = routedSubnetCount - 32
 	// subnetStateDir holds one file per reserved /24, away from the runtime
 	// roots so the residue scan does not mistake it for a root.
 	subnetStateDir = "/tmp/.ape2e-subnets"
@@ -30,6 +37,18 @@ const (
 )
 
 var subnetMu sync.Mutex
+
+// RoutedSubnetPrefixes returns every /24 the routed-topology allocator can
+// hand out. It exists so that another allocator can prove its range never
+// intersects this one: two live docker networks with overlapping subnets make
+// docker refuse the second network.
+func RoutedSubnetPrefixes() []netip.Prefix {
+	out := make([]netip.Prefix, 0, routedSubnetLimit-routedSubnetSkip)
+	for first := routedSubnetSkip; first+2 < routedSubnetLimit; first += routedSubnetStride {
+		out = append(out, routedSubnetPrefix(first), routedSubnetPrefix(first+1), routedSubnetPrefix(first+2))
+	}
+	return out
+}
 
 // allocRoutedSubnets reserves three consecutive /24s in 198.18.0.0/15 for this
 // test. The reservation is cross-process: a second suite running at the same
@@ -62,7 +81,7 @@ func reserveSubnetBlock(o owner) ([3]int, error) {
 	if err != nil {
 		return [3]int{}, err
 	}
-	for index := routedSubnetSkip; index+2 < routedSubnetCount; index += 3 {
+	for index := routedSubnetSkip; index+2 < routedSubnetLimit; index += routedSubnetStride {
 		if taken[index] || taken[index+1] || taken[index+2] {
 			continue
 		}
@@ -166,7 +185,15 @@ func lockSubnetState() (func(), error) {
 
 // routedSubnet formats the index-th /24 of 198.18.0.0/15 as a CIDR.
 func routedSubnet(index int) string {
-	return fmt.Sprintf("198.%d.%d.0/24", 18+index/256, index%256)
+	return routedSubnetPrefix(index).String()
+}
+
+// routedSubnetPrefix returns the index-th /24 of 198.18.0.0/15 as a prefix.
+func routedSubnetPrefix(index int) netip.Prefix {
+	return netip.PrefixFrom(
+		netip.AddrFrom4([4]byte{198, byte(18 + index/256), byte(index % 256), 0}),
+		24,
+	)
 }
 
 func subnetStatePath(index int) string {

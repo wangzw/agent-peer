@@ -1,10 +1,36 @@
 package syscontainer
 
 import (
+	"net/netip"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/wangzw/agent-peer/test/e2e/harness"
 )
+
+// TestSystemSubnetsDisjointFromRoutedAllocator checks that the /24s the system
+// container network can take never intersect the /24s the harness allocator
+// hands to routed topologies. Docker refuses a second live network whose subnet
+// overlaps an existing one, so an overlap breaks system and routed tests that
+// run at the same time.
+func TestSystemSubnetsDisjointFromRoutedAllocator(t *testing.T) {
+	routed := harness.RoutedSubnetPrefixes()
+	if len(routed) == 0 {
+		t.Fatal("RoutedSubnetPrefixes returned no prefixes")
+	}
+	for _, cidr := range systemSubnetPrefixes() {
+		system := netip.MustParsePrefix(cidr)
+		if system.Bits() != 24 {
+			t.Fatalf("systemSubnetPrefixes returned %q; want a /24", cidr)
+		}
+		for _, prefix := range routed {
+			if system.Overlaps(prefix) {
+				t.Fatalf("the system subnet %s overlaps the routed allocator's subnet %s", system, prefix)
+			}
+		}
+	}
+}
 
 func TestRunCommandLine(t *testing.T) {
 	cases := []struct {

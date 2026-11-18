@@ -41,10 +41,6 @@ const inContainerEnv = "AGENT_PEER_E2E_IN_CONTAINER"
 // is set only by the smoke test that checks failure propagation.
 const expectFailEnv = "AGENT_PEER_E2E_EXPECT_FAIL"
 
-// hostGatewayEnv carries the host's default gateway into the container so the
-// no-egress check can probe it. The container has no route to it.
-const hostGatewayEnv = "AGENT_PEER_E2E_HOST_GATEWAY"
-
 // systemdReadyBound bounds the wait for systemd to finish booting.
 const systemdReadyBound = 90 * time.Second
 
@@ -229,9 +225,6 @@ func Run(t *testing.T, svc Service) {
 		"AGENT_PEER_E2E_BIN=" + filepath.Dir(testBinary),
 		"AGENT_PEER_E2E_SYSTEM_SUBNET=" + subnet,
 	}
-	if gw := hostGateway(); gw != "" {
-		env = append(env, hostGatewayEnv+"="+gw)
-	}
 	c := &container{
 		t:           t,
 		project:     project,
@@ -294,29 +287,6 @@ func (c *container) forwardEnvArgs() []string {
 		args = append(args, "-e", entry)
 	}
 	return args
-}
-
-// hostGateway returns the host's IPv4 default gateway, or "" when there is
-// none or it cannot be determined (for example on a non-Linux host).
-func hostGateway() string {
-	cmd := exec.Command("ip", "-4", "route", "show", "default")
-	cmd.Env = os.Environ()
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 0 || fields[0] != "default" {
-			continue
-		}
-		for i, field := range fields {
-			if field == "via" && i+1 < len(fields) {
-				return fields[i+1]
-			}
-		}
-	}
-	return ""
 }
 
 // container is one compose project started for one test.
@@ -431,53 +401,38 @@ func randomHex6() string {
 	return fmt.Sprintf("%06x", projectNameSeq&0xffffff)
 }
 
-const (
-	// systemSubnetFirst and systemSubnetLast bound the /24s the container
-	// network may use, as indices into 198.18.0.0/15. They are the high end of
-	// the range, away from the blocks the routed topologies take.
-	systemSubnetFirst = 480
-	systemSubnetLast  = 511
-	// systemSubnetStride is the step of the harness address allocator: it takes
-	// the /24s numbered 8, 11, 14, ... and their successors.
-	systemSubnetStride = 3
-)
-
 var (
 	systemSubnetMu    sync.Mutex
-	systemSubnetSlots []int
+	systemSubnetSlots []string
 )
 
-// allocSystemSubnet reserves one /24 inside 198.18.0.0/15 for one compose
-// project and returns it as a CIDR. Docker refuses two live networks with
-// overlapping subnets, and every system test starts its own project, so a
-// subnet fixed in compose.yaml would make parallel tests fail. The slots
-// offered here are the high-end /24s the harness allocator never hands out.
+// allocSystemSubnet reserves one /24 for one compose project and returns it as
+// a CIDR. Docker refuses two live networks with overlapping subnets, and every
+// system test starts its own project, so a subnet fixed in compose.yaml would
+// make parallel tests fail. The slots come from systemSubnetPrefixes, a range
+// disjoint from the harness allocator's.
 func allocSystemSubnet(t *testing.T) string {
 	t.Helper()
 
 	systemSubnetMu.Lock()
 	if systemSubnetSlots == nil {
-		for index := systemSubnetFirst; index <= systemSubnetLast; index++ {
-			if (index-8)%systemSubnetStride != 0 {
-				systemSubnetSlots = append(systemSubnetSlots, index)
-			}
-		}
+		systemSubnetSlots = systemSubnetPrefixes()
 	}
 	if len(systemSubnetSlots) == 0 {
 		systemSubnetMu.Unlock()
-		t.Fatalf("syscontainer: no free subnet left in 198.18.0.0/15")
+		t.Fatalf("syscontainer: no free subnet left for the system network")
 	}
-	index := systemSubnetSlots[0]
+	subnet := systemSubnetSlots[0]
 	systemSubnetSlots = systemSubnetSlots[1:]
 	systemSubnetMu.Unlock()
 
 	t.Cleanup(func() {
 		systemSubnetMu.Lock()
-		systemSubnetSlots = append(systemSubnetSlots, index)
+		systemSubnetSlots = append(systemSubnetSlots, subnet)
 		systemSubnetMu.Unlock()
 	})
 
-	return fmt.Sprintf("198.%d.%d.0/24", 18+index/256, index%256)
+	return subnet
 }
 
 // WaitFor polls cond every 20ms until it is true or three seconds pass. Longer
