@@ -51,8 +51,8 @@ Agent 的名字必须是所在 Claude Code 会话的会话名按 Claude Code 匹
 Agent 地址必须由下列部分依次组成：Agent 的名字；名字在所在 Broker 上不足以唯一确定该 Agent，或名字不能原样出现在署名中、放不下时的消歧标识；`@`；看到该地址的一方的 Broker 对该 Agent 所在 Broker 使用的别名。
 
 - **验收**：主机 A 以别名 `hostB` 称呼主机 B 的 Broker。B 上只有一个名为 `api-worker` 的 Agent 时，A 上看到的地址是 `api-worker@hostB`；B 上有两个同名的 Agent 时，A 上看到的两个地址都以 `api-worker` 开头、以 `@hostB` 结尾，中间各带一个不同的消歧标识。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/visibility_remote_test.go` 的 `TestRemoteVisibility/REQ-agent-messaging-004 remote refs`
 
 ### REQ-agent-messaging-005
 
@@ -83,8 +83,8 @@ Agent 的消歧标识必须采用与 Claude Code 在其会话列表中为同一�
 Agent 必须能列出所有对自己可见的在线 Agent，包括本机上的，以及已连接的对端 Broker 上的。可见性由 `REQ-topics-005` 规定。
 
 - **验收**：两台已连接的主机上各有一个同在某个 topic 的 Agent，任一方的列表都包含对方。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/visibility_remote_test.go` 的 `TestRemoteVisibility/REQ-agent-messaging-008 lists remote`
 
 ### REQ-agent-messaging-009
 
@@ -115,8 +115,8 @@ Agent 必须能列出所有对自己可见的在线 Agent，包括本机上的�
 会话结束后，系统必须在 5 秒内把它的 Agent 从本机和已连接对端的列表中移除。
 
 - **验收**：结束一个 Agent 的会话，5 秒后在本机和对端各调用一次列表，结果都不含该 Agent。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/visibility_remote_test.go` 的 `TestRemoteVisibility/REQ-agent-messaging-012 removal reaches peer`；`test/e2e/session_lifecycle_test.go` 的 `TestLocalSessionChanges/REQ-agent-messaging-012 local end`
 
 ### REQ-agent-messaging-013
 

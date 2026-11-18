@@ -60,24 +60,24 @@ Agent 必须能退出一个已加入的 topic。
 两个 Agent 当且仅当至少同在一个 topic，并且位于同一个 Broker 或位于两个已连接的 Broker 时，互相可见。
 
 - **验收**：同在一个 topic 的两个 Agent 互相出现在对方的列表中；其中一个退出该 topic 且两者没有其他共同 topic 后，互相从对方的列表中消失；两者所在的 Broker 之间的链路断开后同样消失。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/visibility_remote_test.go` 的 `TestRemoteVisibility/REQ-topics-005 iff shared and connected`
 
 ### REQ-topics-006
 
 不属于任何 topic 的 Agent 不得出现在任何其他 Agent 的列表中。
 
 - **验收**：一个已登记但未加入任何 topic 的 Agent，不出现在本机和对端任何 Agent 的列表中。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/topics_local_test.go` 的 `TestLocalTopics/REQ-topics-006 no topic means invisible`；`test/e2e/visibility_remote_test.go` 的 `TestRemoteVisibility/REQ-topics-006 no topic invisible`
 
 ### REQ-topics-007
 
 不同 Broker 上名字相同的 topic 必须视为同一个 topic。
 
 - **验收**：两台已连接的主机上各有一个 Agent 以相同的名字加入 topic，两者互相可见。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/visibility_remote_test.go` 的 `TestRemoteVisibility/REQ-topics-007 same name across brokers`
 
 ### REQ-topics-008
 
