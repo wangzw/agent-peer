@@ -323,6 +323,13 @@ func TestPrivateTopicNamesStayHome(t *testing.T) {
 		brokerLog := bNode.BrokerLog(t)
 		secAssertNoRosterFrames(t, brokerLog[logStart:], aFingerprint)
 
+		// Positive control for the log checks below: the same log records B's
+		// own session name, so a log that is empty or unreadable fails here
+		// instead of passing the absence checks because it was never read.
+		if !strings.Contains(string(brokerLog), observerName) {
+			t.Fatalf("hostB's Broker log does not record its own session %q; the absence checks are blind", observerName)
+		}
+
 		status := bNode.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
 		if status.ExitCode != 0 {
 			t.Fatalf("agent-peer status on hostB exited %d: %s", status.ExitCode, status.Stderr)

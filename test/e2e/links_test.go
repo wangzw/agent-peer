@@ -53,6 +53,9 @@ func TestLinks(t *testing.T) {
 	// The counter is installed before pairing so any dial A ever makes is
 	// counted, including one made while the link is being set up.
 	outSYN := c.SYNCounter(t, "hostA", harness.Outbound, "", 17443)
+	// B is the dialer. Its counter is the positive control: the same rule on
+	// the same port has to see B's pairing dial, or a zero on A proves nothing.
+	bSYN := c.SYNCounter(t, "hostB", harness.Outbound, "", 17443)
 
 	a1 := lkSession(t, aNode, "a1")
 	b1 := lkSession(t, bNode, "b1")
@@ -103,6 +106,12 @@ func TestLinks(t *testing.T) {
 	})
 
 	t.Run("REQ-broker-pairing-027 acceptor never dials", func(t *testing.T) {
+		// Positive control: B's dial of A has to show up in the same kind of
+		// counter. Without it, a zero on A could mean the rule never matched.
+		if got := bSYN(); got == 0 {
+			t.Fatal("B's outbound SYN counter read zero although B dialed A; the counter is blind")
+		}
+
 		// The two cut/restore cycles above must already show A never dialing.
 		if got := outSYN(); got != 0 {
 			t.Fatalf("A sent %d outbound SYNs while it was only the acceptor", got)
