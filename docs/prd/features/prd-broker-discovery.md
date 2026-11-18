@@ -109,8 +109,8 @@ Broker 不得接受对端以外的来源传来的名片。
 名录保存的记录数量必须有可配置的上限。达到上限后，尚无名片的 Broker 再传来名片时必须拒绝，已存名片的续签不受影响。
 
 - **验收**：把上限配置为 3，让对端传来 5 张互不相同的有效名片，本 Broker 列出已知 Broker 的结果含其中 3 张；这 3 张名片的续签到达后被接受，它们在超过原有效期后仍在结果中。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_expiry_test.go` 的 `TestDirectoryTotalLimitKeepsRenewals`
 
 ### REQ-broker-discovery-012
 

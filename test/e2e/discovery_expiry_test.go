@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,8 +13,12 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/directory/directorypb"
 	"github.com/wangzw/agent-peer/internal/mcpserver"
+	"github.com/wangzw/agent-peer/test/e2e/fakepeer/fakerec"
 	"github.com/wangzw/agent-peer/test/e2e/harness"
 )
 
@@ -41,6 +46,15 @@ const (
 	// dxClockEnv names the wall-clock offset file the agentpeer_testenv hook
 	// reads.
 	dxClockEnv = "AGENT_PEER_TEST_CLOCK_FILE"
+
+	// The total-limit case keeps the original cards short-lived so that the
+	// renewals, not the originals, must keep the entries alive past their
+	// first expiry.
+	dxLimitMaxRecords  = 3
+	dxLimitOriginalTTL = 48 * time.Hour
+	dxLimitRenewalAt   = 24 * time.Hour
+	dxLimitRenewalTTL  = 168 * time.Hour
+	dxLimitCheckpoint  = 144 * time.Hour
 )
 
 // TestCardExpiresAfterSevenDays covers REQ-broker-discovery-007: a card issued
@@ -166,6 +180,198 @@ func TestCardRenewedDaily(t *testing.T) {
 				return true, ""
 			})
 	}
+}
+
+// TestDirectoryTotalLimitKeepsRenewals covers REQ-broker-discovery-011: the
+// total record limit rejects cards from publishers the directory does not know,
+// while a renewal of an entry already held replaces it even though the limit is
+// full. The originals expire after two days; only the renewals accepted at the
+// full limit keep the three entries listed beyond that.
+func TestDirectoryTotalLimitKeepsRenewals(t *testing.T) {
+	t.Parallel()
+
+	host := harness.NewLocalHost(t, harness.LocalOptions{Name: "limit-total"})
+	b := &discNode{
+		Node:  host,
+		name:  "limit-total",
+		addr:  host.FreeAddr(t),
+		alias: "limit-total",
+	}
+	b.config = discConfig(b.addr, b.alias, false,
+		fmt.Sprintf("directory:\n  max_records: %d", dxLimitMaxRecords))
+	clock := dxClockFile(t)
+	dxStartBroker(t, host, b.config, map[string]string{dxClockEnv: clock})
+
+	f := startFakePeer(t)
+	f.Pair(t, b.addr, hostilePairKey(t, b))
+	f.WaitLinked(t, 3*time.Second)
+
+	// Five valid cards from five publishers: three fit under the total limit.
+	originals := make([]*directorypb.Record, 0, 5)
+	addresses := make(map[string]string, 5)
+	known := make(map[string]string, 5)
+	for i := 0; i < 5; i++ {
+		seed := fmt.Sprintf("limit-total-%d", i)
+		addresses[seed] = fmt.Sprintf("198.51.100.%d:17443", 60+i)
+		originals = append(originals,
+			dxLimitCard(t, seed, 1, time.Now(), dxLimitOriginalTTL, addresses[seed]))
+		known[hostileHexFingerprint(fakerec.PublisherOf(seed))] = seed
+	}
+	f.Records(t, originals...)
+
+	accepted := make(map[string]string, dxLimitMaxRecords)
+	harness.Eventually(t, discBound(1), "the directory keeps exactly three of five cards",
+		func() (bool, string) {
+			brokers, state := discList(t, b)
+			if state != "" {
+				return false, state
+			}
+			live := make(map[string]bool, dxLimitMaxRecords)
+			for _, broker := range brokers {
+				if broker.GetIsPeer() {
+					continue
+				}
+				fp := hex.EncodeToString(broker.GetFingerprint())
+				if _, ok := known[fp]; !ok {
+					return false, "the directory lists a card it was not offered: " + fp
+				}
+				live[fp] = true
+			}
+			if len(live) != dxLimitMaxRecords {
+				return false, fmt.Sprintf("%d of five cards are listed", len(live))
+			}
+			for fp := range live {
+				accepted[fp] = known[fp]
+			}
+			return true, ""
+		})
+
+	// At 24h the originals are still live, so every renewal replaces a held
+	// entry while the directory is at its total limit. The observation window
+	// gives the reconcile pass that delivers them time to run before the clock
+	// moves past the originals' expiry.
+	dxSetClock(t, clock, dxLimitRenewalAt)
+	renewed := make([]*directorypb.Record, 0, len(accepted))
+	for _, seed := range accepted {
+		renewed = append(renewed,
+			dxLimitCard(t, seed, 2, time.Now().Add(dxLimitRenewalAt), dxLimitRenewalTTL, addresses[seed]))
+	}
+	f.Records(t, renewed...)
+	harness.Consistently(t, dxPropagationBound, "the three cards stay live while their renewals arrive",
+		func() (bool, string) {
+			return dxLimitCardsPresent(t, b, accepted)
+		})
+
+	// The originals expired two days after issuance. Only the renewals taken
+	// at the full limit can keep the three entries in the result.
+	dxSetClock(t, clock, dxLimitCheckpoint)
+	harness.Consistently(t, dxQuietWindow, "the three renewed cards remain after 144h",
+		func() (bool, string) {
+			return dxLimitCardsPresent(t, b, accepted)
+		})
+
+	// The renewals expire on their own schedule as well.
+	dxSetClock(t, clock, dxLimitRenewalAt+dxLimitRenewalTTL)
+	harness.Eventually(t, dxExpiryBound, "the renewed cards expire with their own expiry",
+		func() (bool, string) {
+			brokers, state := discList(t, b)
+			if state != "" {
+				return false, state
+			}
+			for _, broker := range brokers {
+				if broker.GetIsPeer() {
+					continue
+				}
+				if _, ok := accepted[hex.EncodeToString(broker.GetFingerprint())]; ok {
+					return false, "a renewed card is still listed"
+				}
+			}
+			return true, ""
+		})
+}
+
+// dxLimitCard builds one card record for the total-limit case.
+func dxLimitCard(t *testing.T, seed string, version uint64, issued time.Time, ttl time.Duration, addr string) *directorypb.Record {
+	t.Helper()
+	record, err := fakerec.Build(fakerec.Spec{
+		Seed:      seed,
+		Kind:      "card",
+		Alias:     seed,
+		Addresses: []fakerec.Addr{{Kind: "direct", Addr: addr}},
+		Version:   version,
+		ExpiresIn: ttl,
+	}, issued)
+	if err != nil {
+		t.Fatalf("building a card for %s: %v", seed, err)
+	}
+	return record
+}
+
+// dxLimitCardsPresent reports that the directory lists exactly the cards whose
+// fingerprints the map holds.
+func dxLimitCardsPresent(t *testing.T, d *discNode, want map[string]string) (bool, string) {
+	t.Helper()
+	brokers, state := discList(t, d)
+	if state != "" {
+		return false, state
+	}
+	listed := make(map[string]bool, len(want))
+	for _, broker := range brokers {
+		if broker.GetIsPeer() {
+			continue
+		}
+		fp := hex.EncodeToString(broker.GetFingerprint())
+		if _, ok := want[fp]; !ok {
+			return false, "an unexpected card is listed: " + fp
+		}
+		listed[fp] = true
+	}
+	if len(listed) != len(want) {
+		return false, fmt.Sprintf("%d of %d cards are listed", len(listed), len(want))
+	}
+	return true, ""
+}
+
+// dxDirectoryRecord is one record in a Broker's directory.json.
+type dxDirectoryRecord struct {
+	Raw []byte `json:"raw"`
+}
+
+// dxDirectoryFile is the part of directory.json these tests read.
+type dxDirectoryFile struct {
+	Records []dxDirectoryRecord `json:"records"`
+}
+
+// dxDirectoryKey identifies a stored record by publisher and kind, because one
+// publisher can hold a card and topic announcements in the same directory.
+type dxDirectoryKey struct {
+	Publisher string
+	Kind      directorypb.RecordKind
+}
+
+// dxDirectoryRecords reads the records persisted by node's Broker, keyed by
+// publisher fingerprint in lowercase hexadecimal and record kind.
+func dxDirectoryRecords(t *testing.T, node *harness.Node) map[dxDirectoryKey]*directorypb.RecordBody {
+	t.Helper()
+	path := filepath.Join(node.AccountHome(), ".agent-peer", "directory.json")
+	data := node.ReadFile(t, path)
+	var file dxDirectoryFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatalf("parsing %s: %v", path, err)
+	}
+	out := make(map[dxDirectoryKey]*directorypb.RecordBody, len(file.Records))
+	for _, rec := range file.Records {
+		body := new(directorypb.RecordBody)
+		if err := proto.Unmarshal(rec.Raw, body); err != nil {
+			t.Fatalf("parsing a record in %s: %v", path, err)
+		}
+		key := dxDirectoryKey{
+			Publisher: hex.EncodeToString(body.GetPublisher()),
+			Kind:      body.GetKind(),
+		}
+		out[key] = body
+	}
+	return out
 }
 
 // TestPublicTopicExpiresWithDeclarer covers REQ-topics-012: a public topic
