@@ -133,8 +133,8 @@ Broker 之间传输的全部内容必须加密。
 系统不得以尚未配对的 Broker 为目标发起连接，除非这次连接是由 Agent 的发起配对调用直接触发的。
 
 - **验收**：Broker 获知一个公开 Broker 的名片后，在没有任何发起配对调用的情况下，不产生指向该 Broker 对外地址的连接。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_test.go` 的 `TestDiscoveryNoDialToCardHolder`；`test/e2e/discovery_address_test.go` 的 `TestNoDialToCardAddress`
 
 ### REQ-broker-pairing-015
 

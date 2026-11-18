@@ -276,8 +276,8 @@ Broker 监听全部地址且未配置含主机的对外地址时，对外地址�
 配置了含主机的对外地址时，对外地址列表必须以该地址为首项，其后只有用户配置追加的地址。
 
 - **验收**：公开 Broker B 在 17443 端口上监听，把对外地址配置为 `b.example:443`：B 的拨号方列出 Broker 的结果中 B 的对外地址列表首项是 `b.example:443`，持有 B 的名片的其他 Broker 列出的同样如此，列表中没有默认路由所在接口的地址。把对外地址改为只含主机的 `b.example` 后，列表首项是 `b.example:17443`；再追加对外地址 `b.vpn.example`，列表依次是 `b.example:17443` 与 `b.vpn.example:17443`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_address_test.go` 的 `TestCardShowsConfiguredAddresses`
 
 ### REQ-broker-config-032
 
@@ -292,8 +292,8 @@ Broker 监听全部地址且未配置含主机的对外地址时，对外地址�
 用户必须能配置追加的对外地址，追加的地址出现在对外地址列表中。
 
 - **验收**：以默认配置运行的 Broker B 追加对外地址 `b.vpn.example` 与 `198.51.100.7:8443` 后，B 的拨号方列出 Broker 的结果中，B 的对外地址列表在默认路由所在接口的地址之后依次是 `b.vpn.example:17443` 与 `198.51.100.7:8443`；B 设为公开后，持有 B 的名片的其他 Broker 列出的是同样的列表。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_address_test.go` 的 `TestCardShowsConfiguredAddresses`
 
 ### REQ-broker-config-034
 

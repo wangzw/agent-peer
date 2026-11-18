@@ -149,8 +149,8 @@ Agent 必须能列出本机 Broker 已知的全部 Broker，包括全部对端�
 公开 Broker 的对外地址列表变化后，它必须重新发布名片，使连通网络内的其他 Broker 得到新的列表。
 
 - **验收**：公开 Broker A 与 B 已连接，B 与 C 已连接，A 与 C 之间没有链路；不重启 A，把 A 所在主机默认路由所在接口的地址由 `198.51.100.4` 改为 `198.51.100.9`，此后 C 列出已知 Broker 的结果中 A 的对外地址列表变为 `198.51.100.9:17443`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_address_test.go` 的 `TestCardFollowsAddressChange`
 
 ### REQ-broker-discovery-017
 
