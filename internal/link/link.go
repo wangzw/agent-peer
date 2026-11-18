@@ -6,6 +6,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc"
 )
 
 // Link maintains the authenticated frame channel to each peer.
