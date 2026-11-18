@@ -200,7 +200,7 @@ func TestBrokerOwnFailureReachesReadyPipe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	code := a.brokerCmd(context.Background(), []string{"--listen=", fmt.Sprintf("--ready-fd=%d", passReadyFD(t, w))})
 	if code != exitUsage {
@@ -239,7 +239,7 @@ func TestBrokerClosesReadyPipeAfterRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("os.Pipe: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if code := a.brokerCmd(context.Background(), []string{fmt.Sprintf("--ready-fd=%d", passReadyFD(t, w))}); code != exitFailure {
 		t.Fatalf("brokerCmd returned %d, want %d", code, exitFailure)
@@ -364,7 +364,7 @@ func TestBrokerReadyFdEqualsForm(t *testing.T) {
 			if err != nil {
 				t.Fatalf("os.Pipe: %v", err)
 			}
-			defer r.Close()
+			defer func() { _ = r.Close() }()
 
 			if code := a.brokerCmd(context.Background(), form.args(passReadyFD(t, w))); code != exitOK {
 				t.Fatalf("brokerCmd returned %d, want %d", code, exitOK)

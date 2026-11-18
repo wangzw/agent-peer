@@ -58,23 +58,23 @@ func newSignalContext(parent context.Context) (context.Context, context.CancelFu
 // run dispatches one command line and returns the process exit code.
 func (a *app) run(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprint(a.stderr, usage)
+		_, _ = fmt.Fprint(a.stderr, usage)
 		return exitUsage
 	}
 
 	switch args[0] {
 	case "-h", "--help", "help":
-		fmt.Fprint(a.stdout, usage)
+		_, _ = fmt.Fprint(a.stdout, usage)
 		return exitOK
 	case "--version":
 		if len(args) > 1 {
-			fmt.Fprintln(a.stderr, "agent-peer: --version takes no arguments")
+			_, _ = fmt.Fprintln(a.stderr, "agent-peer: --version takes no arguments")
 			return exitUsage
 		}
-		fmt.Fprintf(a.stdout, "agent-peer %s\n", a.version)
+		_, _ = fmt.Fprintf(a.stdout, "agent-peer %s\n", a.version)
 		return exitOK
 	case "service":
-		fmt.Fprintln(a.stderr, "agent-peer service: not implemented")
+		_, _ = fmt.Fprintln(a.stderr, "agent-peer service: not implemented")
 		return exitFailure
 	case "internal":
 		return a.runInternal(ctx, args[1:])
@@ -86,11 +86,11 @@ func (a *app) run(ctx context.Context, args []string) int {
 	}
 	switch name {
 	case "broker", "mcp", "status", "audit":
-		fmt.Fprintf(a.stderr, "agent-peer %s: not implemented\n", name)
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer %s: not implemented\n", name)
 		return exitFailure
 	}
-	fmt.Fprintf(a.stderr, "agent-peer: unknown command %q\n\n", name)
-	fmt.Fprint(a.stderr, usage)
+	_, _ = fmt.Fprintf(a.stderr, "agent-peer: unknown command %q\n\n", name)
+	_, _ = fmt.Fprint(a.stderr, usage)
 	return exitUsage
 }
 
@@ -98,7 +98,7 @@ func (a *app) run(ctx context.Context, args []string) int {
 // print the top-level usage, because the group is not shown to users.
 func (a *app) runInternal(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(a.stderr, `agent-peer internal: unknown command ""`)
+		_, _ = fmt.Fprintln(a.stderr, `agent-peer internal: unknown command ""`)
 		return exitUsage
 	}
 	name := "internal " + args[0]
@@ -107,9 +107,9 @@ func (a *app) runInternal(ctx context.Context, args []string) int {
 	}
 	switch args[0] {
 	case "broker-launcher", "account-helper", "access-check":
-		fmt.Fprintf(a.stderr, "agent-peer %s: not implemented\n", name)
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer %s: not implemented\n", name)
 		return exitFailure
 	}
-	fmt.Fprintf(a.stderr, "agent-peer internal: unknown command %q\n", args[0])
+	_, _ = fmt.Fprintf(a.stderr, "agent-peer internal: unknown command %q\n", args[0])
 	return exitUsage
 }

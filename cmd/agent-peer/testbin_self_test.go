@@ -81,7 +81,7 @@ func TestOccupiedPortRefusesBind(t *testing.T) {
 	port, held := occupiedPort(t)
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	if l, err := net.Listen("tcp", addr); err == nil {
-		l.Close()
+		_ = l.Close()
 		t.Fatalf("port %d was not occupied", port)
 	}
 
@@ -94,7 +94,7 @@ func TestOccupiedPortRefusesBind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("freePort returned %d, which cannot be listened on: %v", free, err)
 	}
-	l.Close()
+	_ = l.Close()
 }
 
 // TestBinaryBuilt checks that TestMain produced a runnable binary. A swallowed

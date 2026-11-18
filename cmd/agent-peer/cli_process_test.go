@@ -76,8 +76,11 @@ func runCLI(t *testing.T, sb *sandbox, timeout time.Duration, args ...string) cl
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start agent-peer %s: %v", strings.Join(args, " "), err)
 	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	done := make(chan struct{}, 1)
+	go func() {
+		_ = cmd.Wait()
+		done <- struct{}{}
+	}()
 	select {
 	case <-done:
 	case <-time.After(timeout):
@@ -119,8 +122,8 @@ func startMCP(t *testing.T, sb *sandbox) *mcpProc {
 	}
 	outR, outW, err := os.Pipe()
 	if err != nil {
-		inR.Close()
-		inW.Close()
+		_ = inR.Close()
+		_ = inW.Close()
 		t.Fatalf("create stdout pipe: %v", err)
 	}
 
@@ -134,16 +137,16 @@ func startMCP(t *testing.T, sb *sandbox) *mcpProc {
 	cmd.WaitDelay = waitDelay
 
 	if err := cmd.Start(); err != nil {
-		inR.Close()
-		inW.Close()
-		outR.Close()
-		outW.Close()
+		_ = inR.Close()
+		_ = inW.Close()
+		_ = outR.Close()
+		_ = outW.Close()
 		t.Fatalf("start agent-peer mcp: %v", err)
 	}
 	// The child holds the other ends. Close the parent's copies so the reader
 	// sees EOF when the child exits and the writer sees a broken pipe.
-	inR.Close()
-	outW.Close()
+	_ = inR.Close()
+	_ = outW.Close()
 
 	p := &mcpProc{
 		t:      t,

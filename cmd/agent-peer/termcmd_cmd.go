@@ -26,21 +26,21 @@ func (a *app) statusCmd(ctx context.Context, args []string) int {
 	fs.SetOutput(io.Discard)
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
-			fmt.Fprint(a.stdout, statusUsage)
+			_, _ = fmt.Fprint(a.stdout, statusUsage)
 			return exitOK
 		}
-		fmt.Fprint(a.stderr, statusUsage)
-		fmt.Fprintf(a.stderr, "agent-peer status: %v\n", err)
+		_, _ = fmt.Fprint(a.stderr, statusUsage)
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer status: %v\n", err)
 		return exitUsage
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprint(a.stderr, statusUsage)
-		fmt.Fprintf(a.stderr, "agent-peer status: unexpected argument %q\n", fs.Arg(0))
+		_, _ = fmt.Fprint(a.stderr, statusUsage)
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer status: unexpected argument %q\n", fs.Arg(0))
 		return exitUsage
 	}
 
 	if err := a.deps.runStatus(ctx, a.stdout); err != nil {
-		fmt.Fprintf(a.stderr, "agent-peer status: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer status: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
@@ -64,26 +64,26 @@ func (a *app) auditCmd(ctx context.Context, args []string) int {
 	})
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
-			fmt.Fprint(a.stdout, auditUsage)
+			_, _ = fmt.Fprint(a.stdout, auditUsage)
 			return exitOK
 		}
-		fmt.Fprint(a.stderr, auditUsage)
-		fmt.Fprintf(a.stderr, "agent-peer audit: %v\n", err)
+		_, _ = fmt.Fprint(a.stderr, auditUsage)
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer audit: %v\n", err)
 		return exitUsage
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprint(a.stderr, auditUsage)
-		fmt.Fprintf(a.stderr, "agent-peer audit: unexpected argument %q\n", fs.Arg(0))
+		_, _ = fmt.Fprint(a.stderr, auditUsage)
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer audit: unexpected argument %q\n", fs.Arg(0))
 		return exitUsage
 	}
 	if limit > math.MaxUint32 {
-		fmt.Fprint(a.stderr, auditUsage)
-		fmt.Fprint(a.stderr, "agent-peer audit: --limit must be at most 4294967295\n")
+		_, _ = fmt.Fprint(a.stderr, auditUsage)
+		_, _ = fmt.Fprint(a.stderr, "agent-peer audit: --limit must be at most 4294967295\n")
 		return exitUsage
 	}
 
 	if err := a.deps.runAudit(ctx, a.stdout, uint32(limit)); err != nil {
-		fmt.Fprintf(a.stderr, "agent-peer audit: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer audit: %v\n", err)
 		return exitFailure
 	}
 	return exitOK

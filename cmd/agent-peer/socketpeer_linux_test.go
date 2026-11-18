@@ -18,7 +18,7 @@ func socketPeerPID(path string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	uc, ok := conn.(*net.UnixConn)
 	if !ok {

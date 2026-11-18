@@ -22,7 +22,7 @@ func dialBroker(t *testing.T, addr string) {
 	if err != nil {
 		t.Fatalf("dial %s: %v", addr, err)
 	}
-	conn.Close()
+	_ = conn.Close()
 }
 
 // assertDialFails fails the test when something accepts connections on addr.
@@ -31,7 +31,7 @@ func assertDialFails(t *testing.T, addr string) {
 
 	conn, err := net.DialTimeout("tcp", addr, time.Second)
 	if err == nil {
-		conn.Close()
+		_ = conn.Close()
 		t.Fatalf("dial %s succeeded, want the address to stay unbound", addr)
 	}
 }
@@ -56,7 +56,7 @@ func waitListen(t *testing.T, p *brokerProc, addr string) {
 		}
 		conn, err := net.DialTimeout("tcp", addr, dialTimeout)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return
 		}
 		// Recompute the remaining time after the dial, which may have consumed

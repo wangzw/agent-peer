@@ -44,12 +44,12 @@ func TestMain(m *testing.M) {
 		".")
 	if out, err := build.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "build test binary: %v\n%s", err, out)
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 		os.Exit(1)
 	}
 
 	code := m.Run()
-	os.RemoveAll(dir)
+	_ = os.RemoveAll(dir)
 	os.Exit(code)
 }
 
@@ -78,12 +78,12 @@ func newSandbox(t *testing.T) *sandbox {
 	// os.MkdirTemp already creates the directory with 0700; set it again so a
 	// restrictive umask or a platform default cannot widen it.
 	if err := os.Chmod(root, 0o700); err != nil {
-		os.RemoveAll(root)
+		_ = os.RemoveAll(root)
 		t.Fatalf("chmod runtime root: %v", err)
 	}
 
 	sb := &sandbox{t: t, root: root, home: t.TempDir()}
-	t.Cleanup(func() { os.RemoveAll(root) })
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	return sb
 }
 
@@ -247,13 +247,13 @@ func startBroker(t *testing.T, sb *sandbox, args ...string) *brokerProc {
 	cmd.Stderr = stderr
 
 	if err := cmd.Start(); err != nil {
-		r.Close()
-		w.Close()
+		_ = r.Close()
+		_ = w.Close()
 		t.Fatalf("start broker: %v", err)
 	}
 	// The child holds the write end as fd 3. Closing ours turns an exiting
 	// Broker into an EOF on the read end instead of a wait for the timeout.
-	w.Close()
+	_ = w.Close()
 
 	p := &brokerProc{
 		t:      t,

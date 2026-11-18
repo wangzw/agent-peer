@@ -23,18 +23,18 @@ func (a *app) mcpCmd(ctx context.Context, args []string) int {
 	fs.SetOutput(io.Discard)
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(a.stdout, mcpUsage)
+			_, _ = fmt.Fprintln(a.stdout, mcpUsage)
 			return exitOK
 		}
-		fmt.Fprintf(a.stderr, "%s\nagent-peer mcp: %s\n", mcpUsage, err)
+		_, _ = fmt.Fprintf(a.stderr, "%s\nagent-peer mcp: %s\n", mcpUsage, err)
 		return exitUsage
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(a.stderr, "%s\nagent-peer mcp: unexpected argument %q\n", mcpUsage, fs.Arg(0))
+		_, _ = fmt.Fprintf(a.stderr, "%s\nagent-peer mcp: unexpected argument %q\n", mcpUsage, fs.Arg(0))
 		return exitUsage
 	}
 	if err := a.deps.runMCP(ctx); err != nil {
-		fmt.Fprintf(a.stderr, "agent-peer mcp: %s\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer mcp: %s\n", err)
 		return exitFailure
 	}
 	return exitOK
@@ -45,7 +45,7 @@ func (a *app) mcpCmd(ctx context.Context, args []string) int {
 // function only forwards its exit code.
 func (a *app) launcherCmd(_ context.Context, args []string) int {
 	if len(args) > 0 {
-		fmt.Fprintf(a.stderr, "agent-peer internal broker-launcher: unexpected argument %q\n", args[0])
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer internal broker-launcher: unexpected argument %q\n", args[0])
 		return exitUsage
 	}
 	return a.deps.runLauncher()

@@ -34,7 +34,7 @@ func (a *app) brokerCmd(ctx context.Context, args []string) int {
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprint(a.stdout, brokerUsage)
+			_, _ = fmt.Fprint(a.stdout, brokerUsage)
 			return exitOK
 		}
 		return a.brokerUsageError(err.Error())
@@ -98,17 +98,17 @@ func (a *app) brokerCmd(ctx context.Context, args []string) int {
 
 	failure := a.deps.classifyBrokerErr(err)
 	if failure == failInvalidListen {
-		fmt.Fprint(a.stderr, brokerUsage)
+		_, _ = fmt.Fprint(a.stderr, brokerUsage)
 	}
-	fmt.Fprintf(a.stderr, "agent-peer broker: %s\n", err)
+	_, _ = fmt.Fprintf(a.stderr, "agent-peer broker: %s\n", err)
 	return exitCodeFor(failure)
 }
 
 // brokerUsageError reports a usage error that did not reach broker.Run. When a
 // readiness pipe was opened it is closed and nothing is written to it.
 func (a *app) brokerUsageError(reason string) int {
-	fmt.Fprint(a.stderr, brokerUsage)
-	fmt.Fprintf(a.stderr, "agent-peer broker: %s\n", reason)
+	_, _ = fmt.Fprint(a.stderr, brokerUsage)
+	_, _ = fmt.Fprintf(a.stderr, "agent-peer broker: %s\n", reason)
 	return exitUsage
 }
 
@@ -117,7 +117,7 @@ func (a *app) brokerUsageError(reason string) int {
 // wait for the full timeout, then to standard error.
 func (a *app) brokerUsageErrorBeforeRun(ready *os.File, reason string) int {
 	if ready != nil {
-		fmt.Fprintf(ready, "%s\n", reason)
+		_, _ = fmt.Fprintf(ready, "%s\n", reason)
 		_ = ready.Close()
 	}
 	return a.brokerUsageError(reason)
