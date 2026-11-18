@@ -335,6 +335,7 @@ func (svc *service) Register(stream localpb.Local_RegisterServer) error {
 			return nil
 		}
 		c.First = r.req
+		s.record("Register", r.req)
 	}
 
 	s.mu.Lock()

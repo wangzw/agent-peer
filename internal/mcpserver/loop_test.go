@@ -146,16 +146,6 @@ func loopNextRegister(t *testing.T, srv *fakelocal.Server) *fakelocal.RegisterCo
 	return conn
 }
 
-// loopNoRegister asserts that no Register stream arrives within d.
-func loopNoRegister(t *testing.T, srv *fakelocal.Server, d time.Duration) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), d)
-	defer cancel()
-	if conn, err := srv.NextRegister(ctx); err == nil {
-		t.Fatalf("unexpected Register stream with first frame %v", conn.First)
-	}
-}
-
 // loopAwaitString waits for one value on ch.
 func loopAwaitString(t *testing.T, ch <-chan string, what string) string {
 	t.Helper()
@@ -379,7 +369,8 @@ func TestRunLoop(t *testing.T) {
 			t.Errorf("second first frame inbox_socket_path = %q, want %q", got, want)
 		}
 
-		loopNoRegister(t, systemSrv, 200*time.Millisecond)
+		// The second registration is the later event that proves the loop never
+		// fell through to the system-level Broker; its Call log stays empty.
 		if calls := systemSrv.Calls(); len(calls) != 0 {
 			t.Errorf("the system-level Broker received %d calls, want none: %v", len(calls), calls)
 		}
@@ -550,12 +541,16 @@ func TestRunLoop(t *testing.T) {
 			t.Fatalf("Detail = %q, want both versions", status.Detail)
 		}
 
-		loopNoRegister(t, srv, 300*time.Millisecond)
-		if got := loopCountCalls(srv, "Hello"); got != 1 {
-			t.Fatalf("Hello calls = %d after waiting, want 1 (no polling)", got)
-		}
 		if waits := clock.durations(); len(waits) != 0 {
 			t.Fatalf("waits during the version mismatch = %v, want none", waits)
+		}
+		// The version-mismatch status is the later event: the probe returned and
+		// the loop has not opened a Register stream.
+		if got := loopCountCalls(srv, "Hello"); got != 1 {
+			t.Fatalf("Hello calls at the version mismatch = %d, want 1 (no polling)", got)
+		}
+		if got := loopCountCalls(srv, "Register"); got != 0 {
+			t.Fatalf("Register streams at the version mismatch = %d, want 0", got)
 		}
 
 		brokerVersion.Store(1)
@@ -575,6 +570,14 @@ func TestRunLoop(t *testing.T) {
 		conn := loopNextRegister(t, srv)
 		if err := conn.Complete("id1", "me@h", false); err != nil {
 			t.Fatalf("sending registration_complete: %v", err)
+		}
+		// The replacement listener's registration is the later event: the loop
+		// probed it once and then opened exactly one Register stream.
+		if got := loopCountCalls(srv, "Hello"); got != 1 {
+			t.Fatalf("Hello calls on the replacement listener = %d, want 1", got)
+		}
+		if got := loopCountCalls(srv, "Register"); got != 1 {
+			t.Fatalf("Register streams = %d after the second registration, want 1 (the post-mismatch attempt only)", got)
 		}
 		if launcher.count() != 0 {
 			t.Errorf("launch calls = %d, want 0 while the socket still answers", launcher.count())
