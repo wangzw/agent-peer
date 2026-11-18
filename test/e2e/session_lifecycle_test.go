@@ -200,7 +200,24 @@ func TestLocalSessionChanges(t *testing.T) {
 		defer observer.End(t)
 		lifecycleWaitRegistered(t, observer, "observer")
 		lifecycleWaitAgent(t, observer, "worker")
+		// Shared topics are the intersection of both sides' memberships, so the
+		// observer must hold manual as well. Confirm the membership from the
+		// observer's own listing before asserting the intersection.
+		lifecycleJoin(t, observer, "manual")
+		lifecycleWaitTopic(t, observer, "manual")
 		lifecycleJoin(t, worker, "manual")
+		harness.Eventually(t, 3*time.Second, "worker shares the manual topic with observer", func() (bool, string) {
+			out, state := lifecycleListAgents(t, observer, nil)
+			if state != "" {
+				return false, state
+			}
+			entry, ok := lifecycleFindAgent(out, "worker")
+			if !ok {
+				return false, "worker is not listed"
+			}
+			return lifecycleSameSet(entry.SharedTopics, []string{"github.com/org/repo", "manual"}),
+				fmt.Sprintf("shared topics are %v", entry.SharedTopics)
+		})
 
 		worker.StopMCP(t, syscall.SIGINT)
 		lifecycleWaitNoAgent(t, observer, "worker")
@@ -246,11 +263,15 @@ func TestLocalSessionChanges(t *testing.T) {
 		first := lifecycleSession(t, host, "x", workspace)
 		lifecycleWaitRegistered(t, first, "x")
 		lifecycleJoin(t, first, "t1")
+		socketPath := first.Fake().SocketPath()
 		first.End(t)
 
-		// A new session in the same workspace starts with the default topic
-		// only; the manual membership ended with the old session.
-		second := lifecycleSession(t, host, "x", workspace)
+		// A new session that reclaims the same inbox socket has the same agent
+		// identity; the manual membership must still have ended with the old
+		// session.
+		second := host.StartSession(t, harness.SessionSpec{
+			Name: "x", StartMCP: true, Workdir: workspace, SocketPath: socketPath,
+		})
 		defer second.End(t)
 		harness.Eventually(t, 3*time.Second, "the new session has only the default topic", func() (bool, string) {
 			out, state := lifecycleListTopics(t, second)

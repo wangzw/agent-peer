@@ -224,7 +224,17 @@ func TestLinks(t *testing.T) {
 	t.Run("REQ-broker-pairing-021 disconnect", func(t *testing.T) {
 		r := opA.Call(t, "disconnect_broker", map[string]any{"broker": "hostB-17443"})
 		r.MustOK(t)
-		lkKillPeerConn(t, c)
+
+		harness.Eventually(t, 3*time.Second, "B no longer sees A as connected", func() (bool, string) {
+			got := lkStatus(t, bNode, "hostA-17443")
+			return got != localpb.BrokerStatus_BROKER_STATUS_CONNECTED, fmt.Sprintf("B sees A as %s", got)
+		})
+		harness.Eventually(t, 3*time.Second, "A's connection on 17443 is gone", func() (bool, string) {
+			if got := establishedOn(t, c, "hostA", 17443); got != 0 {
+				return false, fmt.Sprintf("A still has %d established connections on 17443", got)
+			}
+			return true, ""
+		})
 
 		harness.Eventually(t, lkWaitBound, "A forgets B", func() (bool, string) {
 			if _, ok := lkFindPeer(lkPeers(t, aNode), "hostB-17443"); ok {
@@ -497,18 +507,6 @@ func lkCutAndWaitDown(t *testing.T, c *harness.Cluster, aNode, bNode *harness.No
 		}
 		return true, ""
 	})
-}
-
-// lkKillPeerConn tears down hostB's TCP connection to hostA after A unpairs.
-// The dialing side then reaches its failed state within the test bound instead
-// of waiting for the link keepalive to time out.
-func lkKillPeerConn(t *testing.T, c *harness.Cluster) {
-	t.Helper()
-	for _, selector := range []string{"dst", "src"} {
-		if _, err := c.RootOK(t, "hostB", "ss", "-K", selector, c.Addr("hostA", "wan")); err != nil {
-			t.Logf("killing hostB's connection to hostA (%s): %v", selector, err)
-		}
-	}
 }
 
 // lkListAgents calls list_agents.
