@@ -373,7 +373,7 @@ func TestLookup_LenientFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Lookup a record with missing fields: %v", err)
 	}
-	if s.PID != 5601 || s.Name != "" || s.Status != "" {
+	if s.PID != 5601 || s.Name != "" || s.Status != "" || s.PeerProtocol != 0 {
 		t.Fatalf("missing fields were not read as empty: %+v", s)
 	}
 
@@ -384,7 +384,7 @@ func TestLookup_LenientFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Lookup a record with mistyped fields: %v", err)
 	}
-	if s.Name != "" || s.Status != "" || s.SocketPath != wrongSocket {
+	if s.Name != "" || s.Status != "" || s.SocketPath != wrongSocket || s.PeerProtocol != 0 {
 		t.Fatalf("mistyped fields were not read as empty: %+v", s)
 	}
 }
@@ -563,6 +563,65 @@ func TestReread_DoesNotCompareSocketPath(t *testing.T) {
 	}
 	if nowUnbound.SocketPath != "" {
 		t.Fatalf("unbinding was not reported: %+v", nowUnbound)
+	}
+}
+
+func TestParseRecordPeerProtocol(t *testing.T) {
+	cases := []struct {
+		name   string
+		record string
+		want   int
+	}{
+		{"one", `{"name":"n","messagingSocketPath":"/s.sock","peerProtocol":1}`, 1},
+		{"two", `{"name":"n","messagingSocketPath":"/s.sock","peerProtocol":2}`, 2},
+		{"missing", `{"name":"n","messagingSocketPath":"/s.sock"}`, 0},
+		{"string", `{"name":"n","messagingSocketPath":"/s.sock","peerProtocol":"1"}`, 0},
+		{"fraction", `{"name":"n","messagingSocketPath":"/s.sock","peerProtocol":1.5}`, 0},
+		{"zero", `{"name":"n","messagingSocketPath":"/s.sock","peerProtocol":0}`, 0},
+		{"negative", `{"name":"n","messagingSocketPath":"/s.sock","peerProtocol":-1}`, 0},
+		{"max-int32", `{"name":"n","messagingSocketPath":"/s.sock","peerProtocol":2147483647}`, 2147483647},
+		{"max-int32-plus-one", `{"name":"n","messagingSocketPath":"/s.sock","peerProtocol":2147483648}`, 0},
+		{"too-large", `{"name":"n","messagingSocketPath":"/s.sock","peerProtocol":1e12}`, 0},
+		{"null", `{"name":"n","messagingSocketPath":"/s.sock","peerProtocol":null}`, 0},
+		{"object", `{"name":"n","messagingSocketPath":"/s.sock","peerProtocol":{}}`, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, err := parseRecord([]byte(tc.record), 1)
+			if err != nil {
+				t.Fatalf("parseRecord: %v", err)
+			}
+			if s.PeerProtocol != tc.want {
+				t.Fatalf("PeerProtocol = %d, want %d", s.PeerProtocol, tc.want)
+			}
+			if s.Name != "n" || s.SocketPath != "/s.sock" {
+				t.Fatalf("peerProtocol changed other fields: %+v", s)
+			}
+		})
+	}
+}
+
+func TestLookup_ReturnsPeerProtocol(t *testing.T) {
+	dir := t.TempDir()
+	socket := filepath.Join(dir, "inbox.sock")
+	aWriteRaw(t, dir, 5003, []byte(
+		`{"name":"a","messagingSocketPath":`+strconv.Quote(socket)+`,"peerProtocol":1}`))
+	s, err := Lookup(dir, socket)
+	if err != nil {
+		t.Fatalf("Lookup: %v", err)
+	}
+	if s.PeerProtocol != 1 {
+		t.Fatalf("Lookup PeerProtocol = %d, want 1", s.PeerProtocol)
+	}
+
+	aWriteRaw(t, dir, 5003, []byte(
+		`{"name":"a","messagingSocketPath":`+strconv.Quote(socket)+`,"peerProtocol":3}`))
+	next, err := Reread(s)
+	if err != nil {
+		t.Fatalf("Reread: %v", err)
+	}
+	if next.PeerProtocol != 3 {
+		t.Fatalf("Reread PeerProtocol = %d, want 3", next.PeerProtocol)
 	}
 }
 

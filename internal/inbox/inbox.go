@@ -15,11 +15,12 @@ const maxRecordSize = 256 << 10
 
 // Session is one session registry record.
 type Session struct {
-	ConfigDir  string // the configuration directory the record lives under
-	PID        int    // session process id, the record file name
-	Name       string // session name, verbatim from the record
-	Status     string // verbatim from the record, may be empty
-	SocketPath string // verbatim from the record; empty until the session binds its inbox
+	ConfigDir    string // the configuration directory the record lives under
+	PID          int    // session process id, the record file name
+	Name         string // session name, verbatim from the record
+	Status       string // verbatim from the record, may be empty
+	SocketPath   string // verbatim from the record; empty until the session binds its inbox
+	PeerProtocol int    // peerProtocol from the record; 0 when missing or not a positive integer
 }
 
 var (

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -99,19 +100,22 @@ func Reread(s Session) (Session, error) {
 	return next, nil
 }
 
-// parseRecord reads the four fields the package depends on. Any syntactically
-// valid JSON is accepted; missing fields and fields of the wrong type become
-// empty strings. Only malformed JSON is ErrPartial.
+// parseRecord reads the four string fields the package depends on, plus
+// peerProtocol, which is carried to the caller but not judged here. Any
+// syntactically valid JSON is accepted; missing fields and fields of the wrong
+// type become empty strings, and an invalid peerProtocol becomes 0 without
+// making the record ErrPartial. Only malformed JSON is ErrPartial.
 func parseRecord(data []byte, pid int) (Session, error) {
 	var fields map[string]any
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return Session{}, ErrPartial
 	}
 	return Session{
-		PID:        pid,
-		Name:       stringField(fields, "name"),
-		Status:     stringField(fields, "status"),
-		SocketPath: stringField(fields, "messagingSocketPath"),
+		PID:          pid,
+		Name:         stringField(fields, "name"),
+		Status:       stringField(fields, "status"),
+		SocketPath:   stringField(fields, "messagingSocketPath"),
+		PeerProtocol: protocolField(fields, "peerProtocol"),
 	}, nil
 }
 
@@ -121,6 +125,16 @@ func stringField(fields map[string]any, key string) string {
 		return ""
 	}
 	return value
+}
+
+// protocolField returns fields[key] as a protocol version: a JSON number that
+// is an integer between 1 and math.MaxInt32. Anything else yields 0.
+func protocolField(fields map[string]any, key string) int {
+	value, ok := fields[key].(float64)
+	if !ok || value != math.Trunc(value) || value < 1 || value > math.MaxInt32 {
+		return 0
+	}
+	return int(value)
 }
 
 // readRecord reads and parses <pid>.json without following symlinks.

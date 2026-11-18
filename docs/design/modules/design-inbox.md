@@ -59,11 +59,12 @@ func CleanSignature(sig string) string
 func InSession() bool
 
 type Session struct {
-    ConfigDir  string // 记录所在的配置目录
-    PID        int    // 会话进程号，即记录的文件名
-    Name       string // 会话名，原样取自记录
-    Status     string // 原样取自记录，可以为空
-    SocketPath string // 取自记录，不自行拼接；绑定 inbox 之前为空
+    ConfigDir    string // 记录所在的配置目录
+    PID          int    // 会话进程号，即记录的文件名
+    Name         string // 会话名，原样取自记录
+    Status       string // 原样取自记录，可以为空
+    SocketPath   string // 取自记录，不自行拼接；绑定 inbox 之前为空
+    PeerProtocol int    // 取自记录的 peerProtocol；缺失或不是正整数时为 0
 }
 ```
 
@@ -96,7 +97,7 @@ type Session struct {
 
 ### 宽松解析
 
-记录内容只依赖 `name`、`status`、`messagingSocketPath` 三个字段，其余字段一律忽略，字段缺失不算错误。Claude Code 改写记录时就地写入，不是原子替换，读取时可能遇到普通文件中写了一半的内容：JSON 无法解析（包括空文件）时返回 `ErrPartial`，调用方保留上一次的值，等待下一次变化通知。记录文件不存在、不是普通文件（例如符号链接、FIFO、目录、设备或 socket），或超过大小上限（256 KiB）时返回 `ErrNoRecord`，调用方视为会话结束，`Lookup` 跳过这类记录。
+记录内容依赖 `name`、`status`、`messagingSocketPath` 三个字段，另读取 `peerProtocol` 交给调用方；其余字段一律忽略，字段缺失不算错误。Claude Code 改写记录时就地写入，不是原子替换，读取时可能遇到普通文件中写了一半的内容：JSON 无法解析（包括空文件）时返回 `ErrPartial`，调用方保留上一次的值，等待下一次变化通知。记录文件不存在、不是普通文件（例如符号链接、FIFO、目录、设备或 socket），或超过大小上限（256 KiB）时返回 `ErrNoRecord`，调用方视为会话结束，`Lookup` 跳过这类记录。`peerProtocol` 只读取，本包不据此判断兼容与否；它缺失或不是正整数时 `PeerProtocol` 为 0，不影响记录的其余字段，也不算记录不完整；是否告警由 [broker](design-broker.md) 决定。
 
 ### 监听与重读
 
@@ -157,7 +158,7 @@ Claude Code 版本更新使帧格式或注册表格式不兼容时，表现为 `
 
 | 能力 | 状态 | 代码 |
 |---|---|---|
-| 会话记录的查找与宽松解析 | 已实现 | [`internal/inbox/session.go`](../../../internal/inbox/session.go)（`Lookup`、`Reread`、`parseRecord`） |
+| 会话记录的查找与宽松解析 | 已实现 | [`internal/inbox/session.go`](../../../internal/inbox/session.go)（`Lookup`、`Reread`、`parseRecord`、`protocolField`） |
 | 注册表目录的监听与重读 | 已实现 | [`internal/inbox/watch.go`](../../../internal/inbox/watch.go)（`Watch`、`watcher`、`scanAndNotify`） |
 | 消息写入与结果判定 | 已实现 | [`internal/inbox/deliver.go`](../../../internal/inbox/deliver.go)（`Deliver`、`classifySendError`） |
 | 帧大小、名字规范化与署名清洗的计算 | 已实现 | [`internal/inbox/frame.go`](../../../internal/inbox/frame.go)（`FrameSize`）、[`internal/inbox/name.go`](../../../internal/inbox/name.go)（`NormalizeName`）、[`internal/inbox/signature.go`](../../../internal/inbox/signature.go)（`CleanSignature`） |
