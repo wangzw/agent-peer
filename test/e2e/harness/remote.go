@@ -1,0 +1,467 @@
+package harness
+
+import (
+	"context"
+	"encoding/json"
+	"strconv"
+	"sync"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/agent-peer/test/e2e/ctl"
+	"github.com/wangzw/agent-peer/test/e2e/node"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+)
+
+// brokerStopBound bounds the wait for a Broker that was just signalled.
+const brokerStopBound = 10 * time.Second
+
+// oracleRemote is the container node's half of OracleClient: the five local
+// interface RPCs travel over the control protocol to the node agent.
+type oracleRemote interface {
+	hello(t testing.TB) *localpb.HelloResponse
+	listBrokers(t testing.TB) (*localpb.ListBrokersResponse, *localpb.ErrorDetail)
+	status(t testing.TB) (*localpb.StatusResponse, *localpb.ErrorDetail)
+	getConfig(t testing.TB, key string) (*localpb.GetConfigResponse, *localpb.ErrorDetail)
+	audit(t testing.TB, since time.Time, limit uint32) ([]*localpb.AuditEvent, *localpb.ErrorDetail)
+	close()
+}
+
+// frameWaiter is implemented by a session backend that waits for a frame
+// without holding a local fakesession.Fake. The container backend implements
+// it; the local backend keeps going through Fake.
+type frameWaiter interface {
+	waitFrame(t testing.TB, bound time.Duration) fakesession.Frame
+}
+
+// remoteNode drives the node agent of one container over the control socket.
+type remoteNode struct {
+	t       *testing.T
+	name    string
+	socket  string
+	client  *ctl.Client
+	homeDir string
+}
+
+func (r *remoteNode) startBroker(tb testing.TB, spec BrokerSpec) BrokerStart {
+	tb.Helper()
+	res, err := r.client.StartBroker(context.Background(), ctl.BrokerStartRequest{
+		Args:       spec.Args,
+		ConfigYAML: spec.ConfigYAML,
+		Env:        spec.Env,
+		BoundMS:    spec.Bound.Milliseconds(),
+	})
+	if err != nil {
+		tb.Fatalf("harness: node %s: starting Broker: %v", r.name, err)
+		return BrokerStart{}
+	}
+	return BrokerStart{
+		Running:    res.Running,
+		PID:        res.PID,
+		ExitCode:   res.ExitCode,
+		StderrLast: res.StderrLast,
+	}
+}
+
+func (r *remoteNode) stopBroker(tb testing.TB, sig syscall.Signal) int {
+	tb.Helper()
+	ctx := context.Background()
+	if err := r.client.SignalBroker(ctx, ctl.BrokerSignalRequest{Signal: strconv.Itoa(int(sig))}); err != nil {
+		tb.Fatalf("harness: node %s: signalling the Broker: %v", r.name, err)
+		return -1
+	}
+	res, err := r.client.WaitBroker(ctx, ctl.BrokerWaitRequest{BoundMS: brokerStopBound.Milliseconds()})
+	if err != nil {
+		tb.Fatalf("harness: node %s: waiting for the Broker: %v", r.name, err)
+		return -1
+	}
+	return res.ExitCode
+}
+
+func (r *remoteNode) brokerLog(tb testing.TB) []byte {
+	tb.Helper()
+	res, err := r.client.BrokerLog(context.Background(), ctl.BrokerLogRequest{})
+	if err != nil {
+		tb.Fatalf("harness: node %s: reading the Broker log: %v", r.name, err)
+		return nil
+	}
+	return res.Data
+}
+
+func (r *remoteNode) startSession(tb testing.TB, spec SessionSpec) *Session {
+	tb.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+	info, err := r.client.StartSession(ctx, ctl.SessionStartRequest{
+		Name:            spec.Name,
+		Status:          spec.Status,
+		ConfigDir:       spec.ConfigDir,
+		ExportConfigDir: spec.ExportConfigDir,
+		Workdir:         spec.Workdir,
+		Mode:            modeName(spec.Mode),
+		BusyDelayMS:     spec.BusyDelay.Milliseconds(),
+		NoBind:          spec.NoBind,
+		SocketPath:      spec.SocketPath,
+		NoSocketEnv:     spec.NoSocketEnv,
+		Env:             spec.Env,
+		StartMCP:        spec.StartMCP,
+	})
+	if err != nil {
+		tb.Fatalf("harness: node %s: starting session %s: %v", r.name, spec.Name, err)
+		return nil
+	}
+
+	return &Session{
+		name: spec.Name,
+		impl: &remoteSession{
+			name:   spec.Name,
+			id:     info.ID,
+			client: r.client,
+			tb:     tb,
+		},
+	}
+}
+
+func (r *remoteNode) exec(tb testing.TB, argv []string, env map[string]string) ExecResult {
+	tb.Helper()
+	if len(argv) == 0 {
+		tb.Fatalf("harness: node %s: Exec needs a command", r.name)
+		return ExecResult{}
+	}
+	res, err := r.client.Exec(context.Background(), ctl.ExecRequest{Argv: argv, Env: env})
+	if err != nil {
+		tb.Fatalf("harness: node %s: running %v: %v", r.name, argv, err)
+		return ExecResult{}
+	}
+	return ExecResult{ExitCode: res.ExitCode, Stdout: res.Stdout, Stderr: res.Stderr}
+}
+
+func (r *remoteNode) oracle() *OracleClient {
+	return &OracleClient{remote: &remoteOracle{name: r.name, client: r.client}}
+}
+
+func (r *remoteNode) freeAddr(tb testing.TB) string {
+	tb.Helper()
+	tb.Fatalf("harness: node %s: FreeAddr is only available on a local node; a container node listens on its own address", r.name)
+	return ""
+}
+
+func (r *remoteNode) accountHome() string { return r.homeDir }
+
+func (r *remoteNode) writeConfig(tb testing.TB, yaml string) {
+	tb.Helper()
+	r.writeFile(tb, r.configPath(), []byte(yaml), 0o600)
+}
+
+func (r *remoteNode) readConfig(tb testing.TB) []byte {
+	tb.Helper()
+	data, missing, err := r.readFileMaybe(tb, r.configPath())
+	if err != nil {
+		tb.Fatalf("harness: node %s: reading the configuration: %v", r.name, err)
+		return nil
+	}
+	if missing {
+		return nil
+	}
+	return data
+}
+
+func (r *remoteNode) readFile(tb testing.TB, path string) []byte {
+	tb.Helper()
+	data, missing, err := r.readFileMaybe(tb, path)
+	if err != nil {
+		tb.Fatalf("harness: node %s: reading %s: %v", r.name, path, err)
+		return nil
+	}
+	if missing {
+		tb.Fatalf("harness: node %s: reading %s: no such file", r.name, path)
+		return nil
+	}
+	return data
+}
+
+// configPath is the account's configuration file inside the container.
+func (r *remoteNode) configPath() string {
+	return r.homeDir + "/.agent-peer/config.yaml"
+}
+
+// readFileMaybe reads through the node agent, reporting a missing file
+// separately.
+func (r *remoteNode) readFileMaybe(tb testing.TB, path string) ([]byte, bool, error) {
+	tb.Helper()
+	res, err := r.client.ReadFile(context.Background(), ctl.FileReadRequest{Path: path})
+	if err != nil {
+		return nil, false, err
+	}
+	return res.Data, res.Missing, nil
+}
+
+// writeFile writes through the node agent with the given mode.
+func (r *remoteNode) writeFile(tb testing.TB, path string, data []byte, mode uint32) {
+	tb.Helper()
+	if err := r.client.WriteFile(context.Background(), ctl.FileWriteRequest{Path: path, Data: data, Mode: mode}); err != nil {
+		tb.Fatalf("harness: node %s: writing %s: %v", r.name, path, err)
+	}
+}
+
+// modeName is the control protocol's name for a fakesession mode.
+func modeName(mode fakesession.Mode) string {
+	switch mode {
+	case fakesession.HoldOpen:
+		return "hold-open"
+	case fakesession.CloseImmediately:
+		return "close-immediately"
+	default:
+		return "close-after-read"
+	}
+}
+
+// remoteSession drives one simulated session that lives in a container.
+type remoteSession struct {
+	name   string
+	id     string
+	client *ctl.Client
+	tb     testing.TB
+
+	frameMu    sync.Mutex
+	frameCalls int
+}
+
+func (s *remoteSession) call(tb testing.TB, tool string, args map[string]any) Result {
+	tb.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), sessionCallBound)
+	defer cancel()
+	res, err := s.client.Call(ctx, ctl.SessionCallRequest{
+		ID:        s.id,
+		Tool:      tool,
+		Args:      args,
+		TimeoutMS: sessionCallBound.Milliseconds(),
+	})
+	if err != nil {
+		tb.Fatalf("harness: session %s: calling %s: %v", s.name, tool, err)
+		return Result{}
+	}
+	result := Result{ToolResult: node.ToolResult{
+		IsError: res.IsError,
+		Text:    res.Text,
+		Elapsed: time.Duration(res.ElapsedMS) * time.Millisecond,
+	}}
+	if len(res.Structured) > 0 {
+		result.Structured = json.RawMessage(res.Structured)
+	}
+	return result
+}
+
+func (s *remoteSession) tools(tb testing.TB) []string {
+	tb.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	defer cancel()
+	res, err := s.client.Tools(ctx, ctl.SessionIDRequest{ID: s.id})
+	if err != nil {
+		tb.Fatalf("harness: session %s: listing tools: %v", s.name, err)
+		return nil
+	}
+	return res.Tools
+}
+
+func (s *remoteSession) stopMCP(tb testing.TB, sig syscall.Signal) int {
+	tb.Helper()
+	res, err := s.client.MCP(context.Background(), ctl.SessionMCPRequest{ID: s.id, Op: "stop", Signal: strconv.Itoa(int(sig))})
+	if err != nil {
+		tb.Fatalf("harness: session %s: stopping the MCP server process: %v", s.name, err)
+		return -1
+	}
+	return res.ExitCode
+}
+
+func (s *remoteSession) restartMCP(tb testing.TB) {
+	tb.Helper()
+	if _, err := s.client.MCP(context.Background(), ctl.SessionMCPRequest{ID: s.id, Op: "restart"}); err != nil {
+		tb.Fatalf("harness: session %s: restarting the MCP server process: %v", s.name, err)
+	}
+}
+
+func (s *remoteSession) startExtraMCP(tb testing.TB) {
+	tb.Helper()
+	if _, err := s.client.MCP(context.Background(), ctl.SessionMCPRequest{ID: s.id, Op: "extra"}); err != nil {
+		tb.Fatalf("harness: session %s: starting an extra MCP server process: %v", s.name, err)
+	}
+}
+
+func (s *remoteSession) inboxConnections(tb testing.TB) int {
+	tb.Helper()
+	res, err := s.client.InboxConnections(context.Background(), ctl.SessionIDRequest{ID: s.id})
+	if err != nil {
+		tb.Fatalf("harness: session %s: counting inbox connections: %v", s.name, err)
+		return 0
+	}
+	return res.N
+}
+
+// fake is unsupported: the simulated session and its frames live in the
+// container process, so there is no local fakesession.Fake to hand out.
+func (s *remoteSession) fake() *fakesession.Fake {
+	s.tb.Helper()
+	s.tb.Fatalf("harness: session %s: Fake is not available for a session in a container; use WaitFrame for frames", s.name)
+	return nil
+}
+
+func (s *remoteSession) end() error {
+	return s.client.End(context.Background(), ctl.SessionIDRequest{ID: s.id})
+}
+
+// waitFrame waits for the next frame the session recorded, walking the frames
+// in arrival order exactly as fakesession.Fake.WaitFrame does.
+func (s *remoteSession) waitFrame(t testing.TB, bound time.Duration) fakesession.Frame {
+	t.Helper()
+	s.frameMu.Lock()
+	s.frameCalls++
+	wanted := s.frameCalls
+	s.frameMu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), bound+5*time.Second)
+	defer cancel()
+	res, err := s.client.Frames(ctx, ctl.SessionFramesRequest{
+		ID:        s.id,
+		WaitN:     wanted,
+		TimeoutMS: bound.Milliseconds(),
+	})
+	if err != nil {
+		t.Fatalf("harness: session %s: waiting for a frame: %v", s.name, err)
+		return fakesession.Frame{}
+	}
+	if !res.OK || len(res.Frames) < wanted {
+		t.Fatalf("harness: session %s: no inbox frame within %s", s.name, bound)
+		return fakesession.Frame{}
+	}
+	frame := res.Frames[wanted-1]
+	return fakesession.Frame{
+		Raw:       []byte(frame.Raw),
+		Auth:      frame.Auth,
+		MsgID:     frame.MsgID,
+		FromName:  frame.FromName,
+		From:      frame.From,
+		SessionID: frame.SessionID,
+		Content:   frame.Content,
+	}
+}
+
+// remoteOracle calls the five local interface RPCs over /v1/local. Product
+// errors come back as an ErrorDetail; infrastructure errors fail the test,
+// matching the local oracle.
+type remoteOracle struct {
+	name   string
+	client *ctl.Client
+}
+
+func (o *remoteOracle) hello(t testing.TB) *localpb.HelloResponse {
+	t.Helper()
+	message := &localpb.HelloResponse{}
+	if detail := o.decode(t, o.local(t, ctl.LocalRequest{RPC: "hello"}), message); detail != nil {
+		t.Fatalf("harness: node %s: Local.Hello returned an error: %s", o.name, detail.GetMessage())
+		return nil
+	}
+	return message
+}
+
+func (o *remoteOracle) listBrokers(t testing.TB) (*localpb.ListBrokersResponse, *localpb.ErrorDetail) {
+	t.Helper()
+	message := &localpb.ListBrokersResponse{}
+	if detail := o.decode(t, o.local(t, ctl.LocalRequest{RPC: "list_brokers"}), message); detail != nil {
+		return nil, detail
+	}
+	return message, nil
+}
+
+func (o *remoteOracle) status(t testing.TB) (*localpb.StatusResponse, *localpb.ErrorDetail) {
+	t.Helper()
+	message := &localpb.StatusResponse{}
+	if detail := o.decode(t, o.local(t, ctl.LocalRequest{RPC: "status"}), message); detail != nil {
+		return nil, detail
+	}
+	return message, nil
+}
+
+func (o *remoteOracle) getConfig(t testing.TB, key string) (*localpb.GetConfigResponse, *localpb.ErrorDetail) {
+	t.Helper()
+	message := &localpb.GetConfigResponse{}
+	if detail := o.decode(t, o.local(t, ctl.LocalRequest{RPC: "get_config", Key: key}), message); detail != nil {
+		return nil, detail
+	}
+	return message, nil
+}
+
+func (o *remoteOracle) audit(t testing.TB, since time.Time, limit uint32) ([]*localpb.AuditEvent, *localpb.ErrorDetail) {
+	t.Helper()
+	req := ctl.LocalRequest{RPC: "audit", Limit: limit}
+	if !since.IsZero() {
+		req.Since = since.UTC().Format(time.RFC3339Nano)
+	}
+	res := o.local(t, req)
+	if detail := o.errorDetail(t, res); detail != nil {
+		return nil, detail
+	}
+	events := make([]*localpb.AuditEvent, 0, len(res.Events))
+	for _, raw := range res.Events {
+		event := &localpb.AuditEvent{}
+		if err := protojson.Unmarshal(raw, event); err != nil {
+			t.Fatalf("harness: node %s: decoding an audit event: %v", o.name, err)
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
+func (o *remoteOracle) close() {
+	// The control client belongs to the cluster and outlives this oracle.
+}
+
+// local performs one control request.
+func (o *remoteOracle) local(t testing.TB, req ctl.LocalRequest) ctl.LocalResult {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), oracleBound)
+	defer cancel()
+	res, err := o.client.Local(ctx, req)
+	if err != nil {
+		t.Fatalf("harness: node %s: calling Local.%s: %v", o.name, req.RPC, err)
+		return ctl.LocalResult{}
+	}
+	return res
+}
+
+// errorDetail decodes the product error in an answer, or nil when there is
+// none.
+func (o *remoteOracle) errorDetail(t testing.TB, res ctl.LocalResult) *localpb.ErrorDetail {
+	t.Helper()
+	if len(res.ErrorDetail) == 0 {
+		return nil
+	}
+	detail := &localpb.ErrorDetail{}
+	if err := protojson.Unmarshal(res.ErrorDetail, detail); err != nil {
+		t.Fatalf("harness: node %s: decoding an error detail: %v", o.name, err)
+		return nil
+	}
+	return detail
+}
+
+// decode fills message from the answer and returns the product error, if any.
+func (o *remoteOracle) decode(t testing.TB, res ctl.LocalResult, message proto.Message) *localpb.ErrorDetail {
+	t.Helper()
+	if detail := o.errorDetail(t, res); detail != nil {
+		return detail
+	}
+	if len(res.Response) == 0 {
+		t.Fatalf("harness: node %s: the local interface returned no answer", o.name)
+		return nil
+	}
+	if err := protojson.Unmarshal(res.Response, message); err != nil {
+		t.Fatalf("harness: node %s: decoding %T: %v", o.name, message, err)
+		return nil
+	}
+	return nil
+}

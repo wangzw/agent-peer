@@ -1,0 +1,16 @@
+services:
+  hostA:
+    image: ${E2E_IMAGE}
+    hostname: ${HOSTA_NAME:-hostA}
+    init: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - "${CTL_HOSTA}:/ctl"
+    networks:
+      - net
+
+networks:
+  net:
+    internal: true

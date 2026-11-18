@@ -74,11 +74,17 @@ type ExecResult struct {
 // returned in the second value; infrastructure errors fail the test.
 type OracleClient struct {
 	oracle *node.Oracle
+	// remote carries the five RPCs to a node agent when the Broker runs in a
+	// container; oracle is nil then.
+	remote oracleRemote
 }
 
 // Hello calls Local.Hello on the Broker.
 func (o *OracleClient) Hello(t testing.TB) *localpb.HelloResponse {
 	t.Helper()
+	if o.remote != nil {
+		return o.remote.hello(t)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), oracleBound)
 	defer cancel()
 	resp, err := o.oracle.Hello(ctx)
@@ -92,6 +98,9 @@ func (o *OracleClient) Hello(t testing.TB) *localpb.HelloResponse {
 // ListBrokers returns the Brokers known to this Broker.
 func (o *OracleClient) ListBrokers(t testing.TB) (*localpb.ListBrokersResponse, *localpb.ErrorDetail) {
 	t.Helper()
+	if o.remote != nil {
+		return o.remote.listBrokers(t)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), oracleBound)
 	defer cancel()
 	resp, err := o.oracle.ListBrokers(ctx)
@@ -108,6 +117,9 @@ func (o *OracleClient) ListBrokers(t testing.TB) (*localpb.ListBrokersResponse, 
 // Status returns the Broker's status.
 func (o *OracleClient) Status(t testing.TB) (*localpb.StatusResponse, *localpb.ErrorDetail) {
 	t.Helper()
+	if o.remote != nil {
+		return o.remote.status(t)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), oracleBound)
 	defer cancel()
 	resp, err := o.oracle.Status(ctx)
@@ -125,6 +137,9 @@ func (o *OracleClient) Status(t testing.TB) (*localpb.StatusResponse, *localpb.E
 // is empty.
 func (o *OracleClient) GetConfig(t testing.TB, key string) (*localpb.GetConfigResponse, *localpb.ErrorDetail) {
 	t.Helper()
+	if o.remote != nil {
+		return o.remote.getConfig(t, key)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), oracleBound)
 	defer cancel()
 	resp, err := o.oracle.GetConfig(ctx, key)
@@ -143,6 +158,9 @@ func (o *OracleClient) GetConfig(t testing.TB, key string) (*localpb.GetConfigRe
 // limit does not bound the answer.
 func (o *OracleClient) Audit(t testing.TB, since time.Time, limit uint32) ([]*localpb.AuditEvent, *localpb.ErrorDetail) {
 	t.Helper()
+	if o.remote != nil {
+		return o.remote.audit(t, since, limit)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), oracleBound)
 	defer cancel()
 	req := &localpb.AuditRequest{Limit: limit}
@@ -162,6 +180,10 @@ func (o *OracleClient) Audit(t testing.TB, since time.Time, limit uint32) ([]*lo
 
 // close releases the underlying connection.
 func (o *OracleClient) close() {
+	if o.remote != nil {
+		o.remote.close()
+		return
+	}
 	if o.oracle != nil {
 		_ = o.oracle.Close()
 	}
@@ -327,6 +349,11 @@ func (s *Session) Fake() *fakesession.Fake {
 // inbox and fails the test when none arrives.
 func (s *Session) WaitFrame(t testing.TB, bound time.Duration) fakesession.Frame {
 	t.Helper()
+	// A container session has no local fakesession.Fake; its backend waits
+	// through the node agent instead.
+	if waiter, ok := s.impl.(frameWaiter); ok {
+		return waiter.waitFrame(t, bound)
+	}
 	frame, ok := s.Fake().WaitFrame(bound)
 	if !ok {
 		t.Fatalf("harness: session %s: no inbox frame within %s", s.name, bound)
