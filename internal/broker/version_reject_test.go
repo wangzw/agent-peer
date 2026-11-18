@@ -15,12 +15,18 @@ import (
 	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
 )
 
-// callTestListAgents performs one ListAgents on client.
-func callTestListAgents(t *testing.T, client localpb.LocalClient) (*localpb.ListAgentsResponse, error) {
+// callTestListAgents performs one ListAgents on client. When agentID is given,
+// the request names that agent; a rejected connection needs no ID because the
+// interceptor refuses the call before the handler reads it.
+func callTestListAgents(t *testing.T, client localpb.LocalClient, agentID ...string) (*localpb.ListAgentsResponse, error) {
 	t.Helper()
+	var id string
+	if len(agentID) > 0 {
+		id = agentID[0]
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return client.ListAgents(ctx, &localpb.ListAgentsRequest{})
+	return client.ListAgents(ctx, &localpb.ListAgentsRequest{AgentId: id})
 }
 
 // callTestListBrokers performs one ListBrokers on client.
@@ -122,9 +128,26 @@ func TestOtherConnectionsUnaffected(t *testing.T) {
 	if !ok {
 		t.Fatal("the registered agent is missing before the rejection")
 	}
+	beforeList, err := callTestListAgents(t, y, string(id))
+	if err != nil {
+		t.Fatalf("ListAgents on the registered connection before the rejection: %v", err)
+	}
+	if beforeList.GetSelfAddress() == "" {
+		t.Fatal("ListAgents returned an empty self_address for the registered connection")
+	}
 
 	if _, err := callTestHello(t, tb.client, 2); err == nil {
 		t.Fatal("Hello{2} succeeded, want a version mismatch")
+	}
+
+	// Another call on the registered connection still succeeds and reports the
+	// same self address.
+	afterList, err := callTestListAgents(t, y, string(id))
+	if err != nil {
+		t.Fatalf("ListAgents on the registered connection after the rejection: %v", err)
+	}
+	if got, want := afterList.GetSelfAddress(), beforeList.GetSelfAddress(); got != want {
+		t.Errorf("self_address after the rejection = %q, want unchanged %q", got, want)
 	}
 
 	after, ok := tb.b.lookupAgent(id)
@@ -140,7 +163,7 @@ func TestOtherConnectionsUnaffected(t *testing.T) {
 	select {
 	case err := <-stream.errs:
 		t.Errorf("the registration stream of the other connection ended: %v", err)
-	case <-time.After(100 * time.Millisecond):
+	default:
 	}
 
 	w := tb.newClient(t)
