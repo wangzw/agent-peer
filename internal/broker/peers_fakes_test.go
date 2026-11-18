@@ -232,12 +232,13 @@ func auditsOf(cfg *fakeConfig, kind config.EventKind) []config.Event {
 	return out
 }
 
-// withPeers installs the pairing and link doubles. Deps.Peers is filled by the
-// peer-info work item, which owns newPeerView.
+// withPeers installs the pairing and link doubles, and a PeerView that reads
+// them so Status shows the same peers as ListBrokers.
 func withPeers(p *fakePairing, l *fakePeerLinks) func(*Deps) {
 	return func(d *Deps) {
 		d.Pairing = p
 		d.PeerLinks = l
+		d.Peers = newPeerView(p, l, nil)
 	}
 }
 
