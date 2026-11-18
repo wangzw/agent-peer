@@ -69,8 +69,8 @@ Broker 不得把另一个不公开 Broker 的任何信息传给该 Broker 的对
 Broker 必须拒绝内容被传递者改动过的名片，以及并非由名片所述 Broker 发布的名片。
 
 - **验收**：一个对端传来对外地址列表被改动的名片，以及一张冒用他人指纹的名片，接收方列出已知 Broker 的结果不含这两张名片。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_hostile_test.go` 的 `TestDirectoryRejectsTamperedCards`
 
 ### REQ-broker-discovery-007
 
@@ -101,8 +101,8 @@ Broker 由公开改为不公开后，它的名片必须在 60 秒内从与它持
 Broker 不得接受对端以外的来源传来的名片。
 
 - **验收**：未配对的 Broker 无法使任何名片出现在本 Broker 列出已知 Broker 的结果中。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_hostile_test.go` 的 `TestDirectoryRejectsUnpairedSource`
 
 ### REQ-broker-discovery-011
 
@@ -141,8 +141,8 @@ Agent 必须能列出本机 Broker 已知的全部 Broker，包括全部对端�
 经同一个对端传入的记录数量必须有单独的可配置上限，使单个对端无法占满名录。
 
 - **验收**：把名录上限配置为 10、单个对端的上限配置为 4；一个对端传来 10 条有效记录，只有 4 条被接受，另一个对端此后传来的名片仍被接受。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_hostile_test.go` 的 `TestDirectoryPerLinkLimit`
 
 ### REQ-broker-discovery-016
 
@@ -157,8 +157,8 @@ Agent 必须能列出本机 Broker 已知的全部 Broker，包括全部对端�
 名片中含有本 Broker 不认识的地址种类时，Broker 必须忽略该地址而仍然接受并传播这张名片，名片中其余的地址照常可用。
 
 - **验收**：B 与 C 已连接；B 的对端 A 传来一张有效的名片，其对外地址列表含一项 B 不认识的地址种类和一项 `198.51.100.4:17443`。B 列出已知 Broker 的结果包含该名片的发布者，对外地址列表为 `198.51.100.4:17443`，状态为可连接；C 列出已知 Broker 的结果同样包含该发布者。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/discovery_hostile_test.go` 的 `TestDirectoryUnknownAddressKind`
 
 ## 数据需求
 
