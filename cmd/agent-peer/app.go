@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,23 +35,6 @@ type app struct {
 // register themselves from init so this file stays free of their details.
 // The hidden internal helper commands use keys such as "internal broker-launcher".
 var subcommands = map[string]func(*app, context.Context, []string) int{}
-
-var errNotWired = errors.New("not implemented")
-
-// realDeps is the temporary assembly used before the real Broker and MCP server
-// entry points are wired. Every operation reports that it is not implemented.
-// The wiring change replaces this function with one built from the real
-// packages.
-func realDeps(string) deps {
-	return deps{
-		runBroker:         func(context.Context, brokerOptions) error { return errNotWired },
-		classifyBrokerErr: func(error) startFailure { return failOther },
-		runMCP:            func(context.Context) error { return errNotWired },
-		runLauncher:       func() int { return exitFailure },
-		runStatus:         func(context.Context, io.Writer) error { return errNotWired },
-		runAudit:          func(context.Context, io.Writer, uint32) error { return errNotWired },
-	}
-}
 
 // newSignalContext cancels the returned context on SIGINT or SIGTERM. After the
 // first signal restores the default handling, so a second signal terminates the
