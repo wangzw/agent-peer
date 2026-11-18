@@ -26,6 +26,10 @@ const (
 	systemSocketPath = "/run/agent-peer/broker.sock"
 	// accountPath is the environment of every account process.
 	accountPath = "/usr/bin:/bin:/usr/sbin:/sbin"
+	// procStopBound is how long a Broker process gets to exit after SIGTERM,
+	// and again after SIGKILL. A Broker stops its listeners and links in well
+	// under a second; the bound leaves room for a loaded container's scheduler.
+	procStopBound = 5 * time.Second
 )
 
 // Proc is one Broker process started by a test.
@@ -137,14 +141,20 @@ func (p *Proc) stop(t *testing.T) {
 	select {
 	case <-p.exited:
 		return
-	case <-time.After(5 * time.Second):
+	case <-time.After(procStopBound):
 	}
 	_ = p.Cmd.Process.Kill()
 	select {
 	case <-p.exited:
-	case <-time.After(5 * time.Second):
+	case <-time.After(procStopBound):
 		t.Logf("syscontainer: process %d did not exit after SIGKILL", p.PID)
 	}
+}
+
+// Stop terminates the process and waits for it to exit. It is idempotent.
+func (p *Proc) Stop(t *testing.T) {
+	t.Helper()
+	p.stop(t)
 }
 
 // AccountUID returns the uid of account from the account database.

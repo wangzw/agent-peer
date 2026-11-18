@@ -15,6 +15,9 @@ import (
 func TestMain(m *testing.M) {
 	if os.Getenv(registerClientRoleEnv) == registerClientRole {
 		os.Exit(runRegisterClientRole())
+	if os.Getenv(registerClientRoleEnv) == forgeAccessCheckRole {
+		os.Exit(runForgeAccessCheckRole())
+	}
 	}
 	os.Exit(syscontainer.Main(m))
 }

@@ -44,6 +44,11 @@ const expectFailEnv = "AGENT_PEER_E2E_EXPECT_FAIL"
 // systemdReadyBound bounds the wait for systemd to finish booting.
 const systemdReadyBound = 90 * time.Second
 
+// systemdPollInterval paces the readiness wait. systemctl --wait blocks until
+// the state settles, so the pause only separates runs after an unexpected
+// answer; 200ms keeps the loop cheap without delaying a boot that is ready.
+const systemdPollInterval = 200 * time.Millisecond
+
 // InContainer reports whether the process was started by an e2e container.
 func InContainer() bool {
 	return os.Getenv(inContainerEnv) == "1"
@@ -309,7 +314,7 @@ func (c *container) waitSystemd() error {
 			}
 			return fmt.Errorf("waiting for systemd in %s: state %q", c.project, state)
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(systemdPollInterval)
 	}
 }
 
