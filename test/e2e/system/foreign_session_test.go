@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
 	"github.com/wangzw/agent-peer/test/e2e/harness"
 	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
 )
@@ -58,6 +59,31 @@ func TestREQBrokerConfig020_ForeignSocketOwnerRejected(t *testing.T) {
 	})
 	t.Run("record readable but socket owned by another account", func(t *testing.T) {
 		foreignSessionRejected(t, true)
+	})
+	// The positive control runs the same register-client path that the
+	// refusals above use: the record exists and the socket belongs to the
+	// caller's account, so the same path must report registration_complete.
+	t.Run("session owner registers successfully", func(t *testing.T) {
+		_ = syscontainer.StartSystemBroker(t, "broker:\n  alias: sys\n")
+
+		configDir := "/home/peer/.claude-owner"
+		fake := fakesession.New(t, fakesession.Options{
+			ConfigDir:  configDir,
+			Name:       "ownersession",
+			SocketPath: "/tmp/ap-peer-owner.sock",
+		})
+		for _, path := range []string{configDir, filepath.Join(configDir, "sessions"), fake.RecordPath(), fake.SocketPath()} {
+			cmd := syscontainer.Command("root", nil, "chown", "peer", path)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("syscontainer: chown peer %s: %v\n%s", path, err, strings.TrimSpace(string(out)))
+			}
+		}
+
+		result := runRegisterClient(t, "peer", fake.SocketPath(), fake.ConfigDir())
+		if result.Event != "complete" {
+			t.Fatalf("register-client as the socket owner reported %q (reason %q), want complete",
+				result.Event, result.Reason)
+		}
 	})
 }
 

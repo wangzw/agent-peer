@@ -4,12 +4,14 @@ package e2e
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/wangzw/agent-peer/internal/mcpserver"
+	"github.com/wangzw/agent-peer/test/e2e/harness"
 	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
 )
 
@@ -43,8 +45,10 @@ func TestREQBrokerConfig018_TwoAccountsShareSystemBroker(t *testing.T) {
 
 	a := syscontainer.NewSession(t, "peer", "a1")
 	b := syscontainer.NewSession(t, "other", "b1")
+	third := syscontainer.NewSession(t, "root", "observer")
 	e2eSysWaitRegistered(t, a)
 	e2eSysWaitRegistered(t, b)
+	e2eSysWaitRegistered(t, third)
 
 	const topic = "e2e/shared"
 	e2eSysJoinTopic(t, a, topic)
@@ -83,12 +87,26 @@ func TestREQBrokerConfig018_TwoAccountsShareSystemBroker(t *testing.T) {
 		t.Errorf("the delivered content %q does not contain %q", reply.Content, "pong-018")
 	}
 
+	// Each message names one recipient. The third session shares the system
+	// Broker and must receive neither of them, so delivery is addressed, not
+	// broadcast to every account.
+	thirdSelf := e2eSysSelfAddress(t, third)
+	if frames := third.Fake.Frames(); len(frames) != 0 {
+		t.Errorf("the third session received %d frames before the check, want none", len(frames))
+	}
+	harness.Consistently(t, time.Second, "the third session receives neither message", func() (bool, string) {
+		if frames := third.Fake.Frames(); len(frames) != 0 {
+			return false, fmt.Sprintf("the third session received %d frames", len(frames))
+		}
+		return true, ""
+	})
+
 	status := syscontainer.RunAs(t, "root", nil, "status")
 	if status.ExitCode != 0 {
 		t.Fatalf("agent-peer status as root: exit %d\n%s\n%s", status.ExitCode, status.Stdout, status.Stderr)
 	}
-	if !strings.Contains(status.Stdout, "Agents (2):") {
-		t.Fatalf("status does not list both agents:\n%s", status.Stdout)
+	if !strings.Contains(status.Stdout, "Agents (3):") {
+		t.Fatalf("status does not list all three agents:\n%s", status.Stdout)
 	}
 	peerLine := e2eSysStatusLine(t, status.Stdout, aSelf)
 	if !strings.Contains(peerLine, "peer") {
@@ -97,6 +115,10 @@ func TestREQBrokerConfig018_TwoAccountsShareSystemBroker(t *testing.T) {
 	otherLine := e2eSysStatusLine(t, status.Stdout, bSelf)
 	if !strings.Contains(otherLine, "other") {
 		t.Errorf("the status line for %q does not name the other account: %q", bSelf, otherLine)
+	}
+	thirdLine := e2eSysStatusLine(t, status.Stdout, thirdSelf)
+	if !strings.Contains(thirdLine, "root") {
+		t.Errorf("the status line for %q does not name the root account: %q", thirdSelf, thirdLine)
 	}
 }
 
