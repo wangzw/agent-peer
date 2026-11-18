@@ -57,7 +57,7 @@ test:
 			./internal/config ./internal/mcpserver; \
 	status=$$?; rm -rf "$$root" "$$home"; exit $$status
 	@if [ "$$(go env GOOS)" = darwin ]; then \
-		go -C $(CURDIR)/third_party/fsnotify test -race -count=1 -p $(JOBS) -parallel $(JOBS) -run '^TestKqueueCloseDoesNotCloseAReusedDescriptor$$' ./; \
+		go -C $(CURDIR)/third_party/fsnotify test -race -count=1 -p $(JOBS) -parallel $(JOBS) -run '^Test(KqueueCloseDoesNotCloseAReusedDescriptor|AddWatchKeepsAnExistingDescriptorWhenReregisterFails)$$' ./; \
 	else \
 		echo "skipping the kqueue double-close test: GOOS is not darwin"; \
 	fi

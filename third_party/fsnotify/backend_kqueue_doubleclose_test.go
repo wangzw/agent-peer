@@ -99,3 +99,56 @@ func TestKqueueCloseDoesNotCloseAReusedDescriptor(t *testing.T) {
 		t.Fatalf("sentinel fd %d: inode changed after Close: expected %d, got %d", sentinel.Fd(), before.Ino, after.Ino)
 	}
 }
+
+// TestAddWatchKeepsAnExistingDescriptorWhenReregisterFails covers the other
+// path that can close a descriptor the watches maps still reference. When a
+// path is already watched, addWatch registers the existing descriptor again;
+// if that register fails, the descriptor belongs to the surviving watch and
+// must stay open. Closing it would leave the mapping pointing at a number
+// another open file may already own.
+func TestAddWatchKeepsAnExistingDescriptorWhenReregisterFails(t *testing.T) {
+	ev := make(chan Event, 1)
+	errs := make(chan error, 1)
+	b, err := newBackend(ev, errs)
+	if err != nil {
+		t.Fatalf("newBackend: %v", err)
+	}
+	kq := b.(*kqueue)
+
+	watchDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(watchDir, "watched"), []byte("watched"), 0o600); err != nil {
+		t.Fatalf("writing watched file: %v", err)
+	}
+	if err := kq.Add(watchDir); err != nil {
+		t.Fatalf("watching %s: %v", watchDir, err)
+	}
+	info, ok := kq.watches.byPath(watchDir)
+	if !ok {
+		t.Fatalf("no watch registered for %s", watchDir)
+	}
+	wd := info.wd
+
+	// Closing the kqueue itself makes the next kevent registration fail, which
+	// is the failure path of a re-registration on an already-watched path.
+	if err := unix.Close(kq.kq); err != nil {
+		t.Fatalf("closing the kqueue descriptor: %v", err)
+	}
+	if _, err := kq.addWatch(watchDir, 0, false); err == nil {
+		t.Fatalf("re-registering %s after closing the kqueue succeeded, want an error", watchDir)
+	}
+
+	var st syscall.Stat_t
+	if err := syscall.Fstat(wd, &st); err != nil {
+		t.Fatalf("watch descriptor %d: fstat after the failed re-registration: %v; the surviving watch lost its descriptor", wd, err)
+	}
+	info, ok = kq.watches.byPath(watchDir)
+	if !ok || info.wd != wd {
+		t.Fatalf("watch entry for %s = %+v (found %v), want wd %d", watchDir, info, ok, wd)
+	}
+
+	// ReadEvents is still waiting on the closed kqueue; closing the watcher
+	// stops it. The patched Close leaves the surviving watch descriptor alone.
+	if err := kq.Close(); err != nil {
+		t.Fatalf("closing watcher: %v", err)
+	}
+}

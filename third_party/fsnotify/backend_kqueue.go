@@ -1,5 +1,13 @@
 //go:build freebsd || openbsd || netbsd || dragonfly || darwin
 
+// This vendored copy of fsnotify v1.10.1 carries a local patch to the kqueue
+// backend: Close no longer closes a watch descriptor whose EV_DELETE failed,
+// because a concurrent remove may already have closed it and released the
+// number for reuse (the defect from upstream #740, still present in v1.10.1),
+// and addWatch no longer closes the descriptor of an existing watch when a
+// re-registration fails. Remove the replace directive and this patch once a
+// release fixes it upstream.
+
 package fsnotify
 
 import (
@@ -263,8 +271,13 @@ func (w *kqueue) Close() error {
 			w.watches.remove(0, name)
 			continue
 		}
-		_ = w.register([]int{info.wd}, unix.EV_DELETE, 0)
-		unix.Close(info.wd)
+		// EV_DELETE claims the knote: only one of Close and a concurrent
+		// remove can delete it. A failed register means the other side
+		// already closed the descriptor and the number may be in use
+		// elsewhere, so it must not be closed again.
+		if err := w.register([]int{info.wd}, unix.EV_DELETE, 0); err == nil {
+			unix.Close(info.wd)
+		}
 		w.watches.remove(info.wd, name)
 	}
 
@@ -405,7 +418,13 @@ func (w *kqueue) addWatch(name string, flags uint32, listDir bool) (string, erro
 
 	err := w.register([]int{info.wd}, unix.EV_ADD|unix.EV_CLEAR|unix.EV_ENABLE, flags)
 	if err != nil {
-		unix.Close(info.wd)
+		// A watch that already exists keeps its descriptor and its mapping
+		// entry: closing it here would leave the entry pointing at a number
+		// another watch may already have reused. Only a descriptor opened by
+		// this call can be closed.
+		if !alreadyWatching {
+			unix.Close(info.wd)
+		}
 		return "", err
 	}
 
