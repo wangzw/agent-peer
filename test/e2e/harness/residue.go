@@ -25,13 +25,15 @@ const supervisorChildEnv = "APE2E_TEST_SUPERVISOR_CHILD"
 
 // CleanResidue removes what runs whose owner is gone leave behind: processes
 // whose runtime root is under /tmp/ape2e, the compose containers, networks and
-// volumes named ape2e-*, and the runtime roots themselves. Every project and
-// root carries its owner's PID and start time, so resources of a live owner are
-// left alone and two suites can run on one host. It tolerates an empty system
-// and reports failures through logf instead of stopping.
+// volumes named ape2e-*, the test images named agent-peer-e2e, and the runtime
+// roots themselves. Every project, root and image carries its owner's PID and
+// start time, so resources of a live owner are left alone and two suites can
+// run on one host. It tolerates an empty system and reports failures through
+// logf instead of stopping.
 func CleanResidue(logf func(format string, args ...any)) {
 	killRuntimeProcesses(logf)
 	removeDockerResidue(logf)
+	removeDockerImages(logf)
 	cleanSubnetReservations(logf)
 	removeRuntimeRoots(logf)
 }
@@ -150,6 +152,23 @@ func removeDockerResidue(logf func(format string, args ...any)) {
 	if names := deadDockerIDs(dockerVolumes()); len(names) > 0 {
 		if out, err := dockerOutput(append([]string{"volume", "rm", "-f"}, names...)...); err != nil {
 			logf("cleanup: removing volumes: %v: %s", err, strings.TrimSpace(out))
+		}
+	}
+}
+
+// removeDockerImages removes the agent-peer-e2e images whose owner is gone.
+// The image tag names its owner, so the image of a live suite is left alone
+// even when both suites run as the same account. A tag without the marker was
+// built before the marker existed; its owner cannot be told apart from a live
+// one, so it is left alone too.
+func removeDockerImages(logf func(format string, args ...any)) {
+	refs := dockerLines("images", "agent-peer-e2e", "--format", "{{.Repository}}:{{.Tag}}")
+	for _, ref := range refs {
+		if !imageTagOwnerGone(ref) {
+			continue
+		}
+		if out, err := dockerOutput("image", "rm", "-f", ref); err != nil {
+			logf("cleanup: removing image %s: %v: %s", ref, err, strings.TrimSpace(out))
 		}
 	}
 }

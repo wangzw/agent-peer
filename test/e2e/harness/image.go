@@ -26,9 +26,13 @@ var (
 )
 
 // Image builds the container image defined by test/e2e/compose/Dockerfile once
-// per test process and returns its tag, agent-peer-e2e:<hash>. The image holds
-// the release builds of agent-peer and e2e-node, so it takes no build tags.
-// The system Broker and service installation unit derives its image from it.
+// per test process and returns its tag. The tag names the image content, the
+// peer account's uid and gid, and the owner of this test process, as
+// agent-peer-e2e:ape2e-<pid>-<start>-u<uid>-g<gid>-<hash>. The owner marker
+// lets a cleanup remove only images of runs that are gone, so two suites on
+// one host never delete each other's image. The image holds the release builds
+// of agent-peer and e2e-node, so it takes no build tags. The system Broker and
+// service installation unit derives its image from it.
 func Image(tb testing.TB) string {
 	tb.Helper()
 
@@ -89,12 +93,12 @@ func buildImage(agentPeer, e2eNode string) (string, error) {
 		}
 	}
 
-	tag := "agent-peer-e2e:" + hex.EncodeToString(hash.Sum(nil))[:12]
+	uid, gid := imageUIDGID()
+	tag := imageReference(hex.EncodeToString(hash.Sum(nil))[:12], uid, gid, currentOwner())
 	if imageExists(tag) {
 		return tag, nil
 	}
 
-	uid, gid := imageUIDGID()
 	cmd := exec.Command("docker", "build",
 		"--build-arg", "UID="+strconv.Itoa(uid),
 		"--build-arg", "GID="+strconv.Itoa(gid),
@@ -108,6 +112,24 @@ func buildImage(agentPeer, e2eNode string) (string, error) {
 		return "", fmt.Errorf("docker build: %w\n%s", err, strings.TrimSpace(string(out)))
 	}
 	return tag, nil
+}
+
+// imageReference builds the image reference from the content digest, the peer
+// account's uid and gid, and the owner marker of this test process. The tag
+// component starts with "ape2e-" so the same owner parser the project and
+// runtime-root names use reads it back.
+func imageReference(digest string, uid, gid int, o owner) string {
+	return fmt.Sprintf("agent-peer-e2e:ape2e-%s-u%d-g%d-%s", o.String(), uid, gid, digest)
+}
+
+// imageTagOwnerGone reports whether ref carries an owner marker whose process
+// is gone. A reference without the marker, including one built before the
+// marker existed, has an unknown owner and is left alone.
+func imageTagOwnerGone(ref string) bool {
+	if i := strings.LastIndexByte(ref, ':'); i >= 0 {
+		ref = ref[i+1:]
+	}
+	return ownerGone(ref)
 }
 
 // checkDocker reports whether the docker command works. A host without docker

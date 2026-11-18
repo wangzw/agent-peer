@@ -67,13 +67,13 @@ test:
 
 # The e2e run cleans up after itself even when go test is killed or times out.
 # The cleanup is TestMain's: a no-test run removes the projects, networks,
-# processes and runtime roots whose owner process is gone, and leaves a live
-# suite's resources alone. Only the test image is removed here as well.
+# processes, images and runtime roots whose owner process is gone, and leaves a
+# live suite's resources alone. Image tags carry the owner marker, so this does
+# not remove an image a parallel suite still uses.
 e2e:
 	@go test -tags e2e -timeout $(E2E_TIMEOUT) -p $(JOBS) -parallel $(JOBS) ./test/e2e/...; \
 	status=$$?; \
 	go test -tags e2e -count=1 -run '^$$' ./test/e2e/ >/dev/null 2>&1 || true; \
-	docker images -q --filter 'reference=agent-peer-e2e' | sort -u | xargs -r docker image rm -f >/dev/null 2>&1 || true; \
 	exit $$status
 
 # Document standards plus a render of every Mermaid diagram in the docs that

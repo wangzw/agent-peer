@@ -7,6 +7,34 @@ import (
 	"testing"
 )
 
+// TestImageTagCarriesAccountAndOwner fixes the image tag format: it names the
+// peer account's uid and gid and the process that built the image. A cleanup
+// relies on the owner marker to remove only images of runs that are gone.
+func TestImageTagCarriesAccountAndOwner(t *testing.T) {
+	current := currentOwner()
+	tag := imageReference("0123456789ab", 1234, 5678, current)
+	if !strings.HasPrefix(tag, "agent-peer-e2e:ape2e-") {
+		t.Fatalf("imageTag = %q, want the agent-peer-e2e repository and owner marker", tag)
+	}
+	if !strings.Contains(tag, "-u1234-g5678-") {
+		t.Fatalf("imageTag = %q, want the uid and gid in the tag", tag)
+	}
+	if !strings.HasSuffix(tag, "-0123456789ab") {
+		t.Fatalf("imageTag = %q, want the content digest at the end", tag)
+	}
+	if imageTagOwnerGone(tag) {
+		t.Fatalf("imageTagOwnerGone(%q) = true; the owner is this live process", tag)
+	}
+
+	dead := imageReference("0123456789ab", 1234, 5678, owner{pid: 999999999, start: 1})
+	if !imageTagOwnerGone(dead) {
+		t.Fatalf("imageTagOwnerGone(%q) = false; want the dead owner reported", dead)
+	}
+	if imageTagOwnerGone("agent-peer-e2e:0123456789ab") {
+		t.Fatalf("a tag without an owner marker was reported as removable")
+	}
+}
+
 func TestBuildBinaryCachesAndInjectsVersion(t *testing.T) {
 	pkg := "./test/e2e/harness/testdata/hello"
 
