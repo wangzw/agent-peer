@@ -109,4 +109,9 @@ type Deps struct {
 	ReadPeerCred         func(net.Conn) (Caller, error) // nil: ReadPeerCred
 	ServerOptions        []grpc.ServerOption            // appended to the gRPC server options (e.g. the access interceptor)
 	LocalProtocolVersion uint32                         // 0: localpb.ProtocolVersion; Run copies RunOptions.LocalProtocolVersion here
+
+	Pairing   PairingOps    // nil: peer management RPCs return internal; ListBrokers lists only the catalog's non-peers
+	PeerLinks PeerLinks     // nil: peer management RPCs return internal; ListBrokers lists only the catalog's non-peers
+	Catalog   BrokerCatalog // nil: no directory
+	Warner    ConnectWarner // nil: no warnings
 }
