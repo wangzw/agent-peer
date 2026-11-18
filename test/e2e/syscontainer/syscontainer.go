@@ -44,11 +44,6 @@ const expectFailEnv = "AGENT_PEER_E2E_EXPECT_FAIL"
 // systemdReadyBound bounds the wait for systemd to finish booting.
 const systemdReadyBound = 90 * time.Second
 
-// systemdPollInterval paces the readiness wait. systemctl --wait blocks until
-// the state settles, so the pause only separates runs after an unexpected
-// answer; 200ms keeps the loop cheap without delaying a boot that is ready.
-const systemdPollInterval = 200 * time.Millisecond
-
 // InContainer reports whether the process was started by an e2e container.
 func InContainer() bool {
 	return os.Getenv(inContainerEnv) == "1"
@@ -256,9 +251,7 @@ func Run(t *testing.T, svc Service) {
 		if out, err = c.command("compose", "-p", project, "-f", c.composeFile, "up", "-d", "systemd").CombinedOutput(); err != nil {
 			t.Fatalf("syscontainer: starting systemd in %s: %v\n%s", project, err, strings.TrimSpace(string(out)))
 		}
-		if err := c.waitSystemd(); err != nil {
-			t.Fatalf("syscontainer: %v", err)
-		}
+		c.waitSystemd()
 		args := []string{"compose", "-p", project, "-f", c.composeFile, "exec", "-T"}
 		args = append(args, c.forwardEnvArgs()...)
 		args = append(args, "systemd")
@@ -307,29 +300,27 @@ func (c *container) command(args ...string) *exec.Cmd {
 }
 
 // waitSystemd waits until the container's systemd reports running or degraded.
-func (c *container) waitSystemd() error {
-	deadline := time.Now().Add(systemdReadyBound)
-	for {
+// systemctl --wait blocks until the state settles, so the shared polling
+// primitive only separates runs after an unexpected answer.
+func (c *container) waitSystemd() {
+	harness.Eventually(c.t, systemdReadyBound, "systemd to finish booting", func() (bool, string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 		cmd := exec.CommandContext(ctx, "docker",
 			"compose", "-p", c.project, "-f", c.composeFile, "exec", "-T", "systemd",
 			"systemctl", "is-system-running", "--wait")
 		cmd.Env = c.env
 		out, err := cmd.CombinedOutput()
-		cancel()
 
 		state := strings.TrimSpace(string(out))
 		if state == "running" || state == "degraded" {
-			return nil
+			return true, state
 		}
-		if time.Now().After(deadline) {
-			if err != nil {
-				return fmt.Errorf("waiting for systemd in %s: %v: %s", c.project, err, state)
-			}
-			return fmt.Errorf("waiting for systemd in %s: state %q", c.project, state)
+		if err != nil {
+			return false, fmt.Sprintf("%v: %s", err, state)
 		}
-		time.Sleep(systemdPollInterval)
-	}
+		return false, fmt.Sprintf("state %q", state)
+	})
 }
 
 // down tears the project down and removes the network. It is idempotent.
