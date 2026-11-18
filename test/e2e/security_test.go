@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -239,7 +240,9 @@ func TestPrivateTopicNamesStayHome(t *testing.T) {
 	c := harness.Up(t, harness.TopoNAT)
 	aNode, bNode := c.Node("hostA"), c.Node("hostB")
 	secStartBroker(t, aNode, secConfig())
-	secStartBroker(t, bNode, secConfig())
+	// B runs at debug level so a roster frame the topic Registry ignores or
+	// drops leaves a record. A leaked roster would otherwise be invisible here.
+	secStartBroker(t, bNode, secConfig("log:\n  level: debug\n"))
 
 	opA := secOperator(t, aNode)
 	defer opA.End(t)
@@ -261,7 +264,6 @@ func TestPrivateTopicNamesStayHome(t *testing.T) {
 	worker := aNode.StartSession(t, harness.SessionSpec{Name: workerName, StartMCP: true})
 	defer worker.End(t)
 	secWaitRegistered(t, worker, workerName)
-	secJoin(t, worker, secretTopic)
 
 	observer := bNode.StartSession(t, harness.SessionSpec{Name: observerName, StartMCP: true})
 	defer observer.End(t)
@@ -289,6 +291,13 @@ func TestPrivateTopicNamesStayHome(t *testing.T) {
 	}
 
 	t.Run("REQ-topics-009 private topic name", func(t *testing.T) {
+		// The window opens with the join that creates the private topic, so a
+		// roster frame produced by that join is inside it. The log offset taken
+		// here turns every record appended afterwards into evidence.
+		aFingerprint := alIdentityFingerprint(t, aNode)
+		logStart := len(bNode.BrokerLog(t))
+		secJoin(t, worker, secretTopic)
+
 		// Negative observations run over a window rather than a single sample:
 		// a periodic sync can leak on any later round.
 		harness.Consistently(t, secLeakWindow, "hostB never learns the private topic name or member", func() (bool, string) {
@@ -308,12 +317,18 @@ func TestPrivateTopicNamesStayHome(t *testing.T) {
 			return true, ""
 		})
 
+		// A roster or roster_delta frame from A that B had to ignore or drop is
+		// the wire-level form of the leak: the topic was not in the
+		// intersection, so its name had no business leaving A.
+		brokerLog := bNode.BrokerLog(t)
+		secAssertNoRosterFrames(t, brokerLog[logStart:], aFingerprint)
+
 		status := bNode.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
 		if status.ExitCode != 0 {
 			t.Fatalf("agent-peer status on hostB exited %d: %s", status.ExitCode, status.Stderr)
 		}
 		secAssertAbsent(t, "hostB status output", status.Stdout+status.Stderr, secretTopic, workerName)
-		secAssertAbsent(t, "hostB Broker log", string(bNode.BrokerLog(t)), secretTopic, workerName)
+		secAssertAbsent(t, "hostB Broker log", string(brokerLog), secretTopic, workerName)
 		secAssertAbsent(t, "hostB audit log", string(secReadIfExists(t, bNode, "/home/peer/.agent-peer/audit.log")), secretTopic, workerName)
 	})
 
@@ -616,6 +631,34 @@ func secAssertAbsent(t *testing.T, what, haystack string, markers ...string) {
 	for _, marker := range markers {
 		if strings.Contains(haystack, marker) {
 			t.Fatalf("%s contains %q: %s", what, marker, haystack)
+		}
+	}
+}
+
+// secAssertNoRosterFrames fails when the Broker log holds a record of a roster
+// or roster_delta frame from peer that the topic Registry ignored or dropped.
+// The kinds are the Registry's wire kinds: 201 is Roster and 202 RosterDelta.
+// Records from other peers, other kinds, and non-JSON lines are skipped, so a
+// truncated tail cannot fail the test on its own.
+func secAssertNoRosterFrames(t *testing.T, log []byte, peer string) {
+	t.Helper()
+	for _, line := range bytes.Split(log, []byte("\n")) {
+		var rec struct {
+			Event  string `json:"event"`
+			Peer   string `json:"peer"`
+			Kind   int    `json:"kind"`
+			Reason string `json:"reason"`
+		}
+		if json.Unmarshal(line, &rec) != nil {
+			continue
+		}
+		if rec.Peer != peer || (rec.Kind != 201 && rec.Kind != 202) {
+			continue
+		}
+		switch rec.Event {
+		case "topic.frame_ignored", "topic.frame_dropped", "topic.member_dropped":
+			t.Fatalf("hostB logged %s for a %d frame from hostA (reason %q): %s",
+				rec.Event, rec.Kind, rec.Reason, line)
 		}
 	}
 }
