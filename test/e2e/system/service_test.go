@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -212,6 +213,38 @@ func TestServiceInstall(t *testing.T) {
 				res.ExitCode, strings.TrimSpace(res.Stderr))
 		}
 	})
+}
+
+// TestServiceUnitsVerify installs the user-level unit through the product's
+// subcommand and checks that systemd records it as enabled and accepts it
+// without a warning.
+func TestServiceUnitsVerify(t *testing.T) {
+	if !syscontainer.InContainer() {
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	peerUID := syscontainer.AccountUID(t, "peer")
+	uid := strconv.FormatUint(uint64(peerUID), 10)
+	userEnv := []string{
+		"XDG_RUNTIME_DIR=/run/user/" + uid,
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/" + uid + "/bus",
+	}
+
+	// enable and verify both ask the account's user manager, so start it the
+	// way a login would and wait for its bus.
+	mustRun(t, "root", nil, "loginctl", "enable-linger", "peer")
+	mustRun(t, "root", nil, "systemctl", "start", "user@"+uid+".service")
+	waitUserManager(t, peerUID)
+
+	install := runWithEnv(t, "peer", userEnv, "agent-peer", "service", "install")
+	if install.ExitCode != 0 {
+		t.Fatalf("agent-peer service install as peer: exit %d\nstdout: %s\nstderr: %s",
+			install.ExitCode, strings.TrimSpace(install.Stdout), strings.TrimSpace(install.Stderr))
+	}
+
+	assertUserUnitEnabled(t, userEnv)
+	assertUserUnitVerifies(t, userEnv)
 }
 
 // installSystemService runs service install --system as root and fails the

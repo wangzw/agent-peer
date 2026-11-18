@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -96,6 +97,8 @@ func TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink(t *testing.T
 		t.Fatalf("agent-peer service install as peer: exit %d\nstdout: %s\nstderr: %s",
 			install.ExitCode, strings.TrimSpace(install.Stdout), strings.TrimSpace(install.Stderr))
 	}
+	assertUserUnitEnabled(t, userEnv)
+	assertUserUnitVerifies(t, userEnv)
 
 	// Start the service before pairing, so that the only peer Broker is the
 	// one the user manager owns; a Broker launched by a session would survive
@@ -105,6 +108,13 @@ func TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink(t *testing.T
 		_, err := os.Stat(socket)
 		return err == nil
 	})
+	beforePID := userServiceMainPID(t, userEnv)
+	if beforePID == 0 {
+		t.Fatal("the user unit's MainPID is zero after the service started")
+	}
+	if got := solePeerBroker(t, peerUID); got != beforePID {
+		t.Fatalf("MainPID = %d, but the peer Broker process is %d", beforePID, got)
+	}
 
 	// Pair peer's Broker with other's, then end both sessions. The link is
 	// Broker state and survives the last session per REQ-broker-config-014.
@@ -142,6 +152,73 @@ func TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink(t *testing.T
 		}
 		return statuses[alias] == "BROKER_STATUS_CONNECTED", fmt.Sprintf("status of %s is %q", alias, statuses[alias])
 	})
+	afterPID := userServiceMainPID(t, userEnv)
+	if afterPID == 0 {
+		t.Fatal("the user unit's MainPID is zero after the user manager restarted")
+	}
+	if afterPID == beforePID {
+		t.Fatalf("MainPID = %d after the restart, the same as before it", afterPID)
+	}
+	if got := solePeerBroker(t, peerUID); got != afterPID {
+		t.Fatalf("MainPID = %d after the restart, but the peer Broker process is %d", afterPID, got)
+	}
+}
+
+// assertUserUnitEnabled checks that systemd records the user unit as enabled.
+func assertUserUnitEnabled(t *testing.T, userEnv []string) {
+	t.Helper()
+	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-enabled", "agent-peer.service")
+	if state := strings.TrimSpace(res.Stdout); res.ExitCode != 0 || state != "enabled" {
+		t.Errorf("systemctl --user is-enabled agent-peer.service = %q (exit %d), want %q\nstderr: %s",
+			state, res.ExitCode, "enabled", strings.TrimSpace(res.Stderr))
+	}
+}
+
+// assertUserUnitVerifies checks that systemd accepts the installed user unit
+// without a warning.
+func assertUserUnitVerifies(t *testing.T, userEnv []string) {
+	t.Helper()
+	unitPath := userUnitPath(t)
+	res := runWithEnv(t, "peer", userEnv, "systemd-analyze", "--user", "verify", unitPath)
+	if res.ExitCode != 0 || res.Stdout != "" || res.Stderr != "" {
+		t.Errorf("systemd-analyze --user verify %s: exit %d\nstdout: %s\nstderr: %s",
+			unitPath, res.ExitCode, res.Stdout, res.Stderr)
+	}
+}
+
+// userUnitPath returns the path of the peer account's user unit.
+func userUnitPath(t *testing.T) string {
+	t.Helper()
+	u, err := user.Lookup("peer")
+	if err != nil {
+		t.Fatalf("looking up account peer: %v", err)
+	}
+	return filepath.Join(u.HomeDir, ".config", "systemd", "user", "agent-peer.service")
+}
+
+// userServiceMainPID returns the MainPID systemd reports for the user unit.
+func userServiceMainPID(t *testing.T, userEnv []string) int {
+	t.Helper()
+	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "show", "--property", "MainPID", "--value", "agent-peer.service")
+	if res.ExitCode != 0 {
+		t.Fatalf("systemctl --user show --property MainPID: exit %d\nstderr: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(res.Stdout))
+	if err != nil {
+		t.Fatalf("MainPID %q is not a number: %v", strings.TrimSpace(res.Stdout), err)
+	}
+	return pid
+}
+
+// solePeerBroker returns the pid of the only running peer Broker process and
+// fails when there is not exactly one.
+func solePeerBroker(t *testing.T, peerUID uint32) int {
+	t.Helper()
+	procs := peerBrokers(peerUID)
+	if len(procs) != 1 {
+		t.Fatalf("peer Broker processes = %v, want exactly one", procs)
+	}
+	return procs[0].PID
 }
 
 // peerBrokers returns the running peer Broker processes.
