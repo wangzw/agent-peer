@@ -1,0 +1,76 @@
+package broker
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
+)
+
+// recordingAssembler records the link protocol version Run placed in the
+// shared Assembly before the assemblers ran.
+type recordingAssembler struct {
+	seen chan uint32
+}
+
+var _ Assembler = (*recordingAssembler)(nil)
+
+func (a *recordingAssembler) Name() string { return "rec" }
+
+func (a *recordingAssembler) Assemble(_ context.Context, _ ConfigSource, _ *Deps, asm *Assembly) ([]Component, error) {
+	a.seen <- asm.LinkProtocolVersion
+	return nil, nil
+}
+
+func TestRunPassesProtocolVersions(t *testing.T) {
+	// REQ-broker-config-016: RunOptions.LocalProtocolVersion decides what Hello
+	// answers on the local socket, and RunOptions.LinkProtocolVersion reaches
+	// the assembler through the shared Assembly.
+	rec := &recordingAssembler{seen: make(chan uint32, 1)}
+	rt := newRunTest(t, func(rt *runTest) {
+		rt.opts.LocalProtocolVersion = 3
+		rt.opts.LinkProtocolVersion = 4
+		rt.opts.Assemblers = []Assembler{rec}
+	})
+	rt.start()
+
+	if got := rt.readyLine(); got != "ok\n" {
+		t.Fatalf("readiness line = %q, want %q", got, "ok\n")
+	}
+	select {
+	case got := <-rec.seen:
+		if got != 4 {
+			t.Fatalf("assembler saw LinkProtocolVersion %d, want 4", got)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the assembler did not run")
+	}
+
+	resp, err := helloAt(t, rt.socketPath(), 3)
+	if err != nil {
+		t.Fatalf("Hello{3}: %v", err)
+	}
+	if got := resp.GetProtocolVersion(); got != 3 {
+		t.Fatalf("Hello{3} answered version %d, want 3", got)
+	}
+
+	_, err = helloAt(t, rt.socketPath(), localpb.ProtocolVersion)
+	wantErrorDetail(t, err, localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH)
+}
+
+func TestHelloZeroVersionRejected(t *testing.T) {
+	// REQ-broker-config-016: an unset version is a mismatch, not a wildcard.
+	tb := newTestBroker(t)
+
+	_, err := callTestHello(t, tb.client, 0)
+	wantErrorDetail(t, err, localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH)
+
+	resp, err := callTestHello(t, tb.newClient(t), localpb.ProtocolVersion)
+	if err != nil {
+		t.Fatalf("Hello{%d}: %v", localpb.ProtocolVersion, err)
+	}
+	if got := resp.GetProtocolVersion(); got != localpb.ProtocolVersion {
+		t.Fatalf("Hello{%d} answered version %d", localpb.ProtocolVersion, got)
+	}
+}
