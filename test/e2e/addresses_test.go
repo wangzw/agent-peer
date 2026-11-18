@@ -134,10 +134,13 @@ func TestAdvertisedAddresses(t *testing.T) {
 	})
 
 	t.Run("REQ-broker-config-035 specific listen", func(t *testing.T) {
-		c := harness.Up(t, harness.TopoFlat(2))
+		// An IPv6 listener under a topology whose default routes are IPv4: an
+		// implementation that advertises the default-route addresses instead of
+		// the configured listener shows a different address here.
+		c := harness.Up(t, harness.TopoFlatV6)
 		aNode, bNode := c.Node("hostA"), c.Node("hostB")
 		adStartBroker(t, aNode, adConfig())
-		listen := net.JoinHostPort(c.Addr("hostB", "net"), adPort)
+		listen := adAddr6(c, "hostB", "net", adPort)
 		adStartBroker(t, bNode, adConfig("broker:\n  listen: "+fmt.Sprintf("%q", listen)+"\n"))
 		opA := adOperator(t, aNode)
 		defer opA.End(t)
@@ -145,10 +148,11 @@ func TestAdvertisedAddresses(t *testing.T) {
 		defer opB.End(t)
 
 		key := adCreateKey(t, opB)
-		adConnect(t, opA, adShownAddress(t, key.Addresses, listen), key.Key).MustOK(t)
+		adConnect(t, opA, listen, key.Key).MustOK(t)
 		adWaitConnected(t, aNode, "hostB-17443", adRelinkBound)
 
-		// A specific listener is itself the first advertised address.
+		// A specific listener is the whole advertised list, in its bracketed
+		// IPv6 form.
 		adWaitPeerAddresses(t, aNode, "hostB-17443", []string{listen}, adWaitBound)
 
 		// Extra names follow it and take the listen port.
