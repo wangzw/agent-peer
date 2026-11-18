@@ -119,6 +119,13 @@ type fakeLoadCall struct {
 	ListenOverride string
 }
 
+// setCall records one Set call.
+type setCall struct {
+	Actor config.Actor
+	Key   string
+	Value config.Value
+}
+
 // fakeConfig implements ConfigSource without touching the process-wide config
 // singleton. Only the keys the broker reads start with values.
 type fakeConfig struct {
@@ -127,16 +134,25 @@ type fakeConfig struct {
 	lockPath string
 
 	values      map[string]config.Value
+	secretKeys  map[string]bool
 	validators  map[string][]func(old, new config.Value) error
 	subscribers map[string][]func(old, new config.Value)
 	advertised  []func(old, new []config.AdvertisedAddr)
 	audits      []config.Event
 	setActors   []config.Actor
+	setCalls    []setCall
+	parseCalls  int
 
-	loads      []fakeLoadCall
-	loadErr    error
-	probeErr   error
-	closeCount int
+	subscribedKeys []string
+	configFile     string
+
+	loads        []fakeLoadCall
+	loadErr      error
+	probeErr     error
+	setErr       error
+	parseErr     error
+	readAuditErr error
+	closeCount   int
 }
 
 var _ ConfigSource = (*fakeConfig)(nil)
@@ -146,8 +162,10 @@ func newFakeConfig(runtimeDir string) *fakeConfig {
 		runtime:     runtimeDir,
 		lockPath:    runtimeDir + "/broker.lock",
 		values:      make(map[string]config.Value),
+		secretKeys:  make(map[string]bool),
 		validators:  make(map[string][]func(old, new config.Value) error),
 		subscribers: make(map[string][]func(old, new config.Value)),
+		configFile:  "/fake/config.yaml",
 	}
 	f.values["broker.alias"] = config.Value{Kind: config.KindString, String: "hostA"}
 	f.values["broker.listen"] = config.Value{Kind: config.KindString}
@@ -201,12 +219,15 @@ func (f *fakeConfig) Close() {
 func (f *fakeConfig) Paths() config.PathSet {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return config.PathSet{RuntimeDir: f.runtime}
+	return config.PathSet{RuntimeDir: f.runtime, ConfigFile: f.configFile}
 }
 
 func (f *fakeConfig) Get(key string) (config.Value, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.secretKeys[key] {
+		return config.Value{Kind: config.KindSecret, SecretIsSet: f.values[key].String != ""}, nil
+	}
 	v, ok := f.values[key]
 	if !ok {
 		return config.Value{}, fmt.Errorf("%w: %s", config.ErrUnknownKey, key)
@@ -231,6 +252,12 @@ func (f *fakeConfig) All() []config.Entry {
 
 func (f *fakeConfig) Set(actor config.Actor, key string, v config.Value) (config.Value, error) {
 	f.mu.Lock()
+	f.setCalls = append(f.setCalls, setCall{Actor: actor, Key: key, Value: copyValue(v)})
+	if f.setErr != nil {
+		err := f.setErr
+		f.mu.Unlock()
+		return config.Value{}, err
+	}
 	old, ok := f.values[key]
 	if !ok {
 		f.mu.Unlock()
@@ -254,6 +281,13 @@ func (f *fakeConfig) Set(actor config.Actor, key string, v config.Value) (config
 }
 
 func (f *fakeConfig) ParseValue(key, text string) (config.Value, error) {
+	f.mu.Lock()
+	f.parseCalls++
+	err := f.parseErr
+	f.mu.Unlock()
+	if err != nil {
+		return config.Value{}, err
+	}
 	return config.ParseValue(key, text)
 }
 
@@ -268,7 +302,30 @@ func (f *fakeConfig) ProbeListen(string) error { return f.probeErr }
 func (f *fakeConfig) Subscribe(key string, onChange func(old, new config.Value)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.subscribedKeys = append(f.subscribedKeys, key)
 	f.subscribers[key] = append(f.subscribers[key], onChange)
+}
+
+// fireKey calls the callbacks registered for key without changing the stored
+// value, as a notification queued by config would.
+func (f *fakeConfig) fireKey(key string, old, new config.Value) {
+	f.mu.Lock()
+	callbacks := append([]func(old, new config.Value){}, f.subscribers[key]...)
+	f.mu.Unlock()
+	for _, cb := range callbacks {
+		cb(old, new)
+	}
+}
+
+// fireAdvertised calls the advertised-address callbacks registered through
+// SubscribeAdvertised.
+func (f *fakeConfig) fireAdvertised(old, new []config.AdvertisedAddr) {
+	f.mu.Lock()
+	callbacks := append([]func(old, new []config.AdvertisedAddr){}, f.advertised...)
+	f.mu.Unlock()
+	for _, cb := range callbacks {
+		cb(old, new)
+	}
 }
 
 func (f *fakeConfig) SubscribeAdvertised(onChange func(old, new []config.AdvertisedAddr)) {
@@ -286,6 +343,9 @@ func (f *fakeConfig) Audit(e config.Event) {
 func (f *fakeConfig) ReadAudit(since time.Time) ([]config.Event, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.readAuditErr != nil {
+		return nil, f.readAuditErr
+	}
 	var out []config.Event
 	for _, e := range f.audits {
 		if !e.Time.Before(since) {

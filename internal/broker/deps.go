@@ -95,6 +95,12 @@ type PostReadyComponent interface {
 	AfterReady(ctx context.Context) error
 }
 
+// CardIssuer re-signs the own directory card; Reissue is a no-op when the
+// Broker is not public.
+type CardIssuer interface {
+	Reissue()
+}
+
 // Deps is everything New needs from the process entry point and the assemblers.
 type Deps struct {
 	Config               ConfigSource                   // nil in Run: PackageConfig()
@@ -110,10 +116,12 @@ type Deps struct {
 	ServerOptions        []grpc.ServerOption            // appended to the gRPC server options (e.g. the access interceptor)
 	LocalProtocolVersion uint32                         // 0: localpb.ProtocolVersion; Run copies RunOptions.LocalProtocolVersion here
 
-	Pairing   PairingOps    // nil: peer management RPCs return internal; ListBrokers lists only the catalog's non-peers
-	PeerLinks PeerLinks     // nil: peer management RPCs return internal; ListBrokers lists only the catalog's non-peers
-	Catalog   BrokerCatalog // nil: no directory
-	Warner    ConnectWarner // nil: no warnings
+	Pairing        PairingOps    // nil: peer management RPCs return internal; ListBrokers lists only the catalog's non-peers
+	PeerLinks      PeerLinks     // nil: peer management RPCs return internal; ListBrokers lists only the catalog's non-peers
+	Catalog        BrokerCatalog // nil: no directory
+	Warner         ConnectWarner // nil: no warnings
+	ListenOverride string        // --listen value of this run, set by Run after Load; empty: not given
+	CardIssuer     CardIssuer    // nil: the card is not re-signed; filled by the directory assembler
 
 	Delivery *delivery // nil: Send returns internal
 }

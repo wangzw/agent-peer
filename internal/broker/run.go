@@ -163,6 +163,10 @@ func Run(ctx context.Context, opts RunOptions) error {
 	}
 	loaded = true
 
+	// SetConfig reads this to know whether the run started with --listen;
+	// set it only after Load accepted the value.
+	deps.ListenOverride = opts.Listen
+
 	if v, err := cfg.Get("log.level"); err == nil && v.Kind == config.KindString {
 		if lv, err := ParseLogLevel(v.String); err == nil {
 			level.Set(lv)
