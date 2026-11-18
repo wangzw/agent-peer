@@ -1,0 +1,195 @@
+package mcpserver
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// defaultTopicsLogger returns a logger that discards everything.
+func defaultTopicsLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// defaultTopicsFailReader returns an originReader that fails the test when it
+// is called, for the cases where the project configuration alone decides.
+func defaultTopicsFailReader(t *testing.T) originReader {
+	t.Helper()
+	return func(context.Context, string) (string, error) {
+		t.Errorf("readOrigin must not be called")
+		return "", errors.New("unexpected call")
+	}
+}
+
+// defaultTopicsEqual reports whether two topic lists contain the same names in
+// the same order. A nil list equals an empty one.
+func defaultTopicsEqual(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestDefaultTopics(t *testing.T) {
+	// Covers REQ-topics-015, REQ-topics-016, REQ-topics-018, REQ-topics-020
+	// and REQ-topics-021.
+	ctx := context.Background()
+
+	t.Run("broker switched automatic joining off", func(t *testing.T) {
+		// REQ-topics-020: the Broker's settings win before the project file.
+		dir := t.TempDir()
+		writeProjectFile(t, dir, "topics: [a]\n")
+		got := defaultTopics(ctx, dir, false, defaultTopicsFailReader(t), defaultTopicsLogger())
+		if !defaultTopicsEqual(got, nil) {
+			t.Fatalf("defaultTopics = %v, want none", got)
+		}
+	})
+
+	t.Run("project file switched automatic joining off", func(t *testing.T) {
+		// REQ-topics-021.
+		dir := t.TempDir()
+		writeProjectFile(t, dir, "auto_join: false\ntopics: [a]\n")
+		got := defaultTopics(ctx, dir, true, defaultTopicsFailReader(t), defaultTopicsLogger())
+		if !defaultTopicsEqual(got, nil) {
+			t.Fatalf("defaultTopics = %v, want none", got)
+		}
+	})
+
+	t.Run("project file names the topics", func(t *testing.T) {
+		// REQ-topics-015: the project topics replace the origin, they are not
+		// merged with it.
+		dir := t.TempDir()
+		writeProjectFile(t, dir, "topics: [a, b]\n")
+		got := defaultTopics(ctx, dir, true, defaultTopicsFailReader(t), defaultTopicsLogger())
+		if !defaultTopicsEqual(got, []string{"a", "b"}) {
+			t.Fatalf("defaultTopics = %v, want [a b]", got)
+		}
+	})
+
+	t.Run("git origin when no project file exists", func(t *testing.T) {
+		// REQ-topics-016.
+		dir := t.TempDir()
+		readOrigin := func(context.Context, string) (string, error) {
+			return "https://github.com/o/r", nil
+		}
+		got := defaultTopics(ctx, dir, true, readOrigin, defaultTopicsLogger())
+		if !defaultTopicsEqual(got, []string{"github.com/o/r"}) {
+			t.Fatalf("defaultTopics = %v, want [github.com/o/r]", got)
+		}
+	})
+
+	t.Run("project file without topics falls through to the origin", func(t *testing.T) {
+		dir := t.TempDir()
+		writeProjectFile(t, dir, "auto_join: true\n")
+		readOrigin := func(context.Context, string) (string, error) {
+			return "git@github.com:o/r.git", nil
+		}
+		got := defaultTopics(ctx, dir, true, readOrigin, defaultTopicsLogger())
+		if !defaultTopicsEqual(got, []string{"github.com/o/r"}) {
+			t.Fatalf("defaultTopics = %v, want [github.com/o/r]", got)
+		}
+	})
+
+	t.Run("no git origin", func(t *testing.T) {
+		// REQ-topics-018.
+		dir := t.TempDir()
+		readOrigin := func(context.Context, string) (string, error) {
+			return "", errors.New("not a git repository")
+		}
+		got := defaultTopics(ctx, dir, true, readOrigin, defaultTopicsLogger())
+		if !defaultTopicsEqual(got, nil) {
+			t.Fatalf("defaultTopics = %v, want none", got)
+		}
+	})
+
+	t.Run("origin is a local path", func(t *testing.T) {
+		// REQ-topics-018: a local path does not name a remote repository.
+		dir := t.TempDir()
+		readOrigin := func(context.Context, string) (string, error) {
+			return "/srv/repo.git", nil
+		}
+		got := defaultTopics(ctx, dir, true, readOrigin, defaultTopicsLogger())
+		if !defaultTopicsEqual(got, nil) {
+			t.Fatalf("defaultTopics = %v, want none", got)
+		}
+	})
+
+	t.Run("invalid project file logs and joins nothing", func(t *testing.T) {
+		dir := t.TempDir()
+		path := writeProjectFile(t, dir, "topics: x\n")
+		var buf bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		got := defaultTopics(ctx, dir, true, defaultTopicsFailReader(t), log)
+		if !defaultTopicsEqual(got, nil) {
+			t.Fatalf("defaultTopics = %v, want none", got)
+		}
+		text := buf.String()
+		if !strings.Contains(text, "level=ERROR") {
+			t.Fatalf("log = %q, want an error line", text)
+		}
+		if !strings.Contains(text, path) {
+			t.Fatalf("log = %q, want the project file path %q", text, path)
+		}
+	})
+}
+
+// gitOriginGit runs a git subcommand in dir and fails the test on error.
+func gitOriginGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	full := append([]string{"-C", dir}, args...)
+	cmd := exec.Command("git", full...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func TestGitOrigin(t *testing.T) {
+	// REQ-topics-016, REQ-topics-018.
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	ctx := context.Background()
+
+	repo := t.TempDir()
+	gitOriginGit(t, repo, "init")
+	gitOriginGit(t, repo, "remote", "add", "origin", "git@h:o/r.git")
+	sub := filepath.Join(repo, "a", "b")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("create %s: %v", sub, err)
+	}
+	got, err := gitOrigin(ctx, sub)
+	if err != nil {
+		t.Fatalf("gitOrigin in a subdirectory: %v", err)
+	}
+	if got != "git@h:o/r.git" {
+		t.Fatalf("gitOrigin = %q, want %q", got, "git@h:o/r.git")
+	}
+
+	notRepo := t.TempDir()
+	if _, err := gitOrigin(ctx, notRepo); err == nil {
+		t.Fatal("gitOrigin outside a repository must fail")
+	}
+
+	// A global remote.origin.url must not leak into the result: --local makes
+	// git fail outside a repository before it reads other scopes.
+	global := filepath.Join(t.TempDir(), "gitconfig")
+	if err := os.WriteFile(global, []byte("[remote \"origin\"]\n\turl = x\n"), 0o644); err != nil {
+		t.Fatalf("write global config: %v", err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	if _, err := gitOrigin(ctx, notRepo); err == nil {
+		t.Fatal("gitOrigin must not read remote.origin.url from the global config")
+	}
+}
