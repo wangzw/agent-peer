@@ -1,0 +1,578 @@
+package mcpserver
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+// stubToolSet implements toolSet with per-tool functions. A nil function
+// returns the zero result, which is enough for tests that never call it.
+type stubToolSet struct {
+	listAgents       func(context.Context, ListAgentsIn) (ListAgentsOut, error)
+	sendMessage      func(context.Context, SendMessageIn) (SendMessageOut, error)
+	listTopics       func(context.Context, NoArgs) (ListTopicsOut, error)
+	joinTopic        func(context.Context, JoinTopicIn) (TopicsOut, error)
+	leaveTopic       func(context.Context, LeaveTopicIn) (TopicsOut, error)
+	listBrokers      func(context.Context, NoArgs) (ListBrokersOut, error)
+	connectBroker    func(context.Context, ConnectBrokerIn) (ConnectBrokerOut, error)
+	disconnectBroker func(context.Context, DisconnectBrokerIn) (DisconnectBrokerOut, error)
+	createPairingKey func(context.Context, NoArgs) (CreatePairingKeyOut, error)
+	getConfig        func(context.Context, GetConfigIn) (GetConfigOut, error)
+	setConfig        func(context.Context, SetConfigIn) (SetConfigOut, error)
+}
+
+func (s *stubToolSet) ListAgents(ctx context.Context, in ListAgentsIn) (ListAgentsOut, error) {
+	if s.listAgents == nil {
+		return ListAgentsOut{}, nil
+	}
+	return s.listAgents(ctx, in)
+}
+
+func (s *stubToolSet) SendMessage(ctx context.Context, in SendMessageIn) (SendMessageOut, error) {
+	if s.sendMessage == nil {
+		return SendMessageOut{}, nil
+	}
+	return s.sendMessage(ctx, in)
+}
+
+func (s *stubToolSet) ListTopics(ctx context.Context, in NoArgs) (ListTopicsOut, error) {
+	if s.listTopics == nil {
+		return ListTopicsOut{}, nil
+	}
+	return s.listTopics(ctx, in)
+}
+
+func (s *stubToolSet) JoinTopic(ctx context.Context, in JoinTopicIn) (TopicsOut, error) {
+	if s.joinTopic == nil {
+		return TopicsOut{}, nil
+	}
+	return s.joinTopic(ctx, in)
+}
+
+func (s *stubToolSet) LeaveTopic(ctx context.Context, in LeaveTopicIn) (TopicsOut, error) {
+	if s.leaveTopic == nil {
+		return TopicsOut{}, nil
+	}
+	return s.leaveTopic(ctx, in)
+}
+
+func (s *stubToolSet) ListBrokers(ctx context.Context, in NoArgs) (ListBrokersOut, error) {
+	if s.listBrokers == nil {
+		return ListBrokersOut{}, nil
+	}
+	return s.listBrokers(ctx, in)
+}
+
+func (s *stubToolSet) ConnectBroker(ctx context.Context, in ConnectBrokerIn) (ConnectBrokerOut, error) {
+	if s.connectBroker == nil {
+		return ConnectBrokerOut{}, nil
+	}
+	return s.connectBroker(ctx, in)
+}
+
+func (s *stubToolSet) DisconnectBroker(ctx context.Context, in DisconnectBrokerIn) (DisconnectBrokerOut, error) {
+	if s.disconnectBroker == nil {
+		return DisconnectBrokerOut{}, nil
+	}
+	return s.disconnectBroker(ctx, in)
+}
+
+func (s *stubToolSet) CreatePairingKey(ctx context.Context, in NoArgs) (CreatePairingKeyOut, error) {
+	if s.createPairingKey == nil {
+		return CreatePairingKeyOut{}, nil
+	}
+	return s.createPairingKey(ctx, in)
+}
+
+func (s *stubToolSet) GetConfig(ctx context.Context, in GetConfigIn) (GetConfigOut, error) {
+	if s.getConfig == nil {
+		return GetConfigOut{}, nil
+	}
+	return s.getConfig(ctx, in)
+}
+
+func (s *stubToolSet) SetConfig(ctx context.Context, in SetConfigIn) (SetConfigOut, error) {
+	if s.setConfig == nil {
+		return SetConfigOut{}, nil
+	}
+	return s.setConfig(ctx, in)
+}
+
+// connectTestClient starts a server over an in-memory transport and returns a
+// connected client session.
+func connectTestClient(t *testing.T, ts toolSet) *mcp.ClientSession {
+	t.Helper()
+	ctx := context.Background()
+	server := newMCPServer("test-version", ts, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ct, st := mcp.NewInMemoryTransports()
+	ss, err := server.Connect(ctx, st, nil)
+	if err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1"}, nil)
+	cs, err := client.Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = cs.Close()
+		_ = ss.Wait()
+	})
+	return cs
+}
+
+func callTool(t *testing.T, cs *mcp.ClientSession, name string, args map[string]any) *mcp.CallToolResult {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		t.Fatalf("CallTool(%s): %v", name, err)
+	}
+	return res
+}
+
+func listTools(t *testing.T, cs *mcp.ClientSession) map[string]*mcp.Tool {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	res, err := cs.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	tools := make(map[string]*mcp.Tool, len(res.Tools))
+	for _, tool := range res.Tools {
+		if _, dup := tools[tool.Name]; dup {
+			t.Fatalf("duplicate tool name %q", tool.Name)
+		}
+		tools[tool.Name] = tool
+	}
+	return tools
+}
+
+func schemaProps(t *testing.T, tool *mcp.Tool) (props map[string]any, required []string) {
+	t.Helper()
+	schema, ok := tool.InputSchema.(map[string]any)
+	if !ok {
+		t.Fatalf("%s: input schema is %T, want map[string]any", tool.Name, tool.InputSchema)
+	}
+	if p, ok := schema["properties"]; ok {
+		props, ok = p.(map[string]any)
+		if !ok {
+			t.Fatalf("%s: properties is %T, want map[string]any", tool.Name, p)
+		}
+	}
+	if r, ok := schema["required"]; ok {
+		list, ok := r.([]any)
+		if !ok {
+			t.Fatalf("%s: required is %T, want []any", tool.Name, r)
+		}
+		for _, v := range list {
+			s, ok := v.(string)
+			if !ok {
+				t.Fatalf("%s: required entry is %T, want string", tool.Name, v)
+			}
+			required = append(required, s)
+		}
+	}
+	return props, required
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, s := range a {
+		seen[s]++
+	}
+	for _, s := range b {
+		seen[s]--
+	}
+	for _, n := range seen {
+		if n != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func TestToolsList(t *testing.T) {
+	cs := connectTestClient(t, &stubToolSet{})
+	tools := listTools(t, cs)
+
+	want := []string{
+		"list_agents", "send_message", "list_topics", "join_topic", "leave_topic",
+		"list_brokers", "connect_broker", "disconnect_broker", "create_pairing_key",
+		"get_config", "set_config",
+	}
+	if len(tools) != len(want) {
+		t.Fatalf("got %d tools, want %d", len(tools), len(want))
+	}
+	for _, name := range want {
+		if _, ok := tools[name]; !ok {
+			t.Fatalf("tool %q is missing", name)
+		}
+	}
+
+	// list_agents: three optional filters, none required.
+	props, required := schemaProps(t, tools["list_agents"])
+	if !equalStrings(keys(props), []string{"topic", "broker", "name"}) {
+		t.Errorf("list_agents properties = %v", keys(props))
+	}
+	if len(required) != 0 {
+		t.Errorf("list_agents required = %v, want none", required)
+	}
+
+	// send_message: to and message are required.
+	props, required = schemaProps(t, tools["send_message"])
+	if !equalStrings(keys(props), []string{"to", "message"}) {
+		t.Errorf("send_message properties = %v", keys(props))
+	}
+	if !equalStrings(required, []string{"to", "message"}) {
+		t.Errorf("send_message required = %v", required)
+	}
+
+	// join_topic: only name is required.
+	props, required = schemaProps(t, tools["join_topic"])
+	if !equalStrings(keys(props), []string{"name", "public", "description"}) {
+		t.Errorf("join_topic properties = %v", keys(props))
+	}
+	if !equalStrings(required, []string{"name"}) {
+		t.Errorf("join_topic required = %v", required)
+	}
+
+	// connect_broker: address and key are required.
+	props, required = schemaProps(t, tools["connect_broker"])
+	if !equalStrings(keys(props), []string{"address", "key", "local_alias"}) {
+		t.Errorf("connect_broker properties = %v", keys(props))
+	}
+	if !equalStrings(required, []string{"address", "key"}) {
+		t.Errorf("connect_broker required = %v", required)
+	}
+
+	// Tools without parameters carry no properties.
+	for _, name := range []string{"list_topics", "list_brokers", "create_pairing_key"} {
+		props, required = schemaProps(t, tools[name])
+		if len(props) != 0 {
+			t.Errorf("%s properties = %v, want none", name, keys(props))
+		}
+		if len(required) != 0 {
+			t.Errorf("%s required = %v, want none", name, required)
+		}
+	}
+
+	// set_config value is a string.
+	props, _ = schemaProps(t, tools["set_config"])
+	value, ok := props["value"].(map[string]any)
+	if !ok {
+		t.Fatalf("set_config value schema is %T", props["value"])
+	}
+	if value["type"] != "string" {
+		t.Errorf("set_config value type = %v, want string", value["type"])
+	}
+
+	// The six config/pairing tools are distinct tools, so reading the config,
+	// changing it and creating a pairing key are authorized separately
+	// (REQ-broker-config-003, REQ-broker-config-005, REQ-broker-pairing-025).
+	for _, name := range []string{"get_config", "set_config", "create_pairing_key", "connect_broker"} {
+		if _, ok := tools[name]; !ok {
+			t.Errorf("tool %q is missing", name)
+		}
+	}
+
+	// Read-only hints: four true, seven false (REQ-broker-config-004).
+	readOnly := map[string]bool{
+		"list_agents": true, "send_message": false, "list_topics": true,
+		"join_topic": false, "leave_topic": false, "list_brokers": true,
+		"connect_broker": false, "disconnect_broker": false,
+		"create_pairing_key": false, "get_config": true, "set_config": false,
+	}
+	for name, wantRO := range readOnly {
+		tool := tools[name]
+		if tool.Annotations == nil {
+			t.Errorf("%s has no annotations", name)
+			continue
+		}
+		if tool.Annotations.ReadOnlyHint != wantRO {
+			t.Errorf("%s ReadOnlyHint = %v, want %v", name, tool.Annotations.ReadOnlyHint, wantRO)
+		}
+	}
+
+	// disconnect_broker's broker parameter explains aliases and fingerprints.
+	props, _ = schemaProps(t, tools["disconnect_broker"])
+	broker, ok := props["broker"].(map[string]any)
+	if !ok {
+		t.Fatalf("disconnect_broker broker schema is %T", props["broker"])
+	}
+	if got := broker["description"]; got != "alias or 64-hex-digit fingerprint of the peer Broker" {
+		t.Errorf("disconnect_broker broker description = %v", got)
+	}
+}
+
+func keys(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func TestInstructions(t *testing.T) {
+	cs := connectTestClient(t, &stubToolSet{})
+	info := cs.InitializeResult()
+	if info == nil {
+		t.Fatal("no initialize result")
+	}
+	if info.ServerInfo == nil || info.ServerInfo.Name != "peer" {
+		t.Fatalf("server name = %+v, want peer", info.ServerInfo)
+	}
+	// REQ-agent-messaging-025: every required point reaches the model.
+	for _, want := range []string{
+		"send_message",
+		"verbatim",
+		"built-in session messaging cannot reach",
+		"reached the other session",
+		"Delivery unknown",
+		"deliver it twice",
+		"once per agent",
+		"drops the duplicate",
+		"denied or would be blocked",
+	} {
+		if !strings.Contains(info.Instructions, want) {
+			t.Errorf("instructions do not contain %q", want)
+		}
+	}
+}
+
+func TestSafePanicDoesNotStopServer(t *testing.T) {
+	// safe itself turns a panic into the fixed internal error.
+	handler := safe("send_message", slog.New(slog.NewTextHandler(io.Discard, nil)), func(context.Context, SendMessageIn) (SendMessageOut, error) {
+		panic("boom")
+	})
+	_, _, err := handler(context.Background(), nil, SendMessageIn{})
+	if err == nil || !strings.Contains(err.Error(), "internal error in the MCP server") {
+		t.Fatalf("safe error = %v", err)
+	}
+
+	// Through the server: the call fails, and the server keeps serving.
+	ts := &stubToolSet{
+		sendMessage: func(context.Context, SendMessageIn) (SendMessageOut, error) {
+			panic("boom")
+		},
+		listTopics: func(context.Context, NoArgs) (ListTopicsOut, error) {
+			return ListTopicsOut{Joined: []string{"t"}, Public: []PublicTopicOut{}}, nil
+		},
+	}
+	cs := connectTestClient(t, ts)
+	res := callTool(t, cs, "send_message", map[string]any{"to": "a@h", "message": "m"})
+	if !res.IsError {
+		t.Fatal("panic result is not an error")
+	}
+	if got := textContent(t, res); !strings.Contains(got, "internal error in the MCP server") {
+		t.Errorf("panic text = %q", got)
+	}
+	res = callTool(t, cs, "list_topics", nil)
+	if res.IsError {
+		t.Fatalf("list_topics after panic failed: %s", textContent(t, res))
+	}
+}
+
+func TestSafePanicLogsToConfiguredLogger(t *testing.T) {
+	// The panic report must go to the logger Options.Logger configures, not to
+	// the process-wide slog default, so a session's log stays where the rest of
+	// its lines go.
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, nil))
+	handler := safe("send_message", log, func(context.Context, SendMessageIn) (SendMessageOut, error) {
+		panic("boom")
+	})
+	if _, _, err := handler(context.Background(), nil, SendMessageIn{}); err == nil {
+		t.Fatal("safe returned no error for a panic")
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "panic in MCP tool handler") {
+		t.Errorf("configured logger output = %q, want the panic report", output)
+	}
+	if !strings.Contains(output, "send_message") {
+		t.Errorf("configured logger output = %q, want the tool name", output)
+	}
+}
+
+func TestToolResultErrorHasNoStructuredContent(t *testing.T) {
+	// REQ-agent-messaging-038: a failed call carries text only. Attaching a
+	// structured object that does not match the output schema would make the
+	// client treat the whole call as a protocol error.
+	ts := &stubToolSet{
+		listAgents: func(context.Context, ListAgentsIn) (ListAgentsOut, error) {
+			return ListAgentsOut{}, errors.New("x failed: y (code: internal)")
+		},
+	}
+	cs := connectTestClient(t, ts)
+	res := callTool(t, cs, "list_agents", nil)
+	if !res.IsError {
+		t.Fatal("result is not an error")
+	}
+	if got := textContent(t, res); got != "x failed: y (code: internal)" {
+		t.Errorf("text = %q", got)
+	}
+	if res.StructuredContent != nil {
+		t.Errorf("error result has structured content: %v", res.StructuredContent)
+	}
+}
+
+func TestToolResultFieldNames(t *testing.T) {
+	// Field names must match the corresponding localpb response fields, which
+	// the end-to-end tests decode against.
+	ts := &stubToolSet{
+		listAgents: func(context.Context, ListAgentsIn) (ListAgentsOut, error) {
+			return ListAgentsOut{
+				Self: "me@h",
+				Agents: []AgentOut{{
+					Address:      "you@h",
+					SharedTopics: []string{"t"},
+					Status:       "waiting",
+				}},
+			}, nil
+		},
+		listTopics: func(context.Context, NoArgs) (ListTopicsOut, error) {
+			return ListTopicsOut{Joined: []string{"t"}, Public: []PublicTopicOut{{Name: "p", Description: "d"}}}, nil
+		},
+		setConfig: func(_ context.Context, in SetConfigIn) (SetConfigOut, error) {
+			return SetConfigOut{Key: in.Key, Old: "old", New: "new"}, nil
+		},
+		listBrokers: func(context.Context, NoArgs) (ListBrokersOut, error) {
+			return ListBrokersOut{Brokers: []BrokerOut{{
+				Alias:       "h",
+				Fingerprint: "ab",
+				Addresses:   []AddressOut{{Kind: "hostport", Addr: "h:1"}},
+				IsPeer:      true,
+				Status:      "connected",
+				LocalRole:   "dialer",
+			}}}, nil
+		},
+		createPairingKey: func(context.Context, NoArgs) (CreatePairingKeyOut, error) {
+			return CreatePairingKeyOut{
+				Key:       "k",
+				ExpiresAt: "2026-11-18T18:00:00Z",
+				Addresses: []string{"h:1"},
+				Note:      "n",
+			}, nil
+		},
+	}
+	cs := connectTestClient(t, ts)
+
+	agents := structuredMap(t, callTool(t, cs, "list_agents", nil))
+	if agents["self_address"] != "me@h" {
+		t.Errorf("self_address = %v", agents["self_address"])
+	}
+	list, ok := agents["agents"].([]any)
+	if !ok || len(list) != 1 {
+		t.Fatalf("agents = %v", agents["agents"])
+	}
+	agent, ok := list[0].(map[string]any)
+	if !ok {
+		t.Fatalf("agent entry is %T", list[0])
+	}
+	if _, ok := agent["shared_topics"]; !ok {
+		t.Errorf("agent entry has no shared_topics: %v", agent)
+	}
+
+	topics := structuredMap(t, callTool(t, cs, "list_topics", nil))
+	if _, ok := topics["joined_topics"]; !ok {
+		t.Errorf("topics has no joined_topics: %v", topics)
+	}
+	if _, ok := topics["public_topics"]; !ok {
+		t.Errorf("topics has no public_topics: %v", topics)
+	}
+
+	set := structuredMap(t, callTool(t, cs, "set_config", map[string]any{"key": "k", "value": "v"}))
+	if _, ok := set["old_value"]; !ok {
+		t.Errorf("set_config has no old_value: %v", set)
+	}
+	if _, ok := set["new_value"]; !ok {
+		t.Errorf("set_config has no new_value: %v", set)
+	}
+
+	brokers := structuredMap(t, callTool(t, cs, "list_brokers", nil))
+	blist, ok := brokers["brokers"].([]any)
+	if !ok || len(blist) != 1 {
+		t.Fatalf("brokers = %v", brokers["brokers"])
+	}
+	entry, ok := blist[0].(map[string]any)
+	if !ok {
+		t.Fatalf("broker entry is %T", blist[0])
+	}
+	if entry["role"] != "dialer" {
+		t.Errorf("role = %v", entry["role"])
+	}
+	if _, ok := entry["advertised_addresses"]; !ok {
+		t.Errorf("broker entry has no advertised_addresses: %v", entry)
+	}
+
+	pairing := structuredMap(t, callTool(t, cs, "create_pairing_key", nil))
+	for _, field := range []string{"key", "expires_at", "shown_addresses", "note"} {
+		if _, ok := pairing[field]; !ok {
+			t.Errorf("create_pairing_key has no %s: %v", field, pairing)
+		}
+	}
+	if shown, ok := pairing["shown_addresses"].([]any); !ok || len(shown) != 1 || shown[0] != "h:1" {
+		t.Errorf("shown_addresses = %v, want [h:1]", pairing["shown_addresses"])
+	}
+}
+
+func TestToolInputJSONNames(t *testing.T) {
+	var got JoinTopicIn
+	ts := &stubToolSet{
+		joinTopic: func(_ context.Context, in JoinTopicIn) (TopicsOut, error) {
+			got = in
+			return TopicsOut{Topics: []string{in.Name}}, nil
+		},
+	}
+	cs := connectTestClient(t, ts)
+	res := callTool(t, cs, "join_topic", map[string]any{
+		"name": "t", "public": true, "description": "d",
+	})
+	if res.IsError {
+		t.Fatalf("join_topic failed: %s", textContent(t, res))
+	}
+	if got.Name != "t" || !got.Public || got.Description != "d" {
+		t.Errorf("JoinTopicIn = %+v", got)
+	}
+}
+
+func textContent(t *testing.T, res *mcp.CallToolResult) string {
+	t.Helper()
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			return tc.Text
+		}
+	}
+	t.Fatalf("result has no text content: %+v", res.Content)
+	return ""
+}
+
+func structuredMap(t *testing.T, res *mcp.CallToolResult) map[string]any {
+	t.Helper()
+	if res.IsError {
+		t.Fatalf("tool call failed: %s", textContent(t, res))
+	}
+	raw, ok := res.StructuredContent.(map[string]any)
+	if !ok {
+		// A round trip through JSON yields map[string]any; anything else is a
+		// decoding surprise worth reporting.
+		buf, _ := json.Marshal(res.StructuredContent)
+		t.Fatalf("structured content is %T (%s), want map[string]any", res.StructuredContent, buf)
+	}
+	return raw
+}
