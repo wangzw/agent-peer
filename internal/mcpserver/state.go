@@ -1,0 +1,107 @@
+package mcpserver
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"sync"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
+)
+
+// Phase is the state of the background connection to the Broker.
+type Phase int
+
+const (
+	// PhaseStarting means nothing has been tried yet.
+	PhaseStarting Phase = iota
+	// PhaseUnavailable means Broker selection or connection failed; Detail says why.
+	PhaseUnavailable
+	// PhaseLaunchFailed means launching the Broker failed; Detail is the
+	// Broker's failure reason, verbatim.
+	PhaseLaunchFailed
+	// PhaseVersionMismatch means Hello found an incompatible local protocol
+	// version; Detail names both versions and Remedy says how to fix it.
+	PhaseVersionMismatch
+	// PhaseConnected means Hello succeeded; registration may still be pending.
+	PhaseConnected
+)
+
+// Status is a snapshot of the background connection state.
+type Status struct {
+	Phase         Phase
+	Detail        string
+	Remedy        string              // PhaseVersionMismatch only: the "To fix it, ..." clause for the selected kind
+	Client        localpb.LocalClient // non-nil only in PhaseConnected
+	AgentID       string              // non-empty only after registration_complete
+	Address       string
+	NotRegistered localpb.NotRegisteredReason // last reason the Broker sent; UNSPECIFIED if none yet
+}
+
+// statusStore holds the current Status and is safe for concurrent use.
+type statusStore struct {
+	mu sync.Mutex
+	st Status
+}
+
+// Get returns a copy of the current Status.
+func (s *statusStore) Get() Status {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.st
+}
+
+// Update calls f while holding the lock.
+func (s *statusStore) Update(f func(*Status)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f(&s.st)
+}
+
+// rememberedTopic is a topic this process joined, kept so that a later
+// registration can restore the membership.
+type rememberedTopic struct {
+	Name        string
+	Public      bool
+	Description string
+}
+
+// topicRecorder records and forgets joined topics. lockTopic and unlockTopic
+// serialize a Broker membership change and the memory write it causes with the
+// restore of the same topic after a registration. lockTopic waits for the lock
+// or returns the context's error, so a call stops instead of queueing.
+type topicRecorder interface {
+	Remember(t rememberedTopic)
+	Forget(name string)
+	lockTopic(ctx context.Context) error
+	unlockTopic()
+}
+
+// handlers is the shared skeleton of the forwarding tool handlers.
+type handlers struct {
+	st     *statusStore
+	topics topicRecorder
+	log    *slog.Logger
+}
+
+// preflight returns the Status a tool call may use, or an error whose text is
+// shown to the model when the call must not reach the Broker.
+func (h *handlers) preflight(tool string, kind callKind, needAgent bool) (Status, error) {
+	st := h.st.Get()
+	phrase := openingPhrase(tool, kind)
+	switch st.Phase {
+	case PhaseStarting:
+		return st, toolError(phrase, textStarting, localpb.ErrorCode_ERROR_CODE_INTERNAL)
+	case PhaseUnavailable:
+		return st, toolError(phrase, fmt.Sprintf(textUnavailable, st.Detail), localpb.ErrorCode_ERROR_CODE_INTERNAL)
+	case PhaseLaunchFailed:
+		return st, toolError(phrase, fmt.Sprintf(textLaunchFailed, st.Detail), localpb.ErrorCode_ERROR_CODE_INTERNAL)
+	case PhaseVersionMismatch:
+		return st, toolError(phrase, fmt.Sprintf(textVersionMismatch, st.Detail, st.Remedy), localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH)
+	case PhaseConnected:
+		if needAgent && st.AgentID == "" {
+			return st, toolError(phrase, fmt.Sprintf(textNotRegistered, notRegisteredReason(st.NotRegistered)), localpb.ErrorCode_ERROR_CODE_NOT_REGISTERED)
+		}
+	}
+	return st, nil
+}
