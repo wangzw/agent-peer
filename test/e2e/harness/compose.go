@@ -233,6 +233,13 @@ func (c *Cluster) Addr6(node, network string) string {
 	return c.address(node, network, "GlobalIPv6Address")
 }
 
+// Gateway returns the IPv4 gateway Docker gave node on network. On a routed
+// network this is the host-side bridge address, the one a container could use
+// to reach a service listening on the test host.
+func (c *Cluster) Gateway(node, network string) string {
+	return c.address(node, network, "Gateway")
+}
+
 // address reads one address field from docker inspect.
 func (c *Cluster) address(node, network, field string) string {
 	format := fmt.Sprintf("{{with index .NetworkSettings.Networks %q}}{{.%s}}{{end}}", c.project+"_"+network, field)
