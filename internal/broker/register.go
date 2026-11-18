@@ -132,7 +132,7 @@ func (b *Broker) beginRegistration(c *regConn) {
 	b.mu.Lock()
 	// Take the watch before the connection becomes visible to the event loop,
 	// so a registry change cannot slip in between.
-	if key, ok := b.acquireWatchLocked(c.configDir, c.backend); ok {
+	if key, ok := b.acquireWatchLocked(c.caller.UID, c.configDir, c.backend); ok {
 		c.watchDir = key
 		c.watching = true
 	}
@@ -235,7 +235,9 @@ type registrationProblem struct {
 // inspect performs the three checks of a registration attempt. ok is true when
 // all of them pass.
 func (b *Broker) inspect(c *regConn) (registrationProblem, inbox.Session, string, bool) {
-	s, err := c.backend.Lookup(b.ctx, c.configDir, c.socketPath)
+	callCtx, cancel := sessionCallContext(b.ctx)
+	s, err := c.backend.Lookup(callCtx, c.configDir, c.socketPath)
+	cancel()
 	if err != nil {
 		if !errors.Is(err, inbox.ErrNoRecord) && !errors.Is(err, inbox.ErrPartial) {
 			b.log.Warn(EvRegistrationWaiting, "error", err, "uid", c.caller.UID)
@@ -270,10 +272,12 @@ func (b *Broker) inspect(c *regConn) (registrationProblem, inbox.Session, string
 //
 // When the connection already watches the agent's configuration directory, its
 // reference is transferred to the agent: the agent's reference is taken before
-// the connection's is dropped, so the subscription and Broker.mu both stay put
-// and no registry event can fall between them. Otherwise the agent's watch is
-// created after the connection's is dropped, the window releases Broker.mu, and
-// the attempt is asked to reread the agent after the attachment.
+// the connection's is dropped, so the subscription never falls to zero. The
+// ownership check inside that acquisition releases Broker.mu, but the
+// connection's reference keeps the watch in place during the window, so no
+// registry event can fall between them. Otherwise the agent's watch is created
+// after the connection's is dropped, the window releases Broker.mu, and the
+// attempt is asked to reread the agent after the attachment.
 func (b *Broker) completeLocked(c *regConn, s inbox.Session, name string) []func() {
 	if _, ok := b.waiting[c]; !ok {
 		return nil
@@ -281,17 +285,18 @@ func (b *Broker) completeLocked(c *regConn, s inbox.Session, name string) []func
 
 	var stops []func()
 	if _, exists := b.agents[c.id]; !exists {
-		agentKey := watchKey(s.ConfigDir)
+		agentKey := watchKeyFor(c.caller.UID, s.ConfigDir)
 		sameKey := c.watching && c.watchDir == agentKey
-		var key string
+		var key watchKey
 		var withWatch bool
 		if sameKey {
 			// The connection already watches the agent's directory. Hand its
 			// reference over: take the agent's reference before dropping the
-			// connection's. The subscription never falls to zero and Broker.mu
-			// is never released, so no registry event can fall between the
-			// connection's watch and the agent's.
-			key, withWatch = b.acquireWatchLocked(agentKey, c.backend)
+			// connection's. The subscription never falls to zero; the ownership
+			// check may release Broker.mu, but the connection's reference keeps
+			// the watch in place until the agent's is taken, so no registry event
+			// can fall between the connection's watch and the agent's.
+			key, withWatch = b.acquireWatchLocked(agentKey.uid, agentKey.dir, c.backend)
 			stops = append(stops, b.releaseWatchLocked(c.watchDir, c.watching)...)
 		} else {
 			// Drop this connection's own watch before taking the agent's. The
@@ -301,11 +306,11 @@ func (b *Broker) completeLocked(c *regConn, s inbox.Session, name string) []func
 			// second time.
 			stops = append(stops, b.releaseWatchLocked(c.watchDir, c.watching)...)
 			c.watching = false
-			c.watchDir = ""
-			key, withWatch = b.acquireWatchLocked(agentKey, c.backend)
+			c.watchDir = watchKey{}
+			key, withWatch = b.acquireWatchLocked(agentKey.uid, agentKey.dir, c.backend)
 		}
 		c.watching = false
-		c.watchDir = ""
+		c.watchDir = watchKey{}
 		if c.waitTimer != nil {
 			c.waitTimer.Stop()
 			c.waitTimer = nil
@@ -332,6 +337,10 @@ func (b *Broker) completeLocked(c *regConn, s inbox.Session, name string) []func
 			if withWatch {
 				stops = append(stops, b.releaseWatchLocked(key, true)...)
 			}
+			if other.caller.UID != c.caller.UID {
+				b.refuseAttachLocked(c, localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SOCKET_NOT_OWNED)
+				return stops
+			}
 			other.conns[c] = struct{}{}
 			c.agent = other
 		} else {
@@ -356,10 +365,20 @@ func (b *Broker) completeLocked(c *regConn, s inbox.Session, name string) []func
 			b.log.Info(EvAgentRegistered, "agent", shortID(a.id), "name", name, "uid", c.caller.UID)
 		}
 	} else {
+		a := b.agents[c.id]
+		if a.caller.UID != c.caller.UID {
+			// The socket path now names an agent of another account. Attaching
+			// would make that agent's registration stream answer to a caller
+			// that does not own its socket.
+			stops = append(stops, b.releaseWatchLocked(c.watchDir, c.watching)...)
+			c.watching = false
+			c.watchDir = watchKey{}
+			b.refuseAttachLocked(c, localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SOCKET_NOT_OWNED)
+			return stops
+		}
 		stops = append(stops, b.releaseWatchLocked(c.watchDir, c.watching)...)
 		c.watching = false
-		c.watchDir = ""
-		a := b.agents[c.id]
+		c.watchDir = watchKey{}
 		a.conns[c] = struct{}{}
 		c.agent = a
 	}
@@ -411,6 +430,21 @@ func (b *Broker) reportWaiting(c *regConn) {
 	b.reportWaitingLocked(c)
 }
 
+// refuseAttachLocked records why a waiting connection cannot attach to an
+// existing agent and lets the wait report it, either now when the wait timer
+// has already fired or on the timer that is still running. The connection stays
+// in the waiting set. Callers must hold Broker.mu.
+func (b *Broker) refuseAttachLocked(c *regConn, reason localpb.NotRegisteredReason) {
+	if _, still := b.waiting[c]; !still {
+		return
+	}
+	c.waitReason = reason
+	c.attempted = true
+	if c.reportDue {
+		b.reportWaitingLocked(c)
+	}
+}
+
 // reportWaitingLocked sends the not_registered event for a waiting connection
 // and records that it was sent. Callers must hold Broker.mu.
 func (b *Broker) reportWaitingLocked(c *regConn) {
@@ -435,7 +469,7 @@ func (b *Broker) dropConn(c *regConn) {
 		}
 		stops = append(stops, b.releaseWatchLocked(c.watchDir, c.watching)...)
 		c.watching = false
-		c.watchDir = ""
+		c.watchDir = watchKey{}
 	} else if a := c.agent; a != nil {
 		delete(a.conns, c)
 		c.agent = nil

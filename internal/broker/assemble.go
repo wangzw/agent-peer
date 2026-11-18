@@ -15,6 +15,21 @@ type Assembly struct {
 	Link                *link.Link
 	Runner              LinkRunner
 	LinkProtocolVersion uint32 // 0: linkpb.ProtocolVersion
+
+	// System reports that Run runs the system form. configWiring refuses to
+	// fall back to allowAllAccess in that form.
+	System bool
+
+	// Access is the configuration-file checker the system assembler builds.
+	// In user mode nil means allowAllAccess{}.
+	Access accessChecker
+
+	// configAssembled records that a configWiring ran, and effectiveAccess is
+	// the checker it installed. Run requires both in system mode, so a missing
+	// assembler or a checker other than Access cannot silently allow every
+	// caller.
+	configAssembled bool
+	effectiveAccess accessChecker
 }
 
 // Assembler builds one piece of upstream state before the Broker is

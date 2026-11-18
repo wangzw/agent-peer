@@ -108,6 +108,27 @@ func TestMethodAccessCoversServiceDesc(t *testing.T) {
 			t.Errorf("methodAccess has no rule for %s", full)
 		}
 	}
+
+	// The system form installs systemChecker. Every rule that needs a
+	// permission must be expressible through it; a rule it does not recognize
+	// would answer internal instead of checking the configuration file.
+	t.Run("system mode", func(t *testing.T) {
+		access := &fakeHelperAccess{}
+		checker := systemChecker{c: access}
+		wantCalls := 0
+		for method, rule := range methodAccess {
+			if rule.need == AccessNone {
+				continue
+			}
+			wantCalls++
+			if _, err := checker.Check(context.Background(), Caller{UID: 1001}, accessTestConfigPath, rule.need); err != nil {
+				t.Errorf("%s: system checker rejected access %v: %v", method, rule.need, err)
+			}
+		}
+		if calls := access.snapshot(); len(calls) != wantCalls {
+			t.Errorf("system checker made %d calls, want one for each of the %d ruled methods", len(calls), wantCalls)
+		}
+	})
 }
 
 // TestAccessRulesMatchDesign covers REQ-broker-config-021, REQ-broker-config-022

@@ -55,7 +55,9 @@ func (b *Broker) refreshAgent(a *agent) {
 	previous := a.session
 	b.mu.Unlock()
 
-	next, err := a.backend.Reread(b.ctx, previous)
+	callCtx, cancel := sessionCallContext(b.ctx)
+	next, err := a.backend.Reread(callCtx, previous)
+	cancel()
 
 	b.mu.Lock()
 	if b.agents[a.id] != a {
@@ -191,7 +193,7 @@ func (b *Broker) revokeLocked(a *agent, reason localpb.NotRegisteredReason, deta
 
 		// Take the watch before reporting, so a record recovered immediately
 		// after the report is still observed.
-		if key, ok := b.acquireWatchLocked(c.configDir, c.backend); ok {
+		if key, ok := b.acquireWatchLocked(c.caller.UID, c.configDir, c.backend); ok {
 			if _, still := b.waiting[c]; still {
 				c.watchDir = key
 				c.watching = true

@@ -7,6 +7,19 @@ import (
 	"github.com/wangzw/agent-peer/internal/inbox"
 )
 
+// sessionCallTimeout bounds one call into a SessionBackend. In the system form
+// every such call crosses a helper process running as the account, and an
+// account's registry events are handled by one serial goroutine: a helper the
+// account stopped must not hold that goroutine indefinitely, because every
+// later event of the same account queues behind it.
+const sessionCallTimeout = time.Second
+
+// sessionCallContext bounds ctx by sessionCallTimeout. Callers cancel it as soon
+// as the call returns.
+func sessionCallContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, sessionCallTimeout)
+}
+
 // SessionBackend performs inbox operations for one account. A user-level
 // Broker calls the inbox package directly in the same process; a system-level
 // Broker routes every call to a helper process running as the target account.

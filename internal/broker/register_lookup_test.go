@@ -145,7 +145,8 @@ func TestRegisterKeepsRetryRequestedAtAttemptEnd(t *testing.T) {
 	// One registry event while the first attempt holds the lock. The event
 	// goroutine's attempt finds the lock held and hands this change to the
 	// running attempt; the test releases that attempt only after the hand-off.
-	tb.b.events.push(watchKey(dir), fake.PID())
+	uid := uint32(tb.b.deps.Geteuid())
+	tb.b.events.push(uid, watchKeyFor(uid, dir).dir, fake.PID())
 	select {
 	case <-busy:
 	case <-time.After(3 * time.Second):

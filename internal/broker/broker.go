@@ -31,12 +31,16 @@ type Broker struct {
 	// agent table fields
 	agents     map[AgentID]*agent
 	waiting    map[*regConn]struct{}
-	watches    map[string]*dirWatch
+	watches    map[watchKey]*dirWatch
 	events     registryQueue
 	unregHooks []func(AgentID)
 	gone       []AgentID
 	refreshOne func(a *agent)
 	lastAlias  string // last broker.alias value read successfully, guarded by mu
+
+	// configDirChecks limits an account to one unfinished ownership check.
+	// It has its own lock so a check never takes Broker.mu.
+	configDirChecks configDirCheckSet
 
 	// downstream state
 }
@@ -80,10 +84,16 @@ func New(deps Deps) (*Broker, error) {
 	allowSameAccount := func(c Caller) bool {
 		return c.UID == uint32(deps.Geteuid())
 	}
+	allow := allowSameAccount
+	if deps.AllowCaller != nil {
+		// The system Broker runs as root and serves every account; which
+		// accounts may connect is decided by the local socket's permissions.
+		allow = deps.AllowCaller
+	}
 	logReject := func(c Caller) {
 		deps.Logger.Warn(EvConnectionRejected, "uid", c.UID, "pid", c.PID)
 	}
-	peerCreds := newPeerCredCreds(deps.ReadPeerCred, allowSameAccount, logReject)
+	peerCreds := newPeerCredCreds(deps.ReadPeerCred, allow, logReject)
 
 	// The peer credentials are the server's credentials. A caller-supplied
 	// credentials option would replace them because the last option wins, so it
@@ -111,12 +121,12 @@ func New(deps Deps) (*Broker, error) {
 		cancel:  cancel,
 		agents:  make(map[AgentID]*agent),
 		waiting: make(map[*regConn]struct{}),
-		watches: make(map[string]*dirWatch),
+		watches: make(map[watchKey]*dirWatch),
 		events:  newRegistryQueue(),
 	}
 	b.refreshOne = b.refreshAgent
+	b.events.start(ctx, b.handleRegistryEvent)
 	localpb.RegisterLocalServer(b.grpc, b)
-	go b.eventLoop()
 	return b, nil
 }
 

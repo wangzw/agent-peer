@@ -2,6 +2,7 @@ package broker
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -15,8 +16,9 @@ import (
 // local agent table. It runs last, so the directory assembler has already
 // filled Deps.CardIssuer and the link exists in the Assembly.
 type configWiring struct {
-	// checker decides access to the configuration file. nil: the user-level
-	// allowAllAccess, which permits every local caller.
+	// checker decides access to the configuration file. nil: asm.Access, and
+	// when that is nil too, the user-level allowAllAccess{} (only allowed when
+	// the run is not the system form).
 	checker accessChecker
 }
 
@@ -31,8 +33,19 @@ func (*configWiring) Name() string { return "config" }
 func (w *configWiring) Assemble(_ context.Context, cfg ConfigSource, deps *Deps, asm *Assembly) ([]Component, error) {
 	checker := w.checker
 	if checker == nil {
-		checker = allowAllAccess{} // replaced by the system Broker unit
+		checker = asm.Access
+		if checker == nil {
+			if asm.System {
+				return nil, errors.New("system mode requires an access checker in the Assembly")
+			}
+			checker = allowAllAccess{}
+		}
 	}
+	if asm.System && checker != asm.Access {
+		return nil, errors.New("system mode must use the Assembly access checker")
+	}
+	asm.configAssembled = true
+	asm.effectiveAccess = checker
 	path := func() string { return cfg.Paths().ConfigFile }
 	deps.ServerOptions = append(deps.ServerOptions,
 		grpc.ChainUnaryInterceptor(accessUnaryInterceptor(checker, path)),

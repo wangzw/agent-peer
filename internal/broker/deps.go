@@ -131,4 +131,6 @@ type Deps struct {
 	CardIssuer     CardIssuer    // nil: the card is not re-signed; filled by the directory assembler
 
 	Delivery *delivery // nil: Send returns internal
+
+	AllowCaller func(Caller) bool // nil: allow only the Broker's own account; set by the system assembler
 }

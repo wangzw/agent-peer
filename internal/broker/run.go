@@ -40,6 +40,12 @@ var (
 // failed stops accepting.
 const evLocalServeFailed = "local_serve_failed"
 
+// errSystemWiring reports a system run whose access wiring is incomplete. The
+// system form must never start without the checker the system assembler built.
+func errSystemWiring(detail string) error {
+	return fmt.Errorf("system mode access wiring is incomplete: %s", detail)
+}
+
 // RunOptions is the process entry point's input to Run. The exported fields
 // mirror the command line; checkTick and afterCheck exist only so tests can
 // drive the periodic runtime-directory review without waiting a minute.
@@ -96,7 +102,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 		lock      *AccountLock
 		sock      *LocalSocket
 		b         *Broker
-		asm       = &Assembly{}
+		asm       = &Assembly{System: opts.System}
 		started   []Component
 		loaded    bool
 		runnerRan bool
@@ -224,10 +230,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 	}
 
 	// Step 5: run the assemblers, then append the options' components.
-	assemblers := opts.Assemblers
-	if assemblers == nil {
-		assemblers = DefaultAssemblers()
-	}
+	assemblers := assemblersFor(opts)
 	asm.LinkProtocolVersion = opts.LinkProtocolVersion
 	var assembled []Component
 	for _, a := range assemblers {
@@ -239,6 +242,23 @@ func Run(ctx context.Context, opts RunOptions) error {
 			return fail(fmt.Errorf("%s: %w", a.Name(), err))
 		}
 		assembled = append(assembled, comps...)
+	}
+
+	// System mode fails closed: without the config assembler there is no access
+	// interceptor at all, and a checker other than the one the system assembler
+	// built would let a caller choose the decision. Neither may start.
+	if opts.System {
+		switch {
+		case !asm.configAssembled:
+			stopComponents(assembled)
+			return fail(errSystemWiring("no config assembler ran; every local call would be unguarded"))
+		case asm.Access == nil:
+			stopComponents(assembled)
+			return fail(errSystemWiring("the system assembler installed no access checker"))
+		case asm.effectiveAccess != asm.Access:
+			stopComponents(assembled)
+			return fail(errSystemWiring("the effective access checker is not the system assembler's"))
+		}
 	}
 	components := make([]Component, 0, len(assembled)+len(opts.Components))
 	components = append(components, assembled...)

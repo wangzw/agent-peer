@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -71,6 +72,7 @@ func TestRunSystemLoadsSystemMode(t *testing.T) {
 	rt := newRunTest(t, func(rt *runTest) {
 		rt.opts.System = true
 		rt.opts.Deps.Geteuid = func() int { return 0 }
+		rt.opts.Assemblers = []Assembler{&configWiring{}}
 		rt.cfg.setValue("broker.local_socket_group", config.Value{Kind: config.KindString})
 		rt.cfg.setValue("broker.local_socket_mode", config.Value{Kind: config.KindString, String: "0600"})
 	})
@@ -93,11 +95,88 @@ func TestRunSystemLoadsSystemMode(t *testing.T) {
 	}
 }
 
+func TestRunSystemWithoutConfigWiringFails(t *testing.T) {
+	rt := newRunTest(t, func(rt *runTest) {
+		rt.opts.System = true
+		rt.opts.Deps.Geteuid = func() int { return 0 }
+		rt.cfg.setValue("broker.local_socket_group", config.Value{Kind: config.KindString})
+		rt.cfg.setValue("broker.local_socket_mode", config.Value{Kind: config.KindString, String: "0600"})
+	})
+	rt.start()
+
+	if got := rt.readyLine(); got == "ok\n" {
+		t.Fatal("readiness line is ok without the config assembler")
+	}
+	err := rt.waitErr()
+	if err == nil {
+		t.Fatal("Run succeeded without the config assembler")
+	}
+	if !strings.Contains(err.Error(), "config assembler") {
+		t.Errorf("Run error = %q, want it to name the missing config assembler", err)
+	}
+	if _, err := os.Stat(rt.socketPath()); !os.IsNotExist(err) {
+		t.Errorf("broker.sock exists, want no socket (stat error %v)", err)
+	}
+}
+
+func TestRunSystemWithoutAccessFails(t *testing.T) {
+	clearAccess := &fakeAssembler{name: "clear-access", fn: func(_ context.Context, _ ConfigSource, _ *Deps, asm *Assembly) ([]Component, error) {
+		asm.Access = nil
+		return nil, nil
+	}}
+	rt := newRunTest(t, func(rt *runTest) {
+		rt.opts.System = true
+		rt.opts.Deps.Geteuid = func() int { return 0 }
+		rt.opts.Assemblers = []Assembler{&configWiring{}, clearAccess}
+		rt.cfg.setValue("broker.local_socket_group", config.Value{Kind: config.KindString})
+		rt.cfg.setValue("broker.local_socket_mode", config.Value{Kind: config.KindString, String: "0600"})
+	})
+	rt.start()
+
+	if got := rt.readyLine(); got == "ok\n" {
+		t.Fatal("readiness line is ok without an assembly access checker")
+	}
+	err := rt.waitErr()
+	if err == nil {
+		t.Fatal("Run succeeded without an assembly access checker")
+	}
+	if !strings.Contains(err.Error(), "access checker") {
+		t.Errorf("Run error = %q, want it to name the missing access checker", err)
+	}
+}
+
+func TestRunSystemRejectsReplacedAccess(t *testing.T) {
+	replaceAccess := &fakeAssembler{name: "replace-access", fn: func(_ context.Context, _ ConfigSource, _ *Deps, asm *Assembly) ([]Component, error) {
+		asm.Access = &wiringChecker{granted: true}
+		return nil, nil
+	}}
+	rt := newRunTest(t, func(rt *runTest) {
+		rt.opts.System = true
+		rt.opts.Deps.Geteuid = func() int { return 0 }
+		rt.opts.Assemblers = []Assembler{&configWiring{}, replaceAccess}
+		rt.cfg.setValue("broker.local_socket_group", config.Value{Kind: config.KindString})
+		rt.cfg.setValue("broker.local_socket_mode", config.Value{Kind: config.KindString, String: "0600"})
+	})
+	rt.start()
+
+	if got := rt.readyLine(); got == "ok\n" {
+		t.Fatal("readiness line is ok after a later assembler replaced the checker")
+	}
+	err := rt.waitErr()
+	if err == nil {
+		t.Fatal("Run succeeded after a later assembler replaced the checker")
+	}
+	if !strings.Contains(err.Error(), "effective access checker") {
+		t.Errorf("Run error = %q, want it to name the effective checker", err)
+	}
+}
+
 func TestRunSystemAppliesSocketPerms(t *testing.T) {
 	group := currentGroup(t)
 	rt := newRunTest(t, func(rt *runTest) {
 		rt.opts.System = true
 		rt.opts.Deps.Geteuid = func() int { return 0 }
+		rt.opts.Assemblers = []Assembler{&configWiring{}}
 		rt.cfg.setValue("broker.local_socket_group", config.Value{Kind: config.KindString, String: group.Name})
 		rt.cfg.setValue("broker.local_socket_mode", config.Value{Kind: config.KindString, String: "0660"})
 	})
@@ -131,6 +210,7 @@ func TestRunSystemUnknownGroupFails(t *testing.T) {
 	rt := newRunTest(t, func(rt *runTest) {
 		rt.opts.System = true
 		rt.opts.Deps.Geteuid = func() int { return 0 }
+		rt.opts.Assemblers = []Assembler{&configWiring{}}
 		rt.cfg.setValue("broker.local_socket_group", config.Value{Kind: config.KindString, String: name})
 		rt.cfg.setValue("broker.local_socket_mode", config.Value{Kind: config.KindString, String: "0660"})
 	})

@@ -40,9 +40,10 @@ type agent struct {
 	// is not mirrored to the registration streams.
 	introduced bool
 	// watchDir is the Broker.watches key this agent holds a reference on, and
-	// watching says whether it holds one at all. The key may be the empty string
-	// (the account's default configuration directory), so the flag is separate.
-	watchDir string
+	// watching says whether it holds one at all. The key carries the owner uid
+	// and may have an empty directory (the account's default configuration
+	// directory), so the flag is separate.
+	watchDir watchKey
 	watching bool
 }
 
@@ -63,7 +64,7 @@ type regConn struct {
 	reportDue  bool   // the wait timer fired before the first attempt stored a reason
 	reported   bool   // a not_registered has been sent for the current wait
 	waitTimer  Timer
-	watchDir   string // Broker.watches key this connection holds, "" if none
+	watchDir   watchKey // Broker.watches key this connection holds; watching says whether it holds one
 	watching   bool
 	out        *eventQueue
 
@@ -282,7 +283,7 @@ func (b *Broker) unregisterLocked(a *agent) []func() {
 	}
 	stops = append(stops, b.releaseWatchLocked(a.watchDir, a.watching)...)
 	a.watching = false
-	a.watchDir = ""
+	a.watchDir = watchKey{}
 
 	b.recomputeRefsLocked()
 	b.gone = append(b.gone, a.id)
@@ -333,13 +334,27 @@ func (b *Broker) unlockAndNotify(stops []func()) {
 	}
 }
 
-// acquireWatchLocked takes a reference on the inbox watch of configDir,
-// creating the watch when it is the first reference. It calls Watch outside
-// Broker.mu and returns with Broker.mu held again. The returned key is the
-// Broker.watches key; ok is false when the watch could not be created and no
-// reference is held. Callers must hold Broker.mu.
-func (b *Broker) acquireWatchLocked(configDir string, backend SessionBackend) (key string, ok bool) {
-	key = watchKey(configDir)
+// acquireWatchLocked takes a reference on the inbox watch of configDir for uid,
+// creating the watch when it is the first reference. Both the ownership check
+// and Watch run outside Broker.mu, and it returns with Broker.mu held again.
+// The returned key is the Broker.watches key; ok is false when configDir does
+// not belong to uid, or the watch could not be created, and no reference is
+// held. Callers must hold Broker.mu.
+func (b *Broker) acquireWatchLocked(uid uint32, configDir string, backend SessionBackend) (key watchKey, ok bool) {
+	if v, verifies := backend.(configDirVerifier); verifies {
+		// The check reads the account database and stats a path the caller
+		// chose. Releasing Broker.mu here keeps a blocking path from stopping
+		// every account's registration; the check is bounded so it cannot
+		// block this caller forever either.
+		b.mu.Unlock()
+		err := verifyConfigDirBounded(b.ctx, uid, &b.configDirChecks, v, configDir)
+		b.mu.Lock()
+		if err != nil {
+			b.log.Error(EvRegistryWatchFailed, "config_dir", configDir, "uid", uid, "error", err)
+			return watchKey{}, false
+		}
+	}
+	key = watchKeyFor(uid, configDir)
 	for {
 		if w, exists := b.watches[key]; exists {
 			if w.creating {
@@ -356,15 +371,17 @@ func (b *Broker) acquireWatchLocked(configDir string, backend SessionBackend) (k
 		w := &dirWatch{refs: 1, creating: true, wait: make(chan struct{})}
 		b.watches[key] = w
 		b.mu.Unlock()
-		stop, err := backend.Watch(b.ctx, key, func(pid int) {
-			b.events.push(key, pid)
+		callCtx, cancel := sessionCallContext(b.ctx)
+		stop, err := backend.Watch(callCtx, key.dir, func(pid int) {
+			b.events.push(uid, key.dir, pid)
 		})
+		cancel()
 		b.mu.Lock()
 		w.creating = false
 		if err != nil {
 			delete(b.watches, key)
 			close(w.wait)
-			b.log.Error(EvRegistryWatchFailed, "config_dir", key, "error", err)
+			b.log.Error(EvRegistryWatchFailed, "config_dir", key.dir, "uid", uid, "error", err)
 			return key, false
 		}
 		w.stop = stop
@@ -376,7 +393,7 @@ func (b *Broker) acquireWatchLocked(configDir string, backend SessionBackend) (k
 // releaseWatchLocked drops one reference on key. It returns the stop function
 // when the last reference went away; the caller runs it outside Broker.mu.
 // present says whether the caller actually holds a reference.
-func (b *Broker) releaseWatchLocked(key string, present bool) []func() {
+func (b *Broker) releaseWatchLocked(key watchKey, present bool) []func() {
 	if !present {
 		return nil
 	}
