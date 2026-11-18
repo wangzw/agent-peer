@@ -39,7 +39,7 @@ func newTestBroker(t *testing.T, mutate ...func(*Deps)) *testBroker {
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 
 	clock := newFakeClock(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	cfg := newFakeConfig(dir)

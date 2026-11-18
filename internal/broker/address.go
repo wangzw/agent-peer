@@ -25,7 +25,7 @@ type AgentID string
 // ErrBadSocketPath is returned by AgentIDFor for a socket path that cannot
 // identify an agent: an empty path, a relative path, or a path containing a
 // ".." element.
-var ErrBadSocketPath = errors.New("broker: inbox socket path must be absolute and must not contain ..")
+var ErrBadSocketPath = errors.New("broker: inbox socket path must be absolute and must not contain a dot-dot element")
 
 // AgentIDFor derives the agent ID for an inbox socket path. It returns the ID
 // and the cleaned path used to derive it. The ".." check runs before cleaning,

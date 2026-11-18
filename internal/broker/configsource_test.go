@@ -7,5 +7,5 @@ import "testing"
 // time. It deliberately calls no config function: the config package is a
 // process-wide singleton whose directories cannot be redirected in tests.
 func TestPackageConfigSatisfiesConfigSource(t *testing.T) {
-	var _ ConfigSource = PackageConfig()
+	var _ = ConfigSource(PackageConfig())
 }

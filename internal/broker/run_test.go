@@ -181,7 +181,7 @@ func newRunTest(t *testing.T, mutate ...func(*runTest)) *runTest {
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return newRunTestAt(t, dir, mutate...)
 }
 
@@ -268,7 +268,8 @@ func (rt *runTest) stop() {
 	rt.cancel()
 	if rt.started && !rt.waited {
 		select {
-		case <-rt.done:
+		case err := <-rt.done:
+			_ = err
 			rt.waited = true
 		case <-time.After(3 * time.Second):
 			rt.t.Errorf("Run did not return after cancel")
@@ -284,7 +285,7 @@ func helloAt(t *testing.T, sock string, version uint32) (*localpb.HelloResponse,
 	if err != nil {
 		t.Fatalf("grpc.NewClient: %v", err)
 	}
-	defer cc.Close()
+	defer func() { _ = cc.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	return localpb.NewLocalClient(cc).Hello(ctx, &localpb.HelloRequest{ProtocolVersion: version})

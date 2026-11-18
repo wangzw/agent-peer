@@ -65,7 +65,7 @@ func startCredBroker(t *testing.T, creds credentials.TransportCredentials, impl 
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	path := filepath.Join(dir, "broker.sock")
 	ln, err := net.Listen("unix", path)
 	if err != nil {
@@ -217,6 +217,9 @@ func TestAuthInfoSharedPerConnection(t *testing.T) {
 		t.Fatalf("Hello 1: %v", err)
 	}
 	first := nextAuth()
+	if first.rejected.Load() {
+		t.Fatal("a connection is marked rejected before any version mismatch")
+	}
 	if err := callHello(t, cc1); err != nil {
 		t.Fatalf("Hello 2: %v", err)
 	}

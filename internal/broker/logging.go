@@ -27,6 +27,11 @@ const (
 	EvRecordRereadFailed      = "session_record_reread_failed"
 	EvRegistryWatchFailed     = "session_registry_watch_failed"
 	EvLogLevelChanged         = "log_level_changed"
+	// EvRemoteMemberInvalid is logged when a remote roster entry cannot be
+	// rendered into an address because its ref is unusable. The entry is
+	// skipped; the ref comes from the peer, so it must not decide whether this
+	// process survives.
+	EvRemoteMemberInvalid = "remote_member_invalid"
 )
 
 // NewLogger returns a logger that writes one JSON object per line. The "msg"

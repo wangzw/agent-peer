@@ -136,7 +136,7 @@ func TestNameUsable(t *testing.T) {
 		{"a@b", "a@b", false},
 		{"*x", "*x", false},
 		{"", "", false},
-		{"​", "", false},
+		{"\u200b", "", false},
 		{"\"<>\"", "\"<>\"", false},
 	}
 	for _, c := range cases {
