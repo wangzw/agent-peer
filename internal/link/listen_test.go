@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -101,6 +103,23 @@ func listenNodeAddr(t *testing.T, n *listenNode) string {
 		t.Fatal("Addr returned nil after Listen")
 	}
 	return addr.String()
+}
+
+// waitFirstFrameTimer blocks until the registry holds the accepted connection
+// and its first-frame timer is armed. Unlike clock.WaitPending, which accepts
+// any pending timer, this names the timer the test is about to fire.
+func (n *listenNode) waitFirstFrameTimer(t *testing.T) {
+	t.Helper()
+	waitFor(t, func() bool {
+		reg := n.l.unauth
+		reg.mu.Lock()
+		defer reg.mu.Unlock()
+		if reg.conns.Len() != 1 {
+			return false
+		}
+		tc, ok := reg.conns.Front().Value.(*trackedConn)
+		return ok && tc.timer != nil
+	})
 }
 
 // dialOnce dials addr from from, checks the accepting peer's certificate
@@ -270,14 +289,50 @@ func TestSilentConnectionClosedAtFirstFrameDeadline(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
-	acceptor.clock.WaitPending(t, 1)
-	acceptor.clock.Advance(acceptor.l.firstFrameTimeout)
+	// Wait for this connection specifically: the registry must still hold it
+	// and its first-frame timer must be armed.
+	acceptor.waitFirstFrameTimer(t)
 
+	// The gRPC server flushes its HTTP/2 SETTINGS as soon as the TLS handshake
+	// completes, before any stream exists. Take the first byte so the close is
+	// observed with data already buffered, the ordering that made a single Read
+	// misreport the connection as open.
 	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		t.Fatalf("set read deadline: %v", err)
 	}
-	if _, err := conn.Read(make([]byte, 1)); err == nil {
-		t.Fatal("the silent connection stayed open past the first-frame deadline")
+	if n, err := conn.Read(make([]byte, 1)); err != nil || n != 1 {
+		t.Fatalf("read the server's first flush: n=%d err=%v", n, err)
+	}
+
+	// The connection must still be tracked before the deadline fires.
+	if n := acceptor.l.unauth.count(); n != 1 {
+		t.Fatalf("unauthenticated connections before the deadline = %d, want 1", n)
+	}
+
+	acceptor.clock.Advance(acceptor.l.firstFrameTimeout)
+
+	// Drain everything the server flushed before the close. A single Read
+	// returns that buffered data with a nil error, which says nothing about
+	// whether the connection is still open. Only EOF, a reset or a locally
+	// closed connection prove the deadline closed it; a read timeout proves it
+	// did not.
+	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatalf("set read deadline: %v", err)
+	}
+	buf := make([]byte, 4096)
+	for {
+		_, err := conn.Read(buf)
+		if err == nil {
+			continue
+		}
+		if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) {
+			return
+		}
+		var ne net.Error
+		if errors.As(err, &ne) && ne.Timeout() {
+			t.Fatal("the silent connection stayed open past the first-frame deadline: read timed out")
+		}
+		t.Fatalf("read after the first-frame deadline: %v", err)
 	}
 }
 
