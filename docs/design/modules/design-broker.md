@@ -366,9 +366,9 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | Agent 登记与注销 | 已实现 | `internal/broker/register.go`（`Register`）、`internal/broker/agents.go`（`lookupAgent`）、`internal/broker/localalias.go`（`localAliasChanged`） |
 | 会话变化的跟踪与曾用名 | 已实现 | `internal/broker/tracking.go`（`refreshAgent`） |
 | 账户辅助进程 | 未实现 | — |
-| 地址生成与解析 | 未实现 | `internal/broker/address.go`（`AgentIDFor`、`FormatAddress`、`ParseAddress`）、`internal/broker/resolve.go`（`parseTarget`、`pickTarget`） |
-| 发送、重试与结果归结 | 未实现 | `internal/broker/send.go`（`Send`）、`internal/broker/sendpeer.go`（`sendToPeer`）、`internal/broker/inboxwrite.go`（`writeInbox`） |
-| 投递请求处理、署名与去重 | 未实现 | `internal/broker/receive.go`（`handleDeliver`）、`internal/broker/signature.go`（`signatureFor`）、`internal/broker/dedupe.go`（`dedupeTable`） |
+| 地址生成与解析 | 已实现 | `internal/broker/address.go`（`AgentIDFor`、`FormatAddress`、`ParseAddress`）、`internal/broker/resolve.go`（`parseTarget`、`pickTarget`） |
+| 发送、重试与结果归结 | 已实现 | `internal/broker/send.go`（`Send`）、`internal/broker/sendpeer.go`（`sendToPeer`）、`internal/broker/inboxwrite.go`（`writeInbox`） |
+| 投递请求处理、署名与去重 | 已实现 | `internal/broker/receive.go`（`handleDeliver`）、`internal/broker/signature.go`（`signatureFor`）、`internal/broker/dedupe.go`（`dedupeTable`） |
 | 各包之间的转接与对外地址的转接 | 部分实现 | `internal/broker/latetransport.go`、`internal/broker/aliaswire.go`、`internal/broker/peerassemble.go`、`internal/broker/topicassemble.go`；对外地址的转接与配置变更通知 `link`、`directory` 由配置读写与名片负责 |
 | 配对与对端管理的本机调用 | 已实现 | `internal/broker/connect_rpc.go`、`internal/broker/disconnect_rpc.go`、`internal/broker/pairkey_rpc.go`、`internal/broker/listbrokers.go`、`internal/broker/peerinfo.go`；非对端的列出由名片与公开 topic 接入 |
 | 终端命令 | 未实现 | — |
