@@ -523,20 +523,26 @@ func TestRsAcceptTrustDialogChoosesTheFocusableEntry(t *testing.T) {
 	}
 
 	// The macOS dialog focuses "No, exit"; a dialog that focuses the trust
-	// entry keeps the old single Enter.
+	// entry keeps the old single Enter; a dialog whose cursor is on neither
+	// known option must not be answered at all.
 	refusalFocused := "Quick safety check\n ❯ No, exit\n   Yes, I trust this folder\n Enter to confirm"
 	trustFocused := "Do you trust the files in this folder?\n ❯ Yes, I trust this folder\n"
+	unknownFocused := "Quick safety check\n   No, exit\n   Yes, I trust this folder\n"
 
-	script := `source "$1"; rs_accept_trust_dialog w "$2"; rs_accept_trust_dialog w "$3"`
-	cmd := exec.Command("bash", "-c", script, "bash", lib, refusalFocused, trustFocused)
+	script := `source "$1"; rs_accept_trust_dialog w "$2"; rs_accept_trust_dialog w "$3"; rc=0; rs_accept_trust_dialog w "$4" || rc=$?; printf 'rc=%s\n' "$rc"`
+	cmd := exec.Command("bash", "-c", script, "bash", lib, refusalFocused, trustFocused, unknownFocused)
 	cmd.Dir = root
 	cmd.Env = []string{
 		"R=" + root,
 		"PROBE=selftest",
 		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
 	}
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmd.CombinedOutput()
+	if err != nil {
 		t.Fatalf("calling rs_accept_trust_dialog: %v\n%s", err, out)
+	}
+	if got, want := strings.TrimSpace(string(out)), "rc=2"; got != want {
+		t.Errorf("unknown focus returned %q, want %q", got, want)
 	}
 
 	data, err := os.ReadFile(record)
@@ -546,6 +552,175 @@ func TestRsAcceptTrustDialogChoosesTheFocusableEntry(t *testing.T) {
 	want := "-L agent-peer-rs send-keys -t w Down Enter\n-L agent-peer-rs send-keys -t w Enter\n"
 	if got := string(data); got != want {
 		t.Errorf("keys sent = %q, want %q", got, want)
+	}
+}
+
+// TestRsDismissTrustDialogResendsWhenTheFirstBurstIsDropped checks the retry
+// around the trust dialog. Claude Code draws the dialog before it reads keys,
+// so a burst sent right after the first capture can be discarded and the next
+// frame still shows "No, exit". The helper must resend until the frame
+// changes, and report how many bursts it took so the evidence shows the retry.
+func TestRsDismissTrustDialogResendsWhenTheFirstBurstIsDropped(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	counter := filepath.Join(root, "bursts")
+	record := filepath.Join(root, "keys.txt")
+	// The stub drops the first burst: the first two captures show the dialog,
+	// and each send-keys call advances the counter.
+	stub := `#!/bin/sh
+case "$3" in
+capture-pane)
+	n=$(cat '` + counter + `' 2>/dev/null || echo 0)
+	if [ "$n" -lt 2 ]; then
+		printf 'Quick safety check\n ❯ No, exit\n   Yes, I trust this folder\n'
+	else
+		printf '❯ \n'
+	fi
+	;;
+send-keys)
+	printf '%s\n' "$*" >> '` + record + `'
+	n=$(cat '` + counter + `' 2>/dev/null || echo 0)
+	printf '%s' "$((n + 1))" > '` + counter + `'
+	;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(stub), 0o755); err != nil {
+		t.Fatalf("writing the tmux stub: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-c", `source "$1"; if bursts="$(rs_dismiss_trust_dialog w 5)"; then printf 'sends=%s\n' "$bursts"; else printf 'failed after %s\n' "$bursts"; fi`, "bash", lib)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=selftest",
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("calling rs_dismiss_trust_dialog: %v\n%s", err, out)
+	}
+	if got, want := strings.TrimSpace(string(out)), "sends=2"; got != want {
+		t.Errorf("rs_dismiss_trust_dialog = %q, want %q", got, want)
+	}
+
+	data, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("reading the recorded keys: %v", err)
+	}
+	want := "-L agent-peer-rs send-keys -t w Down Enter\n-L agent-peer-rs send-keys -t w Down Enter\n"
+	if got := string(data); got != want {
+		t.Errorf("keys sent = %q, want two Down Enter bursts", got)
+	}
+}
+
+// TestRsDismissTrustDialogFailsWhenTheDialogNeverLeaves checks the deadline
+// path: a stub keeps the dialog on screen, so the helper must stop at the
+// limit and report failure instead of resending forever.
+func TestRsDismissTrustDialogFailsWhenTheDialogNeverLeaves(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	record := filepath.Join(root, "keys.txt")
+	stub := `#!/bin/sh
+case "$3" in
+capture-pane)
+	printf 'Quick safety check\n ❯ No, exit\n   Yes, I trust this folder\n'
+	;;
+send-keys)
+	printf '%s\n' "$*" >> '` + record + `'
+	;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(stub), 0o755); err != nil {
+		t.Fatalf("writing the tmux stub: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-c", `source "$1"; rc=0; bursts="$(rs_dismiss_trust_dialog w 1)" || rc=$?; printf 'rc=%s sends=%s\n' "$rc" "$bursts"`, "bash", lib)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=selftest",
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("calling rs_dismiss_trust_dialog: %v\n%s", err, out)
+	}
+	got := strings.TrimSpace(string(out))
+	if !strings.HasPrefix(got, "rc=1 sends=") {
+		t.Fatalf("rs_dismiss_trust_dialog = %q, want rc=1 at the deadline", got)
+	}
+	sends, err := strconv.Atoi(strings.TrimPrefix(got, "rc=1 sends="))
+	if err != nil || sends < 1 {
+		t.Fatalf("sends = %q, want at least one burst before the deadline", got)
+	}
+
+	data, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("reading the recorded keys: %v", err)
+	}
+	if lines := len(strings.Split(strings.TrimSpace(string(data)), "\n")); lines != sends {
+		t.Errorf("recorded %d key bursts, the helper reported %d", lines, sends)
+	}
+}
+
+// TestRsDismissTrustDialogRefusesAnUnknownFocus checks that a recognized
+// dialog whose cursor is on neither known option fails immediately without
+// pressing a key, so a blind Enter cannot confirm another screen.
+func TestRsDismissTrustDialogRefusesAnUnknownFocus(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	record := filepath.Join(root, "keys.txt")
+	stub := `#!/bin/sh
+case "$3" in
+capture-pane)
+	printf 'Quick safety check\n   No, exit\n   Yes, I trust this folder\n'
+	;;
+send-keys)
+	printf '%s\n' "$*" >> '` + record + `'
+	;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(stub), 0o755); err != nil {
+		t.Fatalf("writing the tmux stub: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-c", `source "$1"; rc=0; bursts="$(rs_dismiss_trust_dialog w 5)" || rc=$?; printf 'rc=%s sends=%s\n' "$rc" "$bursts"`, "bash", lib)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=selftest",
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("calling rs_dismiss_trust_dialog: %v\n%s", err, out)
+	}
+	if got, want := strings.TrimSpace(string(out)), "rc=2 sends=0"; got != want {
+		t.Errorf("rs_dismiss_trust_dialog = %q, want %q", got, want)
+	}
+	if data, err := os.ReadFile(record); err == nil && len(data) > 0 {
+		t.Errorf("the helper pressed keys on an unknown focus: %q", data)
 	}
 }
 

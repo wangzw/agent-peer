@@ -644,29 +644,77 @@ rs_ready_criterion() {
 	return 1
 }
 
-# rs_accept_trust_dialog answers the workspace trust dialog shown in the pane.
+# RS_TRUST_DIALOG_RE matches the workspace trust dialog. It is kept separate
+# from RS_READY_DIALOG_RE so rs_dismiss_trust_dialog can tell whether the
+# dialog it answered has left the pane.
+RS_TRUST_DIALOG_RE='Quick safety check|Yes, I trust this folder|Do you trust the files|Yes, I trust'
+
+# rs_accept_trust_dialog sends the keys that answer the workspace trust dialog
+# shown in the pane, and returns 0. It returns 2 without pressing anything when
+# the dialog is on screen but neither known option carries the cursor: another
+# screen may be underneath, and a blind Enter could confirm the wrong choice.
 # It is separate from rs_wait_ready so the key choice can be tested without a
-# tmux server. The dialog focuses "No, exit" when the probe root resolves
-# through a symlink, which /tmp does on macOS (/private/tmp); Enter alone would
-# then end the session. The cursor moves to the trust entry only when the
-# marker sits on the refusal, so the Linux behavior is unchanged.
+# tmux server.
+#
+# The dialog focuses "No, exit" when the probe root resolves through a symlink,
+# which /tmp does on macOS (/private/tmp); Enter alone would then end the
+# session. The cursor moves to the trust entry only when the marker sits on the
+# refusal, so the Linux behavior is unchanged.
 rs_accept_trust_dialog() {
 	local window="$1" pane="$2"
 	if printf '%s\n' "$pane" | grep -qF -- '❯ No, exit'; then
 		rs_keys "$window" Down Enter
-	else
-		rs_keys "$window" Enter
+		return 0
 	fi
+	if printf '%s\n' "$pane" | grep -qF -- '❯ Yes, I trust this folder'; then
+		rs_keys "$window" Enter
+		return 0
+	fi
+	return 2
+}
+
+# rs_dismiss_trust_dialog sends the trust keys until the dialog leaves the
+# pane, and prints how many key bursts that took. It returns 0 once the dialog
+# is gone, 1 when the dialog is still there at the deadline, and 2 when a
+# recognized dialog carries the cursor on neither known option.
+#
+# The pane is captured again before every send. Claude Code draws the dialog
+# before it starts reading keys and may discard a burst that arrives while it
+# switches the terminal to raw mode: on the macOS runner the frame captured a
+# second later still showed the cursor on "No, exit", so the first burst had
+# not been processed. The re-capture also keeps a second Down Enter from
+# landing on the next screen if the first burst did take effect and only the
+# redraw lagged.
+rs_dismiss_trust_dialog() {
+	local window="$1" seconds="${2:-10}" deadline pane="" sends=0 rc=0
+	deadline=$((SECONDS + seconds))
+	while ((SECONDS < deadline)); do
+		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
+		if ! printf '%s\n' "$pane" | grep -qiE -- "$RS_TRUST_DIALOG_RE"; then
+			printf '%s\n' "$sends"
+			return 0
+		fi
+		rc=0
+		rs_accept_trust_dialog "$window" "$pane" || rc=$?
+		if ((rc == 2)); then
+			printf '%s\n' "$sends"
+			return 2
+		fi
+		sends=$((sends + 1))
+		sleep 0.5
+	done
+	printf '%s\n' "$sends"
+	return 1
 }
 
 # rs_wait_ready polls a window until the TUI reaches its input composer and no
-# dialog is on screen. A trust dialog is accepted with Enter; the
-# bypass-permissions warning opens focused on "No, exit", so it is accepted
+# dialog is on screen. A trust dialog is accepted by choosing its trust entry;
+# the bypass-permissions warning opens focused on "No, exit", so it is accepted
 # with Down then Enter. The criterion that matched is written to
 # observations.txt, because which hint a version prints is itself evidence.
 rs_wait_ready() {
 	local window="$1" seconds="${2:-60}"
-	local deadline=$((SECONDS + seconds)) pane="" criterion="" dialogs=0
+	local deadline=$((SECONDS + seconds)) pane="" criterion="" dialogs=0 dialog_bursts=0
 	while ((SECONDS < deadline)); do
 		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
 		if printf '%s\n' "$pane" | grep -qF -- 'Yes, I accept'; then
@@ -676,14 +724,28 @@ rs_wait_ready() {
 			sleep 1
 			continue
 		fi
-		if printf '%s\n' "$pane" | grep -qiE -- 'Quick safety check|Yes, I trust this folder|Do you trust the files|Yes, I trust'; then
+		if printf '%s\n' "$pane" | grep -qiE -- "$RS_TRUST_DIALOG_RE"; then
 			dialogs=$((dialogs + 1))
 			printf '%s\n' "$pane" >"$OUT/dialog-$window-$dialogs.txt"
-			rs_accept_trust_dialog "$window" "$pane"
-			sleep 1
+			rs_obs "$window: workspace trust dialog on screen; macOS resolves /tmp to /private/tmp and Claude Code keys trust by the resolved path, so an entry written for the literal path can miss"
+			local bursts=0 rc=0
+			bursts="$(rs_dismiss_trust_dialog "$window")" || rc=$?
+			if ((rc == 2)); then
+				rs_obs "$window: the trust dialog is on screen but the cursor is on neither known option; not pressing keys"
+				return 1
+			elif ((rc == 1)); then
+				rs_obs "$window: the trust dialog was still on screen after $bursts key bursts; retrying"
+			else
+				dialog_bursts=$((dialog_bursts + bursts))
+			fi
 			continue
 		fi
 		if criterion="$(rs_ready_criterion "$pane")"; then
+			if ((dialog_bursts == 1)); then
+				rs_obs "$window: the trust dialog was dismissed with one key burst"
+			elif ((dialog_bursts > 1)); then
+				rs_obs "$window: the trust dialog took $dialog_bursts key bursts in all; the TUI discarded a burst sent while it was starting"
+			fi
 			rs_obs "$window: ready; matched criterion: $criterion"
 			return 0
 		fi
