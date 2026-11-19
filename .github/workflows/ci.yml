@@ -60,3 +60,41 @@ jobs:
           rm -f "$HOME/Library/LaunchAgents/io.github.wangzw.agent-peer.plist"
           sudo rm -f "/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist"
           sudo rm -f /usr/local/libexec/agent-peer-test
+          sudo rm -f /usr/local/libexec/agent-peer-e2e
+          # Remove the many-group test account and groups only when the name
+          # still carries the id the test uses. A real account with a different
+          # id is left alone and reported.
+          cleanup_user() {
+            name="$1"
+            want="$2"
+            have="$(sudo dscl . -read "/Users/$name" UniqueID 2>/dev/null | awk '{print $2}')" || true
+            if [ -z "$have" ]; then
+              return 0
+            fi
+            if [ "$have" != "$want" ]; then
+              echo "skip user $name: uid $have, want $want"
+              return 0
+            fi
+            sudo dscl . -delete "/Users/$name" 2>/dev/null || true
+          }
+          cleanup_group() {
+            name="$1"
+            want="$2"
+            have="$(sudo dscl . -read "/Groups/$name" PrimaryGroupID 2>/dev/null | awk '{print $2}')" || true
+            if [ -z "$have" ]; then
+              return 0
+            fi
+            if [ "$have" != "$want" ]; then
+              echo "skip group $name: gid $have, want $want"
+              return 0
+            fi
+            sudo dscl . -delete "/Groups/$name" 2>/dev/null || true
+          }
+          cleanup_user approbe 6501
+          i=1
+          while [ "$i" -le 20 ]; do
+            n="$(printf '%02d' "$i")"
+            cleanup_group "apg$n" "$((6100 + i))"
+            i=$((i + 1))
+          done
+          cleanup_group apneg 6199

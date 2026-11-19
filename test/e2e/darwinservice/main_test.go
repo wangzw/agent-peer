@@ -26,6 +26,10 @@ const (
 	// The system-level installation refuses binaries outside a root-owned
 	// directory, and a user-level installation accepts the same copy.
 	installedBinary = "/usr/local/libexec/agent-peer-test"
+	// e2eBinary is a root-owned copy of this test binary. The multi-group test
+	// runs a role as another account, which can execute this copy but may not
+	// be able to traverse the go test temporary directory.
+	e2eBinary = "/usr/local/libexec/agent-peer-e2e"
 	// serviceLabel is the launchd label of both service levels.
 	serviceLabel = "io.github.wangzw.agent-peer"
 	// daemonPlist is where the system-level installation writes its plist.
@@ -69,6 +73,12 @@ func TestMain(m *testing.M) {
 	if os.Getenv(roleEnv) == systemPairKeyRole {
 		os.Exit(runSystemPairKeyRole())
 	}
+	switch os.Getenv(roleEnv) {
+	case accessCheckRole:
+		os.Exit(runAccessCheckRole())
+	case getConfigRole:
+		os.Exit(runGetConfigRole())
+	}
 	// These tests uninstall the real io.github.wangzw.agent-peer services. A
 	// developer machine may have them installed for everyday use, so refuse to
 	// run outside CI unless the caller opts in explicitly.
@@ -78,6 +88,10 @@ func TestMain(m *testing.M) {
 	}
 	if err := buildAndInstallBinary(); err != nil {
 		fmt.Fprintf(os.Stderr, "darwinservice: install the test binary: %v\n", err)
+		os.Exit(1)
+	}
+	if err := installE2EBinary(); err != nil {
+		fmt.Fprintf(os.Stderr, "darwinservice: install the e2e binary: %v\n", err)
 		os.Exit(1)
 	}
 	code := m.Run()
@@ -134,9 +148,23 @@ func buildAndInstallBinary() error {
 	return sudo("install", "-o", "root", "-g", "wheel", "-m", "0755", built, installedBinary)
 }
 
-// removeInstalledBinary removes the copy installed by TestMain.
+// installE2EBinary copies this test binary to a root-owned path so another
+// account can execute a role from it.
+func installE2EBinary() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	if err := sudo("mkdir", "-p", filepath.Dir(e2eBinary)); err != nil {
+		return err
+	}
+	return sudo("install", "-o", "root", "-g", "wheel", "-m", "0755", exe, e2eBinary)
+}
+
+// removeInstalledBinary removes the copies installed by TestMain.
 func removeInstalledBinary() {
 	_ = sudo("rm", "-f", installedBinary)
+	_ = sudo("rm", "-f", e2eBinary)
 }
 
 // repoRoot returns the repository root from this file's location.

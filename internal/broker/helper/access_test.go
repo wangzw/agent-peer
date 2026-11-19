@@ -455,6 +455,34 @@ func TestCheckHelperReportedErrorIsError(t *testing.T) {
 	}
 }
 
+// TestCheckErrorIsNotAllowed checks that a response carrying an error is never
+// treated as an allow, even when its uid matches and its Allowed field is true.
+func TestCheckErrorIsNotAllowed(t *testing.T) {
+	uid := uint32(os.Geteuid())
+	start, _ := pipeStart(t, func(*helperpb.AccessCheckRequest) (*helperpb.AccessCheckResponse, bool) {
+		return &helperpb.AccessCheckResponse{
+			ProtocolVersion: helperpb.ProtocolVersion,
+			Uid:             uid,
+			Allowed:         true,
+			Error:           "boom",
+		}, true
+	})
+	checker := &AccessChecker{
+		Lookup:  func(uint32) (Account, error) { return Account{UID: uid, GID: uid}, nil },
+		Start:   start,
+		Timeout: time.Second,
+		Logger:  accessTestLogger(),
+	}
+
+	allowed, err := checker.Check(context.Background(), uid, "/config.yaml", AccessRead)
+	if err == nil {
+		t.Fatalf("Check = (%v, nil), want the reported error", allowed)
+	}
+	if allowed {
+		t.Error("allowed = true when the response carried an error")
+	}
+}
+
 // TestCheckLookupFailureIsError checks that an account lookup failure is
 // reported as a failed check and never spawns a check process.
 func TestCheckLookupFailureIsError(t *testing.T) {
