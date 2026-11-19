@@ -939,7 +939,7 @@ func TestTopicStyleLockingDoesNotDeadlock(t *testing.T) {
 		upDialer := dialer.upCount(fpAcceptor)
 		proxy.CloseConns()
 		waitState(t, dialer.Link, fpAcceptor, "dialer to back off after a proxy break", func(st link.LinkState) bool {
-			return st.Phase == link.PhaseBackoff
+			return st.Phase == link.PhaseBackoff && !st.NextDial.IsZero()
 		})
 		dialer.Clock.Advance(time.Second)
 		dialer.waitUp(t, fpAcceptor, upDialer+1)

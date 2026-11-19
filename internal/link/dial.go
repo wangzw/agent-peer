@@ -292,15 +292,20 @@ func (l *Link) waitBackoff(ctx context.Context, rec *record, failures int) bool 
 		l.mu.Unlock()
 		return false
 	}
-	rec.phase = PhaseBackoff
-	rec.nextDial = l.clock.Now().Add(delay)
-	l.mu.Unlock()
 
+	// The timer is armed before the backoff is published. A state observer that
+	// sees PhaseBackoff with this NextDial may advance the clock to it at once;
+	// arming the timer after the unlock would instead schedule it at the already
+	// advanced now+delay, with no later advance to fire it, and the loop would
+	// wait forever.
 	signal := make(chan struct{})
 	var once sync.Once
 	stop := l.clock.AfterFunc(delay, func() {
 		once.Do(func() { close(signal) })
 	})
+	rec.phase = PhaseBackoff
+	rec.nextDial = l.clock.Now().Add(delay)
+	l.mu.Unlock()
 
 	select {
 	case <-signal:

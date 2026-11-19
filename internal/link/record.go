@@ -167,6 +167,10 @@ func (l *Link) install(peer Fingerprint, role pairing.Role, c *conn, salt []byte
 		rec.phase = PhaseEstablished
 		rec.lastFailure = FailNone
 		rec.peerVersion = 0
+		// A next dial left over from an earlier backoff would outlive the timer
+		// that was armed for it. Only waitBackoff publishes a non-zero NextDial,
+		// and it does so together with the timer.
+		rec.nextDial = time.Time{}
 
 		delivered := make(chan struct{})
 		l.notifier.post(event{up: true, peer: peer, salt: append([]byte(nil), salt...), delivered: delivered})

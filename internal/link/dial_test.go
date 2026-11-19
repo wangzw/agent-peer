@@ -38,14 +38,26 @@ type dialHarness struct {
 
 func newDialHarness(t *testing.T) *dialHarness {
 	t.Helper()
+	return newDialHarnessWithClock(t, nil)
+}
+
+// newDialHarnessWithClock builds a harness whose Link uses wrap(clock) as its
+// time source when wrap is not nil. h.clock stays the fake clock the test
+// advances.
+func newDialHarnessWithClock(t *testing.T, wrap func(*linktest.FakeClock) Clock) *dialHarness {
+	t.Helper()
 	peers := linktest.NewFakePeers(t)
 	settings := linktest.NewFakeSettings("self")
 	clock := linktest.NewFakeClock(time.Unix(1_700_000_000, 0))
+	var linkClock Clock = clock
+	if wrap != nil {
+		linkClock = wrap(clock)
+	}
 	h := &dialHarness{peers: peers, settings: settings, clock: clock}
 	l, err := New(Options{
 		Peers:    peers,
 		Settings: settings,
-		Clock:    clock,
+		Clock:    linkClock,
 		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	if err != nil {
@@ -366,6 +378,41 @@ func TestAllCandidatesFailBackoff(t *testing.T) {
 	if !earliest.Equal(second.NextDial) {
 		t.Fatalf("earliest timer deadline = %v, want next dial %v", earliest, second.NextDial)
 	}
+}
+
+// delayedAfterFuncClock delays every timer registration. It widens the window
+// between a backoff becoming visible to a state observer and its timer being
+// armed, so a test can tell whether the two were published together.
+type delayedAfterFuncClock struct {
+	Clock
+	delay time.Duration
+}
+
+func (c delayedAfterFuncClock) AfterFunc(d time.Duration, f func()) func() bool {
+	time.Sleep(c.delay)
+	return c.Clock.AfterFunc(d, f)
+}
+
+// TestBackoffTimerIsRegisteredWhenPhaseIsVisible checks that a dialer which
+// publishes PhaseBackoff with a NextDial has already armed the timer that ends
+// the backoff. An observer that sees the phase advances the clock to NextDial;
+// a timer armed only after the phase became visible would be scheduled at the
+// already advanced now+delay, never fire without a second advance, and leave
+// the dial loop waiting forever.
+func TestBackoffTimerIsRegisteredWhenPhaseIsVisible(t *testing.T) {
+	dialer := newDialHarnessWithClock(t, func(c *linktest.FakeClock) Clock {
+		return delayedAfterFuncClock{Clock: c, delay: 250 * time.Millisecond}
+	})
+	fp := linktest.NewIdentity(t).Fingerprint
+	dialer.peers.Add(fp, pairing.RoleDialer, "peer", closedAddr(t))
+	dialer.start()
+
+	dialer.waitState(t, fp, "backoff published with its timer", func(st LinkState) bool {
+		return st.Phase == PhaseBackoff && !st.NextDial.IsZero()
+	})
+	before := dialer.dialCount()
+	dialer.clock.Advance(time.Second)
+	dialer.waitDialCount(t, before+1)
 }
 
 func TestKickEndsBackoff(t *testing.T) {
