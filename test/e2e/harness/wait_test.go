@@ -1,13 +1,19 @@
 package harness
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
+	"github.com/wangzw/agent-peer/test/e2e/node"
 )
 
 // recordTB captures Fatalf calls so a test can inspect the failure message
@@ -157,5 +163,120 @@ func TestConfigYAMLMerge(t *testing.T) {
 
 	if merged != ConfigYAML(FastTimers, "send:\n  request_timeout: 10s\n") {
 		t.Fatalf("ConfigYAML is not deterministic:\n%s", merged)
+	}
+}
+
+// startupBackend answers the first startingCalls tool calls with the error the
+// MCP server returns while its background connection loop is still in
+// PhaseStarting, then answers successfully. The text is the product's
+// textStarting from internal/mcpserver/errtext.go.
+type startupBackend struct {
+	startingCalls int
+	calls         []string
+}
+
+func (b *startupBackend) call(t testing.TB, tool string, args map[string]any) Result {
+	t.Helper()
+	b.calls = append(b.calls, tool)
+	if b.startingCalls > 0 {
+		b.startingCalls--
+		return Result{ToolResult: node.ToolResult{
+			IsError: true,
+			Text:    fmt.Sprintf("%s failed: the connection to the Broker is still being set up; retry shortly (code: internal)", tool),
+		}}
+	}
+	return Result{}
+}
+
+func (b *startupBackend) callErr(tool string, args map[string]any) (Result, error) {
+	return Result{}, nil
+}
+
+func (b *startupBackend) tools(t testing.TB) []string { return nil }
+
+func (b *startupBackend) stopMCP(t testing.TB, sig syscall.Signal) int { return 0 }
+
+func (b *startupBackend) restartMCP(t testing.TB) {}
+
+func (b *startupBackend) startExtraMCP(t testing.TB) {}
+
+func (b *startupBackend) inboxConnections(t testing.TB) int { return 0 }
+
+func (b *startupBackend) fake() FakeSession { return nil }
+
+func (b *startupBackend) takeFakeErrors(t testing.TB) []error { return nil }
+
+func (b *startupBackend) end() error { return nil }
+
+// TestWaitConnectedWaitsOutStarting reproduces the startup race on an operator
+// session: the first management call runs while the MCP server is still in
+// PhaseStarting and fails. WaitConnected must keep polling an identity-free
+// tool until the connection exists, after which the management call succeeds.
+func TestWaitConnectedWaitsOutStarting(t *testing.T) {
+	backend := &startupBackend{startingCalls: 3}
+	session := &Session{name: "operator", impl: backend}
+
+	first := session.Call(t, "create_pairing_key", nil)
+	if !first.IsError || !strings.Contains(first.Text, "still being set up") {
+		t.Fatalf("the first management call did not reproduce the starting race: %+v", first)
+	}
+
+	WaitConnected(t, session, time.Second)
+
+	for _, tool := range backend.calls[1:] {
+		if tool != "list_brokers" {
+			t.Fatalf("WaitConnected called %s, want only the identity-free list_brokers", tool)
+		}
+	}
+
+	if got := session.Call(t, "create_pairing_key", nil); got.IsError {
+		t.Fatalf("create_pairing_key still failed after WaitConnected: %s", got.Text)
+	}
+}
+
+// TestWaitConnectedAgainstStartingMCPServer reproduces the race deterministically
+// with the real MCP server process. The fake Broker's Hello blocks, which keeps
+// the server in PhaseStarting: a management call made then fails with the
+// product's starting text. WaitConnected must wait until Hello completes before
+// the next management call.
+func TestWaitConnectedAgainstStartingMCPServer(t *testing.T) {
+	release := make(chan struct{})
+	socket := fakelocal.SocketPath(t)
+	fakelocal.Start(t, socket, fakelocal.Handlers{
+		Hello: func(ctx context.Context, req *localpb.HelloRequest) (*localpb.HelloResponse, error) {
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return &localpb.HelloResponse{ProtocolVersion: localpb.ProtocolVersion}, nil
+		},
+		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
+			return &localpb.ListBrokersResponse{}, nil
+		},
+		CreatePairingKey: func(context.Context, *localpb.CreatePairingKeyRequest) (*localpb.CreatePairingKeyResponse, error) {
+			return &localpb.CreatePairingKeyResponse{Key: "test-key"}, nil
+		},
+	})
+
+	host := NewLocalHost(t, LocalOptions{Name: "starting"})
+	session := host.StartSession(t, SessionSpec{
+		Name:        "operator",
+		StartMCP:    true,
+		NoSocketEnv: true,
+		Env:         map[string]string{"AGENT_PEER_SOCKET": socket},
+	})
+	defer session.End(t)
+
+	first := session.Call(t, "create_pairing_key", nil)
+	if !first.IsError || !strings.Contains(first.Text, "still being set up") {
+		t.Fatalf("the first management call did not reproduce the starting race: %+v", first)
+	}
+
+	close(release)
+	WaitConnected(t, session, 3*time.Second)
+
+	if got := session.Call(t, "create_pairing_key", nil); got.IsError {
+		t.Fatalf("create_pairing_key still failed after WaitConnected: %s", got.Text)
 	}
 }

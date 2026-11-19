@@ -56,6 +56,31 @@ func WaitRegistered(t testing.TB, s *Session, bound time.Duration) {
 	})
 }
 
+// WaitConnected waits until the session's MCP server has connected to its
+// Broker. A tool call made right after the MCP server starts can run while the
+// background connection loop is still in PhaseStarting; it then answers with
+// textStarting from internal/mcpserver/errtext.go, "the connection to the
+// Broker is still being set up; retry shortly" (code internal), and every tool
+// fails with it. list_brokers does not need the Agent identity, so this wait
+// works for an operator session that never registers; polling it until it
+// succeeds clears that window, and also the brief PhaseUnavailable window while
+// the loop retries.
+//
+// This differs from WaitRegistered: this wait proves the Broker connection, not
+// that registration completed. list_agents needs the Agent identity and stays
+// not_registered until registration finishes, so it cannot serve an operator
+// session. Among the identity-free tools, list_brokers is the cheapest read.
+func WaitConnected(t testing.TB, s *Session, bound time.Duration) {
+	t.Helper()
+	Eventually(t, bound, "the session is connected to its Broker", func() (bool, string) {
+		r := s.Call(t, "list_brokers", nil)
+		if r.IsError {
+			return false, r.Text
+		}
+		return true, ""
+	})
+}
+
 // Consistently calls cond immediately and then every 50ms for the whole
 // window. Any failure ends the test at once with the state cond reported. The
 // window is a deliberate observation of duration, so tests that use it record

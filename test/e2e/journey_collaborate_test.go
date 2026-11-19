@@ -191,10 +191,13 @@ func collabSession(t *testing.T, node *harness.Node, name, workdir string) *harn
 }
 
 // collabOperator starts a session that never registers as an Agent but can
-// call the pairing tools.
+// call the pairing tools. It waits for the Broker connection before the
+// caller's first tool call.
 func collabOperator(t *testing.T, node *harness.Node, workdir string) *harness.Session {
 	t.Helper()
-	return node.StartSession(t, harness.SessionSpec{Name: "operator", StartMCP: true, NoSocketEnv: true, Workdir: workdir})
+	s := node.StartSession(t, harness.SessionSpec{Name: "operator", StartMCP: true, NoSocketEnv: true, Workdir: workdir})
+	harness.WaitConnected(t, s, 3*time.Second)
+	return s
 }
 
 // collabCreateKey creates a one-time pairing key and decodes the answer.

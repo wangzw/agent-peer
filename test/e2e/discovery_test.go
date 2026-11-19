@@ -121,15 +121,18 @@ func (d *discNode) restart(t *testing.T) {
 }
 
 // discOperator starts a session that can call the pairing and configuration
-// tools but never registers as an Agent.
+// tools but never registers as an Agent. It waits for the Broker connection
+// before the caller's first tool call.
 func discOperator(t *testing.T, d *discNode) *harness.Session {
 	t.Helper()
-	return d.StartSession(t, harness.SessionSpec{
+	s := d.StartSession(t, harness.SessionSpec{
 		Name:        "operator",
 		StartMCP:    true,
 		NoSocketEnv: true,
 		Workdir:     t.TempDir(),
 	})
+	harness.WaitConnected(t, s, 3*time.Second)
+	return s
 }
 
 // discAgent starts a registered Agent session on d.

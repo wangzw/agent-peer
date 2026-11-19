@@ -37,13 +37,7 @@ func vlStartBroker(t *testing.T, n *harness.Node, spec harness.BrokerSpec) harne
 func vlOperator(t *testing.T, n *harness.Node, name string) *harness.Session {
 	t.Helper()
 	s := n.StartSession(t, harness.SessionSpec{Name: name, StartMCP: true, NoSocketEnv: true})
-	harness.Eventually(t, 3*time.Second, "the operator session reaches its Broker", func() (bool, string) {
-		r := s.Call(t, "list_brokers", map[string]any{})
-		if r.IsError {
-			return false, r.Text
-		}
-		return true, ""
-	})
+	harness.WaitConnected(t, s, 3*time.Second)
 	return s
 }
 

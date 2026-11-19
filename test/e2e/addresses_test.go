@@ -401,13 +401,7 @@ func adRestart(t *testing.T, node *harness.Node, config string, stop ...*harness
 func adOperator(t *testing.T, node *harness.Node) *harness.Session {
 	t.Helper()
 	s := node.StartSession(t, harness.SessionSpec{Name: "operator", StartMCP: true, NoSocketEnv: true})
-	harness.Eventually(t, adWaitBound, "the operator session reaches its Broker", func() (bool, string) {
-		r := s.Call(t, "list_brokers", map[string]any{})
-		if r.IsError {
-			return false, r.Text
-		}
-		return true, ""
-	})
+	harness.WaitConnected(t, s, adWaitBound)
 	return s
 }
 

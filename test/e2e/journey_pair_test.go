@@ -360,9 +360,12 @@ func pairSession(t *testing.T, node *harness.Node, name, workdir string) *harnes
 
 // pairOperator starts a session that never registers as an Agent: it carries
 // no inbox socket, yet its MCP server process can call the management tools.
+// It waits for the Broker connection before the caller's first tool call.
 func pairOperator(t *testing.T, node *harness.Node, workdir string) *harness.Session {
 	t.Helper()
-	return node.StartSession(t, harness.SessionSpec{Name: "operator", StartMCP: true, NoSocketEnv: true, Workdir: workdir})
+	s := node.StartSession(t, harness.SessionSpec{Name: "operator", StartMCP: true, NoSocketEnv: true, Workdir: workdir})
+	harness.WaitConnected(t, s, 3*time.Second)
+	return s
 }
 
 // pairWaitRegistered waits until the session is registered and lists itself.

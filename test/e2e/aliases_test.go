@@ -394,13 +394,7 @@ func alRestart(t *testing.T, c *harness.Cluster, node string, config string, sto
 func alOperator(t *testing.T, node *harness.Node) *harness.Session {
 	t.Helper()
 	s := node.StartSession(t, harness.SessionSpec{Name: "operator", StartMCP: true, NoSocketEnv: true})
-	harness.Eventually(t, alWaitBound, "the operator session reaches its Broker", func() (bool, string) {
-		r := s.Call(t, "list_brokers", map[string]any{})
-		if r.IsError {
-			return false, r.Text
-		}
-		return true, ""
-	})
+	harness.WaitConnected(t, s, alWaitBound)
 	return s
 }
 

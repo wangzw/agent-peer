@@ -681,13 +681,7 @@ func ctOccupyAddr(t *testing.T, n *harness.Node) (net.Listener, string) {
 func ctOperator(t *testing.T, n *harness.Node) *harness.Session {
 	t.Helper()
 	s := n.StartSession(t, harness.SessionSpec{Name: "operator", StartMCP: true, NoSocketEnv: true})
-	harness.Eventually(t, ctWaitBound, "the operator session reaches its Broker", func() (bool, string) {
-		r := s.Call(t, "list_brokers", map[string]any{})
-		if r.IsError {
-			return false, r.Text
-		}
-		return true, ""
-	})
+	harness.WaitConnected(t, s, ctWaitBound)
 	return s
 }
 
