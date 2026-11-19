@@ -588,19 +588,63 @@ func TestReceiveBudgetCapped(t *testing.T) {
 	rec := newRecordingInbox(inbox.ErrNotWritten)
 	f.setInbox(target.ID, rec)
 
+	frame := f.requestFrame(sender, target, "hello", time.Hour)
+
+	// The caller's clock starts before the request reaches the receiver; the
+	// receiver's budget starts when it receives the request. Wait longer than
+	// one retry interval so the two clocks are clearly apart. This is not a
+	// fixed sleep waiting for an event: nothing has to finish, and every
+	// assertion below must hold for any offset. The wait only makes the offset
+	// large and deterministic, so a deadline measured from the caller's start
+	// is crossed by a retry on every run.
+	callerLead := settings.InboxBackoff + 5*time.Millisecond
 	start := time.Now()
-	reply := f.handle(f.requestFrame(sender, target, "hello", time.Hour))
+	time.Sleep(callerLead)
+	reply := f.handle(frame)
 	elapsed := time.Since(start)
 
 	wantReceiveError(t, reply, localpb.ErrorCode_ERROR_CODE_INBOX_UNWRITABLE, "Not sent")
+	calls := rec.Calls()
+	if len(calls) == 0 {
+		t.Fatal("no inbox call was made before the deadline")
+	}
+
+	// The receiver fixes one deadline for the request. Every attempt must
+	// carry that same deadline: recomputing it from the current time on each
+	// retry would let an attempt run past the request's budget while still
+	// starting before its own freshly computed deadline.
+	deadline := calls[0].Deadline
+	if deadline.IsZero() {
+		t.Fatal("inbox call carried no deadline")
+	}
+	// The first attempt starts at the receiver's start, so the time left at
+	// that call shows whether the request budget was capped by the local
+	// timeout.
+	if left := deadline.Sub(calls[0].At); left > settings.RequestTimeout {
+		t.Fatalf("first inbox call had %v until the deadline, want at most the %v request timeout", left, settings.RequestTimeout)
+	}
+
+	for _, call := range calls {
+		// The receiver starts its clock when it receives the request, which
+		// is after the test's start. Assert against the deadline the receiver
+		// enforced, which it passes to the call as the context deadline,
+		// instead of a deadline measured from before the handler was entered.
+		if call.Deadline.IsZero() {
+			t.Fatal("inbox call carried no deadline")
+		}
+		if !call.Deadline.Equal(deadline) {
+			t.Fatalf("inbox call deadline = %v, want the request deadline %v on every attempt", call.Deadline, deadline)
+		}
+		if !call.At.Before(call.Deadline) {
+			t.Fatalf("inbox call at %v, want before the deadline %v", call.At, call.Deadline)
+		}
+		if left := call.Deadline.Sub(call.At); left > settings.RequestTimeout {
+			t.Fatalf("inbox call had %v until the deadline, want at most the %v request timeout", left, settings.RequestTimeout)
+		}
+	}
+
 	if elapsed >= time.Second {
 		t.Fatalf("handleDeliver took %v, want under 1s", elapsed)
-	}
-	deadline := start.Add(settings.RequestTimeout)
-	for _, call := range rec.Calls() {
-		if !call.At.Before(deadline) {
-			t.Fatalf("inbox call at %v, want before %v", call.At, deadline)
-		}
 	}
 }
 

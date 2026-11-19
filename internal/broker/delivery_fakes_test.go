@@ -127,11 +127,12 @@ func (s *fakeSettings) SetLocalAlias(alias string) {
 
 // inboxCall is one recorded call to a recordingInbox.
 type inboxCall struct {
-	Sig     string
-	Text    string
-	MsgID   string
-	Timeout time.Duration
-	At      time.Time
+	Sig      string
+	Text     string
+	MsgID    string
+	Timeout  time.Duration
+	At       time.Time // when the call started
+	Deadline time.Time // the deadline carried by the call's context
 }
 
 // recordingInbox is an inboxWriter fake that returns a preset sequence of
@@ -148,16 +149,22 @@ func newRecordingInbox(results ...error) *recordingInbox {
 	return &recordingInbox{results: results}
 }
 
-func (r *recordingInbox) Deliver(_ context.Context, _ inbox.Session, sig, text, msgID string, timeout time.Duration) error {
+func (r *recordingInbox) Deliver(ctx context.Context, _ inbox.Session, sig, text, msgID string, timeout time.Duration) error {
+	// The time and the deadline are read before taking the lock so At marks
+	// the call's start and not its wait for an earlier call to finish.
+	at := time.Now()
+	deadline, _ := ctx.Deadline()
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	r.calls = append(r.calls, inboxCall{
-		Sig:     sig,
-		Text:    text,
-		MsgID:   msgID,
-		Timeout: timeout,
-		At:      time.Now(),
+		Sig:      sig,
+		Text:     text,
+		MsgID:    msgID,
+		Timeout:  timeout,
+		At:       at,
+		Deadline: deadline,
 	})
 
 	if len(r.results) == 0 {
