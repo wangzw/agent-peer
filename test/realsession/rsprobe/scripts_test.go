@@ -422,6 +422,57 @@ func TestLibExportsRSRoot(t *testing.T) {
 	}
 }
 
+// TestRsHostaRecvWritesArtifactSafeName checks the local receive-log name. The
+// Agent name may contain characters an artifact upload rejects, such as the
+// "<" in "a<b", and the log of such an Agent must still be uploadable without
+// colliding with another Agent's log.
+func TestRsHostaRecvWritesArtifactSafeName(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	out := filepath.Join(root, "out", "sig")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatalf("creating the output directory: %v", err)
+	}
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\nprintf 'recv-line\\n'\n"), 0o755); err != nil {
+		t.Fatalf("writing the docker stub: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-c", `source "$1"; rs_hosta_recv "$2"; rs_hosta_recv "$3"`, "bash", lib, "a<b", `a\b`)
+	cmd.Env = []string{"R=" + root, "PROBE=sig", "PATH=" + bin + ":" + os.Getenv("PATH")}
+	if data, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("calling rs_hosta_recv: %v\n%s", err, data)
+	}
+
+	entries, err := os.ReadDir(out)
+	if err != nil {
+		t.Fatalf("reading the output directory: %v", err)
+	}
+	var names []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasPrefix(name, "hosta-") || !strings.HasSuffix(name, ".recv.jsonl") {
+			continue
+		}
+		if strings.ContainsAny(name, "\" :<>|*?\r\n\\") {
+			t.Errorf("receive log %q contains a character an artifact upload rejects", name)
+		}
+		names = append(names, name)
+	}
+	if len(names) != 2 {
+		t.Fatalf("receive logs = %v, want 2", names)
+	}
+	if names[0] == names[1] {
+		t.Errorf("receive logs share the name %q; distinct Agents must keep distinct logs", names[0])
+	}
+}
+
 // TestRsProcVarsReportsAbsence checks that rs_proc_vars distinguishes a
 // missing variable from one set to the empty string. A probe treats the two
 // differently, so the helper must not print both as NAME=. The helper reads

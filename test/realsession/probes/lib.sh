@@ -421,11 +421,33 @@ rs_hosta_call() {
 	printf '%s\n' "$reply"
 }
 
-# rs_hosta_recv copies a container-side receive log out.
+# rs_artifact_label prints a name that an artifact upload accepts. Agents may
+# be named after signatures that contain characters upload-artifact rejects,
+# such as the "<" in a<b, or characters that break when the artifact is
+# unpacked on Windows, such as a backslash. Every unsafe byte is percent-
+# encoded, so distinct names stay distinct.
+rs_artifact_label() {
+	local s="$1" out="" ch enc i
+	local LC_ALL=C
+	for ((i = 0; i < ${#s}; i++)); do
+		ch="${s:i:1}"
+		case "$ch" in
+			[A-Za-z0-9._-]) out+="$ch" ;;
+			*)
+				printf -v enc '%%%02X' "'$ch"
+				out+="$enc"
+				;;
+		esac
+	done
+	printf '%s\n' "$out"
+}
+
+# rs_hosta_recv copies a container-side receive log out, naming the local file
+# through rs_artifact_label so the Agent name cannot make the upload fail.
 rs_hosta_recv() {
 	local name="$1"
 	docker compose -f "$RS_COMPOSE" exec -T hosta cat "/rs/$name.recv.jsonl" \
-		>"$OUT/hosta-$name.recv.jsonl"
+		>"$OUT/hosta-$(rs_artifact_label "$name").recv.jsonl"
 }
 
 # rs_pair_text prints a tool reply's .text for diagnostics with pairing keys

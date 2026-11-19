@@ -58,7 +58,7 @@ rs_hosta_send() {
 # the only exported read path for it.
 rs_wait_hosta_recv() {
 	local name="$1" marker="$2" seconds="$3" deadline dest
-	dest="$OUT/hosta-$name.recv.jsonl"
+	dest="$OUT/hosta-$(rs_artifact_label "$name").recv.jsonl"
 	deadline=$((SECONDS + seconds))
 	while ((SECONDS < deadline)); do
 		if rs_hosta_recv "$name" 2>/dev/null && grep -qF -- "$marker" "$dest" 2>/dev/null; then
