@@ -37,8 +37,8 @@
 Broker 的别名在未配置时，系统级 Broker 必须取所在主机系统主机名的第一段（第一个 `.` 之前的部分），用户级 Broker 必须由主机名的第一段、`.` 和所属账户名依次组成。别名与监听地址、监听端口和对外地址都无关。主机名和账户名中不属于别名字符集的字符替换为 `-`。
 
 - **验收**：在主机名为 `hostA.example.com` 的主机上，以默认配置启动系统级 Broker，对端看到它名下 Agent 的地址以 `@hostA` 结尾；以账户 `alice` 启动用户级 Broker，地址以 `@hostA.alice` 结尾。把用户级 Broker 的监听端口改为 17444、把监听地址配置为空、把对外地址配置为 `a.example:443`，三种情况下地址的结尾都不变。
-- **状态**：未实现（本单元合入时翻转）
-- **端到端测试**：未实现（由端到端工作项填写）
+- **状态**：已实现
+- **端到端测试**：`test/e2e/aliases_test.go` 的 `TestAliases`、`TestLongHostnameAlias`；`test/e2e/system/alias_default_test.go` 的 `TestREQBrokerPairing002_DefaultAliasHostAndAccount`
 
 ### REQ-broker-pairing-003
 
