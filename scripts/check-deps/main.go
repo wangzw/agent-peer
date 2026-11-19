@@ -35,14 +35,15 @@ const testkitNode = "testkit"
 var allowed = map[string][]string{
 	"cmd":       {"broker", "mcpserver"},
 	"mcpserver": {"localpb"},
-	"broker":    {"topic", "directory", "link", "inbox", "pairing", "config", "localpb", "deliverpb"},
+	"broker":    {"topic", "directory", "link", "inbox", "pairing", "config", "accountdb", "localpb", "deliverpb"},
 	"deliverpb": {"localpb"},
 	"topic":     {"link"},
 	"directory": {"link", "pairing", "config"},
 	"link":      {"pairing", "config"},
 	"pairing":   {"config"},
-	"config":    nil,
+	"config":    {"accountdb"},
 	"inbox":     nil,
+	"accountdb": nil,
 	"localpb":   nil,
 }
 

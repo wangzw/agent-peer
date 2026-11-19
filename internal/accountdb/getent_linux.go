@@ -1,0 +1,284 @@
+//go:build linux
+
+package accountdb
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// getentTimeout bounds one getent invocation from start to result. The account
+// database can sit behind a network service, so an unbounded call could hold a
+// Broker request forever.
+const getentTimeout = 5 * time.Second
+
+// getentWait is the bound getentQuery applies. Production uses getentTimeout;
+// tests shorten it to exercise the timeout path.
+var getentWait = getentTimeout
+
+// getentOutputLimit bounds the stdout and stderr kept from one getent run. A
+// broken NSS module must not be able to grow the Broker's memory.
+const getentOutputLimit = 64 << 10
+
+// getentWaitDelay bounds how long Wait waits for the output pipes after the
+// process exits or the context is done. A lingering grandchild that inherited
+// the pipe must not defeat the timeout.
+const getentWaitDelay = 2 * time.Second
+
+// getentPaths are the absolute paths probed for getent, in order. PATH is
+// never consulted: a Broker that runs as root must not execute a getent found
+// through an environment variable. Tests replace the list with a fake script.
+var getentPaths = []string{"/usr/bin/getent", "/bin/getent"}
+
+// getentResult is the outcome of one getent process.
+type getentResult struct {
+	stdout   []byte
+	stderr   []byte
+	exitCode int
+}
+
+// runGetent is the executor seam. Tests use it to observe or replace how a
+// getent process is started; production always uses execGetent.
+var runGetent = execGetent
+
+// errGetentMissing reports that no getent executable was found at an absolute
+// path.
+var errGetentMissing = errors.New("getent executable not found")
+
+// errGetentTimeout reports that getent exceeded getentWait.
+var errGetentTimeout = errors.New("getent timed out")
+
+// errGetentOutput reports that getent produced more output than
+// getentOutputLimit.
+var errGetentOutput = errors.New("getent output limit exceeded")
+
+// cappedBuffer keeps at most limit bytes and records whether more arrived.
+// Beyond the limit it keeps draining, so the child cannot block on a full
+// pipe; the overflow is reported after Wait.
+type cappedBuffer struct {
+	buf      bytes.Buffer
+	limit    int
+	overflow bool
+}
+
+func (w *cappedBuffer) Write(p []byte) (int, error) {
+	if !w.overflow && w.buf.Len()+len(p) > w.limit {
+		w.overflow = true
+	}
+	if w.overflow {
+		return len(p), nil
+	}
+	return w.buf.Write(p)
+}
+
+// The exported functions dispatch through these variables so the platform
+// files can pick the implementation at compile time.
+var (
+	lookupUID   = getentLookupUID
+	lookupName  = getentLookupName
+	lookupGroup = getentLookupGroup
+	groupIDs    = getentGroupIDs
+)
+
+func getentLookupUID(uid uint32) (User, error) {
+	id := strconv.FormatUint(uint64(uid), 10)
+	out, err := getentQuery("passwd", "--", id)
+	if err == nil {
+		u, parseErr := parsePasswd(out)
+		switch {
+		case parseErr != nil:
+			err = parseErr
+		case u.UID != uid:
+			err = fmt.Errorf("getent returned uid %d for uid %d", u.UID, uid)
+		default:
+			return u, nil
+		}
+	}
+	if errors.Is(err, ErrNotFound) {
+		return User{}, ErrNotFound
+	}
+	warnFallback("uid "+id, err)
+	u, fallbackErr := osUserLookupUID(uid)
+	if fallbackErr == nil {
+		return u, nil
+	}
+	return User{}, unavailableAfterFallback(err, fallbackErr)
+}
+
+func getentLookupName(name string) (User, error) {
+	if err := validateName(name); err != nil {
+		return User{}, err
+	}
+	out, err := getentQuery("passwd", "--", name)
+	if err == nil {
+		u, parseErr := parsePasswd(out)
+		switch {
+		case parseErr != nil:
+			err = parseErr
+		case u.Name != name:
+			err = fmt.Errorf("getent returned name %q for name %q", u.Name, name)
+		default:
+			return u, nil
+		}
+	}
+	if errors.Is(err, ErrNotFound) {
+		return User{}, ErrNotFound
+	}
+	warnFallback("name "+name, err)
+	u, fallbackErr := osUserLookupName(name)
+	if fallbackErr == nil {
+		return u, nil
+	}
+	return User{}, unavailableAfterFallback(err, fallbackErr)
+}
+
+func getentLookupGroup(name string) (uint32, error) {
+	if err := validateName(name); err != nil {
+		return 0, err
+	}
+	out, err := getentQuery("group", "--", name)
+	if err == nil {
+		gotName, gid, parseErr := parseGroup(out)
+		switch {
+		case parseErr != nil:
+			err = parseErr
+		case gotName != name:
+			err = fmt.Errorf("getent returned group %q for group %q", gotName, name)
+		default:
+			return gid, nil
+		}
+	}
+	if errors.Is(err, ErrNotFound) {
+		return 0, ErrNotFound
+	}
+	warnFallback("group "+name, err)
+	gid, fallbackErr := osUserLookupGroup(name)
+	if fallbackErr == nil {
+		return gid, nil
+	}
+	return 0, unavailableAfterFallback(err, fallbackErr)
+}
+
+func getentGroupIDs(u User) ([]uint32, error) {
+	if err := validateName(u.Name); err != nil {
+		return nil, err
+	}
+	out, err := getentQuery("initgroups", "--", u.Name)
+	if err == nil {
+		ids, parseErr := parseInitgroups(out, u.Name)
+		if parseErr == nil {
+			return normalizeGroupIDs(u.GID, ids), nil
+		}
+		err = parseErr
+	}
+	if errors.Is(err, ErrNotFound) {
+		return nil, ErrNotFound
+	}
+	warnFallback("initgroups "+u.Name, err)
+	// The local source may answer for a different account with the same name.
+	// osUserGroupIDs checks the uid; when that check or the lookup itself fails,
+	// the temporary failure is reported, never turned into ErrNotFound.
+	if ids, fallbackErr := osUserGroupIDs(u); fallbackErr == nil {
+		return ids, nil
+	}
+	return nil, fmt.Errorf("%w: %w", errUnavailable, err)
+}
+
+// unavailableAfterFallback reports the original transient failure when the
+// local fallback has no entry either. A temporary failure must not be
+// reported as a missing account.
+func unavailableAfterFallback(transient, fallbackErr error) error {
+	if errors.Is(fallbackErr, ErrNotFound) {
+		return fmt.Errorf("%w: %v", errUnavailable, transient)
+	}
+	return fallbackErr
+}
+
+// getentQuery runs getent with args and returns its standard output. The
+// caller supplies "--" before an account name or uid so a key that starts with
+// a dash cannot become an option.
+func getentQuery(args ...string) ([]byte, error) {
+	path, ok := getentExecutable()
+	if !ok {
+		return nil, errGetentMissing
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), getentWait)
+	defer cancel()
+
+	res, err := runGetent(ctx, path, args)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil {
+			return nil, fmt.Errorf("%w after %s", errGetentTimeout, getentWait)
+		}
+		return nil, fmt.Errorf("running %s: %w", path, err)
+	}
+	switch res.exitCode {
+	case 0:
+		return res.stdout, nil
+	case 2:
+		// getent uses exit status 2 for "no such key".
+		return nil, ErrNotFound
+	default:
+		message := strings.TrimSpace(string(res.stderr))
+		if message == "" {
+			message = strings.TrimSpace(string(res.stdout))
+		}
+		return nil, fmt.Errorf("getent %s exited with status %d: %s",
+			strings.Join(args, " "), res.exitCode, message)
+	}
+}
+
+// getentExecutable returns the first executable getent at an absolute path.
+func getentExecutable() (string, bool) {
+	for _, path := range getentPaths {
+		if !strings.HasPrefix(path, "/") {
+			continue
+		}
+		fi, err := os.Stat(path)
+		if err != nil || fi.IsDir() || fi.Mode().Perm()&0o111 == 0 {
+			continue
+		}
+		return path, true
+	}
+	return "", false
+}
+
+// execGetent runs path with args and an environment of exactly LANG=C. getent
+// is started directly, never through a shell.
+func execGetent(ctx context.Context, path string, args []string) (getentResult, error) {
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Env = []string{"LANG=C"}
+	cmd.WaitDelay = getentWaitDelay
+	stdout := cappedBuffer{limit: getentOutputLimit}
+	stderr := cappedBuffer{limit: getentOutputLimit}
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	res := getentResult{stdout: stdout.buf.Bytes(), stderr: stderr.buf.Bytes()}
+	// A killed process yields an *exec.ExitError with status -1. Check the
+	// context first so a timeout is reported as one instead of as an exit
+	// status.
+	if ctx.Err() != nil {
+		return res, ctx.Err()
+	}
+	if stdout.overflow || stderr.overflow {
+		return res, fmt.Errorf("%w (limit %d bytes)", errGetentOutput, getentOutputLimit)
+	}
+	if err == nil {
+		return res, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		res.exitCode = exitErr.ExitCode()
+		return res, nil
+	}
+	return res, err
+}

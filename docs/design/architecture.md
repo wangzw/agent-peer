@@ -74,6 +74,7 @@ graph TD
     broker --> inbox
     broker --> pairing
     broker --> config
+    broker --> accountdb
     topic --> link
     directory --> link
     directory --> pairing
@@ -81,11 +82,12 @@ graph TD
     link --> pairing
     link --> config
     pairing --> config
+    config --> accountdb
 ```
 
-箭头从使用方指向被使用方。本项目自己的包之间只沿箭头引用；标准库、外部依赖和 `third_party` 下纳入的源码不在此列。`config` 与 `inbox` 不引用本项目自己的任何其他包。`internal/testkit` 下的包只由 `_test.go` 文件引用；非测试文件引用它会被依赖检查拒绝。`link` 只提供带身份认证的帧通道，不解析 topic 和名录的帧；`topic` 与 `directory` 各自在 `link` 上注册自己的帧类型。
+箭头从使用方指向被使用方。本项目自己的包之间只沿箭头引用；标准库、外部依赖和 `third_party` 下纳入的源码不在此列。`inbox` 不引用本项目自己的任何其他包；`config` 只引用 `accountdb`，用于取当前账户的家目录。`internal/testkit` 下的包只由 `_test.go` 文件引用；非测试文件引用它会被依赖检查拒绝。`link` 只提供带身份认证的帧通道，不解析 topic 和名录的帧；`topic` 与 `directory` 各自在 `link` 上注册自己的帧类型。
 
-`localpb` 与 `deliverpb` 是 `broker` 的 proto 包，在图中单列为节点。`mcpserver` 只引用 `localpb`，不引用 `broker` 包本身；`deliverpb` 承载跨 Broker 的投递帧，只由 `broker` 引用。
+`localpb` 与 `deliverpb` 是 `broker` 的 proto 包，在图中单列为节点。`mcpserver` 只引用 `localpb`，不引用 `broker` 包本身；`deliverpb` 承载跨 Broker 的投递帧，只由 `broker` 引用。`accountdb` 是 `broker` 与 `config` 共用的账户数据库查询包，只依赖标准库，在图中单列为节点。
 
 图中没有箭头而运行时需要的协作，由 `broker` 以接口注入或转调完成。接口注入用于 `pairing`：它发起握手要拨号，解除配对要关闭链路，拨号与关闭链路由 `link` 实现，`broker` 在装配时以接口的形式交给 `pairing`。其余的协作是转调：配置变更由 `broker` 订阅后分别通知 `link`、`directory`；名片带来的对外地址列表由 `broker` 交给 `pairing` 记入候选地址，本机对外地址列表的变化由 `broker` 通知 `link` 与 `directory`；配对结果与名录的比对、公开 topic 的声明都由 `broker` 依次调用相关的包。
 
