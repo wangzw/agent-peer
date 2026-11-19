@@ -14,12 +14,14 @@ agent-peer does what the rest of this site describes. This page explains the des
 - agent-peer runs on macOS and Linux, on amd64 and arm64. Native Windows is not supported because inbox connections there require an authentication line that agent-peer does not write. See the [security model]({{< relref "security.md" >}}).
 - An account runs at most one Broker. A second start with another listen address fails, so an account's agents, topics and configuration have one owner and one place to look. Accounts and groups come from the system's account database: on Linux the Broker queries it through `getent`, which follows the NSS configuration, and falls back to the local files with a warning when `getent` is missing, fails or returns output it cannot validate. See [Broker]({{< relref "concepts/broker.md" >}}).
 - agent-peer relies on interfaces Claude Code does not publicly commit to: the inbox socket message format and the session registry. A Claude Code upgrade can change how registration or delivery works.
-- Rate limiting, duplicate suppression and the pending-message queue are rules of the receiving Claude Code, not of agent-peer. agent-peer does not rate-limit sending, count hops or detect loops; the receiving Claude Code identifies the sender, applies its token bucket, drops a repeat and holds the queue. The [security model]({{< relref "security.md" >}}) gives the full rules, and Claude Code can change them.
+- agent-peer does not rate-limit sending, count hops or detect loops. The receiving Claude Code applies rate limiting, duplicate suppression and the pending-message queue: it identifies the sender, applies its token bucket, drops a repeat and holds the queue. In addition, the receiving Broker drops a copy that a retry within one send produces, identified by its message identifier. The [security model]({{< relref "security.md" >}}) gives both layers and their full rules, and Claude Code can change its rules.
 - The macOS binaries are not signed or notarized. If a browser downloaded the archive, clear the quarantine attribute before running the binary:
 
   ```sh
-  xattr -d com.apple.quarantine agent-peer
+  xattr -d com.apple.quarantine agent-peer  # only if a browser downloaded the archive
   ```
+
+  The [quick start]({{< relref "getting-started.md" >}}) covers downloading and installing the binary from a release archive.
 - The operating-system account is the isolation boundary. Any process under the same account can register any of that account's sessions as an agent and act as it; between accounts, a user Broker rejects calls from other accounts, and a system Broker accepts a registration only for an inbox socket owned by the calling account. See the [security model]({{< relref "security.md" >}}).
 
 ## Caveats

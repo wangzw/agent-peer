@@ -43,11 +43,13 @@ The Broker is designed not to be a descendant of any session. A user Broker is s
 
 Native Windows is not supported because inbox connections there require the authentication line.
 
-## Rate limiting and loop detection are left to Claude Code
+## Rate limits, loop detection and duplicate suppression
 
-agent-peer does not rate-limit sending, count hops, or detect message loops. The receiving Claude Code applies its own rules. It identifies a sender by the reply address in the frame, or by the writing process when there is none. Each sender gets a token bucket with capacity 30 that refills at 0.5 per second; it drops a message identical to the previous one from the same sender within 30 seconds and holds at most 50 pending cross-session messages.
+agent-peer does not rate-limit sending, count hops, or detect message loops. The receiving Claude Code applies its own rules. It identifies a sender by the reply address in the frame, or by the writing process when there is none. Each sender gets a token bucket with capacity 30 that refills at 0.5 per second, and at most 50 pending cross-session messages are held. The 30-second rule is separate: it drops a message from the same agent to the same session whose content repeats the previous one. The signature is part of that content, so the rule distinguishes agents even when they share one token bucket; two agents do not suppress each other's messages.
 
-agent-peer writes without a reply address, so everything written through one user Broker, or through one account helper of a system Broker, counts as one sender and shares one token bucket, whichever agent sent it. Claude Code's own loop detection relies on a path recorded in its messages; agent-peer messages carry no such record, so the rate limit is the only thing that constrains a loop between two agents. Claude Code can change the rate limits and deduplication values above, and it can adjust them remotely. See [design choices and caveats]({{< relref "limitations.md" >}}).
+The receiving Broker also drops a copy that a retry within one send produces. It identifies the copy by the message identifier in the delivery request and keeps the result in an in-memory table for `send.dedupe_window`, 5 minutes by default. The table is lost on restart, so if the Broker restarts between two retries, the same message can be written twice. A send made after the outcome is unknown carries a new identifier and is not deduplicated.
+
+agent-peer writes without a reply address, so everything written through one user Broker, or through one account helper of a system Broker, counts as one sender and shares one token bucket, whichever agent sent it. Claude Code's own loop detection relies on a path recorded in its messages; agent-peer messages carry no such record, so the rate limit is the only thing that constrains a loop between two agents. Claude Code can change its rate limits and its 30-second rule, and it can adjust them remotely. See [design choices and caveats]({{< relref "limitations.md" >}}).
 
 ## The operating-system account is the isolation boundary
 

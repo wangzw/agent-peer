@@ -8,7 +8,7 @@ A system Broker runs as a service with root privileges and serves agents of seve
 
 ## Install and enable it
 
-Install the binary in a root-owned directory and install the service as root. [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the commands. The install starts the Broker immediately, and it starts at boot from then on.
+Install the binary in a directory that root owns and that group and others cannot write, then install the service as root. [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the commands. The install starts the Broker immediately, and it starts at boot from then on.
 
 The system Broker takes root's account lock. If a user Broker is already running as root, the system-level install refuses and asks you to stop it first.
 

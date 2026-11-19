@@ -28,12 +28,14 @@ The unit or plist runs `agent-peer broker` as that account. It starts when the a
 
 ## Install a system-level service
 
-A system-level install runs as root and makes the Broker start at boot. The binary must be in a directory that root owns and that group and others cannot write:
+A system-level install runs as root and makes the Broker start at boot. The binary must be in a directory that root owns and that group and others cannot write, such as `/usr/local/bin`. The service starts the binary as root, so an ordinary account that can modify the binary or one of its parent directories could take over the service:
 
 ```sh
-sudo install -o root -g root -m 0755 agent-peer /usr/local/bin/agent-peer
+sudo install -o root -g 0 -m 0755 agent-peer /usr/local/bin/agent-peer
 sudo /usr/local/bin/agent-peer service install --system
 ```
+
+On an Intel Mac with Homebrew, `/usr/local/bin` belongs to the ordinary user, so the installation is refused; choose a root-owned directory that group and others cannot write instead.
 
 The install checks the binary and every directory above it, then starts the Broker immediately.
 

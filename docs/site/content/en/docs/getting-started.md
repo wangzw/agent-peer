@@ -12,15 +12,65 @@ agent-peer runs on macOS and Linux, on amd64 and arm64; native Windows is not su
 
 ## Install
 
-Build agent-peer from source; you need Go 1.27.
+agent-peer is distributed as a `tar.gz` archive on [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest). Download the archive for your platform and architecture together with `checksums.txt` from the same release:
 
 ```sh
-git clone https://github.com/wangzw/agent-peer
-cd agent-peer
-go build -trimpath -o agent-peer ./cmd/agent-peer
+VERSION=0.1.0
+curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/agent-peer_${VERSION}_<os>_<arch>.tar.gz
+curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/checksums.txt
 ```
 
-Put the binary in a directory on your `PATH`, or remember its absolute path for the next step.
+Replace `<os>_<arch>` with `darwin_amd64`, `darwin_arm64`, `linux_amd64` or `linux_arm64`. The checksum and extraction examples below use the arm64 archive; replace `arm64` with `amd64` on an amd64 host.
+
+Check the archive against `checksums.txt` before using it. On Linux:
+
+```sh
+VERSION=0.1.0
+grep agent-peer_${VERSION}_linux_arm64.tar.gz checksums.txt | sha256sum -c -
+```
+
+On macOS, use `shasum` instead:
+
+```sh
+VERSION=0.1.0
+grep agent-peer_${VERSION}_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
+```
+
+Extract the archive in an empty directory: it has no top-level directory, so its files, including `LICENSE`, `README.md` and `third_party/`, land directly in the current directory. The macOS binaries are not signed or notarized, so on macOS, if a browser downloaded the archive, clear the quarantine attribute from the extracted binary before running it:
+
+```sh
+VERSION=0.1.0
+tar -xzf agent-peer_${VERSION}_darwin_arm64.tar.gz
+xattr -d com.apple.quarantine agent-peer  # only if a browser downloaded the archive
+```
+
+On Linux, extract the archive without the `xattr` step:
+
+```sh
+VERSION=0.1.0
+tar -xzf agent-peer_${VERSION}_linux_arm64.tar.gz
+```
+
+If you use only a user-level Broker, a per-user directory such as `~/.local/bin` on your `PATH` is enough. If you install a system-level service, use the `sudo install` step in [Run the Broker as a service]({{< relref "guides/run-as-service.md" >}}) instead of the `mv` below:
+
+```sh
+mkdir -p ~/.local/bin
+mv agent-peer ~/.local/bin/
+agent-peer --version
+```
+
+The printed version matches the version you downloaded.
+
+To build from source you need Go 1.27. Clone the repository and build:
+
+```sh
+VERSION=0.1.0
+git clone https://github.com/wangzw/agent-peer
+cd agent-peer
+go build -trimpath -ldflags "-X main.version=$VERSION" -o agent-peer ./cmd/agent-peer
+```
+
+Without `-ldflags`, `agent-peer --version` prints `agent-peer dev`. Installing with `go install …@version` is not supported, because `go.mod` uses a `replace` directive that points at a vendored dependency.
 
 ## Register the MCP server
 

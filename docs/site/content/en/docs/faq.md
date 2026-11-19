@@ -5,7 +5,7 @@ weight: 8
 
 ## How do I install agent-peer?
 
-Build agent-peer from source; you need Go 1.27. Then follow the [quick start]({{< relref "getting-started.md" >}}) to put the binary on your `PATH` and register the MCP server with the name `peer`.
+Download the archive for your platform from [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest), check it against `checksums.txt`, and put the binary on your `PATH`. Then follow the [quick start]({{< relref "getting-started.md" >}}) to register the MCP server with the name `peer`.
 
 ## Which platforms are supported?
 
@@ -57,7 +57,7 @@ No. Success means the message was written to the target session's inbox socket, 
 
 ## Why did my second identical message disappear?
 
-The receiving Claude Code drops a message that repeats the previous one from the same sender within 30 seconds. This rule belongs to Claude Code and may change. See the [security model]({{< relref "security.md" >}}).
+The receiving Claude Code drops a message from the same agent to the same session whose content repeats the previous one within 30 seconds; this rule belongs to Claude Code and may change. The receiving Broker also drops a copy that a retry within one send produces, but two separate sends are not deduplicated. See the [security model]({{< relref "security.md" >}}).
 
 ## Who can change the Broker's configuration?
 

@@ -5,7 +5,7 @@ weight: 8
 
 ## 如何安装 agent-peer？
 
-从源码构建 agent-peer，需要 Go 1.27。然后按[快速开始]({{< relref "getting-started.md" >}})把二进制放进 `PATH`，再用名字 `peer` 注册 MCP 服务。
+从 [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest) 下载对应平台的归档，用 `checksums.txt` 校验后把二进制放进 `PATH`。然后按[快速开始]({{< relref "getting-started.md" >}})用名字 `peer` 注册 MCP 服务。
 
 ## 支持哪些平台？
 
@@ -57,7 +57,7 @@ topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会�
 
 ## 为什么重复发送的同一条消息不见了？
 
-接收端的 Claude Code 会丢弃同一发送方在 30 秒内发来的、与上一条内容完全相同的消息。这条规则属于 Claude Code，可能改动。见[安全模型]({{< relref "security.md" >}})。
+接收端的 Claude Code 会丢弃同一个 Agent 在 30 秒内发给同一个会话、与上一条内容完全相同的消息；这条规则属于 Claude Code，可能改动。接收端的 Broker 还会丢弃同一次发送中重试产生的副本，但两次分开的发送不会被去重。见[安全模型]({{< relref "security.md" >}})。
 
 ## 谁能修改 Broker 的配置？
 

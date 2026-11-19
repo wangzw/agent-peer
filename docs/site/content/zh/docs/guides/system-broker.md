@@ -8,7 +8,7 @@ weight: 5
 
 ## 安装并启用
 
-把二进制装进 root 拥有的目录，再以 root 安装服务。命令见[把 Broker 安装为服务]({{< relref "run-as-service.md" >}})。安装会立即启动 Broker，此后它随开机启动。
+把二进制装进 root 拥有、组和其他人不可写的目录，再以 root 安装服务。命令见[把 Broker 安装为服务]({{< relref "run-as-service.md" >}})。安装会立即启动 Broker，此后它随开机启动。
 
 系统级 Broker 取的是 root 的账户锁。如果 root 名下已有用户级 Broker 在运行，系统级安装会被拒绝，并提示先停掉它。
 

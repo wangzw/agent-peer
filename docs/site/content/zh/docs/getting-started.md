@@ -12,15 +12,65 @@ agent-peer 运行在 macOS 与 Linux 上，支持 amd64 和 arm64；不支持原
 
 ## 安装
 
-从源码构建 agent-peer，需要 Go 1.27：
+agent-peer 以 `tar.gz` 归档发布，放在 [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest) 上。下载对应平台和架构的归档，以及同一发布里的 `checksums.txt`：
 
 ```sh
-git clone https://github.com/wangzw/agent-peer
-cd agent-peer
-go build -trimpath -o agent-peer ./cmd/agent-peer
+VERSION=0.1.0
+curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/agent-peer_${VERSION}_<os>_<arch>.tar.gz
+curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/checksums.txt
 ```
 
-把生成的二进制放进 `PATH` 上的某个目录，或者记下它的绝对路径，下一步会用到。
+把 `<os>_<arch>` 换成 `darwin_amd64`、`darwin_arm64`、`linux_amd64` 或 `linux_arm64`。下面的校验与解压示例用 arm64 归档；在 amd64 主机上，把 `arm64` 换成 `amd64`。
+
+使用前先用 `checksums.txt` 校验归档。Linux 上：
+
+```sh
+VERSION=0.1.0
+grep agent-peer_${VERSION}_linux_arm64.tar.gz checksums.txt | sha256sum -c -
+```
+
+macOS 上用 `shasum`：
+
+```sh
+VERSION=0.1.0
+grep agent-peer_${VERSION}_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
+```
+
+在一个空目录里解压：归档没有外层目录，`LICENSE`、`README.md`、`third_party/` 等文件会直接落在当前目录。macOS 二进制没有签名，也没有经过公证，所以在 macOS 上，如果用浏览器下载了归档，运行前要清除解压出的二进制的隔离属性：
+
+```sh
+VERSION=0.1.0
+tar -xzf agent-peer_${VERSION}_darwin_arm64.tar.gz
+xattr -d com.apple.quarantine agent-peer  # only if a browser downloaded the archive
+```
+
+Linux 上直接解压，不需要 `xattr` 这一步：
+
+```sh
+VERSION=0.1.0
+tar -xzf agent-peer_${VERSION}_linux_arm64.tar.gz
+```
+
+如果只用用户级 Broker，放进 `~/.local/bin` 这类在 `PATH` 上的用户目录就够了。如果要安装系统级服务，用[把 Broker 安装为服务]({{< relref "guides/run-as-service.md" >}})里的 `sudo install` 代替下面的 `mv`：
+
+```sh
+mkdir -p ~/.local/bin
+mv agent-peer ~/.local/bin/
+agent-peer --version
+```
+
+最后一条命令打印的版本与下载的版本一致。
+
+从源码构建需要 Go 1.27。克隆仓库并构建：
+
+```sh
+VERSION=0.1.0
+git clone https://github.com/wangzw/agent-peer
+cd agent-peer
+go build -trimpath -ldflags "-X main.version=$VERSION" -o agent-peer ./cmd/agent-peer
+```
+
+不带 `-ldflags` 时，`agent-peer --version` 输出 `agent-peer dev`。不支持用 `go install …@version` 安装，因为 `go.mod` 里的 `replace` 指令指向一份随仓库附带的依赖。
 
 ## 注册 MCP 服务
 

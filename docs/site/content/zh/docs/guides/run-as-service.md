@@ -28,12 +28,14 @@ agent-peer service install
 
 ## 安装系统级服务
 
-系统级安装以 root 运行，让 Broker 在开机时启动。二进制必须放在 root 拥有、且组和其他人不可写的目录里：
+系统级安装以 root 运行，让 Broker 在开机时启动。二进制必须放在 root 拥有、且组和其他人不可写的目录里，例如 `/usr/local/bin`。服务以 root 身份运行这个二进制，能改动它或其上级目录的普通账户可能借此接管服务：
 
 ```sh
-sudo install -o root -g root -m 0755 agent-peer /usr/local/bin/agent-peer
+sudo install -o root -g 0 -m 0755 agent-peer /usr/local/bin/agent-peer
 sudo /usr/local/bin/agent-peer service install --system
 ```
+
+Intel Mac 上用 Homebrew 时，`/usr/local/bin` 属于普通用户，安装会被拒绝；改选一个 root 拥有、组和其他人不可写的目录。
 
 安装会检查二进制以及它上面的每一层目录，然后立即启动 Broker。
 
