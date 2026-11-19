@@ -98,3 +98,22 @@ jobs:
             i=$((i + 1))
           done
           cleanup_group apneg 6199
+
+  third-party-licenses:
+    name: third-party licenses are current
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache: true
+      - name: Regenerate the licenses and compare them with the committed copy
+        run: |
+          d="$RUNNER_TEMP/licenses"
+          go tool go-licenses save ./cmd/agent-peer --save_path="$d" --force --ignore github.com/wangzw/agent-peer
+          if [ ! -d "$d" ]; then
+            echo "::error::go-licenses did not create $d; no license inventory was generated to compare" >&2
+            exit 1
+          fi
+          diff -r "$d" THIRD_PARTY_LICENSES
