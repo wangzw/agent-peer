@@ -32,6 +32,7 @@ Supplements the `commit-convention` skill.
 - a module name, such as `broker` or `link`: the module's Go package under `internal/` and its design document `docs/design/modules/design-<module>.md`. The module table in `docs/design/README.md` defines which modules exist.
 - `cmd`: `cmd/agent-peer`, the entry point and the command wiring that belongs to no module
 - `e2e`: `test/e2e/`, the end-to-end tests and their container topologies
+- `realsession`: `test/realsession/`, the probes that run real Claude Code sessions, and their workflow `.github/workflows/real-session.yml`
 - `deps`: vendored source under `third_party/` and dependency versions
 - `architecture`: `docs/design/architecture.md`
 - `adr`: `docs/adr/`
