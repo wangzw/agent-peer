@@ -303,6 +303,14 @@ func (c *container) command(args ...string) *exec.Cmd {
 // systemctl --wait blocks until the state settles, so the shared polling
 // primitive only separates runs after an unexpected answer.
 func (c *container) waitSystemd() {
+	// Eventually fails the test from this goroutine, and Goexit runs the
+	// deferred calls, so the container is still there when the evidence is
+	// collected.
+	defer func() {
+		if c.t.Failed() {
+			c.logBootEvidence()
+		}
+	}()
 	harness.Eventually(c.t, systemdReadyBound, "systemd to finish booting", func() (bool, string) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
