@@ -144,5 +144,9 @@ jobs:
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: "~> v2"
-          args: check
+          version: "v2.20.2"
+          install-only: true
+      - name: Check the goreleaser configuration
+        run: goreleaser check
+      - name: Check that the release notes become the published body
+        run: make release-notes-check

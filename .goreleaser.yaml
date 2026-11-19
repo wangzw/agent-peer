@@ -41,9 +41,6 @@ checksum:
 snapshot:
   version_template: "{{ incpatch .Version }}-SNAPSHOT-{{ .ShortCommit }}"
 
-changelog:
-  disable: true
-
 release:
   draft: false
   prerelease: auto

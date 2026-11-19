@@ -16,7 +16,11 @@ HUGO_VERSION := 0.170.1
 
 SITE_DIR ?= docs/site
 
-.PHONY: gen gen-check lint proto-lint test e2e e2e-darwin docs-check check site site-check
+# Version whose released section in CHANGELOG.md the release notes check
+# extracts.
+RELEASE_NOTES_VERSION ?= v0.1.0
+
+.PHONY: gen gen-check lint release-notes-check proto-lint test e2e e2e-darwin docs-check check site site-check
 
 # Regenerate the protobuf code with buf. Generated Go code is committed next to
 # its .proto file, so this target is expected to leave the tree unchanged when
@@ -51,6 +55,13 @@ lint:
 	go run ./scripts/check-deps -goos linux
 	go run ./scripts/check-deps -goos darwin
 	go run ./scripts/check-deps -tags e2e
+
+# Check that the release notes extracted from CHANGELOG.md become the body of
+# the release goreleaser publishes. The command runs a real release against a
+# fake GitHub API; scripts/check-release-notes explains why a snapshot run
+# cannot catch this regression.
+release-notes-check:
+	go run ./scripts/check-release-notes -version $(RELEASE_NOTES_VERSION)
 
 proto-lint:
 	buf lint
