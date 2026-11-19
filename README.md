@@ -129,9 +129,17 @@ At least one of the two hosts must be able to reach port 17443 on the other. On 
 |---|---|
 | `agent-peer status` | Show agents, their topic memberships, peers and links. |
 | `agent-peer audit [--limit N]` | Stream the audit log, with the newest N entries when `--limit` is given; 0 means no limit. |
+| `agent-peer config get [<key>]` | Print the value of one configuration key, or every key and its value when no key is given; for a secret key, report only whether it is `set` or `unset`. |
+| `agent-peer config set <key> <value>` | Change a configuration key and print its old and new values. |
+| `agent-peer pairing-key create` | Create a one-time pairing key and print it with its expiry time and this Broker's addresses. |
+| `agent-peer peer list` | List every known Broker with its alias, fingerprint, whether it is a peer, status, direction and addresses. |
+| `agent-peer peer connect <address> --key <key> [--alias <alias>]` | Pair with another Broker at `address`, written `address:port` or `hostname(address:port)`, using a pairing key, with an optional local alias. |
+| `agent-peer peer disconnect <broker>` | Remove the pairing with a Broker, named by alias or fingerprint. |
 | `agent-peer service install [--system]` | Install the Broker as a user-level service started at login, or as a system-level service started at boot, and start it immediately. |
 | `agent-peer service uninstall [--system]` | Stop and remove the installed service. Configuration, identity and audit logs are kept, and the command can be repeated when nothing is installed. |
 | `agent-peer broker [--system] [--listen <addr>]` | Run a Broker in the foreground; `--system` selects the system-level form and requires root, and `--listen` overrides the configured listen address for this run only. |
+
+When an administrator runs these commands with `sudo`, a system-level Broker authorizes them against root's permissions.
 
 On macOS, a user-level service runs in launchd's `gui` domain, which exists only in a graphical login session; install it from such a session, or use `--system` on a host without one.
 
