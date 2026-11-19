@@ -25,3 +25,4 @@
 | Broker 配对与连接 | [Broker 配对与连接](features/prd-broker-pairing.md) |
 | Broker 发现 | [Broker 发现](features/prd-broker-discovery.md) |
 | Broker 配置、审计与运行 | [Broker 配置、审计与运行](features/prd-broker-config.md) |
+| 自动更新 | [自动更新](features/prd-update.md) |

@@ -8,3 +8,4 @@
 | REF-a2a | Agent2Agent Protocol | Agent 之间互操作的开放协议，定义 Message 等数据结构 | <https://a2a-protocol.org> | 1.0.0 |
 | REF-epidemic-algorithms | Epidemic Algorithms for Replicated Database Maintenance | 论文，提出反熵对账、流言式传播与死亡证明（撤回记录） | <https://doi.org/10.1145/41840.41841> | 1987 |
 | REF-crockford-base32 | Base32 Encoding | Douglas Crockford 提出的 Base32 编码，规定去掉易混字母之后的字母表 | <https://www.crockford.com/base32.html> | — |
+| REF-github-rest-api | GitHub REST API | GitHub 的 REST API，规定查询最新正式发布版本的接口、返回内容与分页方式 | <https://docs.github.com/en/rest/releases/releases#get-the-latest-release> | 2022-11-28 |

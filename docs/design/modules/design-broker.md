@@ -19,6 +19,7 @@
 - 处理对端的投递请求：去重，核对发送方，检查可见性，拼出署名，在请求的预算内交给 `inbox` 写入并重试，返回结果（`REQ-agent-messaging-018`、`REQ-agent-messaging-022`）。
 - 在各包之间转接：把拨号与关闭链路的能力注入 `pairing`；订阅配置变更并通知 `link`、`directory`；把对端名片所载的对外地址列表交给 `pairing` 更新候选地址，把本机对外地址列表的变化通知 `link` 与 `directory`（[ADR-advertised-address](../../adr/adr-advertised-address.md)，`REQ-broker-config-030`、`REQ-broker-discovery-016`）；配对成功后比对指纹与名录（`REQ-broker-pairing-023`）；处理带公开声明的加入时先调用 `directory` 的 `DeclarePublicTopic`，成功后再调用 `topic` 的 `Join`，任一失败则不加入；本机最后一个以公开方式加入某个 topic 的 Agent 退出该 topic 或注销时，调用 `directory` 的 `RetirePublicTopic`（`REQ-topics-025`）。
 - 汇总 `topic`、`link`、`pairing`、`directory` 的状态，回答列出 Agent、列出 Broker 和查看状态的请求；列出 Agent 时注明改名后 10 分钟内的曾用名（`REQ-agent-messaging-032`）。
+- 周期检查本项目在 GitHub 上的最新正式发布版本，把当前版本与可用版本保存在内存中，供本机接口 `UpdateStatus` 和终端状态输出使用；检查失败只记 Debug 日志，不影响其他功能（[ADR-self-update](../../adr/adr-self-update.md)，`REQ-update-001` 至 `REQ-update-003`）。
 - 在本机接口上做版本握手：`Hello` 的版本号与本进程不同时返回 `version_mismatch`，不断开连接，并在这条连接上标记“已拒绝”，此后这条连接上的其他调用都返回 `version_mismatch`；版本不兼容不使进程退出；其中“已拒绝”标记与后续调用返回 `version_mismatch` 归版本不兼容处理（`REQ-broker-config-016`）。
 
 ### 非职责
@@ -32,6 +33,7 @@
 - 不保存消息。发送调用返回后这条消息的正文即被丢弃。
 - 不限制发送频率，不检测消息循环，由 Claude Code 接收端的入站控制承担（[ADR-no-broker-rate-limiting](../../adr/adr-no-broker-rate-limiting.md)）。
 - 不另设管理员名单，也不采信调用方自报的身份。
+- 不下载、校验或替换自身的二进制，也不重启服务；这些操作由终端命令 `agent-peer update` 与 `service.Restart` 完成。
 
 ## 外部接口契约
 
@@ -51,6 +53,7 @@ service Local {
   rpc ListBrokers / Connect / Disconnect / CreatePairingKey ...
   rpc GetConfig / SetConfig ...
   rpc Status / Audit ...                                         // 终端命令使用
+  rpc UpdateStatus(UpdateStatusRequest) returns (UpdateStatusResponse); // 当前版本与可用版本
 }
 ```
 
@@ -67,11 +70,14 @@ service Local {
 | `Hello` | 否 | 无 | `REQ-broker-config-016` |
 | `Register`、`ListAgents`、`ListTopics`、`JoinTopic`、`LeaveTopic`、`Send` | 是，`Register` 除外 | 无 | `REQ-broker-config-023` |
 | `ListBrokers` | 否 | 无 | `REQ-broker-config-023` |
+| `UpdateStatus` | 否 | 无 | `REQ-update-002`、`REQ-update-003` |
 | `GetConfig`、`Audit` | 否 | 读 | `REQ-broker-config-022` |
 | `Status` | 否 | 读；没有读权限时只省略其他账户的 Agent | `REQ-broker-config-010` |
 | `SetConfig`、`CreatePairingKey`、`Connect`、`Disconnect` | 否 | 写 | `REQ-broker-config-021` |
 
 需要 Agent 身份的调用携带登记时得到的 Agent 标识，标识无效或不属于调用方账户时返回 `not_registered`。权限不足时返回 `permission_denied`，不改变任何状态。Claude Code 对工具调用的权限确认发生在调用到达本机接口之前，与本表的判定各自独立。
+
+`UpdateStatus` 不需要 Agent 身份，也不需要对配置文件的权限，与 `ListBrokers` 同一类。应答带 `current_version`、`available_version` 与 `release_url`；没有可用版本时 `available_version` 为空。`StatusResponse` 另带 `available_version`，字段号取下一个空号。只新增调用与字段，不提升本机协议版本；旧版本的 Broker 对 `UpdateStatus` 返回 `Unimplemented` 时，MCP 服务进程按没有可用版本处理。
 
 终端命令不自行判断权限：`GetConfig`、`SetConfig`、`CreatePairingKey`、`Connect`、`Disconnect` 由 Broker 的拦截器按执行命令的账户判定，与上表相同，终端一侧不做预判，也不开特例。`permission_denied` 时，Broker 给出的英文错误文字原样写到标准错误，其中包含配置文件的路径，进程以退出码 1 结束。
 
@@ -97,6 +103,7 @@ service Local {
 | `agent-peer peer list` | `ListBrokers` | 列出 Broker 及其连接状态（`REQ-broker-config-039`） |
 | `agent-peer peer connect <address> --key <key> [--alias <alias>]` | `Connect` | 发起配对（`REQ-broker-config-039`） |
 | `agent-peer peer disconnect <broker>` | `Disconnect` | 解除配对（`REQ-broker-config-039`） |
+| `agent-peer update [--yes]` | — | 检查并安装本项目的新版本；直接查询 GitHub，不依赖 Broker，`--yes` 跳过询问（`REQ-update-004` 至 `REQ-update-006`） |
 | `agent-peer service install [--system]` | — | 安装并立即启动用户级服务，或系统级服务；此后的登录或系统启动由服务管理器负责（`REQ-broker-config-015`） |
 | `agent-peer service uninstall [--system]` | — | 停止并卸载服务，保留配置、身份与审计日志 |
 
@@ -385,6 +392,46 @@ Linux 上，账户与组经 `getent` 取自系统的账户数据库，来源由 
 
 `ListTopics` 返回调用方已加入的 topic 与已知的公开 topic，公开 topic 只列调用方尚未加入的（`REQ-topics-013`）。
 
+### 更新检查与自我更新
+
+周期检查在 Broker 进程内进行。启动后先等待 1 分钟，然后立即检查一次，此后按 `update.check_interval` 周期检查；`update.check` 为假时不检查。修改 `update.check` 或 `update.check_interval` 后，当前周期不中断，新值从下一个周期起生效。`update.check` 变为假时，已经在内存中的可用版本立刻清除，`status` 与会话提示不再报告该版本，不必等到下一个周期或重启；变回真后，从下一个周期开始的检查重新填充结果。检查结果只保存在内存中，不落盘，Broker 重启后重新检查。检查请求失败或应答无法解析时，只记一条 Debug 级运行日志，不写审计，也不影响其他功能；当前版本不是正式发布版本时根本不检查，也不记日志（`REQ-update-001`）。结果由一把互斥锁保护，读取方看到的是上一份完整结果或新的一份。
+
+版本比较采用语义化版本。当前版本不是合法的正式发布版本时，例如 `dev`、`e2e` 或带 `SNAPSHOT` 的版本，Broker 不检查。可用版本只取 GitHub API 最新正式发布接口返回的版本，预发布与草稿不参与（[REF-github-rest-api](../../references.md)）。
+
+`UpdateStatus` 返回当前版本、可用版本与发布页面地址；没有可用版本时可用版本为空。终端 `status` 的输出在有可用版本时，最后另加一行：
+
+```
+Update: <v> available (current <c>); run agent-peer update
+```
+
+没有可用版本时不输出这一行（`REQ-update-002`）。
+
+`agent-peer update [--yes]` 直接查询 GitHub，不依赖 Broker，按以下顺序执行：
+
+1. 取 `os.Executable()` 的结果并解析符号链接，得到要替换的二进制路径。
+2. 当前版本不是正式发布版本时拒绝执行，说明“非发布构建不能自动更新”。
+3. 在目标所在目录试建一个临时文件，检查写权限。没有写权限时，在任何下载请求之前失败，错误给出 `sudo agent-peer update` 的提示（`REQ-update-006`）。
+4. 查询最新正式发布版本。已经是最新版本时输出 `agent-peer <c> is up to date`，以 0 退出。
+5. 标准输入不是终端且没有 `--yes` 时拒绝执行，说明可以用 `--yes`。
+6. 下载本平台与架构的安装包和 `checksums.txt`，按 [ADR-self-update](../../adr/adr-self-update.md) 的规则校验、解压，并在临时位置运行新二进制的 `--version`。
+7. 在目标所在目录写临时文件，把模式和属主改成与原二进制相同，`fsync` 后 `rename` 到目标路径。不保留旧版本。
+8. 调用 `service.Restart`。该级别已安装为服务时重启并等待就绪；没有安装为服务时，提示用户自行重启正在运行的 Broker。
+9. 输出更新结果，并提示已经打开的 Claude Code 会话要用 `/mcp` 重连或重开会话，才会用上新版本（`REQ-update-004`、`REQ-update-005`）。
+
+更新完成后统一另输出一行提示：
+
+```
+User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.
+```
+
+二进制被多个级别共用时，例如系统级安装位于 `/usr/local/bin`，而某个普通用户的用户级服务也运行它，`sudo agent-peer update` 只重启系统级服务，其他级别的 Broker 要由各自的用户重启。以非 root 身份更新用户级安装时同样只重启本账户的服务。
+
+以 root 运行时只处理系统级服务；以非 root 运行时只处理用户级服务，不读取 HOME 以外的内容。下载使用 `http.DefaultTransport`，它读取代理环境变量；系统级更新时如需代理，`sudo` 要以 `-E` 或在 `env_keep` 中保留代理变量。
+
+会话中的提示由 [mcpserver](design-mcpserver.md) 负责：每个 MCP 服务进程在第一次工具调用时调用 `UpdateStatus`，此后最多每 10 分钟再查询一次；有可用版本且不同于已提示的版本时，在结果末尾追加提示。
+
+**已知风险**：本机协议将来发生不兼容改动时，旧会话的 MCP 服务进程连上新的 Broker，现有的版本不一致提示会要求用户“用同一个版本重启 Broker”，而实际需要重启的是会话。本设计不改变这条提示。
+
 ## 错误与失败语义
 
 | 情形 | 错误码 | 是否重试 |
@@ -470,3 +517,4 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 配对与对端管理的本机调用 | 已实现 | `internal/broker/connect_rpc.go`、`internal/broker/disconnect_rpc.go`、`internal/broker/pairkey_rpc.go`、`internal/broker/listbrokers.go`、`internal/broker/peerinfo.go`；非对端的列出由名片与公开 topic 接入 |
 | 配置读写与审计的本机调用 | 已实现 | `internal/broker/configrpc.go`、`internal/broker/auditrpc.go` |
 | 终端命令 | 已实现 | `cmd/agent-peer`、`internal/mcpserver/termcmd`、`cmd/agent-peer/service_cmd.go` |
+| 更新检查与自我更新 | 未实现 | — |

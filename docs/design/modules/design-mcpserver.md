@@ -13,6 +13,7 @@
 - 登记连接断开后按退避重连原来那个 Broker 并重新登记，恢复断开前的 topic 成员关系（`REQ-broker-config-037`）。
 - 确定默认 topic 并在登记后加入（[ADR-default-topic-from-repository](../../adr/adr-default-topic-from-repository.md)，`REQ-topics-015` 至 `REQ-topics-021`）。
 - 把工具调用转给 Broker，把结果和错误转成模型可读的文字；没有可用的 Broker 时，把启动方法写进错误。
+- 每个进程在第一次工具调用时向 Broker 查询可用版本，此后最多每 10 分钟再查询一次；有可用版本且不同于已提示的版本时，在工具结果的末尾附加一条更新提示（`REQ-update-003`）。
 
 ### 非职责
 
@@ -23,6 +24,7 @@
 - 不启动任何 Broker。系统级 Broker 只由管理员安装和启动；用户级 Broker 由用户级的服务管理机制启动，或由用户在会话之外的终端启动。
 - 不判定可见性，不保存 topic 成员关系的权威副本，由 [topic](design-topic.md) 负责；`mcpserver` 只记着本会话已加入的 topic 名及加入时的公开声明与简介，用于重新登记后恢复。
 - 不读取 Broker 的配置文件，配置由 [config](design-config.md) 保存，一律经 Broker 的本机接口读写。
+- 不下载、校验或安装新版本，也不重启 Broker；更新只由用户在终端执行。
 
 ## 外部接口契约
 
@@ -150,6 +152,18 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 
 得到主机名与路径后，去掉路径首尾的 `/` 和结尾的 `.git`，主机名转为小写，路径保持原样。类 scp 写法中 `:` 之后的内容一律当作路径，即使它以数字开头。用户信息只在主机部分内识别并丢弃，密码中的字符不会进入结果。`git@github.com:org/repo.git`、`ssh://git@github.com/org/repo.git` 与 `https://github.com/org/repo` 的结果都是 `github.com/org/repo`（`REQ-topics-017`）。
 
+### 更新提示
+
+`mcpserver` 用 MCP SDK 的接收中间件拦截 `tools/call`。每个进程在第一次工具调用时向 Broker 调用一次 `UpdateStatus`，此后最多每 10 分钟查询一次，间隔由常量 `updateRecheckInterval` 决定。`available_version` 非空且不同于本进程已经提示过的版本时，在该次工具结果的 `Content` 末尾追加一段文本，同一进程对同一版本只追加一次。工具调用本身失败的结果同样追加；查询失败、超时，或 Broker 返回 `Unimplemented` 时跳过提示，工具结果不变。
+
+追加的文本为：
+
+```
+agent-peer <v> is available (this host runs <c>). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
+```
+
+其中 `<v>` 是可用版本，`<c>` 是当前版本。
+
 ## 错误与失败语义
 
 Broker 返回的错误码转成一句以结果开头的文字，随后附上错误码和可采取的做法，例如名字有歧义时列出候选地址，附上消歧标识，目标是曾用名时给出现在的地址，权限不足时指出所缺的权限。Broker 不可达或登记未完成时，工具调用立即返回说明原因的错误，不在 MCP 服务进程内排队。
@@ -182,3 +196,4 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 | 默认 topic 的确定 | 已实现 | `internal/mcpserver/defaulttopic.go`（`defaultTopics`、`gitOrigin`）、`internal/mcpserver/project.go`（`findProjectConfig`） |
 | 仓库地址的规范化 | 已实现 | `internal/mcpserver/remote.go`（`normalizeRemote`） |
 | 工具调用转发与错误转换 | 已实现 | `internal/mcpserver/handlers_messaging.go`、`handlers_topics.go`、`handlers_brokers.go`、`handlers_config.go`（`handlers` 的各工具方法）、`internal/mcpserver/errtext.go`（`rpcError`、`codeName`） |
+| 更新提示 | 未实现 | — |

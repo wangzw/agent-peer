@@ -54,6 +54,12 @@
 | [Broker 配置经工具读写，确认交给 Claude Code](adr-config-through-tools.md) |
 | [管理操作以调用方对配置文件的权限为准](adr-management-by-config-file-permission.md) |
 
+## 更新
+
+| 决策 |
+|---|
+| [自我更新从本项目 GitHub 正式发布安装](adr-self-update.md) |
+
 ## 外部依赖
 
 | 决策 |

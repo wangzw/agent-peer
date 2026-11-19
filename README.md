@@ -178,6 +178,7 @@ On a system-level Broker, by default, an ordinary account has no write permissio
 | `agent-peer peer list` | List every known Broker with its alias, fingerprint, whether it is a peer, status, direction and addresses. |
 | `agent-peer peer connect <address> --key <key> [--alias <alias>]` | Pair with another Broker at `address`, written `address:port` or `hostname(address:port)`, using a pairing key, with an optional local alias. |
 | `agent-peer peer disconnect <broker>` | Remove the pairing with a Broker, named by alias or fingerprint. |
+| `agent-peer update [--yes]` | Check GitHub for a newer release, download and verify it, replace this binary, and restart the installed service; `--yes` skips the confirmation question. |
 | `agent-peer service install [--system]` | Install the Broker as a user-level service started at login, or as a system-level service started at boot, and start it immediately. |
 | `agent-peer service uninstall [--system]` | Stop and remove the installed service. Configuration, identity and audit logs are kept, and the command can be repeated when nothing is installed. |
 | `agent-peer broker [--system] [--listen <addr>]` | Run a Broker in the foreground; `--system` selects the system-level form and requires root, and `--listen` overrides the configured listen address for this run only. |
@@ -187,6 +188,28 @@ When an administrator runs these commands with `sudo`, a system-level Broker aut
 On macOS, a user-level service runs in launchd's `gui` domain, which exists only in a graphical login session; install it from such a session, or use `--system` on a host without one.
 
 Without read permission on the configuration file, `agent-peer status` still lists every peer and its connection state; it only omits the agents of other accounts.
+
+### Updating
+
+Each Broker checks GitHub for a newer official release shortly after it starts, then every 24 hours by default. `update.check` turns the check off and `update.check_interval` changes the interval. When a newer release exists, `agent-peer status` prints its version and the first tool result in a session ends with a one-line notice. The Broker never installs a release without confirmation.
+
+Run the update in a terminal:
+
+```sh
+agent-peer update
+```
+
+The command prints the current and available versions and asks for confirmation. It then downloads the release archive for this platform, checks it against `checksums.txt`, verifies that the new binary reports the expected version, replaces this binary, and restarts the Broker when it is installed as a service. `--yes` skips the question and is required when standard input is not a terminal. When no service is installed, restart the running Broker yourself after the update.
+
+For a system-level installation, run the command with `sudo`:
+
+```sh
+sudo agent-peer update
+```
+
+The command checks write permission on the binary's directory before downloading anything, so an ordinary account fails immediately and is told to use `sudo`. `sudo` drops proxy environment variables by default; when a proxy is needed, keep them with `sudo -E` or an `env_keep` entry such as `env_keep += "HTTP_PROXY HTTPS_PROXY NO_PROXY"`.
+
+An update does not reconnect sessions that are already open. Reconnect the MCP server in each session with `/mcp`, or restart the session, so that it runs the new version.
 
 ### Files
 

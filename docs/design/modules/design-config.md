@@ -184,6 +184,8 @@ type PathSet struct {
 | `link.keepalive_interval` | 时长 | `15s` | 保活探测的间隔；gRPC 客户端的实际下限 10 秒，小于 10 秒按 10 秒探测 |
 | `link.keepalive_timeout` | 时长 | `10s` | 保活探测的应答期限 |
 | `log.level` | 字符串 | `info` | 运行日志级别 |
+| `update.check` | 布尔 | `true` | 是否周期检查 GitHub 上是否有更新版本（periodically check GitHub for a newer release）；关闭后 Broker 不发出检查请求（`REQ-update-001`） |
+| `update.check_interval` | 时长 | `24h` | 周期检查的间隔，下限为 `1h`，低于下限的取值不合法（`REQ-update-001`） |
 
 `broker.listen` 的默认值只是默认配置中的一个取值，代码不对这个端口做任何特殊处理。一次性配对密钥的有效期、名录记录的有效期和续签间隔由需求固定（`REQ-broker-pairing-006`、`REQ-broker-discovery-007`、`REQ-broker-discovery-008`），不是配置键；消息编码成 inbox 帧后的字节数上限 1 000 000 同样固定（`REQ-agent-messaging-026`），Agent 曾用名的保留时间 10 分钟是常量，两者见 [broker](design-broker.md)。表中其余默认值是实现选定的初值。
 
