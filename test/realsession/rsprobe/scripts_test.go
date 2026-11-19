@@ -418,6 +418,195 @@ func TestRsProcVarsReportsAbsence(t *testing.T) {
 	}
 }
 
+// TestRsWaitReplyReadsAssistantTextOnly checks the shared reply predicate:
+// the prompt echo in a user record must not count as an answer, only text
+// blocks count, and a transcript without assistant text is reported as its
+// own result so a probe can say it fell back to the pane.
+func TestRsWaitReplyReadsAssistantTextOnly(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("rs_wait_reply parses transcripts with jq")
+	}
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+
+	writeTranscript := func(t *testing.T, lines ...string) string {
+		t.Helper()
+		root := t.TempDir()
+		dir := filepath.Join(root, "cfg", "projects", "p")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("creating the transcript directory: %v", err)
+		}
+		data := strings.Join(lines, "\n") + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "t.jsonl"), []byte(data), 0o600); err != nil {
+			t.Fatalf("writing the transcript: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Join(root, "out", "rsreply"), 0o755); err != nil {
+			t.Fatalf("creating the output directory: %v", err)
+		}
+		return root
+	}
+
+	cases := []struct {
+		name        string
+		lines       []string
+		marker      string
+		wantStatus  int
+		wantRecords int
+	}{
+		{
+			name: "assistant text counts and the prompt echo does not",
+			lines: []string{
+				`{"type":"user","message":{"role":"user","content":"reply with rs-test-ok"}}`,
+				`{"type":"assistant","message":{"content":[{"type":"text","text":"rs-test-ok"}]}}`,
+				`{"type":"assistant","message":{"content":"rs-test-ok"}}`,
+				`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"x","input":{"text":"rs-test-ok"}}]}}`,
+				`null`,
+				`not json`,
+			},
+			marker:      "rs-test-ok",
+			wantStatus:  0,
+			wantRecords: 2,
+		},
+		{
+			name: "assistant text without the marker is a miss",
+			lines: []string{
+				`{"type":"assistant","message":{"content":[{"type":"text","text":"something else"}]}}`,
+			},
+			marker:      "rs-test-ok",
+			wantStatus:  1,
+			wantRecords: 0,
+		},
+		{
+			name: "no assistant text is a distinct result",
+			lines: []string{
+				`{"type":"user","message":{"role":"user","content":"rs-test-ok"}}`,
+			},
+			marker:      "rs-test-ok",
+			wantStatus:  2,
+			wantRecords: 0,
+		},
+	}
+
+	const script = `source "$1"; status=0; rs_wait_reply "$2" reply.jsonl 1 || status=$?; printf 'status=%d\n' "$status"; printf 'records=%s\n' "$(wc -l <"$OUT/reply.jsonl" | tr -d ' ')"`
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := writeTranscript(t, tc.lines...)
+			cmd := exec.Command("bash", "-c", script, "bash", lib, tc.marker)
+			cmd.Dir = root
+			cmd.Env = []string{
+				"R=" + root,
+				"PROBE=rsreply",
+				"PATH=" + os.Getenv("PATH"),
+			}
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("running rs_wait_reply: %v\n%s", err, out)
+			}
+			want := "status=" + strconv.Itoa(tc.wantStatus) + "\nrecords=" + strconv.Itoa(tc.wantRecords) + "\n"
+			if string(out) != want {
+				t.Errorf("rs_wait_reply output = %q, want %q", out, want)
+			}
+		})
+	}
+}
+
+// TestRatelimitWriteArrivalsCallArity checks that every rl_write_arrivals call
+// passes the positional parameters its definition reads. The probe failed on
+// the runner with "$3: unbound variable": the function had a label parameter
+// that the call sites never supplied, and the mismatch only surfaced after the
+// first burst had run.
+func TestRatelimitWriteArrivalsCallArity(t *testing.T) {
+	path := filepath.Join(probeScriptsDir, "ratelimit.sh")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	text := string(data)
+
+	defRE := regexp.MustCompile(`(?m)^rl_write_arrivals\(\)\s*\{\s*\n\s*local\s+([^\n]*)$`)
+	match := defRE.FindStringSubmatch(text)
+	if match == nil {
+		t.Fatalf("%s has no rl_write_arrivals function with a local declaration", path)
+	}
+	posRE := regexp.MustCompile(`\$([0-9]+)`)
+	declared := 0
+	for _, p := range posRE.FindAllStringSubmatch(match[1], -1) {
+		n, err := strconv.Atoi(p[1])
+		if err != nil {
+			t.Fatalf("parsing positional parameter %q: %v", p[0], err)
+		}
+		if n > declared {
+			declared = n
+		}
+	}
+	if declared == 0 {
+		t.Fatalf("rl_write_arrivals declares no positional parameters")
+	}
+
+	callRE := regexp.MustCompile(`(?m)^\s*rl_write_arrivals\s+(.+)$`)
+	calls := callRE.FindAllStringSubmatch(text, -1)
+	if len(calls) == 0 {
+		t.Fatalf("%s never calls rl_write_arrivals", path)
+	}
+	wordRE := regexp.MustCompile(`\S+`)
+	for _, call := range calls {
+		args := wordRE.FindAllString(call[1], -1)
+		if len(args) != declared {
+			t.Errorf("rl_write_arrivals %q passes %d arguments, but the function declares %d", call[1], len(args), declared)
+		}
+	}
+}
+
+// TestRatelimitQueueCounts checks the queue-depth helper the ratelimit probe
+// uses to decide that the receiver has finished processing delivered messages.
+// Claude Code records enqueue, dequeue and remove operations in the session
+// transcript; a positive depth means messages are still waiting, so an idle
+// session is not yet quiescent.
+func TestRatelimitQueueCounts(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("the transcript helper parses records with jq")
+	}
+	script, err := filepath.Abs(filepath.Join(probeScriptsDir, "ratelimit.sh"))
+	if err != nil {
+		t.Fatalf("resolving ratelimit.sh: %v", err)
+	}
+	root := t.TempDir()
+	dir := filepath.Join(root, "cfg", "projects", "p")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("creating the transcript directory: %v", err)
+	}
+	lines := []string{
+		`{"type":"queue-operation","operation":"enqueue"}`,
+		`{"type":"queue-operation","operation":"enqueue"}`,
+		`{"type":"queue-operation","operation":"enqueue"}`,
+		`{"type":"queue-operation","operation":"dequeue"}`,
+		`{"type":"queue-operation","operation":"remove"}`,
+		`{"type":"user","message":{"role":"user","content":"not a queue record"}}`,
+	}
+	if err := os.WriteFile(filepath.Join(dir, "t.jsonl"), []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatalf("writing the transcript: %v", err)
+	}
+
+	// $0 is the probe script, so its source of lib.sh resolves next to it.
+	cmd := exec.Command("bash", "-c", `source "$1"; rl_queue_counts`, script, script)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=ratelimit",
+		"RS_SOURCE_ONLY=1",
+		"PATH=" + os.Getenv("PATH"),
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sourcing ratelimit.sh: %v\n%s", err, out)
+	}
+	if got, want := string(out), "1 3 1 1\n"; got != want {
+		t.Errorf("rl_queue_counts = %q, want %q", got, want)
+	}
+}
+
 // environmentDumpFindings returns the non-comment lines that dump an
 // environment or enable shell tracing. allowProcEnvReads exempts only the
 // /proc/<pid>/environ read in lib.sh, whose rs_proc_vars helper needs it; any
