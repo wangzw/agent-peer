@@ -39,8 +39,10 @@ weight: 5
 
 一个账户有权使用系统级 Broker，但它自己的用户级 Broker 正在运行，会话会登记到用户级 Broker 上。把 `AGENT_PEER_SOCKET` 指向系统级 socket，可以让该会话改用系统级 Broker。
 
+终端命令 `agent-peer config`、`agent-peer pairing-key` 和 `agent-peer peer` 与 `agent-peer status` 一样，按同样的顺序选择 Broker，只查找正在运行的 Broker，不会启动 Broker。本账户有用户级 Broker 在运行时，要管理系统级 Broker，可把 `AGENT_PEER_SOCKET` 指向系统级 socket，或用 `sudo` 执行命令。
+
 ## 多个账户共用一个身份
 
 同一个系统级 Broker 服务的所有 Agent 共用它的指纹、别名和对端。不同账户的 Agent 只要加入同一个 topic，就能互相看见并互发消息。因此系统级 Broker 配对一次，所有被服务的账户就都连到了对方；另一台主机只需要这一次配对，就能访问这些账户。
 
-Broker 的管理权限由 `/etc/agent-peer/config.yaml` 的文件权限决定，与运行服务的账户无关。授予读或写权限的做法见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}})。
+Broker 的管理权限由 `/etc/agent-peer/config.yaml` 的文件权限决定，与运行服务的账户无关。授予读或写权限的做法见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}})。管理员还可以用 `sudo` 执行终端命令来管理，Broker 按 root 的权限判定；文件默认的 0600 权限已经允许 root 管理它。

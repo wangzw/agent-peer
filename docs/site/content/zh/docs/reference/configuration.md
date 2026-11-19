@@ -3,11 +3,11 @@ title: 配置键
 weight: 3
 ---
 
-两种部署形态各读一个 YAML 文件：用户级 Broker 读 `~/.agent-peer/config.yaml`，系统级 Broker 读 `/etc/agent-peer/config.yaml`。每个键都可选，未出现的键取默认值。Broker 会监视该文件，所以无论是手工修改还是经 `set_config` 修改，合法的改动都会在运行期间生效。两个保活键是例外：它们在建立监听或链路时读取，改动只对之后建立的监听或链路生效。
+两种部署形态各读一个 YAML 文件：用户级 Broker 读 `~/.agent-peer/config.yaml`，系统级 Broker 读 `/etc/agent-peer/config.yaml`。每个键都可选，未出现的键取默认值。Broker 会监视该文件，所以无论是手工修改、经 `set_config` 修改，还是经 `agent-peer config set` 修改，合法的改动都会在运行期间生效。两个保活键是例外：它们在建立监听或链路时读取，改动只对之后建立的监听或链路生效。
 
 ## 配置键
 
-| 键 | 类型 | 默认值 | 含义 | `set_config` |
+| 键 | 类型 | 默认值 | 含义 | `set_config`、`agent-peer config set` |
 |---|---|---|---|---|
 | `broker.alias` | 字符串 | 推导得出 | 本 Broker 自报的别名。未设置时由系统主机名和实际监听地址推导。取值为 1 至 24 个字符，限字母、数字、`.`、`-` 和 `_`。 | 可以 |
 | `broker.public` | 布尔 | `false` | 是否发布名片，使本 Broker 为整个连通网络所知。 | 可以 |
@@ -55,6 +55,6 @@ weight: 3
 
 ## 修改配置
 
-`set_config` 以文本接收新值，返回旧值与新值。它不能修改 `pairing.static_key`，在 Broker 以 `--listen` 运行时也不能修改 `broker.listen`。手工编辑文件时，Broker 采纳其中合法的改动；某个键的值不合法时，该键保留旧值，Broker 向日志写入一条错误。
+`set_config` 以文本接收新值，返回旧值与新值。`agent-peer config set` 在终端做同样的事，规则相同。两者都不能修改 `pairing.static_key`，在 Broker 以 `--listen` 运行时也都不能修改 `broker.listen`。手工编辑文件时，Broker 采纳其中合法的改动；某个键的值不合法时，该键保留旧值，Broker 向日志写入一条错误。
 
 文件位置与权限见[文件与路径]({{< relref "docs/reference/files" >}})。会话默认加入哪些 topic 见[项目配置文件]({{< relref "docs/reference/project-config" >}})。

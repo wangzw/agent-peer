@@ -3,11 +3,11 @@ title: Configuration keys
 weight: 3
 ---
 
-Both deployment forms read one YAML file: `~/.agent-peer/config.yaml` for a user Broker and `/etc/agent-peer/config.yaml` for a system Broker. Every key is optional; an absent key takes its default. The Broker watches the file, so a valid change takes effect while it runs, whether the change is written by hand or by `set_config`. The two keepalive keys are the exception: they are read when a listener or a link is created, so a change applies only to listeners or links established afterwards.
+Both deployment forms read one YAML file: `~/.agent-peer/config.yaml` for a user Broker and `/etc/agent-peer/config.yaml` for a system Broker. Every key is optional; an absent key takes its default. The Broker watches the file, so a valid change takes effect while it runs, whether the change is written by hand, by `set_config`, or by `agent-peer config set`. The two keepalive keys are the exception: they are read when a listener or a link is created, so a change applies only to listeners or links established afterwards.
 
 ## Keys
 
-| Key | Type | Default | Meaning | `set_config` |
+| Key | Type | Default | Meaning | `set_config`, `agent-peer config set` |
 |---|---|---|---|---|
 | `broker.alias` | string | derived | The alias this Broker reports. Derived from the system hostname and the effective listen address when not set. 1 to 24 characters from letters, digits, `.`, `-` and `_`. | Yes |
 | `broker.public` | boolean | `false` | Whether this Broker publishes a broker card and is visible to the whole connected network. | Yes |
@@ -55,6 +55,6 @@ A value that fails a check is rejected, and the configuration remains as it was.
 
 ## Changing the configuration
 
-`set_config` takes the new value as text and returns the old and new values. It cannot change `pairing.static_key`, and it cannot change `broker.listen` while the Broker runs with `--listen`. When the file is edited by hand, the Broker applies the valid changes; a key whose value is invalid keeps its old value and the Broker writes an error to its log.
+`set_config` takes the new value as text and returns the old and new values. `agent-peer config set` does the same from the terminal and follows the same rules. Neither can change `pairing.static_key`, and neither can change `broker.listen` while the Broker runs with `--listen`. When the file is edited by hand, the Broker applies the valid changes; a key whose value is invalid keeps its old value and the Broker writes an error to its log.
 
 The file locations and their permissions are listed under [Files and paths]({{< relref "docs/reference/files" >}}). Which topics sessions join by default is described under [Project configuration file]({{< relref "docs/reference/project-config" >}}).

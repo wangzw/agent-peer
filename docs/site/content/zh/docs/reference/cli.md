@@ -15,6 +15,13 @@ Commands:
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker
   audit [--limit <n>]         read the audit log
+  config get [<key>]          show all configuration items, or one
+  config set <key> <value>    change a configuration item
+  pairing-key create          create a one-time pairing key
+  peer list                   list paired Brokers
+  peer connect <address> --key <key> [--alias <alias>]
+                              pair with another Broker
+  peer disconnect <broker>    remove a pairing
   service install [--system]  install and start the Broker as a user-level service,
                               or system-level with --system
   service uninstall [--system]
@@ -55,6 +62,77 @@ Commands:
 - `--limit <n>` 最多读取 `n` 条，取最新的那些，仍按从旧到新打印。`0` 表示全部，也是默认值。上限为 `4294967295`。
 
 读取审计日志需要 Broker 配置文件的读权限。用户级 Broker 下，本账户本来就具备该权限。
+
+## Broker 管理命令
+
+`config`、`pairing-key` 与 `peer` 下的命令连接正在运行的 Broker，不会启动 Broker。查找顺序与会话相同：`AGENT_PEER_SOCKET` 指定的 socket、本账户正在运行的用户级 Broker、系统级 Broker。正在运行的用户级 Broker 优先于系统级 Broker，所以本账户的用户级 Broker 在运行时若要管理系统级 Broker，须设置 `AGENT_PEER_SOCKET`，或以 `sudo` 执行命令。顺序与相关设置见[运行系统级 Broker]({{< relref "/docs/guides/system-broker" >}})。
+
+Broker 按执行命令的账户判定每个命令的权限，规则与对应的工具相同。写操作留下的审计记录中，`account` 是执行命令的账户，`actor` 为空。管理员以 `sudo` 执行时，系统级 Broker 按 root 的权限判定。这些命令不经过 Claude Code 的权限确认。Broker 拒绝某个命令时，它给出的英文错误写到标准错误，其中包含配置文件的路径，命令以退出码 1 结束。
+
+这些命令的输出沿用 `agent-peer status` 的约定：空值写 `-`。
+
+## agent-peer config get
+
+打印正在运行的 Broker 的配置项。
+
+- 不带参数时打印全部配置项，每项一行，写成 `<key> = <value>`，按 `key` 排序。
+- 带 `key` 时只打印该项。
+
+`pairing.static_key` 只打印 `set` 或 `unset`，不打印取值。未知的键会失败。
+
+需要 Broker 配置文件的读权限；用户级 Broker 下，本账户本来就具备该权限。用法错误以退出码 2 结束，其余失败以退出码 1 结束。
+
+## agent-peer config set
+
+修改一个配置项，并打印改动，写成 `<key>: <old> -> <new>`。
+
+- `key` 与 `value` 都必须给出。
+- `pairing.static_key` 不能在这里修改，只能在配置文件里设置。
+
+Broker 以 `--listen` 运行时，该选项固定了 `broker.listen`，`config set` 不能修改它；规则见[配置键]({{< relref "docs/reference/configuration" >}})。
+
+需要 Broker 配置文件的写权限。用法错误以退出码 2 结束，其余失败（包括 Broker 拒绝的键）以退出码 1 结束。
+
+## agent-peer pairing-key create
+
+在正在运行的 Broker 上生成一次性配对密钥，并输出密钥、失效时间与本 Broker 的对外地址：
+
+```text
+Key: <key>
+Expires: <RFC 3339 UTC>
+Addresses:
+  <address>
+```
+
+每个地址单独一行，缩进两格。`broker.listen` 为空、且启动时没有给 `--listen` 时，Broker 不监听，会拒绝请求，命令以退出码 1 结束。
+
+需要 Broker 配置文件的写权限。用法错误以退出码 2 结束，其余失败以退出码 1 结束。
+
+## agent-peer peer list
+
+把正在运行的 Broker 已知的全部 Broker 列成表格，包括还不是对端的 Broker。列为 `ALIAS`、`FINGERPRINT`、`PEER`（`yes` 或 `no`）、`STATUS`、`DIRECTION` 与 `ADDRESSES`，按别名排序。`ADDRESSES` 列用逗号连接各地址。没有任何 Broker 时输出 `Brokers: none`。
+
+不需要权限。用法错误以退出码 2 结束，其余失败以退出码 1 结束。
+
+## agent-peer peer connect
+
+把本 Broker 与另一个 Broker 配对，并打印一行 `Paired with <alias> (<fingerprint>)`。
+
+- `address` 写成 `address:port` 或 `hostname(address:port)`。
+- `--key <key>` 是对方 Broker 上生成的一次性配对密钥，或对方配置的预置静态密钥。
+- `--alias <alias>` 指定本地别名。对方的自报别名与已有别名冲突、又没有给出本地别名时，配对失败，并提示提供本地别名。
+
+应答中的警告逐条写到标准错误，每行前缀 `warning: `，命令仍以退出码 0 结束。
+
+需要 Broker 配置文件的写权限。用法错误以退出码 2 结束，其余失败以退出码 1 结束。
+
+## agent-peer peer disconnect
+
+解除与一个 Broker 的配对，并打印一行 `Disconnected <broker>`。
+
+- `broker` 写对端的别名或完整的 64 位十六进制指纹。
+
+需要 Broker 配置文件的写权限。用法错误以退出码 2 结束，其余失败以退出码 1 结束。
 
 ## agent-peer service install
 

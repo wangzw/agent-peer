@@ -15,6 +15,13 @@ Commands:
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker
   audit [--limit <n>]         read the audit log
+  config get [<key>]          show all configuration items, or one
+  config set <key> <value>    change a configuration item
+  pairing-key create          create a one-time pairing key
+  peer list                   list paired Brokers
+  peer connect <address> --key <key> [--alias <alias>]
+                              pair with another Broker
+  peer disconnect <broker>    remove a pairing
   service install [--system]  install and start the Broker as a user-level service,
                               or system-level with --system
   service uninstall [--system]
@@ -55,6 +62,77 @@ Prints the audit log from a running Broker, one line per event, in time order, t
 - `--limit <n>` reads at most `n` events, the newest ones, still printed oldest first. `0` means every event and is the default. The maximum is `4294967295`.
 
 Reading the audit log requires read permission on the Broker's configuration file. On a user Broker the account has that permission.
+
+## Broker administration commands
+
+The `config`, `pairing-key` and `peer` commands connect to a running Broker, without starting one. They look for it in the same order as a session: the socket named by `AGENT_PEER_SOCKET`, this account's running user Broker, then the system Broker. A running user Broker takes precedence over the system Broker, so an account that wants to manage the system Broker while its own user Broker is running must set `AGENT_PEER_SOCKET` or run the command with `sudo`. [Run a system Broker]({{< relref "/docs/guides/system-broker" >}}) lists the order and the settings.
+
+The Broker decides the permission of each command from the account that runs it, using the same rules as the matching tool. In the audit records left by the write commands, `account` is the account that ran the command and `actor` is empty. When an administrator runs a command with `sudo`, a system Broker authorizes it against root's permissions. These commands do not pass through Claude Code's approval. When the Broker denies a command, its English error, which contains the path of the configuration file, is written to standard error and the command exits with code 1.
+
+These commands follow the output conventions of `agent-peer status`: an empty value is written `-`.
+
+## agent-peer config get
+
+Prints configuration items from a running Broker.
+
+- With no argument, prints every item, one per line as `<key> = <value>`, sorted by `key`.
+- With `key`, prints only that item.
+
+`pairing.static_key` is printed as `set` or `unset`, never by value. An unknown key fails.
+
+Requires read permission on the Broker's configuration file; on a user Broker the account has it. A usage error exits with code 2; any other failure exits with code 1.
+
+## agent-peer config set
+
+Changes one configuration item and prints the change as `<key>: <old> -> <new>`.
+
+- `key` and `value` are both required.
+- `pairing.static_key` cannot be changed here; it is set in the configuration file only.
+
+When the Broker runs with `--listen`, that option fixes `broker.listen` and `config set` cannot change it; [Configuration keys]({{< relref "docs/reference/configuration" >}}) gives the rule.
+
+Requires write permission on the Broker's configuration file. A usage error exits with code 2; any other failure, including a key the Broker rejects, exits with code 1.
+
+## agent-peer pairing-key create
+
+Creates a one-time pairing key on a running Broker and prints the key, its expiry time and this Broker's advertised addresses:
+
+```text
+Key: <key>
+Expires: <RFC 3339 UTC>
+Addresses:
+  <address>
+```
+
+Each address is printed on its own line, indented by two spaces. When the Broker does not listen, which happens when `broker.listen` is empty and no `--listen` is given at startup, it rejects the request and the command exits with code 1.
+
+Requires write permission on the Broker's configuration file. A usage error exits with code 2; any other failure exits with code 1.
+
+## agent-peer peer list
+
+Lists every Broker known to a running Broker, including Brokers that are not peers, as a table with the columns `ALIAS`, `FINGERPRINT`, `PEER` (`yes` or `no`), `STATUS`, `DIRECTION` and `ADDRESSES`, sorted by alias. The `ADDRESSES` column joins the addresses with commas. With no known Broker it prints `Brokers: none`.
+
+Requires no permission. A usage error exits with code 2; any other failure exits with code 1.
+
+## agent-peer peer connect
+
+Pairs this Broker with another Broker and prints one line, `Paired with <alias> (<fingerprint>)`.
+
+- `address` is written `address:port` or `hostname(address:port)`.
+- `--key <key>` is a one-time pairing key created on the other Broker, or its pre-provisioned static key.
+- `--alias <alias>` sets the local alias. When the other Broker's own alias conflicts with an existing one and no local alias is given, the pairing fails and asks for a local alias.
+
+Warnings in the reply are written to standard error, one per line with the prefix `warning: `, and the command still exits with code 0.
+
+Requires write permission on the Broker's configuration file. A usage error exits with code 2; any other failure exits with code 1.
+
+## agent-peer peer disconnect
+
+Removes the pairing with a Broker and prints one line, `Disconnected <broker>`.
+
+- `broker` is the peer's alias or its full 64-character hexadecimal fingerprint.
+
+Requires write permission on the Broker's configuration file. A usage error exits with code 2; any other failure exits with code 1.
 
 ## agent-peer service install
 

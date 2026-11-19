@@ -127,11 +127,11 @@ agent-peer broker
 
 两台主机中至少有一台能连到另一台上的 17443 端口。配对之前，确认两台主机上的 Broker 都在运行，且都用默认配置。
 
-1. 在能被对方连到的那台主机上，让模型调用 `create_pairing_key`，并在权限确认中批准。
+1. 在能被对方连到的那台主机上，让模型调用 `create_pairing_key` 并在权限确认中批准，或者在终端运行 `agent-peer pairing-key create`。
 2. 结果给出一个一次性配对密钥、它的失效时间，以及本机 Broker 的地址。密钥和地址分开显示，地址不属于密钥。把两者经 agent-peer 之外的途径交给另一台主机上的用户。
-3. 在另一台主机上，让模型用第 2 步的地址和密钥调用 `connect_broker`，并在权限确认中批准。
+3. 在另一台主机上，让模型用第 2 步的地址和密钥调用 `connect_broker` 并在权限确认中批准，或者运行 `agent-peer peer connect <address> --key <key>`。
 4. 结果显示接受方 Broker 的别名与指纹。两台主机上处在同一个 topic 里的会话此后就能互相看见、互发消息。
 
-`create_pairing_key`、`connect_broker` 等管理工具要求对 Broker 的配置文件有写权限。你自己的用户级 Broker 的配置文件属于你的账户，所以自然满足。系统级 Broker 的情形见[以配置文件权限管理 Broker]({{< relref "guides/management-permissions.md" >}})。
+`create_pairing_key`、`connect_broker` 等管理工具以及对应的终端命令，要求对 Broker 的配置文件有写权限。你自己的用户级 Broker 的配置文件属于你的账户，所以自然满足。系统级 Broker 上普通账户默认没有写权限。配对双方中任一侧是系统级 Broker 时，生成密钥和连接都需要该侧的写权限，请管理员执行 `sudo agent-peer pairing-key create` 与 `sudo agent-peer peer connect <address> --key <key>`；管理员也可以按管理权限页的做法授予写权限。权限规则见[以配置文件权限管理 Broker]({{< relref "guides/management-permissions.md" >}})。
 
-调用 `connect_broker` 的一方是拨号方，网络中断后由它重新建立链路；接受方不主动拨号。密钥过期、别名冲突、地址连不上等情形见[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。
+调用 `connect_broker` 或运行 `agent-peer peer connect` 的一方是拨号方，网络中断后由它重新建立链路；接受方不主动拨号。密钥过期、别名冲突、地址连不上等情形见[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。

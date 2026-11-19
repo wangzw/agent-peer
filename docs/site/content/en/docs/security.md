@@ -33,7 +33,7 @@ A session joins a default topic declared by its project configuration file. With
 
 The Broker decides what a caller may manage from the operating system's process credentials for the local socket, not from what the caller says. Write permission on the Broker's configuration file allows changing the configuration, creating a one-time pairing key, pairing, and unpairing. Read permission allows reading the configuration, reading the audit log, and seeing status beyond the caller's own agents. Listing agents and topics, joining and leaving topics, and sending a message need neither.
 
-This means a system Broker can delegate management with ordinary file permissions: grant write access to a group and its accounts can manage the Broker through the tools. It also means the account, not the person or the model, is identified. Every process under an account acts with that account's authority, and a call made by a model steered by prompt injection is indistinguishable from one the user intended.
+This means a system Broker can delegate management with ordinary file permissions: grant write access to a group and its accounts can manage the Broker through the tools or the terminal commands. An administrator running the terminal commands with `sudo` is checked as root, so the default 0600 file already lets root manage the Broker. It also means the account, not the person or the model, is identified. Every process under an account acts with that account's authority, and a call made by a model steered by prompt injection is indistinguishable from one the user intended.
 
 ## Messages enter a session without an authentication token
 

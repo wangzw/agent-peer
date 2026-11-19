@@ -25,7 +25,7 @@ A session never starts a Broker. If the host already has a system Broker you can
 
 ## What happens when no Broker is running?
 
-Tool calls return an error that says what to do, and the guidance depends on the case. A first lookup that finds neither a user Broker nor a system Broker, and a user Broker whose socket has disappeared or refuses connections, as after a hard kill, get the same message: it says to ask the administrator to start a system Broker if the host has one, then gives the two user-level methods. A session that was registered on the system Broker and loses it is told only to contact the administrator. A user Broker whose socket still answers but whose handshake or a call fails is reported as unavailable, with a note that the MCP server keeps retrying in the background and no instruction to start a Broker. Starting the Broker does not require reconnecting the MCP server. See [Command line]({{< relref "reference/cli.md" >}}).
+Tool calls return an error that says what to do, and the guidance depends on the case. A first lookup that finds neither a user Broker nor a system Broker, and a user Broker whose socket has disappeared or refuses connections, as after a hard kill, get the same message: it says to ask the administrator to start a system Broker if the host has one, then gives the two user-level methods. A session that was registered on the system Broker and loses it is told only to contact the administrator. A user Broker whose socket still answers but whose handshake or a call fails is reported as unavailable, with a note that the MCP server keeps retrying in the background and no instruction to start a Broker. Starting the Broker does not require reconnecting the MCP server. Terminal commands that need a Broker, such as `agent-peer peer list`, behave the same way: they look for a running Broker and never start one. See [Command line]({{< relref "reference/cli.md" >}}).
 
 ## Can one account run more than one Broker?
 
@@ -33,7 +33,7 @@ No. An account runs at most one Broker, and starting another one with a differen
 
 ## How do two hosts start trusting each other?
 
-One host must be able to reach the other. On the host that can be reached, create a one-time pairing key and give it, with the displayed addresses, to the other host through a channel outside the system. The other host pairs with `connect_broker`, and from then on each side recognizes the other by fingerprint. See [Pairing]({{< relref "concepts/pairing.md" >}}) and [Pair two hosts]({{< relref "guides/pair-hosts.md" >}}).
+One host must be able to reach the other. On the host that can be reached, create a one-time pairing key with `create_pairing_key` or `agent-peer pairing-key create` and give it, with the displayed addresses, to the other host through a channel outside the system. The other host pairs with `connect_broker` or `agent-peer peer connect <address> --key <key>`, using that one-time key or a pre-provisioned static key configured on the accepting host, and from then on each side recognizes the other by fingerprint. See [Pairing]({{< relref "concepts/pairing.md" >}}) and [Pair two hosts]({{< relref "guides/pair-hosts.md" >}}).
 
 ## What is a topic, and do I need to create one?
 
@@ -61,7 +61,7 @@ The receiving Claude Code drops a message from the same agent to the same sessio
 
 ## Who can change the Broker's configuration?
 
-An account with write permission on the Broker's configuration file can change it, create one-time pairing keys, pair, and unpair. Read permission allows reading the configuration and the audit log. See [Management permissions]({{< relref "guides/management-permissions.md" >}}).
+An account with write permission on the Broker's configuration file can change it with `set_config` or `agent-peer config set`, create one-time pairing keys with `create_pairing_key` or `agent-peer pairing-key create`, and pair or unpair with `connect_broker` and `disconnect_broker`, or `agent-peer peer connect` and `agent-peer peer disconnect`. Read permission allows reading the configuration and the audit log. The terminal commands judge permission by the account running them; when the administrator runs them with `sudo`, a system Broker authorizes them against root's permissions. See [Management permissions]({{< relref "guides/management-permissions.md" >}}).
 
 ## What happens if the port is already in use?
 

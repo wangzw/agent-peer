@@ -39,8 +39,10 @@ If none is available, tool calls return an error that says what to do; the MCP s
 
 An account that may use the system Broker but has its own user Broker running registers on the user Broker. Point `AGENT_PEER_SOCKET` at the system socket to choose the system Broker for that session.
 
+The terminal commands `agent-peer config`, `agent-peer pairing-key` and `agent-peer peer`, like `agent-peer status`, choose a Broker in the same order, look only for a Broker that is running, and never start one. If this account has a user Broker running, point `AGENT_PEER_SOCKET` at the system socket or run the command with `sudo` to manage the system Broker.
+
 ## One identity for several accounts
 
 All agents served by one system Broker share its fingerprint, alias and peers. Agents from different accounts that join the same topic see each other and can exchange messages. Pairing the system Broker once therefore connects every served account to the other side, and another host needs only that one pairing to reach all of them.
 
-Management of the Broker is decided by the permissions on `/etc/agent-peer/config.yaml`, not by the account that runs the service. [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}) explains how to grant read or write access.
+Management of the Broker is decided by the permissions on `/etc/agent-peer/config.yaml`, not by the account that runs the service. [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}) explains how to grant read or write access. An administrator can also manage the Broker with the terminal commands under `sudo`, which the Broker checks as root; the file's default 0600 mode already lets root manage it.
