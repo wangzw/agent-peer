@@ -100,8 +100,8 @@ Agent 对配置的每次修改必须写入审计日志，记录发起修改的 A
 所属账户对 Broker 的配置文件有读权限的用户，必须能在本机终端查看该 Broker 的审计日志。
 
 - **验收**：以有读权限的账户在终端执行查看审计日志的命令，输出包含此前产生的全部审计记录；以没有读权限的账户执行，得到权限不足的错误。
-- **状态**：未实现
-- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker`（系统级一半）；用户级一半由 `test/e2e/config_tools_test.go` 的 `TestConfigTools/TerminalAuditCommand` 覆盖
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker`（系统级：有读权限的账户看到的输出与 Broker 的全部审计记录逐条对应；无读权限的账户被拒）；`test/e2e/config_tools_test.go` 的 `TestConfigTools/TerminalAuditCommand`（用户级：输出与 `Oracle.Audit` 逐条对应）
 
 ### REQ-broker-config-010
 

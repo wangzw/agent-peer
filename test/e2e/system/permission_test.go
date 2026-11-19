@@ -3,15 +3,20 @@
 package e2e
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
 	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/agent-peer/test/e2e/node"
 	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
 )
 
@@ -425,9 +430,9 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 }
 
 // TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker checks the
-// system half of REQ-broker-config-009: the audit log needs read permission on
-// the system Broker's configuration file, and a grant takes effect without a
-// restart.
+// system half of REQ-broker-config-009: an account with read permission on the
+// system Broker's configuration file sees every audit record in the terminal,
+// an account without it is refused, and a grant takes effect without a restart.
 func TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker(t *testing.T) {
 	if !syscontainer.InContainer() {
 		syscontainer.Run(t, syscontainer.Plain)
@@ -438,10 +443,36 @@ func TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker(t *testing.T)
 
 	root := syscontainer.NewSession(t, "root", "admin")
 	permWaitConnected(t, root)
+
+	// Produce three different event kinds before comparing, so a log with a
+	// single record cannot satisfy the record-for-record check.
 	if text, isError := root.Call(t, "set_config",
 		map[string]any{"key": "broker.alias", "value": "sys2"}); isError {
 		t.Fatalf("set_config as root: %s", text)
 	}
+	permPairingKey(t, root)
+	// Nothing listens on 127.0.0.1:1, so the connect fails after dialing
+	// started, which records pairing_failed.
+	if text, isError := root.Call(t, "connect_broker",
+		map[string]any{"address": "127.0.0.1:1", "key": "not-a-pairing-key"}); !isError {
+		t.Fatalf("connect_broker to an unreachable address succeeded: %s", text)
+	}
+
+	// root's Oracle reads the same records the terminal command reads, without
+	// going through the audit subcommand, so the comparison below is against
+	// the Broker's log itself.
+	var events []*localpb.AuditEvent
+	harness.Eventually(t, 3*time.Second, "the system Broker's audit log to record the three event kinds", func() (bool, string) {
+		events = permAuditRecords(t)
+		seen := make(map[localpb.AuditEventKind]bool, len(events))
+		for _, event := range events {
+			seen[event.GetEvent()] = true
+		}
+		ok := seen[localpb.AuditEventKind_AUDIT_EVENT_KIND_CONFIG_SET] &&
+			seen[localpb.AuditEventKind_AUDIT_EVENT_KIND_PAIRING_KEY_CREATED] &&
+			seen[localpb.AuditEventKind_AUDIT_EVENT_KIND_PAIRING_FAILED]
+		return ok, fmt.Sprintf("%d records", len(events))
+	})
 
 	denied := syscontainer.RunAs(t, "other", nil, "audit")
 	if denied.ExitCode == 0 {
@@ -453,14 +484,19 @@ func TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker(t *testing.T)
 
 	permGrantAdmins(t, "0640")
 
-	harness.Eventually(t, 3*time.Second, "other's audit to show the configuration change", func() (bool, string) {
-		res := syscontainer.RunAs(t, "other", nil, "audit")
-		if res.ExitCode != 0 {
-			return false, res.Stderr
+	res := syscontainer.RunAs(t, "other", nil, "audit")
+	if res.ExitCode != 0 {
+		t.Fatalf("agent-peer audit as other exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
+	lines := permNonEmptyLines(res.Stdout)
+	if len(lines) != len(events) {
+		t.Fatalf("agent-peer audit printed %d lines for %d audit records:\n%s", len(lines), len(events), res.Stdout)
+	}
+	for i, event := range events {
+		if name := permAuditKindName(event.GetEvent()); !strings.Contains(lines[i], name) {
+			t.Fatalf("audit line %d is %q, want it to name %s", i+1, lines[i], name)
 		}
-		ok := strings.Contains(res.Stdout, "config_set") && strings.Contains(res.Stdout, "key=broker.alias")
-		return ok, res.Stdout
-	})
+	}
 
 	// The grant goes to other's account. peer is not a member, so its audit
 	// read is still refused and the reason names the missing permission.
@@ -471,6 +507,48 @@ func TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker(t *testing.T)
 	if !strings.Contains(peerDenied.Stderr, "permission_denied") {
 		t.Errorf("audit as peer without read permission does not explain the denial:\n%s", peerDenied.Stderr)
 	}
+}
+
+// permAuditRecords reads every audit record from the system Broker through its
+// local interface. The test process runs as root, so the read permission check
+// passes and the result is the Broker's full log.
+func permAuditRecords(t *testing.T) []*localpb.AuditEvent {
+	t.Helper()
+	oracle, err := node.DialOracle(permSocketPath)
+	if err != nil {
+		t.Fatalf("dialing the system Broker's local interface: %v", err)
+	}
+	defer func() {
+		if err := oracle.Close(); err != nil && t.Failed() {
+			t.Logf("closing the system Broker's local interface: %v", err)
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	events, err := oracle.Audit(ctx, nil)
+	if err != nil {
+		t.Fatalf("reading the system Broker's audit log: %v", err)
+	}
+	return events
+}
+
+// permAuditKindName renders an audit event kind the way the terminal does.
+func permAuditKindName(k localpb.AuditEventKind) string {
+	if name, ok := localpb.AuditEventKind_name[int32(k)]; ok {
+		return strings.ToLower(strings.TrimPrefix(name, "AUDIT_EVENT_KIND_"))
+	}
+	return strconv.Itoa(int(k))
+}
+
+// permNonEmptyLines splits output into its non-empty lines.
+func permNonEmptyLines(s string) []string {
+	var lines []string
+	for _, line := range strings.Split(s, "\n") {
+		if strings.TrimSpace(line) != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }
 
 // permWaitRegistered waits until the session's MCP server has registered it.
