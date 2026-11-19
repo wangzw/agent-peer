@@ -3,6 +3,7 @@ package ctl_test
 import (
 	"context"
 	"net"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -116,6 +117,12 @@ func TestCtlFakeRelease(t *testing.T) {
 	// closes its side.
 	if err := conn.Close(); err != nil {
 		t.Fatalf("closing the inbox connection: %v", err)
+	}
+	// node.InboxConnections reads /proc/net/unix, so the count is only
+	// observable on Linux. The release and frame checks above have already
+	// run here; only the connection count is skipped.
+	if runtime.GOOS != "linux" {
+		t.Skip("InboxConnections reads /proc/net/unix")
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
