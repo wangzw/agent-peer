@@ -81,11 +81,6 @@ func (a *app) run(ctx context.Context, args []string) int {
 	if handler, ok := subcommands[name]; ok {
 		return handler(a, ctx, args[1:])
 	}
-	switch name {
-	case "broker", "mcp", "status", "audit":
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer %s: not implemented\n", name)
-		return exitFailure
-	}
 	_, _ = fmt.Fprintf(a.stderr, "agent-peer: unknown command %q\n\n", name)
 	_, _ = fmt.Fprint(a.stderr, usage)
 	return exitUsage
@@ -101,11 +96,6 @@ func (a *app) runInternal(ctx context.Context, args []string) int {
 	name := "internal " + args[0]
 	if handler, ok := subcommands[name]; ok {
 		return handler(a, ctx, args[1:])
-	}
-	switch args[0] {
-	case "broker-launcher":
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer %s: not implemented\n", name)
-		return exitFailure
 	}
 	_, _ = fmt.Fprintf(a.stderr, "agent-peer internal: unknown command %q\n", args[0])
 	return exitUsage
