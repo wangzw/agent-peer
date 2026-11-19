@@ -257,7 +257,7 @@ if ! mt_wait_prompt tog 30; then
 fi
 rs_obs_mode tog
 
-rs_keys tog 'Call mcp__peer__join_topic with name tog-manual, then reply done.' Enter
+rs_send_prompt tog 'Call mcp__peer__join_topic with name tog-manual, then reply done.' 'Call mcp__peer__join_topic' 60
 rs_obs "step 2: asked tog to join tog-manual"
 
 if mt_wait_topic 'tog@' tog-manual 120; then
@@ -356,3 +356,8 @@ fi
 	printf 'peer disabled to deregistered\t%s\n' "$disable_ms"
 	printf 'peer enabled to registered\t%s\n' "$enable_ms"
 } >"$OUT/timings.tsv"
+
+# The join prompt is the probe's only model prompt; the slash commands are not.
+# Without this check a run that never submitted the prompt can report a topic
+# from a stale table and still look successful.
+rs_require_model_turn 'Call mcp__peer__join_topic with name tog-manual' 1

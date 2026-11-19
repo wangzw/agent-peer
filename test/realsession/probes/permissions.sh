@@ -51,11 +51,10 @@ perm_wait_ready() {
 	return 1
 }
 
-# perm_send types a prompt and submits it.
+# perm_send submits a model prompt through the shared helper.
 perm_send() {
-	local window="$1" text="$2"
-	rs_keys "$window" -l "$text"
-	rs_keys "$window" Enter
+	local window="$1" text="$2" needle="${3:-}"
+	rs_send_prompt "$window" "$text" "$needle" 60
 }
 
 # perm_run_turn follows one turn: every permission dialog is captured and
@@ -95,7 +94,9 @@ perm_run_turn() {
 # perm_close ends a session and removes its window.
 perm_close() {
 	local window="$1"
-	perm_send "$window" "/exit"
+	# /exit is a slash command, not a model prompt, so it bypasses the helper.
+	rs_keys_literal "$window" "/exit"
+	rs_keys "$window" Enter
 	sleep 2
 	tmux -L "$TMUX_SERVER" kill-window -t "$window" 2>/dev/null || true
 }
@@ -160,3 +161,7 @@ if ! "$R/run" rsprobe status >"$OUT/status.txt" 2>"$OUT/status.err"; then
 fi
 perm_close perm-b
 rs_obs "permissions probe finished with $PERM_DIALOGS dialog(s) denied in total"
+
+# A denied dialog is evidence only if the prompt that raised it started a model
+# turn. The perm-a prompt is the first one typed, so its text is the marker.
+rs_require_model_turn 'Call mcp__peer__get_config for key broker.alias' 1

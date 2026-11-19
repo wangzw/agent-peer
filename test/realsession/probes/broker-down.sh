@@ -234,8 +234,7 @@ fi
 rs_obs "MCP service process before recovery: $mcp_before"
 
 # Step 5: the first call must return the unavailable listen address.
-rs_keys down "$PROMPT"
-rs_keys down Enter
+rs_send_prompt down "$PROMPT" 'Call mcp__peer__list_agents' 60
 rs_obs "submitted the first list_agents prompt while the address was held"
 if ! wait_for_record "$ERROR_MARKER" 120; then
 	rs_obs "the first list_agents result did not name the unavailable listen address"
@@ -294,8 +293,7 @@ while IFS= read -r pid; do
 done <"$OUT/broker-pids.txt"
 
 # Step 7: the same prompt must now succeed.
-rs_keys down "$PROMPT"
-rs_keys down Enter
+rs_send_prompt down "$PROMPT" 'Call mcp__peer__list_agents' 60
 rs_obs "submitted the same list_agents prompt after recovery"
 if ! wait_for_record "$SUCCESS_MARKER" 120; then
 	rs_obs "the second list_agents result did not list session down"

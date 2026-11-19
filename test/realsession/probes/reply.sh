@@ -290,3 +290,8 @@ rs_hosta_recv "$SENDER"
 rs_snap reply-s pane-reply-s.txt
 rs_snap reply-h pane-reply-h.txt
 rs_obs "reply probe finished"
+
+# The probe types no prompt: the peer host's sender starts each turn. The second
+# message is sent to both sessions, so its text must appear as a user record and
+# the environment must count at least one model call.
+rs_require_model_turn 'Quick question: what is 2+2?' 1

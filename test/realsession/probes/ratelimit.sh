@@ -314,7 +314,7 @@ rs_obs "simulated senders rl-s1 and rl-s2 registered"
 
 # Step 1: while the receiver is busy, send 40 distinct messages through the
 # Broker in under five seconds. They share the Broker's token bucket.
-rs_keys rl-rx "$SLEEP_PROMPT" Enter
+rs_send_prompt rl-rx "$SLEEP_PROMPT" 'Run "sleep 60"' 60
 rl_wait_status rl-rx busy 30
 burst_start="$(rl_now_ms)"
 rl_burst rl 40
@@ -338,7 +338,7 @@ rl_check_budget
 # receiver dropping messages; the accepted count below confirms the bucket was
 # exhausted. Ten seconds later it holds about 5 tokens, so about 5 of the 15
 # sends should arrive.
-rs_keys rl-rx "$SLEEP_PROMPT" Enter
+rs_send_prompt rl-rx "$SLEEP_PROMPT" 'Run "sleep 60"' 60
 rl_wait_status rl-rx busy 30
 burst_start="$(rl_now_ms)"
 rl_burst re 40
@@ -384,7 +384,7 @@ rl_check_budget
 
 # Step 4: 60 direct frames from separate writer processes are exempt from the
 # per-sender rate limit; the receiver's queue keeps at most 50.
-rs_keys rl-rx "$SLEEP_PROMPT" Enter
+rs_send_prompt rl-rx "$SLEEP_PROMPT" 'Run "sleep 60"' 60
 rl_wait_status rl-rx busy 30
 socket="$(rs_socket_of rl-rx)"
 frame_status=0
@@ -448,3 +448,8 @@ rl_write_bodies final
 if [[ -f "$OUT/broker.log" ]]; then
 	grep -o '"result":"[^"]*"' "$OUT/broker.log" | sort | uniq -c >"$OUT/broker-sends.txt" || true
 fi
+
+# The receiver's turns are the probe's subject, and every burst is delivered
+# while it runs. A run whose sleep prompt never submitted would still count
+# arrivals, so the prompt must be in a user record and usage above zero.
+rs_require_model_turn 'Run "sleep 60" with the Bash tool' 1

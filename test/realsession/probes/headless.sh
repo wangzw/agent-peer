@@ -215,3 +215,9 @@ stop_headless "$bypass_pid"
 
 rs_obs "hl-bypass processed the message: ${processed}; new assistant turns after send: ${turn_seen}"
 rs_obs "headless probe finished"
+
+# This probe has no tmux composer: both sessions read stream-json from a FIFO,
+# so rs_send_prompt does not apply. The step-1 user line is the probe's own
+# prompt, and it must appear in a user record while the usage counter is above
+# zero; otherwise the stream output alone proves no model turn happened.
+rs_require_model_turn 'Send the message "from-headless"' 1

@@ -358,8 +358,7 @@ if ! wait_socket inb-first 30; then
 	exit 1
 fi
 
-rs_keys inb-first -l 'Call mcp__peer__list_agents and show the raw result.'
-rs_keys inb-first Enter
+rs_send_prompt inb-first 'Call mcp__peer__list_agents and show the raw result.' 'Call mcp__peer__list_agents' 60
 if ! rs_wait_pane inb-first 'inb-first@hostB' 90; then
 	rs_obs "the list_agents call in inb-first did not show an Agent row within 90 seconds"
 fi
@@ -883,3 +882,7 @@ rs_obs "3d: send success $refuse_send_ok, message in session $refuse_message_vis
 } >"$OUT/summary.txt"
 
 rs_obs "probe finished"
+
+# The list_agents prompt is the first model prompt the probe types; a run that
+# never submitted it, or that recorded no model call at all, is a false pass.
+rs_require_model_turn 'Call mcp__peer__list_agents and show the raw result.' 1

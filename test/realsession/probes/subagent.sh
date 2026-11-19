@@ -207,8 +207,7 @@ wait_status_entry sub-main 30 || {
 printf 'time\tcount\n' >"$OUT/status-counts.tsv"
 : >"$OUT/status.txt"
 
-rs_keys sub-main 'Launch a subagent with your agent/task tool. The subagent must call mcp__peer__send_message with to "sub-rx@hostB" and message "from-subagent", then finish. Do not send the message yourself.'
-rs_keys sub-main Enter
+rs_send_prompt sub-main 'Launch a subagent with your agent/task tool. The subagent must call mcp__peer__send_message with to "sub-rx@hostB" and message "from-subagent", then finish. Do not send the message yourself.' 'Launch a subagent with your agent/task tool' 60
 
 step1_seen=0
 deadline=$((SECONDS + 300))
@@ -280,8 +279,7 @@ fi
 printf 'time\tcount\n' >"$OUT/status-counts-step2.tsv"
 : >"$OUT/status-step2.txt"
 
-rs_keys sub-main 'Use the peer-inline subagent to send "from-inline" to sub-rx@hostB.'
-rs_keys sub-main Enter
+rs_send_prompt sub-main 'Use the peer-inline subagent to send "from-inline" to sub-rx@hostB.' 'Use the peer-inline subagent' 60
 
 new_pid=""
 inline_msg=0
@@ -352,3 +350,8 @@ status_all_one "$OUT/status-counts-step2.tsv" || verdict=FAIL
 	printf 'REQ-agent-messaging-035: %s\n' "$verdict"
 } >"$OUT/verdict.txt"
 rs_obs "REQ-agent-messaging-035: $verdict (subagent probe)"
+
+# Both step prompts ask the main session for a subagent turn. The first session
+# is killed before step 2, but its transcript remains, so the first prompt is a
+# stable marker for "the probe reached the model at least once".
+rs_require_model_turn 'Launch a subagent with your agent/task tool' 1

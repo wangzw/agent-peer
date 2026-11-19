@@ -207,31 +207,18 @@ count_mode_class() {
 		'NR > 1 && $1 == mode && $9 == class { n++ } END { print n + 0 }' "$TSV"
 }
 
-# send_prompt_command types a prompt into a session, submits it with a
-# separate Enter, and waits for the file the prompt asks the model to write.
-#
-# 2.1.311 reads a long burst of keys as a paste: when the prompt text and the
-# Enter arrive in one write, the Enter stays in the composer as a newline and
-# the prompt never submits. Typing the text literally and sending Enter only
-# after the pane shows the prompt's first words keeps the two events apart.
-# The prompt is typed once; when the marker never appears the probe fails and
-# keeps the pane instead of typing the prompt again.
+# send_prompt_command submits a prompt through the shared rs_send_prompt helper
+# and waits for the file the prompt asks the model to write. The helper types the
+# text literally, waits for the composer to echo it, pauses, and sends Enter in a
+# second write; 2.1.311 folds a text-and-Enter burst into one paste and never
+# submits it. The prompt is typed once; when the marker never appears the probe
+# fails and keeps the pane instead of typing the prompt again.
 send_prompt_command() {
 	local window="$1" prompt="$2" needle="$3" marker="$4" seconds="$5"
-	if ! rs_wait_turn_idle "$window" 60; then
-		rs_snap "$window" "prompt-busy-$window.txt"
-		echo "binding: the $window session did not finish its previous turn within 60s (see $OUT/prompt-busy-$window.txt)" >&2
+	if ! rs_send_prompt "$window" "$prompt" "$needle" 60; then
+		echo "binding: the $window session did not accept its prompt (see $OUT/observations.txt)" >&2
 		return 1
 	fi
-	rs_keys_literal "$window" "$prompt"
-	if ! rs_wait_pane_literal "$window" "$needle" 10; then
-		echo "binding: the $window composer did not show the typed prompt (see $OUT/timeout-$window.txt)" >&2
-		return 1
-	fi
-	# The prompt is on screen; a short pause makes sure the last character was
-	# processed before Enter is sent.
-	sleep 0.3
-	rs_keys "$window" Enter
 	if ! rs_wait_file "$marker" "$seconds"; then
 		rs_snap "$window" "prompt-output-$window.txt"
 		echo "binding: the $window session did not write $marker within ${seconds}s (see $OUT/prompt-output-$window.txt)" >&2

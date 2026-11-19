@@ -300,7 +300,7 @@ fi
 x0="$(ref_of_path "$OUT/ref.txt" "$before_socket" || true)"
 
 # Step 3: the built-in session list's own ref for a<b.
-rs_keys ref-clear-observer "$OBSERVER_PROMPT" Enter
+rs_send_prompt ref-clear-observer "$OBSERVER_PROMPT" 'listing the other Claude Code sessions' 60
 if wait_excerpt 'a<b' observer-y1.jsonl 90; then
 	y1="$(bracket_ref "$(cat "$OUT/observer-y1.jsonl")" 'a<b' || true)"
 	rs_snap ref-clear-observer observer-y1-pane.txt
@@ -659,3 +659,7 @@ rs_obs "queued-before-clear criterion: $queued_criterion (clear_during_tool=$que
 	printf 'queued_clear_during_tool=%s\n' "$queued_clear_during_tool"
 	printf 'queued_assistant_ok=%s\n' "$queued_assistant_ok"
 } >"$OUT/refs.txt"
+
+# No pane capture can stand in for a model turn; the run fails when the observer
+# prompt never reached a conversation or no model call was recorded.
+rs_require_model_turn 'listing the other Claude Code sessions' 1

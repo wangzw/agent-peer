@@ -465,6 +465,51 @@ rs_obs() {
 	printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$OUT/observations.txt"
 }
 
+# rs_require_model_turn makes a probe fail when its prompts never reached the
+# model. It requires the environment's model-call counter to be at least MIN and
+# some session transcript to hold a user record containing MARKER, and records
+# the counter and both verdicts in observations.txt. Probes call it last, so a
+# run whose prompt never submitted cannot pass on a pane capture alone.
+#
+# Usage: rs_require_model_turn MARKER [MIN]
+rs_require_model_turn() {
+	local marker="$1" min="${2:-1}"
+	local usage total found=no src
+	if [[ -z "$marker" || ! "$min" =~ ^[0-9]+$ ]]; then
+		rs_obs "model-turn check: bad arguments marker=\"$marker\" min=\"$min\""
+		return 1
+	fi
+	usage="$("$R/run" rsprobe env usage --root "$R" 2>/dev/null || true)"
+	total="$(printf '%s\n' "$usage" | sed -n 's/^total //p' | tail -n 1)"
+	if [[ ! "$total" =~ ^[0-9]+$ ]]; then
+		total=unreadable
+	fi
+	while IFS= read -r -d '' src; do
+		if jq -Rre --arg marker "$marker" '
+			fromjson?
+			| select(type == "object" and .type == "user")
+			| (.message.content // empty)
+			| if type == "string" then .
+			  elif type == "array" then [.[] | (.text // "")] | join("\n")
+			  else "" end
+			| select(contains($marker))
+		' "$src" >/dev/null 2>&1; then
+			found=yes
+			break
+		fi
+	done < <(find "$R/cfg/projects" -type f -name '*.jsonl' -print0 2>/dev/null)
+	rs_obs "model-turn check: marker=\"$marker\" user_record=$found usage_total=$total (want >= $min)"
+	if [[ "$found" != yes ]]; then
+		rs_obs "model-turn check failed: no user record contains \"$marker\""
+		return 1
+	fi
+	if [[ "$total" == unreadable ]] || ((total < min)); then
+		rs_obs "model-turn check failed: usage total $total is below $min"
+		return 1
+	fi
+	return 0
+}
+
 # RS_READY_DIALOG_RE matches the startup dialogs and selection menus that must
 # not be on screen when a session is called ready. The trust dialog and the
 # bypass-permissions warning are dismissed by rs_wait_ready; the remaining

@@ -295,3 +295,9 @@ rs_excerpt 'mcp__peer__send_message' sig-target-tools.jsonl
 rs_snap sig-rx pane-end-sig-rx.txt
 rs_snap sig-target pane-end-sig-target.txt
 rs_obs "artifact complete: cs, lib, req022, req023, pong and tool-call excerpts plus five receive logs"
+
+# The probe types no prompt: its model turns are started by frames and by the
+# peer host's simulated Agents. The first cross-host body still must appear as a
+# user record and the environment must record a model call, or the replies the
+# pane showed were not produced by a model turn.
+rs_require_model_turn 'hello from api-worker' 1
