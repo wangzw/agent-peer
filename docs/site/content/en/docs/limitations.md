@@ -18,7 +18,8 @@ agent-peer does what the rest of this site describes. This page explains the des
 - The macOS binaries are not signed or notarized. If a browser downloaded the archive, clear the quarantine attribute before running the binary:
 
   ```sh
-  xattr -d com.apple.quarantine agent-peer  # only if a browser downloaded the archive
+  VERSION=0.1.0
+  xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer  # only if a browser downloaded the archive
   ```
 
   The [quick start]({{< relref "getting-started.md" >}}) covers downloading and installing the binary from a release archive.

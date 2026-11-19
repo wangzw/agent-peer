@@ -18,7 +18,8 @@ agent-peer 能做到本站其他页面介绍的事。本页说明这些做法背
 - macOS 二进制没有签名，也没有经过公证。用浏览器下载的归档，运行前要清除隔离属性：
 
   ```sh
-  xattr -d com.apple.quarantine agent-peer  # only if a browser downloaded the archive
+  VERSION=0.1.0
+  xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer  # only if a browser downloaded the archive
   ```
 
   [快速开始]({{< relref "getting-started.md" >}})的安装一节介绍怎样从发布归档下载并安装二进制。

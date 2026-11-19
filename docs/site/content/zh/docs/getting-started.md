@@ -36,26 +36,29 @@ VERSION=0.1.0
 grep agent-peer_${VERSION}_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
 ```
 
-在一个空目录里解压：归档没有外层目录，`LICENSE`、`README.md`、`third_party/` 等文件会直接落在当前目录。macOS 二进制没有签名，也没有经过公证，所以在 macOS 上，如果用浏览器下载了归档，运行前要清除解压出的二进制的隔离属性：
+新建一个目录，把归档解压进去：归档没有外层目录，不新建目录时，`LICENSE`、`README.md`、`third_party/` 等文件会和二进制一起直接落在当前目录。macOS 二进制没有签名，也没有经过公证，所以在 macOS 上，如果用浏览器下载了归档，运行前要清除解压出的二进制的隔离属性：
 
 ```sh
 VERSION=0.1.0
-tar -xzf agent-peer_${VERSION}_darwin_arm64.tar.gz
-xattr -d com.apple.quarantine agent-peer  # only if a browser downloaded the archive
+mkdir agent-peer-${VERSION}
+tar -xzf agent-peer_${VERSION}_darwin_arm64.tar.gz -C agent-peer-${VERSION}
+xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer  # only if a browser downloaded the archive
 ```
 
 Linux 上直接解压，不需要 `xattr` 这一步：
 
 ```sh
 VERSION=0.1.0
-tar -xzf agent-peer_${VERSION}_linux_arm64.tar.gz
+mkdir agent-peer-${VERSION}
+tar -xzf agent-peer_${VERSION}_linux_arm64.tar.gz -C agent-peer-${VERSION}
 ```
 
 如果只用用户级 Broker，放进 `~/.local/bin` 这类在 `PATH` 上的用户目录就够了。如果要安装系统级服务，用[把 Broker 安装为服务]({{< relref "guides/run-as-service.md" >}})里的 `sudo install` 代替下面的 `mv`：
 
 ```sh
+VERSION=0.1.0
 mkdir -p ~/.local/bin
-mv agent-peer ~/.local/bin/
+mv agent-peer-${VERSION}/agent-peer ~/.local/bin/
 agent-peer --version
 ```
 

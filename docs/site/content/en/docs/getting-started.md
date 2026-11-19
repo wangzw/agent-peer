@@ -36,26 +36,29 @@ VERSION=0.1.0
 grep agent-peer_${VERSION}_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
 ```
 
-Extract the archive in an empty directory: it has no top-level directory, so its files, including `LICENSE`, `README.md` and `third_party/`, land directly in the current directory. The macOS binaries are not signed or notarized, so on macOS, if a browser downloaded the archive, clear the quarantine attribute from the extracted binary before running it:
+Create a directory and extract the archive into it: the archive has no top-level directory, so without one its files, including `LICENSE`, `README.md` and `third_party/`, land directly in the current directory. The macOS binaries are not signed or notarized, so on macOS, if a browser downloaded the archive, clear the quarantine attribute from the extracted binary before running it:
 
 ```sh
 VERSION=0.1.0
-tar -xzf agent-peer_${VERSION}_darwin_arm64.tar.gz
-xattr -d com.apple.quarantine agent-peer  # only if a browser downloaded the archive
+mkdir agent-peer-${VERSION}
+tar -xzf agent-peer_${VERSION}_darwin_arm64.tar.gz -C agent-peer-${VERSION}
+xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer  # only if a browser downloaded the archive
 ```
 
 On Linux, extract the archive without the `xattr` step:
 
 ```sh
 VERSION=0.1.0
-tar -xzf agent-peer_${VERSION}_linux_arm64.tar.gz
+mkdir agent-peer-${VERSION}
+tar -xzf agent-peer_${VERSION}_linux_arm64.tar.gz -C agent-peer-${VERSION}
 ```
 
 If you use only a user-level Broker, a per-user directory such as `~/.local/bin` on your `PATH` is enough. If you install a system-level service, use the `sudo install` step in [Run the Broker as a service]({{< relref "guides/run-as-service.md" >}}) instead of the `mv` below:
 
 ```sh
+VERSION=0.1.0
 mkdir -p ~/.local/bin
-mv agent-peer ~/.local/bin/
+mv agent-peer-${VERSION}/agent-peer ~/.local/bin/
 agent-peer --version
 ```
 
