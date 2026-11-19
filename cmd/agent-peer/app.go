@@ -21,7 +21,7 @@ Commands:
   config get [<key>]          show all configuration items, or one
   config set <key> <value>    change a configuration item
   pairing-key create          create a one-time pairing key
-  peer list                   list paired Brokers
+  peer list                   list known Brokers and their connection state
   peer connect <address> --key <key> [--alias <alias>]
                               pair with another Broker
   peer disconnect <broker>    remove a pairing
