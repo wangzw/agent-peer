@@ -37,6 +37,7 @@ func CleanResidue(logf func(format string, args ...any)) {
 	removeDockerResidue(logf)
 	removeDockerImages(logf)
 	cleanSubnetReservations(logf)
+	cleanPortReservations(logf)
 	removeRuntimeRoots(logf)
 }
 

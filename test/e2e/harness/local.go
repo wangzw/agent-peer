@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,6 +39,7 @@ type localNode struct {
 	brokerLogPath string
 	brokers       int
 	freeAddrs     map[string]bool
+	reservedPorts []int
 }
 
 // NewLocalHost starts a node that runs on the test host. Its runtime root and
@@ -96,17 +96,14 @@ func (l *localNode) accountHome() string { return l.acct }
 
 func (l *localNode) freeAddr(t testing.TB) string {
 	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	addr, port, err := reservePort(currentOwner())
 	if err != nil {
 		t.Fatalf("harness: node %s: reserving a free address: %v", l.name, err)
 		return ""
 	}
-	addr := listener.Addr().String()
-	if err := listener.Close(); err != nil {
-		t.Fatalf("harness: node %s: releasing %s: %v", l.name, addr, err)
-	}
 	l.mu.Lock()
 	l.freeAddrs[addr] = true
+	l.reservedPorts = append(l.reservedPorts, port)
 	l.mu.Unlock()
 	return addr
 }
@@ -474,6 +471,8 @@ func (l *localNode) cleanup() {
 		l.broker = nil
 		oracles := l.oracles
 		l.oracles = nil
+		ports := l.reservedPorts
+		l.reservedPorts = nil
 		l.mu.Unlock()
 
 		for _, s := range sessions {
@@ -489,6 +488,10 @@ func (l *localNode) cleanup() {
 		}
 
 		l.killProcesses()
+
+		// The ports are free once the processes are gone, so another suite may
+		// take them.
+		releasePorts(ports, currentOwner())
 
 		if err := os.RemoveAll(l.root); err != nil {
 			l.t.Errorf("harness: node %s: removing runtime root %s: %v", l.name, l.root, err)

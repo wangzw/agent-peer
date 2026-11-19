@@ -52,9 +52,10 @@ func TestConfigTools(t *testing.T) {
 	t.Run("ReadReflectsBehavior", func(t *testing.T) {
 		host := harness.NewLocalHost(t, harness.LocalOptions{Name: "config-read"})
 		listen := host.FreeAddr(t)
-		ctStartBroker(t, host, harness.BrokerSpec{
+		start := ctStartBroker(t, host, harness.BrokerSpec{
 			ConfigYAML: ctConfig("broker:\n  listen: " + listen + "\n"),
 		})
+		listen = start.Address(listen)
 
 		s := host.StartSession(t, harness.SessionSpec{
 			Name:     "reader",
@@ -93,9 +94,10 @@ func TestConfigTools(t *testing.T) {
 		b := harness.NewLocalHost(t, harness.LocalOptions{Name: "config-alias-b"})
 		a := harness.NewLocalHost(t, harness.LocalOptions{Name: "config-alias-a"})
 		addrB := b.FreeAddr(t)
-		ctStartBroker(t, b, harness.BrokerSpec{
+		startB := ctStartBroker(t, b, harness.BrokerSpec{
 			ConfigYAML: ctConfig("broker:\n  listen: " + addrB + "\n"),
 		})
+		addrB = startB.Address(addrB)
 		ctStartBroker(t, a, harness.BrokerSpec{
 			ConfigYAML: ctConfig("broker:\n  listen: " + a.FreeAddr(t) + "\n"),
 		})
@@ -245,9 +247,10 @@ func TestConfigTools(t *testing.T) {
 	t.Run("FileEditHotReload", func(t *testing.T) {
 		host := harness.NewLocalHost(t, harness.LocalOptions{Name: "config-reload"})
 		listen := host.FreeAddr(t)
-		ctStartBroker(t, host, harness.BrokerSpec{
+		start := ctStartBroker(t, host, harness.BrokerSpec{
 			ConfigYAML: ctConfig("broker:\n  listen: " + listen + "\n"),
 		})
+		listen = start.Address(listen)
 
 		aliasBefore := ctGetConfig(t, host, "broker.alias")
 		failuresBefore := ctGetConfig(t, host, "pairing.max_failures")
@@ -293,10 +296,11 @@ func TestConfigTools(t *testing.T) {
 		listenHost := harness.NewLocalHost(t, harness.LocalOptions{Name: "config-reload-listen"})
 		p1 := listenHost.FreeAddr(t)
 		p2 := listenHost.FreeAddr(t)
-		ctStartBroker(t, listenHost, harness.BrokerSpec{
+		listenStart := ctStartBroker(t, listenHost, harness.BrokerSpec{
 			Args:       []string{"--listen", p1},
 			ConfigYAML: ctConfig("broker:\n  listen: " + p1 + "\n"),
 		})
+		p1 = listenStart.Address(p1)
 		listenSince := time.Now()
 		listenHost.WriteConfig(t, ctConfig("broker:\n  listen: "+p2+"\n  alias: after\n"))
 		ctWaitConfigValue(t, listenHost, "broker.alias", "after", ctReloadBound)
@@ -325,9 +329,10 @@ func TestConfigTools(t *testing.T) {
 	t.Run("FileEditRejectsCombination", func(t *testing.T) {
 		host := harness.NewLocalHost(t, harness.LocalOptions{Name: "config-file-combination"})
 		listen := host.FreeAddr(t)
-		ctStartBroker(t, host, harness.BrokerSpec{
+		start := ctStartBroker(t, host, harness.BrokerSpec{
 			ConfigYAML: ctConfig("broker:\n  listen: " + listen + "\n"),
 		})
+		listen = start.Address(listen)
 
 		advertiseBefore := ctGetConfig(t, host, "broker.advertise")
 		since := time.Now()
@@ -411,11 +416,12 @@ func TestConfigTools(t *testing.T) {
 			"a1.example", "a2.example", "a3.example", "a4.example",
 			"a5.example", "a6.example", "a7.example",
 		}
-		ctStartBroker(t, host, harness.BrokerSpec{
+		start := ctStartBroker(t, host, harness.BrokerSpec{
 			ConfigYAML: ctConfig(
 				"broker:\n  listen: " + listen + "\n  advertise_extra: [" + strings.Join(seven, ", ") + "]\n",
 			),
 		})
+		listen = start.Address(listen)
 
 		extraBefore := ctGetConfig(t, host, "broker.advertise_extra")
 		since := time.Now()
@@ -441,11 +447,14 @@ func TestConfigTools(t *testing.T) {
 		host := harness.NewLocalHost(t, harness.LocalOptions{Name: "config-listen-flag"})
 		p1 := host.FreeAddr(t)
 		p2 := host.FreeAddr(t)
-		config := ctConfig("broker:\n  listen: " + p1 + "\n")
-		ctStartBroker(t, host, harness.BrokerSpec{
+		start := ctStartBroker(t, host, harness.BrokerSpec{
 			Args:       []string{"--listen", p1},
-			ConfigYAML: config,
+			ConfigYAML: ctConfig("broker:\n  listen: " + p1 + "\n"),
 		})
+		p1 = start.Address(p1)
+		// A later start reads the configuration as written, so write the
+		// address the Broker actually used back into it.
+		config := ctConfig("broker:\n  listen: " + p1 + "\n")
 		op := ctOperator(t, host)
 		defer op.End(t)
 
@@ -486,16 +495,16 @@ func TestConfigTools(t *testing.T) {
 	t.Run("UnbindableListen", func(t *testing.T) {
 		host := harness.NewLocalHost(t, harness.LocalOptions{Name: "config-unbindable"})
 		p1 := host.FreeAddr(t)
-		p2 := host.FreeAddr(t)
-		occupied, err := net.Listen("tcp", p2)
-		if err != nil {
-			t.Fatalf("occupying %s: %v", p2, err)
-		}
+		occupied, p2 := ctOccupyAddr(t, host)
 		defer func() { _ = occupied.Close() }()
 
-		ctStartBroker(t, host, harness.BrokerSpec{
+		start := ctStartBroker(t, host, harness.BrokerSpec{
 			ConfigYAML: ctConfig("broker:\n  listen: " + p1 + "\n"),
 		})
+		// The retry may rewrite the FreeAddr address in the configuration
+		// file. p2 is held by this test and never appears there, so the retry
+		// never moves it.
+		p1 = start.Address(p1)
 		op := ctOperator(t, host)
 		defer op.End(t)
 
@@ -639,13 +648,32 @@ func ctBinary(t *testing.T) string {
 	return harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
 }
 
-// ctStartBroker starts a Broker and fails when it does not come up.
-func ctStartBroker(t *testing.T, n *harness.Node, spec harness.BrokerSpec) {
+// ctStartBroker starts a Broker and fails when it does not come up. It returns
+// the start result so callers can read the address the Broker actually used.
+func ctStartBroker(t *testing.T, n *harness.Node, spec harness.BrokerSpec) harness.BrokerStart {
 	t.Helper()
 	start := n.StartBroker(t, spec)
 	if !start.Running {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
+	return start
+}
+
+// ctOccupyAddr binds an address from n.FreeAddr and returns the listener that
+// holds it. The port can be taken between the FreeAddr probe and this bind, so
+// the helper retries with a fresh address. The returned listener, not the
+// harness retry, owns the port.
+func ctOccupyAddr(t *testing.T, n *harness.Node) (net.Listener, string) {
+	t.Helper()
+	for attempt := 0; attempt < 10; attempt++ {
+		addr := n.FreeAddr(t)
+		ln, err := net.Listen("tcp", addr)
+		if err == nil {
+			return ln, addr
+		}
+	}
+	t.Fatal("occupying a FreeAddr address failed 10 times")
+	return nil, ""
 }
 
 // ctOperator starts an MCP server process without an inbox socket. It never
