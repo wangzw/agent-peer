@@ -472,9 +472,22 @@ func TestReregisterSystemBrokerReq037(t *testing.T) {
 	if oldPID == 0 {
 		t.Fatal("systemd reports MainPID 0 before the kill")
 	}
-	kill := syscontainer.Command("root", nil, "systemctl", "kill", "--signal=SIGKILL", srSystemService)
-	if out, err := kill.CombinedOutput(); err != nil {
-		t.Fatalf("systemctl kill %s: %v\n%s", srSystemService, err, strings.TrimSpace(string(out)))
+	// Kill the main process directly rather than through systemctl kill. Its
+	// default --kill-whom=all enumerates the unit's cgroup after signaling the
+	// main process, and systemd 252 returns EIO when cgroup.procs holds a pid it
+	// cannot map, including a task that exits between the listing and the signal
+	// ("Failed to send signal SIGKILL to auxiliary processes: Input/output
+	// error"). systemd fixes this in v255/v256, which skip unmapped pids
+	// (systemd PR #32534, commit 9a361df), but Debian bookworm ships 252. The
+	// auxiliary processes need no signal: the Broker's helpers carry
+	// Pdeathsig=SIGKILL. SIGKILL to MainPID still exercises what this test
+	// checks, because systemd sees the main process die by signal and restarts
+	// the unit.
+	if err := syscall.Kill(oldPID, 0); err != nil {
+		t.Fatalf("checking the system Broker %d before the kill: %v", oldPID, err)
+	}
+	if err := syscall.Kill(oldPID, syscall.SIGKILL); err != nil {
+		t.Fatalf("killing the system Broker %d: %v", oldPID, err)
 	}
 
 	var newPID int
