@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -87,6 +88,29 @@ type testAgent struct {
 	runErr   error
 }
 
+// maxSocketPathBytes is the largest path the tests bind a socket to. macOS
+// allows 104 bytes in sun_path including the terminating NUL; the limit is
+// left a little lower so a path that fits here fits on every platform.
+const maxSocketPathBytes = 100
+
+// testSocketDir returns a directory in which socketName can be bound. The
+// agent derives its inbox socket from the control socket's directory, so both
+// live here. t.TempDir() sits under /var/folders on macOS, where a PID-named
+// socket path exceeds sun_path, so a too-long path falls back to a fresh
+// directory under /tmp that is removed when the test ends.
+func testSocketDir(t *testing.T, base, socketName string) string {
+	t.Helper()
+	if len(filepath.Join(base, socketName)) <= maxSocketPathBytes {
+		return base
+	}
+	dir, err := os.MkdirTemp("/tmp", "rs-")
+	if err != nil {
+		t.Fatalf("creating a short socket directory: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
 // startTestAgent starts runAgentRun in a goroutine and waits until its control
 // socket exists.
 func startTestAgent(t *testing.T) *testAgent {
@@ -98,10 +122,11 @@ func startTestAgent(t *testing.T) *testAgent {
 
 	dir := t.TempDir()
 	pid := strconv.Itoa(os.Getpid())
+	sockDir := testSocketDir(t, dir, pid+".inbox.sock")
 	agent := &testAgent{
 		dir:    dir,
-		ctl:    filepath.Join(dir, "ctl.sock"),
-		socket: filepath.Join(dir, pid+".inbox.sock"),
+		ctl:    filepath.Join(sockDir, "ctl.sock"),
+		socket: filepath.Join(sockDir, pid+".inbox.sock"),
 		recv:   filepath.Join(dir, "recv.jsonl"),
 		done:   make(chan error, 1),
 	}
@@ -146,6 +171,36 @@ func startTestAgent(t *testing.T) *testAgent {
 
 	agent.waitReady(t)
 	return agent
+}
+
+func TestTestSocketDirKeepsAShortBase(t *testing.T) {
+	base, err := os.MkdirTemp("/tmp", "rs-test-")
+	if err != nil {
+		t.Fatalf("creating a short base directory: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(base) })
+
+	if got := testSocketDir(t, base, "1234.inbox.sock"); got != base {
+		t.Errorf("testSocketDir = %q, want the short base %q", got, base)
+	}
+}
+
+func TestTestSocketDirFallsBackWhenThePathIsLong(t *testing.T) {
+	base := t.TempDir()
+	for len(filepath.Join(base, "1234.inbox.sock")) <= maxSocketPathBytes {
+		base = filepath.Join(base, strings.Repeat("d", 20))
+		if err := os.Mkdir(base, 0o755); err != nil {
+			t.Fatalf("creating the long base: %v", err)
+		}
+	}
+
+	dir := testSocketDir(t, base, "1234.inbox.sock")
+	if dir == base {
+		t.Errorf("testSocketDir = %q, want a fallback outside the long base", dir)
+	}
+	if socket := filepath.Join(dir, "1234.inbox.sock"); len(socket) > maxSocketPathBytes {
+		t.Errorf("socket path %q is %d bytes, want at most %d", socket, len(socket), maxSocketPathBytes)
+	}
 }
 
 // recordPath is where the Agent writes this process's session record.
@@ -233,11 +288,17 @@ func TestAgentRecvLog(t *testing.T) {
 	agent := startTestAgent(t)
 
 	client := &ccsock.Client{NoAuth: true, Timeout: agentSendTimeout}
-	if _, err := client.SendToSocket(context.Background(), agent.socket, ccsock.Message{
+	_, err := client.SendToSocket(context.Background(), agent.socket, ccsock.Message{
 		Text:     "hello-body",
 		Priority: ccsock.PriorityNext,
 		FromName: "sender",
-	}); err != nil {
+	})
+	// The Agent closes the connection once it has read the frame. On macOS the
+	// library waits 150ms before its half-close, so the peer is usually gone by
+	// then and shutdown reports ENOTCONN even though the frame was delivered.
+	// The receive log below, not the half-close result, is what this test
+	// checks.
+	if err != nil && (runtime.GOOS != "darwin" || !errors.Is(err, syscall.ENOTCONN)) {
 		t.Fatalf("sending a frame: %v", err)
 	}
 

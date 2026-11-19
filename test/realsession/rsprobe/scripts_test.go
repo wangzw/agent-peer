@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -390,8 +391,14 @@ func TestLibResolvesComposeFromScriptLocation(t *testing.T) {
 
 // TestRsProcVarsReportsAbsence checks that rs_proc_vars distinguishes a
 // missing variable from one set to the empty string. A probe treats the two
-// differently, so the helper must not print both as NAME=.
+// differently, so the helper must not print both as NAME=. The helper reads
+// /proc/<pid>/environ, which only Linux provides; the probe runner is Linux,
+// so every other platform skips this test instead of failing on a missing
+// /proc.
 func TestRsProcVarsReportsAbsence(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("rs_proc_vars reads /proc/<pid>/environ, which only Linux provides")
+	}
 	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
 	if err != nil {
 		t.Fatalf("resolving the lib.sh path: %v", err)

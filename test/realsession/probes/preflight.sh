@@ -57,8 +57,21 @@ fi
 # 4. Write one frame directly to the session's inbox.
 "$R/run" rsprobe frame --socket "$socket" --from-name calib@x --body calib-body-1
 
-# 5. The session answers on screen; keep the pane and the matching record.
-rs_wait_pane calib '\bok\b' 60
+# 5. The session answers the cross-session frame. The answer is read from the
+# transcript; the pane capture is auxiliary evidence only. The one exception is
+# a transcript that yields no assistant text at all, which is reported rather
+# than hidden behind a pane match.
+ok_status=0
+rs_wait_reply 'ok' calib-ok-record.jsonl 60 || ok_status=$?
+if ((ok_status != 0)); then
+	if ((ok_status == 2)) && rs_wait_pane calib '\bok\b' 30; then
+		rs_obs "calib answered ok; evidence: pane fallback (the transcript held no assistant text)"
+	else
+		rs_snap calib pane-ok-timeout.txt
+		echo "preflight: rs-calib did not answer ok" >&2
+		exit 1
+	fi
+fi
 rs_snap calib pane.txt
 rs_excerpt calib-body-1 calib-record.jsonl
 
@@ -80,8 +93,6 @@ if ((reply_status != 0)); then
 	echo "preflight: rs-calib did not reply with $preflight_reply" >&2
 	exit 1
 fi
-rs_snap calib pane-reply.txt
-rs_excerpt "$preflight_reply" calib-reply-record.jsonl
 "$R/run" rsprobe env usage --root "$R" >"$OUT/usage-after-reply.txt" 2>&1 || true
 total="$(sed -n 's/^total //p' "$OUT/usage-after-reply.txt" | tail -n 1)"
 if [[ ! "$total" =~ ^[0-9]+$ ]] || ((total <= 0)); then

@@ -786,8 +786,9 @@ fi
 	printf 'policy_accepts_line=%s\n' "$release_policy_accepts"
 	printf 'model_received=%s\n' "$release_model_received"
 	printf 'released_seen_ms=%s\n' "$release_seen_ms"
+	printf 'reply_ok=%s\n' "$reply_ok"
 } >"$OUT/step3b-release.txt"
-rs_obs "3b: policy-accepts line $release_policy_accepts, model received $release_model_received"
+rs_obs "3b: policy-accepts line $release_policy_accepts, model received $release_model_received, transcript reply ok $reply_ok"
 
 # 3c: for three minutes the sender's session must see no follow-up records.
 rs_pane_idle inb-src 60 || true

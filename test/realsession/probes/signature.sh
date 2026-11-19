@@ -158,9 +158,18 @@ for i in "${!names[@]}"; do
 done
 rs_obs "step 1: wrote 16 verbatim frames cs-01..cs-16 in one batch"
 rs_wait_pane sig-rx 'cs-16' 60 || true
-rs_wait_pane sig-rx '\bok\b' 120 || true
+if rs_wait_reply 'ok' sig-step1-reply.jsonl 120; then
+	rs_obs "step 1: the transcript holds the receiver's ok reply"
+else
+	rs_obs "step 1: no ok reply in the transcript within 120s"
+fi
 rs_pane_idle sig-rx 120 || true
 rs_snap sig-rx pane-step1.txt
+# Re-read after the idle wait: the first match can arrive before the receiver
+# has answered the rest of the batch, and the step-2 wait compares against the
+# complete count.
+rs_reply_excerpt 'ok' sig-step1-reply.jsonl
+step1_replies="$(wc -l <"$OUT/sig-step1-reply.jsonl" | tr -d ' ')"
 
 # Step 2: the dependency library's %q escaping, which is the path the Broker
 # really takes. None of these names can be produced by the fixed
@@ -172,7 +181,11 @@ for i in "${!lib_names[@]}"; do
 done
 rs_obs "step 2: wrote 3 library-mode frames lib-01..lib-03 in one batch"
 rs_wait_pane sig-rx 'lib-03' 60 || true
-rs_wait_pane sig-rx '\bok\b' 120 || true
+if rs_wait_reply 'ok' sig-step2-reply.jsonl 120 "$((step1_replies + 1))"; then
+	rs_obs "step 2: the transcript gained the receiver's ok reply"
+else
+	rs_obs "step 2: no new ok reply in the transcript within 120s"
+fi
 rs_pane_idle sig-rx 120 || true
 rs_snap sig-rx pane-step2.txt
 

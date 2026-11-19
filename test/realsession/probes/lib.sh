@@ -2,7 +2,7 @@
 # lib.sh is sourced by every real-session probe script. It wraps tmux, the
 # simulated Agents, the peer host container and the evidence helpers. Probe
 # scripts only write $OUT, $R/ctl, $R/debug and $WORK, and read process
-# environments through rs_proc_vars.
+# environments through rs_proc_vars, which works only on Linux.
 
 set -euo pipefail
 
@@ -276,10 +276,84 @@ rs_excerpt() {
 	fi
 }
 
+# rs_reply_excerpt writes the raw assistant records whose text contains marker
+# to $OUT/$file. Only assistant records are read: a prompt that asks for a
+# string is echoed in a user record, so matching the whole transcript would
+# treat the prompt itself as the answer.
+rs_reply_excerpt() {
+	local marker="$1" file="$2" src
+	: >"$OUT/$file"
+	while IFS= read -r -d '' src; do
+		jq -Rrc --arg marker "$marker" '
+			fromjson?
+			| select(type == "object")
+			| select(.type == "assistant")
+			| . as $record
+			| ((.message.content? // empty)
+				| if type == "string" then .
+				  elif type == "array" then [.[] | select(.type == "text") | .text] | join("\n")
+				  else "" end) as $text
+			| select($text | contains($marker))
+			| $record
+		' "$src" >>"$OUT/$file" 2>/dev/null || true
+	done < <(find "$R/cfg/projects" -type f -name '*.jsonl' -print0 2>/dev/null)
+}
+
+# rs_assistant_text_present reports whether any session transcript holds
+# assistant text. It tells a missing reply apart from a transcript whose
+# structure yields no assistant text at all.
+rs_assistant_text_present() {
+	local src
+	while IFS= read -r -d '' src; do
+		if jq -Re '
+			fromjson?
+			| select(type == "object")
+			| select(.type == "assistant")
+			| ((.message.content? // empty)
+				| if type == "string" then .
+				  elif type == "array" then [.[] | select(.type == "text") | .text] | join("\n")
+				  else "" end)
+			| select(length > 0)
+		' "$src" >/dev/null 2>&1; then
+			return 0
+		fi
+	done < <(find "$R/cfg/projects" -type f -name '*.jsonl' -print0 2>/dev/null)
+	return 1
+}
+
+# rs_wait_reply polls the session transcripts until an assistant message's text
+# contains marker, and writes the matching records to $OUT/$file. The pane is
+# not part of the decision, because it can show the prompt that echoes the
+# requested string. It returns 0 once MIN records match (default 1), 1 when
+# assistant text was read but the marker never appeared, and 2 when no
+# assistant text could be read at all.
+rs_wait_reply() {
+	local marker="$1" file="$2" seconds="$3" min="${4:-1}"
+	local deadline=$((SECONDS + seconds)) count=0
+	while ((SECONDS < deadline)); do
+		rs_reply_excerpt "$marker" "$file"
+		count="$(wc -l <"$OUT/$file" | tr -d ' ')"
+		if ((count >= min)); then
+			return 0
+		fi
+		sleep 0.2
+	done
+	rs_reply_excerpt "$marker" "$file"
+	count="$(wc -l <"$OUT/$file" | tr -d ' ')"
+	if ((count >= min)); then
+		return 0
+	fi
+	if rs_assistant_text_present; then
+		return 1
+	fi
+	return 2
+}
+
 # rs_proc_vars prints selected variables of a process without dumping the rest.
 # A missing variable prints as "<NAME> absent"; a variable set to the empty
 # string prints as "<NAME>=". The two cases are not the same: an unset variable
-# and an empty one mean different things to a probe.
+# and an empty one mean different things to a probe. Linux only: it reads
+# /proc/<pid>/environ, which macOS does not provide.
 rs_proc_vars() {
 	local pid="$1" var line environ
 	shift
