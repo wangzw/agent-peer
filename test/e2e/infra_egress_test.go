@@ -39,40 +39,24 @@ var egressRouteTargets = []string{"1.1.1.1", "10.12.72.11"}
 // unreachable from a container on that network.
 var egressHostServicePorts = []string{"22", "6443", "10250"}
 
-// routedTopology names the networks of a routed topology and the node that
-// probes each one. A node on the network sees that network's bridge gateway
-// the way any container on it does.
+// routedTopology names one routed topology. Its init blocks the containers'
+// paths to the host; this test only probes, so a probe that still answers
+// fails instead of being repaired.
 type routedTopology struct {
-	name     string
-	topo     harness.Topology
-	networks []struct{ network, probeNode string }
+	name string
+	topo harness.Topology
 }
 
-// routedTopologies covers every routed topology. The network lists mirror the
-// networks each compose file declares; the test package cannot read the
-// harness's unexported Topology fields.
+// routedNodes are the nodes of every routed topology. The test asks the
+// cluster which networks each one is attached to, so a topology that adds an
+// attachment is probed on it without changing this list.
+var routedNodes = []string{"hostA", "router", "hostB"}
+
+// routedTopologies covers every routed topology.
 var routedTopologies = []routedTopology{
-	{
-		name: "NAT",
-		topo: harness.TopoNAT,
-		networks: []struct{ network, probeNode string }{
-			{"wan", "hostA"}, {"wan2", "router"}, {"lanb", "hostB"},
-		},
-	},
-	{
-		name: "PortForward",
-		topo: harness.TopoPortForward,
-		networks: []struct{ network, probeNode string }{
-			{"lana", "hostA"}, {"wan", "hostB"},
-		},
-	},
-	{
-		name: "MITM",
-		topo: harness.TopoMITM,
-		networks: []struct{ network, probeNode string }{
-			{"wan", "hostA"}, {"wan2", "router"}, {"lanb", "hostB"},
-		},
-	},
+	{name: "NAT", topo: harness.TopoNAT},
+	{name: "PortForward", topo: harness.TopoPortForward},
+	{name: "MITM", topo: harness.TopoMITM},
 }
 
 // egressForbiddenPrefixes are the pod and service networks of the k8s node the
@@ -86,10 +70,13 @@ var egressForbiddenPrefixes = []netip.Prefix{
 // TestInfraNoEgress checks that the three routed topologies have no way out.
 // The route table proves it at the routing layer: neither the router nor the
 // host behind it resolves a public address or the host's own service address.
-// Probes then check every routed network's bridge gateway, which is a host
-// address, and DNS, which Docker forwards on the host's behalf. The test also
-// checks that starting a project adds no host route into the k8s pod or
-// service networks, and that Down removes the project's docker networks.
+// Probes then check every node against the bridge gateway of every network it
+// is attached to; on a routed network that gateway is a host address. Name
+// resolution is probed on every node too. The topology's init installs the
+// drops and empties the resolver file; this test never repairs a path it finds
+// open. The test also checks that starting a project adds no host route into
+// the k8s pod or service networks, and that Down removes the project's docker
+// networks.
 func TestInfraNoEgress(t *testing.T) {
 	t.Parallel()
 
@@ -112,11 +99,9 @@ func TestInfraNoEgress(t *testing.T) {
 				}
 			}
 
-			for _, network := range topo.networks {
-				egressAssertGatewayUnreachable(t, c, network.probeNode, network.network)
-			}
-			if topo.name == "NAT" {
-				egressAssertNoDNS(t, c, "hostB")
+			for _, node := range routedNodes {
+				egressAssertGatewaysUnreachable(t, c, node)
+				egressAssertNoDNS(t, c, node)
 			}
 
 			// Read the routes once while the project is up, so a transient
@@ -147,45 +132,30 @@ func egressAssertNoRoute(t *testing.T, c *harness.Cluster, node string) {
 	}
 }
 
-// egressAssertGatewayUnreachable checks that no host service answers on the
-// bridge gateway of network, probing from the node attached to it. When a
-// service answers, the test blocks the gateway inside that container and
-// asserts again; the host's own firewall and routes are never touched.
-func egressAssertGatewayUnreachable(t *testing.T, c *harness.Cluster, node, network string) {
+// egressAssertGatewaysUnreachable checks that no host service answers on the
+// bridge gateway of any network node is attached to. The drop is installed by
+// the topology's init for every node and every attached network; a first
+// probe that answers fails the test.
+func egressAssertGatewaysUnreachable(t *testing.T, c *harness.Cluster, node string) {
 	t.Helper()
-	gateway := c.Gateway(node, network)
-	reachable := false
-	for _, port := range egressHostServicePorts {
-		if c.TCPReachable(t, node, net.JoinHostPort(gateway, port), egressProbeBound) {
-			reachable = true
-			break
-		}
-	}
-	if !reachable {
-		return
-	}
-	c.Root(t, node, "iptables", "-A", "OUTPUT", "-d", gateway, "-j", "DROP")
-	for _, port := range egressHostServicePorts {
-		addr := net.JoinHostPort(gateway, port)
-		if c.TCPReachable(t, node, addr, egressProbeBound) {
-			t.Errorf("%s: %s reached the host service at %s on the bridge gateway %s", network, node, addr, gateway)
+	for _, network := range c.Networks(node) {
+		gateway := c.Gateway(node, network)
+		for _, port := range egressHostServicePorts {
+			addr := net.JoinHostPort(gateway, port)
+			if c.TCPReachable(t, node, addr, egressProbeBound) {
+				t.Errorf("node %s reached the host service at %s on the bridge gateway of network %s", node, addr, network)
+			}
 		}
 	}
 }
 
-// egressAssertNoDNS checks that node cannot resolve a public name. Docker's
-// embedded resolver forwards on the host's behalf, so a container with no
-// route can still resolve; when it does, the test blocks DNS inside the
-// container and asserts again.
+// egressAssertNoDNS checks that node cannot resolve a public name. The
+// topology's init empties the container's resolver file, so a lookup that
+// still succeeds fails the test.
 func egressAssertNoDNS(t *testing.T, c *harness.Cluster, node string) {
 	t.Helper()
 	lookup := []string{"timeout", "3", "getent", "hosts", "example.com"}
 	res := c.Node(node).Exec(t, lookup, nil)
-	if res.ExitCode == 0 {
-		c.Root(t, node, "iptables", "-A", "OUTPUT", "-p", "udp", "--dport", "53", "-j", "DROP")
-		c.Root(t, node, "iptables", "-A", "OUTPUT", "-p", "tcp", "--dport", "53", "-j", "DROP")
-		res = c.Node(node).Exec(t, lookup, nil)
-	}
 	if res.ExitCode == 0 {
 		t.Errorf("%s resolved example.com although the routed topology must have no DNS: %s", node, strings.TrimSpace(res.Stdout))
 	}

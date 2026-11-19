@@ -283,6 +283,28 @@ func (c *Cluster) Gateway(node, network string) string {
 	return c.address(node, network, "Gateway")
 }
 
+// Networks returns the compose networks node is attached to, without the
+// project prefix and sorted by name. The compose file declares the attachments,
+// but a node such as the router is attached to several, so a caller that must
+// cover every one reads them back from the running container.
+func (c *Cluster) Networks(node string) []string {
+	format := `{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{"\n"}}{{end}}`
+	cmd := exec.Command("docker", "inspect", "--format", format, c.containerID(node))
+	cmd.Env = os.Environ()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		c.t.Fatalf("harness: inspecting the networks of node %s: %v\n%s", node, err, strings.TrimSpace(string(out)))
+		return nil
+	}
+	prefix := c.project + "_"
+	names := make([]string, 0, 4)
+	for _, name := range strings.Fields(string(out)) {
+		names = append(names, strings.TrimPrefix(name, prefix))
+	}
+	sort.Strings(names)
+	return names
+}
+
 // address reads one address field from docker inspect.
 func (c *Cluster) address(node, network, field string) string {
 	format := fmt.Sprintf("{{with index .NetworkSettings.Networks %q}}{{.%s}}{{end}}", c.project+"_"+network, field)

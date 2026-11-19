@@ -24,6 +24,8 @@ var TopoNAT = Topology{
 		}
 	},
 	init: func(t *testing.T, c *Cluster) {
+		c.blockHostEgress(t)
+
 		wanDev := c.device(t, "router", "wan")
 		wan2Dev := c.device(t, "router", "wan2")
 		lanbDev := c.device(t, "router", "lanb")
@@ -75,6 +77,8 @@ var TopoMITM = Topology{
 		}
 	},
 	init: func(t *testing.T, c *Cluster) {
+		c.blockHostEgress(t)
+
 		wanDev := c.device(t, "router", "wan")
 		wan2Dev := c.device(t, "router", "wan2")
 		lanbDev := c.device(t, "router", "lanb")
@@ -126,6 +130,8 @@ var TopoPortForward = Topology{
 		}
 	},
 	init: func(t *testing.T, c *Cluster) {
+		c.blockHostEgress(t)
+
 		lanaDev := c.device(t, "router", "lana")
 		wanDev := c.device(t, "router", "wan")
 
@@ -216,6 +222,27 @@ func randomULA(suffix byte) string {
 		panic(fmt.Sprintf("harness: generating an IPv6 prefix: %v", err))
 	}
 	return fmt.Sprintf("fd%02x:%02x%02x:%02x%02x:%x::/64", b[0], b[1], b[2], b[3], b[4], suffix)
+}
+
+// blockHostEgress removes every path from the routed topology's containers to
+// the host. For each node it drops locally generated packets to the host-side
+// gateway of every network the node is attached to: on a routed network that
+// gateway is a host address, so the test host's services stay out of reach even
+// though the container shares the host's view of the bridge. It also empties
+// /etc/resolv.conf because this Docker writes the host's resolver into the
+// container instead of the embedded 127.0.0.11, so dropping 127.0.0.11 alone
+// leaves name resolution working.
+//
+// Every rule and the resolver file stay inside the containers. The host's
+// routes and netfilter are never touched.
+func (c *Cluster) blockHostEgress(t testing.TB) {
+	t.Helper()
+	for _, node := range c.order {
+		for _, network := range c.Networks(node) {
+			c.Root(t, node, "iptables", "-A", "OUTPUT", "-d", c.Gateway(node, network), "-j", "DROP")
+		}
+		c.Root(t, node, "sh", "-c", ": > /etc/resolv.conf")
+	}
 }
 
 // RemoveDefaultRoute deletes node's IPv4 default route and asserts that none
