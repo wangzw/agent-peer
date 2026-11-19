@@ -62,7 +62,7 @@ func (f *fakeLocalServer) requests() (*localpb.GetConfigRequest, *localpb.AuditR
 // connected to it.
 func newFakeOracleClient(t *testing.T, srv localpb.LocalServer) *OracleClient {
 	t.Helper()
-	socket := filepath.Join(t.TempDir(), "broker.sock")
+	socket := filepath.Join(newSocketTempDir(t, "broker.sock"), "broker.sock")
 	listener, err := net.Listen("unix", socket)
 	if err != nil {
 		t.Fatalf("listening on %s: %v", socket, err)
