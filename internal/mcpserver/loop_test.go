@@ -684,6 +684,77 @@ func TestRunLoop(t *testing.T) {
 		stop()
 	})
 
+	t.Run("a restart window launches once and then connects to the restarted Broker", func(t *testing.T) {
+		// design:119, design:125: a user-level Broker whose socket is gone is
+		// launched once; as soon as the replacement answers, the loop connects
+		// and registers instead of launching again.
+		path := fakelocal.SocketPath(t)
+		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
+
+		st := &statusStore{}
+		clock := newLoopClock()
+		deps := loopBaseDeps(st, clock)
+		deps.selectTarget = func(context.Context) (target, error) {
+			return target{Path: path, Kind: kindUser}, nil
+		}
+		// The restart window: the socket is missing until the replacement is
+		// bound. The launch binds it, so the window ends with one launch.
+		var gap atomic.Bool
+		realProbe := deps.probe
+		deps.probe = func(ctx context.Context, p string) probeResult {
+			if gap.Load() {
+				return probeMissing
+			}
+			return realProbe(ctx, p)
+		}
+		stopped := make(chan struct{})
+		replacement := make(chan *fakelocal.Server, 1)
+		launcher := &loopLauncher{fn: func(ctx context.Context) error {
+			// A launch can start while Stop is still removing the old socket
+			// file; bind only after Stop has returned.
+			select {
+			case <-stopped:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			s := fakelocal.Start(t, path, fakelocal.Handlers{})
+			gap.Store(false)
+			replacement <- s
+			return nil
+		}}
+		deps.launch = launcher
+		stop := loopStart(t, deps)
+
+		first := loopNextRegister(t, srv)
+		if err := first.Complete("id1", "me@h", false); err != nil {
+			t.Fatalf("sending registration_complete: %v", err)
+		}
+		loopWaitStatus(t, st, "the registered agent", func(s Status) bool { return s.AgentID == "id1" })
+
+		// The Broker goes away and the replacement is not bound yet: the real
+		// restart window.
+		gap.Store(true)
+		srv.Stop()
+		close(stopped)
+
+		var restarted *fakelocal.Server
+		select {
+		case restarted = <-replacement:
+		case <-time.After(3 * time.Second):
+			t.Fatal("the loop did not launch the user-level Broker during the restart window")
+		}
+		// The launch connects at once; the clock is not advanced.
+		conn := loopNextRegister(t, restarted)
+		if err := conn.Complete("id2", "me@h", false); err != nil {
+			t.Fatalf("sending registration_complete: %v", err)
+		}
+		loopWaitStatus(t, st, "the re-registered agent", func(s Status) bool { return s.AgentID == "id2" })
+		if got := launcher.count(); got != 1 {
+			t.Fatalf("launches during the restart window = %d, want 1", got)
+		}
+		stop()
+	})
+
 	t.Run("version mismatch waits for the Broker instead of polling", func(t *testing.T) {
 		// REQ-broker-config-016
 		path := fakelocal.SocketPath(t)
