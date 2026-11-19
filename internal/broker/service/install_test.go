@@ -9,8 +9,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/wangzw/agent-peer/internal/config"
 )
 
 // baseOptions returns user-level Linux options rooted in a temporary directory.
@@ -116,6 +119,21 @@ func assertMode(t *testing.T, path string, want fs.FileMode) {
 	}
 }
 
+func assertOwner(t *testing.T, path string, want uint32) {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatalf("%s has no owner information", path)
+	}
+	if got := st.Uid; got != want {
+		t.Errorf("%s owner = %d, want %d", path, got, want)
+	}
+}
+
 func assertNoEntries(t *testing.T, dir string) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -172,8 +190,18 @@ func TestInstallLinuxUser(t *testing.T) {
 	if res.Domain != "" {
 		t.Errorf("Domain = %q, want empty on Linux", res.Domain)
 	}
-	if res.ConfigPath != "" || res.ConfigNew {
-		t.Errorf("user install touched the system config: %+v", res)
+	configPath := filepath.Join(opts.Root, "home/alice/.agent-peer/config.yaml")
+	if got, want := mustReadFile(t, configPath), string(config.Template(config.ModeUser)); got != want {
+		t.Errorf("config content = %q, want the user template", got)
+	}
+	assertMode(t, configPath, 0o600)
+	assertOwner(t, configPath, uint32(os.Geteuid()))
+	assertMode(t, filepath.Dir(configPath), 0o700)
+	if !res.ConfigNew {
+		t.Error("ConfigNew = false, want true")
+	}
+	if res.ConfigPath != "/home/alice/.agent-peer/config.yaml" {
+		t.Errorf("ConfigPath = %q", res.ConfigPath)
 	}
 }
 
@@ -234,8 +262,8 @@ func TestInstallLinuxSystem(t *testing.T) {
 	}
 
 	configPath := filepath.Join(opts.Root, "etc/agent-peer/config.yaml")
-	if got := mustReadFile(t, configPath); got != SystemConfigTemplate() {
-		t.Errorf("config content = %q, want the template", got)
+	if got := mustReadFile(t, configPath); got != string(config.Template(config.ModeSystem)) {
+		t.Errorf("config content = %q, want the system template", got)
 	}
 	assertMode(t, configPath, 0o600)
 	if !res.ConfigNew {
@@ -340,6 +368,58 @@ func TestInstallKeepsExistingSystemConfig(t *testing.T) {
 	}
 	if res.ConfigPath != "/etc/agent-peer/config.yaml" {
 		t.Errorf("ConfigPath = %q", res.ConfigPath)
+	}
+}
+
+func TestInstallKeepsExistingUserConfig(t *testing.T) {
+	opts := baseOptions(t)
+	var cmds []string
+	started := false
+	opts.Run = recordCommandsUntil(&cmds, &started, "restart")
+	opts.Probe = probeAfterStart(&started, 4242)
+	configPath := filepath.Join(opts.Root, "home/alice/.agent-peer/config.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const existing = "broker:\n  alias: x\n"
+	if err := os.WriteFile(configPath, []byte(existing), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Install(opts)
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if got := mustReadFile(t, configPath); got != existing {
+		t.Errorf("config was overwritten: %q", got)
+	}
+	if res.ConfigNew {
+		t.Error("ConfigNew = true, want false")
+	}
+	if res.ConfigPath != "/home/alice/.agent-peer/config.yaml" {
+		t.Errorf("ConfigPath = %q", res.ConfigPath)
+	}
+}
+
+// TestCreateConfigRemovesPartialFileOnWriteFailure checks that a file created
+// by this run is removed when writing the template fails, so the next install
+// does not mistake an incomplete file for an existing configuration.
+func TestCreateConfigRemovesPartialFileOnWriteFailure(t *testing.T) {
+	opts := baseOptions(t)
+	res := Result{}
+	open := func(path string) (*os.File, error) {
+		if err := os.WriteFile(path, []byte("partial"), 0o600); err != nil {
+			return nil, err
+		}
+		return os.Open(path) // read-only, so Write fails
+	}
+	err := createConfigWith(opts, &res, open)
+	if err == nil || !strings.Contains(err.Error(), "write configuration file") {
+		t.Fatalf("createConfigWith error = %v, want the write failure", err)
+	}
+	path := filepath.Join(opts.Root, "home/alice/.agent-peer/config.yaml")
+	if _, statErr := os.Stat(path); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Errorf("the partial configuration file survived the write failure: %v", statErr)
 	}
 }
 
@@ -770,8 +850,8 @@ func TestInstallDarwinSystem(t *testing.T) {
 	assertMode(t, logDir, 0o750)
 
 	configPath := filepath.Join(opts.Root, "etc/agent-peer/config.yaml")
-	if got := mustReadFile(t, configPath); got != SystemConfigTemplate() {
-		t.Errorf("config content = %q, want the template", got)
+	if got := mustReadFile(t, configPath); got != string(config.Template(config.ModeSystem)) {
+		t.Errorf("config content = %q, want the system template", got)
 	}
 	assertMode(t, configPath, 0o600)
 

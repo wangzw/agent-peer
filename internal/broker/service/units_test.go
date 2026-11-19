@@ -145,18 +145,6 @@ func TestPlistLint(t *testing.T) {
 	}
 }
 
-func TestSystemConfigTemplateIsCommentsOnly(t *testing.T) {
-	for i, line := range strings.Split(SystemConfigTemplate(), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		if !strings.HasPrefix(trimmed, "#") {
-			t.Errorf("line %d of the system config template is not a comment: %q", i+1, line)
-		}
-	}
-}
-
 func execStartLine(t *testing.T, unit string) string {
 	t.Helper()
 	for _, line := range strings.Split(unit, "\n") {

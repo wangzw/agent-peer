@@ -106,14 +106,6 @@ const launchDaemonTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `
 
-const systemConfigTemplate = `# agent-peer system Broker configuration.
-#
-# Every key is optional; a key that is absent takes its default value.
-# Granting a group read access to this file lets its accounts read the
-# configuration, the full status and the audit log; granting write access
-# lets them change the configuration and manage pairing.
-`
-
 // SystemdUserUnit returns the systemd user unit that starts the Broker when
 // the account logs in.
 func SystemdUserUnit(exe string) (string, error) {
@@ -155,12 +147,6 @@ func LaunchDaemonPlist(exe string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf(launchDaemonTemplate, escapeXML(exe)), nil
-}
-
-// SystemConfigTemplate returns the commented-only initial content of the
-// system configuration file.
-func SystemConfigTemplate() string {
-	return systemConfigTemplate
 }
 
 // validatePath rejects paths that cannot be embedded safely in a service

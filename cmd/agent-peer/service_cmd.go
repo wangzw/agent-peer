@@ -80,13 +80,22 @@ func (a *app) serviceCmd(_ context.Context, args []string) int {
 	return exitOK
 }
 
-// printInstalled reports that the service is installed and running.
+// printInstalled reports that the service is installed and running and what
+// happened to the configuration file.
 func (a *app) printInstalled(result service.Result) {
 	if result.Domain != "" {
 		_, _ = fmt.Fprintf(a.stdout, "installed and started %s in %s\n", service.Label, result.Domain)
-		return
+	} else {
+		_, _ = fmt.Fprintf(a.stdout, "installed and started %s\n", service.UnitName)
 	}
-	_, _ = fmt.Fprintf(a.stdout, "installed and started %s\n", service.UnitName)
+	switch {
+	case result.ConfigPath == "":
+		return
+	case result.ConfigNew:
+		_, _ = fmt.Fprintf(a.stdout, "generated the configuration file %s\n", result.ConfigPath)
+	default:
+		_, _ = fmt.Fprintf(a.stdout, "kept the existing configuration file %s\n", result.ConfigPath)
+	}
 }
 
 // printUninstalled reports what uninstall removed, or that nothing was

@@ -103,6 +103,44 @@ func TestServiceInstallPrintsTheLaunchdDomain(t *testing.T) {
 	}
 }
 
+func TestServiceInstallPrintsTheConfigurationFile(t *testing.T) {
+	cases := []struct {
+		name   string
+		result service.Result
+		want   string
+	}{
+		{
+			name:   "generated",
+			result: service.Result{ConfigPath: "/home/alice/.agent-peer/config.yaml", ConfigNew: true},
+			want: "installed and started agent-peer.service\n" +
+				"generated the configuration file /home/alice/.agent-peer/config.yaml\n",
+		},
+		{
+			name:   "kept",
+			result: service.Result{ConfigPath: "/home/alice/.agent-peer/config.yaml"},
+			want: "installed and started agent-peer.service\n" +
+				"kept the existing configuration file /home/alice/.agent-peer/config.yaml\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setServiceSeams(t,
+				func(bool) (service.Options, error) { return service.Options{}, nil },
+				func(service.Options) (service.Result, error) { return tc.result, nil },
+				nil,
+			)
+
+			a, stdout, stderr, _ := newDispatchApp("dev")
+			if got := a.run(context.Background(), []string{"service", "install"}); got != exitOK {
+				t.Fatalf("run(service install) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+			}
+			if stdout.String() != tc.want {
+				t.Fatalf("stdout = %q, want %q", stdout.String(), tc.want)
+			}
+		})
+	}
+}
+
 func TestServiceUninstall(t *testing.T) {
 	cases := []struct {
 		name    string

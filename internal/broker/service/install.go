@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/wangzw/agent-peer/internal/config"
 )
 
 const (
@@ -59,7 +61,7 @@ type Options struct {
 // that already finished.
 type Result struct {
 	UnitPath   string   // written or removed unit file or plist
-	ConfigPath string   // --system install only: /etc/agent-peer/config.yaml
+	ConfigPath string   // configuration file for the install's level
 	ConfigNew  bool     // this run created the configuration file
 	Commands   []string // commands that changed state, in order
 	Domain     string   // macOS: the launchd domain the service was loaded into or out of
@@ -190,11 +192,8 @@ func Install(opts Options) (Result, error) {
 	}
 	res.UnitPath = unitPath
 
-	if opts.System {
-		res.ConfigPath = systemConfigPath
-		if err := createSystemConfig(opts, &res); err != nil {
-			return res, err
-		}
+	if err := createConfig(opts, &res); err != nil {
+		return res, err
 	}
 
 	switch opts.GOOS {
@@ -502,13 +501,43 @@ func writeUnit(opts Options) (string, error) {
 	return path, nil
 }
 
-// createSystemConfig creates the system configuration file if it is absent.
-func createSystemConfig(opts Options, res *Result) error {
-	if err := os.MkdirAll(rooted(opts, filepath.Dir(systemConfigPath)), 0o755); err != nil {
+// configFilePath returns the production path of the configuration file for the
+// install's level.
+func configFilePath(opts Options) string {
+	if opts.System {
+		return systemConfigPath
+	}
+	return filepath.Join(opts.Home, ".agent-peer", "config.yaml")
+}
+
+// createConfig creates the configuration file for the install's level if it is
+// absent and reports what happened in res. The file is created exclusively, so
+// an existing file is never modified. The system-level file belongs to root;
+// the user-level file belongs to the installing account. The content is the
+// template the config package generates for the level.
+func createConfig(opts Options, res *Result) error {
+	return createConfigWith(opts, res, func(path string) (*os.File, error) {
+		return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	})
+}
+
+// createConfigWith implements createConfig; open lets a test force a write
+// failure after the file was created.
+func createConfigWith(opts Options, res *Result, open func(string) (*os.File, error)) error {
+	path := configFilePath(opts)
+	res.ConfigPath = path
+
+	dirMode := fs.FileMode(0o755)
+	if !opts.System {
+		// The user-level file lives in the account's data directory, which the
+		// config package keeps private to the account.
+		dirMode = 0o700
+	}
+	if err := os.MkdirAll(rooted(opts, filepath.Dir(path)), dirMode); err != nil {
 		return fmt.Errorf("service: create configuration directory: %w", err)
 	}
-	path := rooted(opts, systemConfigPath)
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+
+	f, err := open(rooted(opts, path))
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			res.ConfigNew = false
@@ -516,21 +545,34 @@ func createSystemConfig(opts Options, res *Result) error {
 		}
 		return fmt.Errorf("service: create configuration file: %w", err)
 	}
-	if _, err := f.WriteString(SystemConfigTemplate()); err != nil {
+	// A file this run created is removed when a later step fails, so the next
+	// install does not mistake a partial file for an existing configuration.
+	removePartial := func() {
+		_ = os.Remove(rooted(opts, path))
+	}
+	mode := config.ModeUser
+	if opts.System {
+		mode = config.ModeSystem
+	}
+	if _, err := f.Write(config.Template(mode)); err != nil {
 		_ = f.Close()
+		removePartial()
 		return fmt.Errorf("service: write configuration file: %w", err)
 	}
-	if opts.Root == "" {
+	if opts.System && opts.Root == "" {
 		if err := f.Chown(0, 0); err != nil {
 			_ = f.Close()
+			removePartial()
 			return fmt.Errorf("service: set configuration file owner: %w", err)
 		}
 	}
 	if err := f.Chmod(0o600); err != nil {
 		_ = f.Close()
+		removePartial()
 		return fmt.Errorf("service: set configuration file mode: %w", err)
 	}
 	if err := f.Close(); err != nil {
+		removePartial()
 		return fmt.Errorf("service: close configuration file: %w", err)
 	}
 	res.ConfigNew = true
