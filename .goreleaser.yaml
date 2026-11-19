@@ -50,3 +50,9 @@ release:
   draft: false
   prerelease: auto
   name_template: "v{{ .Version }}"
+  extra_files:
+    # Published at releases/latest/download/install.sh: the command users pipe
+    # into sh. The source is scripts/remote-install.sh, the script that
+    # downloads, verifies and runs the archive's own install.sh.
+    - glob: scripts/remote-install.sh
+      name_template: install.sh

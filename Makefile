@@ -49,7 +49,7 @@ lint:
 			exit 1; \
 		fi; \
 	fi
-	shellcheck scripts/install.sh
+	shellcheck scripts/install.sh scripts/remote-install.sh
 	golangci-lint run ./...
 	golangci-lint run --build-tags agentpeer_testenv ./...
 	go mod tidy -diff

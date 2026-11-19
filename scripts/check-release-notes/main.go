@@ -11,6 +11,11 @@
 // the comparison removes before comparing. The build and archive stages still
 // run, resolving modules through the usual Go module proxy, but no SCM API is
 // contacted.
+//
+// The same release uploads its assets to the fake API, so the command also
+// checks that release.extra_files attaches scripts/remote-install.sh as
+// install.sh and that the uploaded bytes equal the source file. That asset is
+// what releases/latest/download/install.sh serves to the one-line installer.
 package main
 
 import (
@@ -19,12 +24,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -101,7 +107,12 @@ func run() int {
 			return 1
 		}
 	}
-	return report(string(want), got)
+	status := report(string(want), got)
+	if err := checkInstallAsset(server); err != nil {
+		fmt.Fprintf(os.Stderr, "check-release-notes: %v\n", err)
+		status = 1
+	}
+	return status
 }
 
 // extractNotes runs the release notes extractor and returns its output.
@@ -118,24 +129,19 @@ func extractNotes(version string) ([]byte, error) {
 	return stdout.Bytes(), nil
 }
 
-// releaseBlock matches the one top-level release block in .goreleaser.yaml.
-var releaseBlock = regexp.MustCompile(`(?m)^release:[ \t]*$`)
-
 // writeCheckConfig copies the project configuration and points it at the fake
 // GitHub API and a dist directory inside dir. Keeping dist out of the
-// repository keeps --clean from touching a developer's local dist. skip_upload
-// still creates and publishes the release, which is where the body becomes
-// observable, but skips uploading every archive.
+// repository keeps --clean from touching a developer's local dist. The release
+// block is kept as written: the publish stage must create the release, whose
+// body is one thing under test, and upload its assets, install.sh among them,
+// to the fake API.
 func writeCheckConfig(source, path, apiURL, distDir string) error {
 	raw, err := os.ReadFile(source)
 	if err != nil {
 		return err
 	}
-	if n := len(releaseBlock.FindAllIndex(raw, -1)); n != 1 {
-		return fmt.Errorf("%s must have exactly one top-level release: block, found %d", source, n)
-	}
-	config := releaseBlock.ReplaceAllString(string(raw), "release:\n  skip_upload: true")
-	config += fmt.Sprintf("\ndist: %s\ngithub_urls:\n  api: %s/\n  upload: %s/\n", distDir, apiURL, apiURL)
+	config := string(raw) +
+		fmt.Sprintf("\ndist: %s\ngithub_urls:\n  api: %s/\n  upload: %s/\n", distDir, apiURL, apiURL)
 	return os.WriteFile(path, []byte(config), 0o644)
 }
 
@@ -237,8 +243,68 @@ func snippet(s string, i int) string {
 	return s[i:end]
 }
 
+const (
+	// installAssetName is the release asset name the one-line installer is
+	// fetched from: releases/latest/download/install.sh.
+	installAssetName = "install.sh"
+	// installScriptPath is the source release.extra_files attaches under that
+	// name.
+	installScriptPath = "scripts/remote-install.sh"
+)
+
+// checkInstallAsset checks that the release uploaded scripts/remote-install.sh
+// as install.sh and that the uploaded bytes are exactly the file's bytes.
+func checkInstallAsset(f *fakeGitHub) error {
+	want, err := os.ReadFile(installScriptPath)
+	if err != nil {
+		return fmt.Errorf("reading %s, the source of the %s release asset: %w",
+			installScriptPath, installAssetName, err)
+	}
+
+	assets := f.uploadedAssets()
+	var matches []uploadedAsset
+	var names []string
+	for _, a := range assets {
+		names = append(names, a.name)
+		if a.name == installAssetName {
+			matches = append(matches, a)
+		}
+	}
+	if len(matches) == 0 {
+		uploaded := "none"
+		if len(names) > 0 {
+			uploaded = strings.Join(names, ", ")
+		}
+		return fmt.Errorf("the release has no %s asset; it uploaded: %s. "+
+			"release.extra_files in .goreleaser.yaml must attach %s as %s",
+			installAssetName, uploaded, installScriptPath, installAssetName)
+	}
+	if len(matches) > 1 {
+		return fmt.Errorf("the release uploaded %s %d times; it must be attached once",
+			installAssetName, len(matches))
+	}
+
+	got := matches[0].data
+	if !bytes.Equal(got, want) {
+		i := firstDifference(string(want), string(got))
+		return fmt.Errorf("the release asset %s does not match %s: "+
+			"expected %d bytes, got %d; first difference at byte %d: expected %q, got %q",
+			installAssetName, installScriptPath, len(want), len(got), i,
+			snippet(string(want), i), snippet(string(got), i))
+	}
+	fmt.Printf("check-release-notes: the release asset %s matches %s (%d bytes)\n",
+		installAssetName, installScriptPath, len(want))
+	return nil
+}
+
+// uploadedAsset is one asset goreleaser POSTed to the fake upload endpoint.
+type uploadedAsset struct {
+	name string
+	data []byte
+}
+
 // fakeGitHub serves the few GitHub API responses goreleaser needs for a
-// release with release.skip_upload set, and records the created body.
+// release and records the created body and the uploaded assets.
 type fakeGitHub struct {
 	listener net.Listener
 	server   *http.Server
@@ -247,6 +313,7 @@ type fakeGitHub struct {
 	mu     sync.Mutex
 	body   string
 	posted bool
+	assets []uploadedAsset
 }
 
 func startFakeGitHub(tag string) (*fakeGitHub, error) {
@@ -272,6 +339,14 @@ func (f *fakeGitHub) publishedBody() (string, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.body, f.posted
+}
+
+// uploadedAssets returns a copy of the assets uploaded so far. goreleaser
+// uploads assets concurrently, so the copy is made under the lock.
+func (f *fakeGitHub) uploadedAssets() []uploadedAsset {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.assets)
 }
 
 func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
@@ -300,6 +375,8 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 		f.posted = true
 		f.mu.Unlock()
 		f.writeRelease(w)
+	case r.Method == http.MethodPost && strings.HasSuffix(path, "/assets"):
+		f.handleAssetUpload(w, r)
 	case r.Method == http.MethodPatch && strings.Contains(path, "/releases/"):
 		f.writeRelease(w)
 	case r.Method == http.MethodGet:
@@ -310,6 +387,29 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"message": "Not Found"})
 	}
+}
+
+// handleAssetUpload records one release asset upload. The asset name comes
+// from the ?name= query parameter that go-github adds from UploadOptions.Name;
+// the body is the file content.
+func (f *fakeGitHub) handleAssetUpload(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"message": err.Error()})
+		return
+	}
+
+	f.mu.Lock()
+	f.assets = append(f.assets, uploadedAsset{name: name, data: data})
+	id := len(f.assets)
+	f.mu.Unlock()
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id":                   id,
+		"name":                 name,
+		"browser_download_url": fmt.Sprintf("%s/download/%d", f.url(), id),
+	})
 }
 
 func (f *fakeGitHub) writeRelease(w http.ResponseWriter) {
