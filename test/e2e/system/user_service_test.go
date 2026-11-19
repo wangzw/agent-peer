@@ -100,15 +100,16 @@ func TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink(t *testing.T
 	assertUserUnitEnabled(t, userEnv)
 	assertUserUnitVerifies(t, userEnv)
 
-	// Start the service before pairing, so that the only peer Broker is the
-	// one the user manager owns; a Broker launched by a session would survive
-	// the manager restart and hold the account lock.
-	mustRun(t, "peer", userEnv, "systemctl", "--user", "start", "agent-peer.service")
-	syscontainer.WaitFor(t, "the peer Broker socket "+socket, func() bool {
+	// The installation starts the service in the running user manager, so the
+	// Broker must be running without a new login. Pairing now means the only
+	// peer Broker is the one the user manager owns; a Broker launched by a
+	// session would survive the manager restart and hold the account lock.
+	syscontainer.WaitFor(t, "the peer Broker socket "+socket+" after install", func() bool {
 		_, err := os.Stat(socket)
 		return err == nil
 	})
 	beforePID := userServiceMainPID(t, userEnv)
+	t.Logf("the user service was running after install with MainPID %d, without a new login", beforePID)
 	if beforePID == 0 {
 		t.Fatal("the user unit's MainPID is zero after the service started")
 	}

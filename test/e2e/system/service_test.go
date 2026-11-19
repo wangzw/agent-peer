@@ -21,6 +21,8 @@ const (
 	systemUnitPath = "/etc/systemd/system/agent-peer.service"
 	// systemConfigPath is the system Broker's configuration file.
 	systemConfigPath = "/etc/agent-peer/config.yaml"
+	// systemSocket is the system Broker's local socket.
+	systemSocket = "/run/agent-peer/broker.sock"
 	// releaseBinary is the release build the base image installs.
 	releaseBinary = "/usr/local/bin/agent-peer"
 )
@@ -37,10 +39,7 @@ func TestServiceInstall(t *testing.T) {
 	}
 
 	t.Run("system unit is written and enabled", func(t *testing.T) {
-		res := installSystemService(t)
-		if !strings.Contains(res.Stdout, "systemctl start agent-peer.service") {
-			t.Errorf("service install --system did not print the start command:\nstdout: %s\nstderr: %s", res.Stdout, res.Stderr)
-		}
+		installSystemService(t)
 
 		content := readFile(t, systemUnitPath)
 		for _, want := range []string{
@@ -245,6 +244,197 @@ func TestServiceUnitsVerify(t *testing.T) {
 
 	assertUserUnitEnabled(t, userEnv)
 	assertUserUnitVerifies(t, userEnv)
+}
+
+// TestSystemServiceUninstall stops the running system Broker, removes the unit
+// file and keeps the configuration. A second run reports that nothing is
+// installed and still succeeds.
+func TestSystemServiceUninstall(t *testing.T) {
+	if !syscontainer.InContainer() {
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	const configYAML = "broker:\n  alias: kept\n"
+	if err := os.MkdirAll(filepath.Dir(systemConfigPath), 0o755); err != nil {
+		t.Fatalf("creating %s: %v", filepath.Dir(systemConfigPath), err)
+	}
+	if err := os.WriteFile(systemConfigPath, []byte(configYAML), 0o600); err != nil {
+		t.Fatalf("writing %s: %v", systemConfigPath, err)
+	}
+	if err := os.Chmod(systemConfigPath, 0o600); err != nil {
+		t.Fatalf("chmod %s: %v", systemConfigPath, err)
+	}
+	if err := os.Chown(systemConfigPath, 0, 0); err != nil {
+		t.Fatalf("chown %s: %v", systemConfigPath, err)
+	}
+
+	install := syscontainer.RunAs(t, "root", nil, "service", "install", "--system")
+	if install.ExitCode != 0 {
+		t.Fatalf("service install --system: exit %d\nstdout: %s\nstderr: %s",
+			install.ExitCode, strings.TrimSpace(install.Stdout), strings.TrimSpace(install.Stderr))
+	}
+	syscontainer.WaitFor(t, "the system Broker socket "+systemSocket, func() bool {
+		_, err := os.Stat(systemSocket)
+		return err == nil
+	})
+
+	res := syscontainer.RunAs(t, "root", nil, "service", "uninstall", "--system")
+	if res.ExitCode != 0 {
+		t.Fatalf("service uninstall --system: exit %d\nstdout: %s\nstderr: %s",
+			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
+	}
+
+	active := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	if state := strings.TrimSpace(active.Stdout); state != "inactive" && state != "failed" {
+		t.Errorf("systemctl is-active agent-peer.service = %q after uninstall, want inactive or failed", state)
+	}
+	if procs := syscontainer.Pids("agent-peer", "broker", "--system"); len(procs) != 0 {
+		t.Errorf("system Broker still runs after uninstall: %v", procs)
+	}
+	if _, err := os.Stat(systemUnitPath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("unit file still exists after uninstall: %v", err)
+	}
+	if got := readFile(t, systemConfigPath); got != configYAML {
+		t.Errorf("configuration after uninstall = %q, want %q", got, configYAML)
+	}
+
+	again := syscontainer.RunAs(t, "root", nil, "service", "uninstall", "--system")
+	if again.ExitCode != 0 {
+		t.Fatalf("second service uninstall --system: exit %d\nstdout: %s\nstderr: %s",
+			again.ExitCode, strings.TrimSpace(again.Stdout), strings.TrimSpace(again.Stderr))
+	}
+	if !strings.Contains(again.Stdout, "not installed") {
+		t.Errorf("second uninstall stdout = %q, want it to say nothing is installed", again.Stdout)
+	}
+}
+
+// TestSystemServiceUninstallAfterUnitFileRemoved reproduces the state a
+// deleted unit file leaves behind: systemd still has the unit loaded and
+// running, but the file is gone. Uninstall must stop the Broker anyway.
+func TestSystemServiceUninstallAfterUnitFileRemoved(t *testing.T) {
+	if !syscontainer.InContainer() {
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	t.Cleanup(func() {
+		_ = runCommandAs(t, "root", "systemctl", "stop", "agent-peer.service")
+		_ = runCommandAs(t, "root", "systemctl", "disable", "agent-peer.service")
+		_ = runCommandAs(t, "root", "systemctl", "daemon-reload")
+		_ = os.Remove(systemUnitPath)
+	})
+
+	install := syscontainer.RunAs(t, "root", nil, "service", "install", "--system")
+	if install.ExitCode != 0 {
+		t.Fatalf("service install --system: exit %d\nstdout: %s\nstderr: %s",
+			install.ExitCode, strings.TrimSpace(install.Stdout), strings.TrimSpace(install.Stderr))
+	}
+	syscontainer.WaitFor(t, "the system Broker socket "+systemSocket, func() bool {
+		_, err := os.Stat(systemSocket)
+		return err == nil
+	})
+
+	enabledBefore := runCommandAs(t, "root", "systemctl", "is-enabled", "agent-peer.service")
+	activeBefore := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	t.Logf("before removing the unit file: is-enabled=%q (exit %d) is-active=%q (exit %d)",
+		strings.TrimSpace(enabledBefore.Stdout), enabledBefore.ExitCode,
+		strings.TrimSpace(activeBefore.Stdout), activeBefore.ExitCode)
+
+	// Remove the unit file without telling systemd. The loaded unit keeps
+	// running and the enable symlink still exists.
+	if err := os.Remove(systemUnitPath); err != nil {
+		t.Fatalf("removing %s: %v", systemUnitPath, err)
+	}
+	enabledAfter := runCommandAs(t, "root", "systemctl", "is-enabled", "agent-peer.service")
+	activeAfter := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	t.Logf("after removing the unit file, before uninstall: is-enabled=%q (exit %d) is-active=%q (exit %d)",
+		strings.TrimSpace(enabledAfter.Stdout), enabledAfter.ExitCode,
+		strings.TrimSpace(activeAfter.Stdout), activeAfter.ExitCode)
+
+	if procs := syscontainer.Pids("agent-peer", "broker", "--system"); len(procs) == 0 {
+		t.Fatal("system Broker is not running after the unit file was removed; uninstall would have nothing to stop")
+	}
+
+	res := syscontainer.RunAs(t, "root", nil, "service", "uninstall", "--system")
+	t.Logf("uninstall: exit=%d stdout=%q stderr=%q", res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
+	if res.ExitCode != 0 {
+		t.Fatalf("service uninstall --system: exit %d\nstdout: %s\nstderr: %s",
+			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
+	}
+
+	procs := syscontainer.Pids("agent-peer", "broker", "--system")
+	if len(procs) != 0 {
+		t.Errorf("system Broker still runs after uninstall: %v", procs)
+	}
+	active := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	state := strings.TrimSpace(active.Stdout)
+	t.Logf("after uninstall: is-active=%q (exit %d)", state, active.ExitCode)
+	if state == "active" || state == "deactivating" {
+		t.Errorf("systemctl is-active agent-peer.service = %q after uninstall, want it stopped", state)
+	}
+}
+
+// TestUserServiceUninstall stops the running user Broker, removes the unit
+// file and keeps the account's configuration.
+func TestUserServiceUninstall(t *testing.T) {
+	if !syscontainer.InContainer() {
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	peerUID := syscontainer.AccountUID(t, "peer")
+	uid := strconv.FormatUint(uint64(peerUID), 10)
+	userEnv := []string{
+		"XDG_RUNTIME_DIR=/run/user/" + uid,
+		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/" + uid + "/bus",
+	}
+	socket := "/tmp/agent-peer-" + uid + "/broker.sock"
+	const configYAML = "broker:\n  listen: \":17445\"\n"
+	writeAccountFile(t, "peer", "/home/peer/.agent-peer/config.yaml", configYAML)
+
+	mustRun(t, "root", nil, "loginctl", "enable-linger", "peer")
+	mustRun(t, "root", nil, "systemctl", "start", "user@"+uid+".service")
+	waitUserManager(t, peerUID)
+
+	install := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "install")
+	if install.ExitCode != 0 {
+		t.Fatalf("service install as peer: exit %d\nstdout: %s\nstderr: %s",
+			install.ExitCode, strings.TrimSpace(install.Stdout), strings.TrimSpace(install.Stderr))
+	}
+	syscontainer.WaitFor(t, "the peer Broker socket "+socket, func() bool {
+		_, err := os.Stat(socket)
+		return err == nil
+	})
+
+	res := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "uninstall")
+	if res.ExitCode != 0 {
+		t.Fatalf("service uninstall as peer: exit %d\nstdout: %s\nstderr: %s",
+			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
+	}
+
+	active := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-active", "agent-peer.service")
+	if state := strings.TrimSpace(active.Stdout); state != "inactive" && state != "failed" {
+		t.Errorf("systemctl --user is-active agent-peer.service = %q after uninstall, want inactive or failed", state)
+	}
+	if procs := peerBrokers(peerUID); len(procs) != 0 {
+		t.Errorf("peer Broker still runs after uninstall: %v", procs)
+	}
+	if _, err := os.Stat(userUnitPath(t)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("user unit file still exists after uninstall: %v", err)
+	}
+	if got := readFile(t, "/home/peer/.agent-peer/config.yaml"); got != configYAML {
+		t.Errorf("configuration after uninstall = %q, want %q", got, configYAML)
+	}
+
+	again := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "uninstall")
+	if again.ExitCode != 0 {
+		t.Fatalf("second service uninstall as peer: exit %d\nstdout: %s\nstderr: %s",
+			again.ExitCode, strings.TrimSpace(again.Stdout), strings.TrimSpace(again.Stderr))
+	}
+	if !strings.Contains(again.Stdout, "not installed") {
+		t.Errorf("second uninstall stdout = %q, want it to say nothing is installed", again.Stdout)
+	}
 }
 
 // installSystemService runs service install --system as root and fails the
