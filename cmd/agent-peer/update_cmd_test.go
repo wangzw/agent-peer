@@ -280,6 +280,9 @@ func TestUpdateConfirmsAndRestartsTheService(t *testing.T) {
 	if !strings.Contains(out, "reconnect with /mcp") {
 		t.Fatalf("stdout = %q, want the session hint", out)
 	}
+	if !strings.Contains(out, "User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.") {
+		t.Fatalf("stdout = %q, want the shared-binary hint", out)
+	}
 }
 
 func TestUpdateYesSkipsTheQuestion(t *testing.T) {
@@ -312,7 +315,7 @@ func TestUpdateRootUsesTheSystemServiceLevel(t *testing.T) {
 		newerResult:      true,
 		serviceRestarted: true,
 	}
-	a, _, stderr, _ := newDispatchApp("0.1.1")
+	a, stdout, stderr, _ := newDispatchApp("0.1.1")
 	a.deps = stub.deps()
 
 	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
@@ -323,6 +326,9 @@ func TestUpdateRootUsesTheSystemServiceLevel(t *testing.T) {
 	}
 	if len(stub.restartCalls) != 1 || !stub.restartCalls[0].System {
 		t.Fatalf("restart calls = %+v, want one system-level restart", stub.restartCalls)
+	}
+	if !strings.Contains(stdout.String(), "User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.") {
+		t.Fatalf("stdout = %q, want the shared-binary hint after a system-level update", stdout.String())
 	}
 }
 

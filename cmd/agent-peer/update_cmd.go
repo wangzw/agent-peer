@@ -18,6 +18,11 @@ import (
 
 const updateUsage = "usage: agent-peer update [--yes]\n"
 
+// updateSharedBinaryHint tells the user that a system-level update restarts
+// only the system-level service; a user-level service that runs the same
+// binary keeps the old process until it is restarted.
+const updateSharedBinaryHint = "User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user."
+
 // Test seams for the parts of the update command that reach the operating
 // system. The command's GitHub requests and the service restart are reached
 // through deps so an ordinary test double covers them as well.
@@ -136,6 +141,7 @@ func (a *app) updateCmd(ctx context.Context, args []string) int {
 	} else {
 		_, _ = fmt.Fprintln(a.stdout, "The Broker is not installed as a service; restart it to use the new version.")
 	}
+	_, _ = fmt.Fprintln(a.stdout, updateSharedBinaryHint)
 	_, _ = fmt.Fprintln(a.stdout, "Open Claude Code sessions must reconnect with /mcp or be restarted to use the new version.")
 	return exitOK
 }
