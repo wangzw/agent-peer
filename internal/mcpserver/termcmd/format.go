@@ -122,6 +122,119 @@ func WriteAuditEvent(w io.Writer, ev *localpb.AuditEvent) error {
 	return err
 }
 
+// WriteConfigEntries writes one line per configuration entry, sorted by key,
+// as "<key> = <value>". A secret entry shows only whether it is set.
+func WriteConfigEntries(w io.Writer, entries []*localpb.ConfigEntry) error {
+	sorted := append([]*localpb.ConfigEntry(nil), entries...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].GetKey() < sorted[j].GetKey()
+	})
+	for _, e := range sorted {
+		if _, err := fmt.Fprintf(w, "%s = %s\n", e.GetKey(), configValueText(e.GetValue())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// WriteConfigChange writes the line shown after one configuration change:
+// "<key>: <old> -> <new>".
+func WriteConfigChange(w io.Writer, key string, oldValue, newValue *localpb.ConfigValue) error {
+	_, err := fmt.Fprintf(w, "%s: %s -> %s\n", key, configValueText(oldValue), configValueText(newValue))
+	return err
+}
+
+// configValueText renders one configuration value for the terminal. A secret
+// value shows "set" or "unset" and never its contents; every other value uses
+// FormatConfigValue and the empty convention.
+func configValueText(v *localpb.ConfigValue) string {
+	if secret, ok := v.GetValue().(*localpb.ConfigValue_SecretIsSet); ok {
+		if secret.SecretIsSet {
+			return "set"
+		}
+		return "unset"
+	}
+	return cell(FormatConfigValue(v))
+}
+
+// WritePairingKey writes a new one-time pairing key: the key, its expiry as
+// RFC 3339 in UTC and the addresses the other Broker can dial, each indented by
+// two spaces.
+func WritePairingKey(w io.Writer, resp *localpb.CreatePairingKeyResponse) error {
+	if resp == nil {
+		resp = &localpb.CreatePairingKeyResponse{}
+	}
+	if _, err := fmt.Fprintf(w, "Key: %s\n", cell(resp.GetKey())); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Expires: %s\n", auditTime(resp.GetExpiresAt())); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(w, "Addresses:\n"); err != nil {
+		return err
+	}
+	for _, addr := range resp.GetShownAddresses() {
+		if _, err := fmt.Fprintf(w, "  %s\n", addr); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// WriteBrokerList writes the Brokers named by brokers as a table sorted by
+// alias. A Broker shows whether it is a peer, its status, which side dialed and
+// its advertised addresses. With no Brokers it writes "Brokers: none".
+func WriteBrokerList(w io.Writer, brokers []*localpb.BrokerInfo) error {
+	if len(brokers) == 0 {
+		_, err := io.WriteString(w, "Brokers: none\n")
+		return err
+	}
+
+	sorted := append([]*localpb.BrokerInfo(nil), brokers...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		left, right := peerSortKey(sorted[i]), peerSortKey(sorted[j])
+		if left != right {
+			return left < right
+		}
+		return fingerprintHex(sorted[i].GetFingerprint()) < fingerprintHex(sorted[j].GetFingerprint())
+	})
+
+	rows := make([][]string, 0, len(sorted))
+	for _, b := range sorted {
+		rows = append(rows, []string{
+			cell(b.GetAlias()),
+			cell(fingerprintHex(b.GetFingerprint())),
+			yesNo(b.GetIsPeer()),
+			brokerStatusName(b.GetStatus()),
+			peerRoleName(b.GetRole()),
+			formatAddresses(b.GetAdvertisedAddresses()),
+		})
+	}
+	header := []string{"ALIAS", "FINGERPRINT", "PEER", "STATUS", "DIRECTION", "ADDRESSES"}
+	return writeTable(w, header, rows)
+}
+
+// WritePairingResult writes the line shown after a successful pairing:
+// "Paired with <alias> (<fingerprint>)".
+func WritePairingResult(w io.Writer, resp *localpb.ConnectResponse) error {
+	if resp == nil {
+		resp = &localpb.ConnectResponse{}
+	}
+	_, err := fmt.Fprintf(w, "Paired with %s (%s)\n",
+		cell(resp.GetAlias()), cell(fingerprintHex(resp.GetFingerprint())))
+	return err
+}
+
+// WriteWarnings writes each warning as one line prefixed with "warning: ".
+func WriteWarnings(w io.Writer, warnings []*localpb.Warning) error {
+	for _, warning := range warnings {
+		if _, err := fmt.Fprintf(w, "warning: %s\n", warning.GetMessage()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // FormatConfigValue renders one configuration value for the terminal. A nil
 // value and a ConfigValue with no oneof member set render as the empty string,
 // which makes the caller omit the field.
@@ -206,6 +319,13 @@ func cell(v string) string {
 		return emptyCell
 	}
 	return v
+}
+
+func yesNo(v bool) string {
+	if v {
+		return "yes"
+	}
+	return "no"
 }
 
 func sortedTopics(topics []string) []string {

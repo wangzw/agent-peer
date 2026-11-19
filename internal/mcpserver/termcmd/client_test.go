@@ -344,6 +344,350 @@ func TestRunAuditErrorAfterEvents(t *testing.T) {
 	}
 }
 
+// requestOf returns the request of the first call to method.
+func requestOf[T any](t *testing.T, srv *fakelocal.Server, method string) T {
+	t.Helper()
+	for _, c := range srv.Calls() {
+		if c.Method != method {
+			continue
+		}
+		if req, ok := c.Request.(T); ok {
+			return req
+		}
+	}
+	t.Fatalf("no %s call was recorded", method)
+	var zero T
+	return zero
+}
+
+func TestRunConfigGetAll(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	resp := &localpb.GetConfigResponse{Entries: []*localpb.ConfigEntry{
+		{Key: "topics.auto_join", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: true}}},
+		{Key: "pairing.static_key", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_SecretIsSet{SecretIsSet: true}}},
+		{Key: "broker.alias", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_StringValue{StringValue: "hostA"}}},
+	}}
+	srv := fakelocal.Start(t, path, fakelocal.Handlers{
+		GetConfig: func(context.Context, *localpb.GetConfigRequest) (*localpb.GetConfigResponse, error) {
+			return resp, nil
+		},
+	})
+
+	var got bytes.Buffer
+	if err := RunConfigGet(t.Context(), fixedSelector(path), "", &got); err != nil {
+		t.Fatalf("RunConfigGet: %v", err)
+	}
+
+	var want bytes.Buffer
+	if err := WriteConfigEntries(&want, resp.GetEntries()); err != nil {
+		t.Fatalf("WriteConfigEntries: %v", err)
+	}
+	if got.String() != want.String() {
+		t.Errorf("RunConfigGet output = %q, want %q", got.String(), want.String())
+	}
+	if !strings.Contains(got.String(), "pairing.static_key = set") {
+		t.Errorf("RunConfigGet output = %q, want the secret entry marked set", got.String())
+	}
+	if req := requestOf[*localpb.GetConfigRequest](t, srv, "GetConfig"); req.GetKey() != "" {
+		t.Errorf("GetConfig key = %q, want empty for every entry", req.GetKey())
+	}
+}
+
+func TestRunConfigGetOneKey(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	resp := &localpb.GetConfigResponse{Entries: []*localpb.ConfigEntry{
+		{Key: "broker.alias", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_StringValue{StringValue: "hostA"}}},
+	}}
+	srv := fakelocal.Start(t, path, fakelocal.Handlers{
+		GetConfig: func(context.Context, *localpb.GetConfigRequest) (*localpb.GetConfigResponse, error) {
+			return resp, nil
+		},
+	})
+
+	var got bytes.Buffer
+	if err := RunConfigGet(t.Context(), fixedSelector(path), "broker.alias", &got); err != nil {
+		t.Fatalf("RunConfigGet: %v", err)
+	}
+	if want := "broker.alias = hostA\n"; got.String() != want {
+		t.Errorf("RunConfigGet output = %q, want %q", got.String(), want)
+	}
+	if req := requestOf[*localpb.GetConfigRequest](t, srv, "GetConfig"); req.GetKey() != "broker.alias" {
+		t.Errorf("GetConfig key = %q, want %q", req.GetKey(), "broker.alias")
+	}
+}
+
+func TestRunConfigGetEmpty(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	fakelocal.Start(t, path, fakelocal.Handlers{
+		GetConfig: func(context.Context, *localpb.GetConfigRequest) (*localpb.GetConfigResponse, error) {
+			return &localpb.GetConfigResponse{}, nil
+		},
+	})
+
+	var got bytes.Buffer
+	if err := RunConfigGet(t.Context(), fixedSelector(path), "", &got); err != nil {
+		t.Fatalf("RunConfigGet: %v", err)
+	}
+	if got.Len() != 0 {
+		t.Errorf("RunConfigGet wrote %q, want nothing", got.String())
+	}
+}
+
+func TestRunConfigSet(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	srv := fakelocal.Start(t, path, fakelocal.Handlers{
+		SetConfig: func(context.Context, *localpb.SetConfigRequest) (*localpb.SetConfigResponse, error) {
+			return &localpb.SetConfigResponse{
+				OldValue: &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: false}},
+				NewValue: &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: true}},
+			}, nil
+		},
+	})
+
+	var got bytes.Buffer
+	if err := RunConfigSet(t.Context(), fixedSelector(path), "topics.auto_join", "true", &got); err != nil {
+		t.Fatalf("RunConfigSet: %v", err)
+	}
+	if want := "topics.auto_join: false -> true\n"; got.String() != want {
+		t.Errorf("RunConfigSet output = %q, want %q", got.String(), want)
+	}
+	req := requestOf[*localpb.SetConfigRequest](t, srv, "SetConfig")
+	if req.GetKey() != "topics.auto_join" || req.GetValue() != "true" {
+		t.Errorf("SetConfig request = (%q, %q), want (%q, %q)", req.GetKey(), req.GetValue(), "topics.auto_join", "true")
+	}
+}
+
+func TestRunConfigSetPermissionDeniedIncludesPath(t *testing.T) {
+	const configFile = "/etc/agent-peer/config.yaml"
+	path := fakelocal.SocketPath(t)
+	fakelocal.Start(t, path, fakelocal.Handlers{
+		SetConfig: func(context.Context, *localpb.SetConfigRequest) (*localpb.SetConfigResponse, error) {
+			return nil, fakelocal.PermissionDenied("changing the configuration requires write permission on " + configFile)
+		},
+	})
+
+	var got bytes.Buffer
+	err := RunConfigSet(t.Context(), fixedSelector(path), "topics.auto_join", "true", &got)
+	if err == nil {
+		t.Fatal("RunConfigSet returned nil, want an error")
+	}
+	if !strings.HasPrefix(err.Error(), "permission_denied: ") {
+		t.Errorf("RunConfigSet error = %q, want it to start with %q", err, "permission_denied: ")
+	}
+	if !strings.Contains(err.Error(), configFile) {
+		t.Errorf("RunConfigSet error = %q, want it to name the configuration file %q", err, configFile)
+	}
+	if got.Len() != 0 {
+		t.Errorf("RunConfigSet wrote %q, want nothing", got.String())
+	}
+}
+
+func TestRunPairingKeyCreate(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	resp := &localpb.CreatePairingKeyResponse{
+		Key:            "one-time-key",
+		ExpiresAt:      timestamppb.New(time.Date(2026, 11, 18, 10, 15, 0, 0, time.UTC)),
+		ShownAddresses: []string{"hostA:17443"},
+	}
+	srv := fakelocal.Start(t, path, fakelocal.Handlers{
+		CreatePairingKey: func(context.Context, *localpb.CreatePairingKeyRequest) (*localpb.CreatePairingKeyResponse, error) {
+			return resp, nil
+		},
+	})
+
+	var got bytes.Buffer
+	if err := RunPairingKeyCreate(t.Context(), fixedSelector(path), &got); err != nil {
+		t.Fatalf("RunPairingKeyCreate: %v", err)
+	}
+	var want bytes.Buffer
+	if err := WritePairingKey(&want, resp); err != nil {
+		t.Fatalf("WritePairingKey: %v", err)
+	}
+	if got.String() != want.String() {
+		t.Errorf("RunPairingKeyCreate output = %q, want %q", got.String(), want.String())
+	}
+	if n := methodCalls(srv, "CreatePairingKey"); n != 1 {
+		t.Errorf("CreatePairingKey calls = %d, want 1", n)
+	}
+}
+
+func TestRunPeerList(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	resp := &localpb.ListBrokersResponse{Brokers: []*localpb.BrokerInfo{
+		{
+			Alias:       "hostB",
+			Fingerprint: bytes.Repeat([]byte{0xcd}, 32),
+			IsPeer:      true,
+			Status:      localpb.BrokerStatus_BROKER_STATUS_CONNECTED,
+			Role:        localpb.PeerRole_PEER_ROLE_ACCEPTOR,
+			AdvertisedAddresses: []*localpb.AdvertisedAddress{
+				{Kind: "direct", Addr: "hostb.example:17443"},
+			},
+		},
+		{
+			Alias:       "hostA",
+			Fingerprint: bytes.Repeat([]byte{0xab}, 32),
+			IsPeer:      true,
+			Status:      localpb.BrokerStatus_BROKER_STATUS_CONNECTED,
+			Role:        localpb.PeerRole_PEER_ROLE_DIALER,
+		},
+	}}
+	srv := fakelocal.Start(t, path, fakelocal.Handlers{
+		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
+			return resp, nil
+		},
+	})
+
+	var got bytes.Buffer
+	if err := RunPeerList(t.Context(), fixedSelector(path), &got); err != nil {
+		t.Fatalf("RunPeerList: %v", err)
+	}
+	var want bytes.Buffer
+	if err := WriteBrokerList(&want, resp.GetBrokers()); err != nil {
+		t.Fatalf("WriteBrokerList: %v", err)
+	}
+	if got.String() != want.String() {
+		t.Errorf("RunPeerList output = %q, want %q", got.String(), want.String())
+	}
+	if n := methodCalls(srv, "ListBrokers"); n != 1 {
+		t.Errorf("ListBrokers calls = %d, want 1", n)
+	}
+}
+
+func TestRunPeerListEmpty(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	fakelocal.Start(t, path, fakelocal.Handlers{
+		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
+			return &localpb.ListBrokersResponse{}, nil
+		},
+	})
+
+	var got bytes.Buffer
+	if err := RunPeerList(t.Context(), fixedSelector(path), &got); err != nil {
+		t.Fatalf("RunPeerList: %v", err)
+	}
+	if want := "Brokers: none\n"; got.String() != want {
+		t.Errorf("RunPeerList output = %q, want %q", got.String(), want)
+	}
+}
+
+func TestRunPeerConnect(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	fingerprint := bytes.Repeat([]byte{0xcd}, 32)
+	srv := fakelocal.Start(t, path, fakelocal.Handlers{
+		Connect: func(context.Context, *localpb.ConnectRequest) (*localpb.ConnectResponse, error) {
+			return &localpb.ConnectResponse{
+				Alias:       "hostB",
+				Fingerprint: fingerprint,
+				Warnings: []*localpb.Warning{
+					{Message: "first warning"},
+					{Message: "second warning"},
+				},
+			}, nil
+		},
+	})
+
+	var got, warned bytes.Buffer
+	err := RunPeerConnect(t.Context(), fixedSelector(path), "hostb.example:17443", "one-time-key", "lab-b", &got, &warned)
+	if err != nil {
+		t.Fatalf("RunPeerConnect: %v", err)
+	}
+
+	wantLine := "Paired with hostB (" + strings.Repeat("cd", 32) + ")\n"
+	if got.String() != wantLine {
+		t.Errorf("RunPeerConnect output = %q, want %q", got.String(), wantLine)
+	}
+	wantWarnings := "warning: first warning\nwarning: second warning\n"
+	if warned.String() != wantWarnings {
+		t.Errorf("RunPeerConnect warnings = %q, want %q", warned.String(), wantWarnings)
+	}
+
+	req := requestOf[*localpb.ConnectRequest](t, srv, "Connect")
+	if req.GetAddress() != "hostb.example:17443" || req.GetKey() != "one-time-key" || req.GetLocalAlias() != "lab-b" {
+		t.Errorf("Connect request = (%q, %q, %q), want (%q, %q, %q)",
+			req.GetAddress(), req.GetKey(), req.GetLocalAlias(),
+			"hostb.example:17443", "one-time-key", "lab-b")
+	}
+}
+
+func TestRunPeerConnectNoWarnings(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	fakelocal.Start(t, path, fakelocal.Handlers{
+		Connect: func(context.Context, *localpb.ConnectRequest) (*localpb.ConnectResponse, error) {
+			return &localpb.ConnectResponse{
+				Alias:       "hostB",
+				Fingerprint: bytes.Repeat([]byte{0xcd}, 32),
+			}, nil
+		},
+	})
+
+	var got, warned bytes.Buffer
+	if err := RunPeerConnect(t.Context(), fixedSelector(path), "hostb.example:17443", "key", "", &got, &warned); err != nil {
+		t.Fatalf("RunPeerConnect: %v", err)
+	}
+	if warned.Len() != 0 {
+		t.Errorf("RunPeerConnect warnings = %q, want nothing", warned.String())
+	}
+}
+
+func TestRunPeerDisconnect(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	srv := fakelocal.Start(t, path, fakelocal.Handlers{
+		Disconnect: func(context.Context, *localpb.DisconnectRequest) (*localpb.DisconnectResponse, error) {
+			return &localpb.DisconnectResponse{}, nil
+		},
+	})
+
+	var got bytes.Buffer
+	if err := RunPeerDisconnect(t.Context(), fixedSelector(path), "hostB", &got); err != nil {
+		t.Fatalf("RunPeerDisconnect: %v", err)
+	}
+	if want := "Disconnected hostB\n"; got.String() != want {
+		t.Errorf("RunPeerDisconnect output = %q, want %q", got.String(), want)
+	}
+	if req := requestOf[*localpb.DisconnectRequest](t, srv, "Disconnect"); req.GetBroker() != "hostB" {
+		t.Errorf("Disconnect broker = %q, want %q", req.GetBroker(), "hostB")
+	}
+}
+
+func TestRunPeerDisconnectError(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	fakelocal.Start(t, path, fakelocal.Handlers{
+		Disconnect: func(context.Context, *localpb.DisconnectRequest) (*localpb.DisconnectResponse, error) {
+			return nil, fakelocal.ErrorStatus(codes.NotFound, &localpb.ErrorDetail{
+				Code:    localpb.ErrorCode_ERROR_CODE_NOT_FOUND,
+				Message: "no peer Broker has the alias or fingerprint \"hostZ\"",
+			})
+		},
+	})
+
+	var got bytes.Buffer
+	err := RunPeerDisconnect(t.Context(), fixedSelector(path), "hostZ", &got)
+	if err == nil {
+		t.Fatal("RunPeerDisconnect returned nil, want an error")
+	}
+	if !strings.HasPrefix(err.Error(), "not_found: ") {
+		t.Errorf("RunPeerDisconnect error = %q, want it to start with %q", err, "not_found: ")
+	}
+	if got.Len() != 0 {
+		t.Errorf("RunPeerDisconnect wrote %q, want nothing", got.String())
+	}
+}
+
+func TestRunPeerListSelectorError(t *testing.T) {
+	const noBroker = "no Broker is available for this account"
+	var got bytes.Buffer
+	err := RunPeerList(t.Context(), func(context.Context) (string, Dialer, error) {
+		return "", nil, errors.New(noBroker)
+	}, &got)
+	if want := "cannot reach the Broker: " + noBroker; err == nil || err.Error() != want {
+		t.Fatalf("RunPeerList error = %v, want %q", err, want)
+	}
+	if got.Len() != 0 {
+		t.Errorf("RunPeerList wrote %q, want nothing", got.String())
+	}
+}
+
 func TestRunAuditCancel(t *testing.T) {
 	path := fakelocal.SocketPath(t)
 	sent := make(chan struct{})

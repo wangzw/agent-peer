@@ -76,6 +76,130 @@ func RunAudit(ctx context.Context, sel Selector, limit uint32, w io.Writer) erro
 	}
 }
 
+// RunConfigGet connects to the selected Broker and writes the requested
+// configuration entries to w. An empty key asks for every entry.
+func RunConfigGet(ctx context.Context, sel Selector, key string, w io.Writer) error {
+	client, closeConn, err := dial(ctx, sel)
+	if err != nil {
+		return err
+	}
+	defer closeConn()
+
+	callCtx, cancel := context.WithTimeout(ctx, UnaryTimeout)
+	defer cancel()
+
+	resp, err := client.GetConfig(callCtx, &localpb.GetConfigRequest{Key: key})
+	if err != nil {
+		return errors.New(Describe(err))
+	}
+	return WriteConfigEntries(w, resp.GetEntries())
+}
+
+// RunConfigSet connects to the selected Broker, sets one configuration value
+// and writes the old and new values to w.
+func RunConfigSet(ctx context.Context, sel Selector, key, value string, w io.Writer) error {
+	client, closeConn, err := dial(ctx, sel)
+	if err != nil {
+		return err
+	}
+	defer closeConn()
+
+	callCtx, cancel := context.WithTimeout(ctx, UnaryTimeout)
+	defer cancel()
+
+	resp, err := client.SetConfig(callCtx, &localpb.SetConfigRequest{Key: key, Value: value})
+	if err != nil {
+		return errors.New(Describe(err))
+	}
+	return WriteConfigChange(w, key, resp.GetOldValue(), resp.GetNewValue())
+}
+
+// RunPairingKeyCreate connects to the selected Broker, creates a one-time
+// pairing key and writes the key, its expiry and the addresses to dial.
+func RunPairingKeyCreate(ctx context.Context, sel Selector, w io.Writer) error {
+	client, closeConn, err := dial(ctx, sel)
+	if err != nil {
+		return err
+	}
+	defer closeConn()
+
+	callCtx, cancel := context.WithTimeout(ctx, UnaryTimeout)
+	defer cancel()
+
+	resp, err := client.CreatePairingKey(callCtx, &localpb.CreatePairingKeyRequest{})
+	if err != nil {
+		return errors.New(Describe(err))
+	}
+	return WritePairingKey(w, resp)
+}
+
+// RunPeerList connects to the selected Broker and writes every Broker it knows
+// as a table sorted by alias.
+func RunPeerList(ctx context.Context, sel Selector, w io.Writer) error {
+	client, closeConn, err := dial(ctx, sel)
+	if err != nil {
+		return err
+	}
+	defer closeConn()
+
+	callCtx, cancel := context.WithTimeout(ctx, UnaryTimeout)
+	defer cancel()
+
+	resp, err := client.ListBrokers(callCtx, &localpb.ListBrokersRequest{})
+	if err != nil {
+		return errors.New(Describe(err))
+	}
+	return WriteBrokerList(w, resp.GetBrokers())
+}
+
+// RunPeerConnect connects to the selected Broker and pairs with the Broker at
+// address. The result line goes to w and every warning goes to warn, each on
+// its own line.
+//
+// The call is not bounded by UnaryTimeout: the Broker performs a pairing
+// handshake that has its own ten-second timeout, and a deadline of the same
+// length here would cancel the call before the Broker could report that
+// timeout as a pairing failure.
+func RunPeerConnect(ctx context.Context, sel Selector, address, key, alias string, w, warn io.Writer) error {
+	client, closeConn, err := dial(ctx, sel)
+	if err != nil {
+		return err
+	}
+	defer closeConn()
+
+	resp, err := client.Connect(ctx, &localpb.ConnectRequest{
+		Address:    address,
+		Key:        key,
+		LocalAlias: alias,
+	})
+	if err != nil {
+		return errors.New(Describe(err))
+	}
+	if err := WritePairingResult(w, resp); err != nil {
+		return err
+	}
+	return WriteWarnings(warn, resp.GetWarnings())
+}
+
+// RunPeerDisconnect connects to the selected Broker, removes one paired Broker
+// and writes the line naming it.
+func RunPeerDisconnect(ctx context.Context, sel Selector, broker string, w io.Writer) error {
+	client, closeConn, err := dial(ctx, sel)
+	if err != nil {
+		return err
+	}
+	defer closeConn()
+
+	callCtx, cancel := context.WithTimeout(ctx, UnaryTimeout)
+	defer cancel()
+
+	if _, err := client.Disconnect(callCtx, &localpb.DisconnectRequest{Broker: broker}); err != nil {
+		return errors.New(Describe(err))
+	}
+	_, err = fmt.Fprintf(w, "Disconnected %s\n", broker)
+	return err
+}
+
 // dial selects the Broker, opens a connection through the selector's dialer and
 // performs the version handshake. The returned close function closes the
 // connection.

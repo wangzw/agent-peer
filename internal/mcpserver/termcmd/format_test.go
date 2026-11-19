@@ -183,6 +183,216 @@ func TestWriteAuditEventQuotingAndCount(t *testing.T) {
 	}
 }
 
+func TestWriteConfigEntries(t *testing.T) {
+	entries := []*localpb.ConfigEntry{
+		{Key: "topics.auto_join", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: true}}},
+		{Key: "pairing.static_key", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_SecretIsSet{SecretIsSet: true}}},
+		{Key: "broker.advertise"},
+		{Key: "broker.alias", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_StringValue{StringValue: "hostA"}}},
+	}
+
+	var buf bytes.Buffer
+	if err := WriteConfigEntries(&buf, entries); err != nil {
+		t.Fatalf("WriteConfigEntries: %v", err)
+	}
+
+	want := "broker.advertise = -\n" +
+		"broker.alias = hostA\n" +
+		"pairing.static_key = set\n" +
+		"topics.auto_join = true\n"
+	if got := buf.String(); got != want {
+		t.Errorf("WriteConfigEntries output = %q, want %q", got, want)
+	}
+}
+
+func TestWriteConfigEntriesSecretUnset(t *testing.T) {
+	entries := []*localpb.ConfigEntry{
+		{Key: "pairing.static_key", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_SecretIsSet{SecretIsSet: false}}},
+	}
+
+	var buf bytes.Buffer
+	if err := WriteConfigEntries(&buf, entries); err != nil {
+		t.Fatalf("WriteConfigEntries: %v", err)
+	}
+	if got, want := buf.String(), "pairing.static_key = unset\n"; got != want {
+		t.Errorf("WriteConfigEntries output = %q, want %q", got, want)
+	}
+}
+
+func TestWriteConfigEntriesEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	if err := WriteConfigEntries(&buf, nil); err != nil {
+		t.Fatalf("WriteConfigEntries: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("WriteConfigEntries wrote %q, want nothing", buf.String())
+	}
+}
+
+func TestWriteConfigChange(t *testing.T) {
+	tests := []struct {
+		name     string
+		key      string
+		oldValue *localpb.ConfigValue
+		newValue *localpb.ConfigValue
+		want     string
+	}{
+		{
+			name:     "from a previous value",
+			key:      "topics.auto_join",
+			oldValue: &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: false}},
+			newValue: &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: true}},
+			want:     "topics.auto_join: false -> true\n",
+		},
+		{
+			name:     "from unset",
+			key:      "broker.alias",
+			oldValue: nil,
+			newValue: &localpb.ConfigValue{Value: &localpb.ConfigValue_StringValue{StringValue: "hostA"}},
+			want:     "broker.alias: - -> hostA\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := WriteConfigChange(&buf, tt.key, tt.oldValue, tt.newValue); err != nil {
+				t.Fatalf("WriteConfigChange: %v", err)
+			}
+			if got := buf.String(); got != tt.want {
+				t.Errorf("WriteConfigChange output = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWritePairingKey(t *testing.T) {
+	resp := &localpb.CreatePairingKeyResponse{
+		Key:            "one-time-key",
+		ExpiresAt:      timestamppb.New(time.Date(2026, 11, 18, 10, 15, 0, 0, time.UTC)),
+		ShownAddresses: []string{"hostA:17443", "10.0.0.2:17443"},
+	}
+
+	var buf bytes.Buffer
+	if err := WritePairingKey(&buf, resp); err != nil {
+		t.Fatalf("WritePairingKey: %v", err)
+	}
+
+	want := "Key: one-time-key\n" +
+		"Expires: 2026-11-18T10:15:00Z\n" +
+		"Addresses:\n" +
+		"  hostA:17443\n" +
+		"  10.0.0.2:17443\n"
+	if got := buf.String(); got != want {
+		t.Errorf("WritePairingKey output = %q, want %q", got, want)
+	}
+}
+
+func TestWritePairingKeyEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	if err := WritePairingKey(&buf, nil); err != nil {
+		t.Fatalf("WritePairingKey: %v", err)
+	}
+	want := "Key: -\nExpires: -\nAddresses:\n"
+	if got := buf.String(); got != want {
+		t.Errorf("WritePairingKey output = %q, want %q", got, want)
+	}
+}
+
+func TestWriteBrokerList(t *testing.T) {
+	fingerprint := func(b byte) []byte { return bytes.Repeat([]byte{b}, 32) }
+	brokers := []*localpb.BrokerInfo{
+		{
+			Alias:       "hostB",
+			Fingerprint: fingerprint(0xcd),
+			IsPeer:      true,
+			Status:      localpb.BrokerStatus_BROKER_STATUS_CONNECTABLE,
+			Role:        localpb.PeerRole_PEER_ROLE_ACCEPTOR,
+			AdvertisedAddresses: []*localpb.AdvertisedAddress{
+				{Kind: "direct", Addr: "hostb.example:17443"},
+			},
+		},
+		{
+			Alias:       "hostA",
+			Fingerprint: fingerprint(0xab),
+			IsPeer:      true,
+			Status:      localpb.BrokerStatus_BROKER_STATUS_CONNECTED,
+			Role:        localpb.PeerRole_PEER_ROLE_DIALER,
+			AdvertisedAddresses: []*localpb.AdvertisedAddress{
+				{Kind: "direct", Addr: "hosta.example:17443"},
+				{Kind: "relay", Addr: "relay.example:17443"},
+			},
+		},
+		{
+			Alias:       "hostC",
+			Fingerprint: fingerprint(0x01),
+			IsPeer:      false,
+			Status:      localpb.BrokerStatus_BROKER_STATUS_NOT_DIRECTLY_REACHABLE,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := WriteBrokerList(&buf, brokers); err != nil {
+		t.Fatalf("WriteBrokerList: %v", err)
+	}
+
+	want := "  ALIAS  FINGERPRINT" + strings.Repeat(" ", 55) + "PEER  STATUS" + strings.Repeat(" ", 18) + "DIRECTION  ADDRESSES\n" +
+		"  hostA  " + strings.Repeat("ab", 32) + "  yes   connected" + strings.Repeat(" ", 15) + "dialer     direct hosta.example:17443, relay relay.example:17443\n" +
+		"  hostB  " + strings.Repeat("cd", 32) + "  yes   connectable" + strings.Repeat(" ", 13) + "acceptor   direct hostb.example:17443\n" +
+		"  hostC  " + strings.Repeat("01", 32) + "  no    not_directly_reachable  -          -\n"
+	if got := buf.String(); got != want {
+		t.Errorf("WriteBrokerList output =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestWriteBrokerListEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	if err := WriteBrokerList(&buf, nil); err != nil {
+		t.Fatalf("WriteBrokerList: %v", err)
+	}
+	if got, want := buf.String(), "Brokers: none\n"; got != want {
+		t.Errorf("WriteBrokerList output = %q, want %q", got, want)
+	}
+}
+
+func TestWritePairingResult(t *testing.T) {
+	resp := &localpb.ConnectResponse{
+		Alias:       "hostB",
+		Fingerprint: bytes.Repeat([]byte{0xcd}, 32),
+	}
+	var buf bytes.Buffer
+	if err := WritePairingResult(&buf, resp); err != nil {
+		t.Fatalf("WritePairingResult: %v", err)
+	}
+	want := "Paired with hostB (" + strings.Repeat("cd", 32) + ")\n"
+	if got := buf.String(); got != want {
+		t.Errorf("WritePairingResult output = %q, want %q", got, want)
+	}
+}
+
+func TestWriteWarnings(t *testing.T) {
+	warnings := []*localpb.Warning{
+		{Message: "fingerprint mismatch: directory card differs"},
+		{Message: "second warning"},
+	}
+	var buf bytes.Buffer
+	if err := WriteWarnings(&buf, warnings); err != nil {
+		t.Fatalf("WriteWarnings: %v", err)
+	}
+	want := "warning: fingerprint mismatch: directory card differs\n" +
+		"warning: second warning\n"
+	if got := buf.String(); got != want {
+		t.Errorf("WriteWarnings output = %q, want %q", got, want)
+	}
+
+	buf.Reset()
+	if err := WriteWarnings(&buf, nil); err != nil {
+		t.Fatalf("WriteWarnings: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("WriteWarnings wrote %q, want nothing", buf.String())
+	}
+}
+
 func TestFormatConfigValueKinds(t *testing.T) {
 	cases := []struct {
 		name  string
