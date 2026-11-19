@@ -5,7 +5,7 @@ weight: 8
 
 ## How do I install agent-peer?
 
-There is no formal release yet. Build the binary from source as described in the [quick start]({{< relref "getting-started.md" >}}), put it on your `PATH`, and register the MCP server with the name `peer`.
+Build agent-peer from source; you need Go 1.27. Then follow the [quick start]({{< relref "getting-started.md" >}}) to put the binary on your `PATH` and register the MCP server with the name `peer`.
 
 ## Which platforms are supported?
 
@@ -13,7 +13,7 @@ macOS and Linux, on amd64 and arm64. Native Windows is not supported. See [desig
 
 ## Which Claude Code version do I need?
 
-Claude Code v2.1.224 or later. Each Claude Code behavior described on this site is an observation made on the version noted with it, and there is no compatibility promise for other versions. See the [quick start]({{< relref "getting-started.md" >}}).
+Claude Code v2.1.224 or later. See [design choices and caveats]({{< relref "limitations.md" >}}) for how agent-peer depends on Claude Code.
 
 ## Is there a central server?
 
@@ -57,7 +57,7 @@ No. Success means the message was written to the target session's inbox socket, 
 
 ## Why did my second identical message disappear?
 
-Experiments on Claude Code v2.1.311 confirmed that the receiving Claude Code drops a message that repeats the previous one from the same sender within 30 seconds. The rules belong to Claude Code and may change. See the [security model]({{< relref "security.md" >}}) and [design choices and caveats]({{< relref "limitations.md" >}}).
+The receiving Claude Code drops a message that repeats the previous one from the same sender within 30 seconds. This rule belongs to Claude Code and may change. See the [security model]({{< relref "security.md" >}}).
 
 ## Who can change the Broker's configuration?
 

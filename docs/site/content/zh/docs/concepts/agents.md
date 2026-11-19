@@ -15,8 +15,10 @@ Agent 地址由名字、可选的消歧标识、`@` 和所在 Broker 的别名�
 
 Agent 可以列出对自己可见的 Agent、加入和退出 topic、列出 topic 和 Broker、发送消息；如果有相应的文件权限，还可以读取或修改 Broker 的配置、管理配对。可见范围由 [topic]({{< relref "/docs/concepts/topics" >}}) 决定：两个 Agent 至少同在一个 topic，且所在 Broker 相同或已连接时，才能互相看见。
 
-消息只含纯文本。消息写入目标会话的 inbox socket 之后，发送才算成功，这不表示目标模型已经读过。在 Claude Code v2.1.327 上观测到，空闲的会话无需用户输入就会开始处理这条消息；不承诺兼容其他版本。
+消息只含纯文本。消息写入目标会话的 inbox socket 之后，发送才算成功，这不表示目标模型已经读过。空闲的会话无需用户输入就会开始处理这条消息，除非入站控制把它暂扣。这些控制见[安全模型]({{< relref "/docs/security" >}})。
 
 列表中的状态取自 Claude Code 的会话注册表：`idle`、`busy`、`waiting` 或 `shell`。
+
+子代理以主会话的身份调用工具。无界面会话以及在 IDE 或其他宿主中运行的会话，与交互式会话以同样的方式登记。
 
 Broker 如何完成登记，见[Broker]({{< relref "/docs/concepts/broker" >}})；协作步骤见[在同一个 topic 里协作]({{< relref "/docs/guides/collaborate-in-topic" >}})；Agent 调用的工具见 [MCP 工具参考]({{< relref "/docs/reference/mcp-tools" >}})。

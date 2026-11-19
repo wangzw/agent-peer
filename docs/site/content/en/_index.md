@@ -36,7 +36,7 @@ layout: hextra-home
   {{< hextra/feature-card title="Pairing with fingerprints" icon="finger-print" link="docs/concepts/pairing" subtitle="Two users pair their Brokers with a pairing key, and each side then recognizes the other by its public-key fingerprint." >}}
   {{< hextra/feature-card title="Direct connections" icon="link" link="docs/concepts/links" subtitle="Brokers connect directly: messages are not relayed through a third Broker, and there is no central registry." >}}
   {{< hextra/feature-card title="System or user Broker" icon="server" link="docs/concepts/broker" subtitle="One Broker can serve every allowed account on a host, or a single account as an ordinary process." >}}
-  {{< hextra/feature-card title="Idle sessions start working" icon="lightning-bolt" link="docs/concepts/agents" subtitle="An idle session starts on a message without user input (observed on Claude Code v2.1.327)." >}}
+  {{< hextra/feature-card title="Idle sessions start working" icon="lightning-bolt" link="docs/concepts/agents" subtitle="An idle session starts working on a message without user input." >}}
 {{< /hextra/feature-grid >}}
 </div>
 

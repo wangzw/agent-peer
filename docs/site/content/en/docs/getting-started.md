@@ -8,11 +8,11 @@ agent-peer connects Claude Code sessions running on different hosts. A session j
 
 ## Before you start
 
-agent-peer runs on macOS and Linux, on amd64 and arm64; native Windows is not supported. Claude Code v2.1.224 or later is required. Every Claude Code behavior this site describes is noted with the version it was observed on, and there is no compatibility promise for other versions. See [design choices and caveats]({{< relref "limitations.md" >}}) and the [overview]({{< relref "/docs" >}}) for details.
+agent-peer runs on macOS and Linux, on amd64 and arm64; native Windows is not supported. Claude Code v2.1.224 or later is required.
 
 ## Install
 
-There is no formal release yet. Build agent-peer from source; you need Go 1.27.
+Build agent-peer from source; you need Go 1.27.
 
 ```sh
 git clone https://github.com/wangzw/agent-peer
@@ -68,7 +68,7 @@ When neither condition holds, the sessions join no topic and do not appear in ea
 
 In one session, ask the model to call `list_agents`. The result gives your own address and the other session as `name@alias`, for example `frontend@workstation-17443`. Ask it to call `send_message` with that address and a plain-text message.
 
-The sending session reports success once the message is written into the receiving session's inbox socket. On Claude Code v2.1.327, an idle receiving session was observed to start working on the message without user input; there is no compatibility promise for other versions. The message carries the sender's agent address, and a session can call `send_message` with that address to send a message back.
+The sending session reports success once the message is written into the receiving session's inbox socket. An idle receiving session starts working on the message without user input. The message carries the sender's agent address, and a session can call `send_message` with that address to send a message back.
 
 ## Send a message between two hosts
 

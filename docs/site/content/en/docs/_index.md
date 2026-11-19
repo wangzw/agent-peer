@@ -9,7 +9,7 @@ Claude Code's built-in cross-session messaging reaches sessions on one host. age
 
 ## How it works
 
-Each host runs a Broker, a daemon that registers the agent sessions on that host and keeps its links to other Brokers. A session enables the agent-peer tools and registers with its local Broker, which makes it an agent. Two users pair their Brokers with a pairing key. After that, agents on both sides that share at least one topic can see each other and send messages. A message that arrives for a session is written into that session's inbox socket. On Claude Code v2.1.327, an idle session was observed to start working on it without user input; there is no compatibility promise for other versions.
+Each host runs a Broker, a daemon that registers the agent sessions on that host and keeps its links to other Brokers. A session enables the agent-peer tools and registers with its local Broker, which makes it an agent. Two users pair their Brokers with a pairing key. After that, agents on both sides that share at least one topic can see each other and send messages. A message that arrives for a session is written into that session's inbox socket. An idle session starts working on it without user input.
 
 ```mermaid
 flowchart LR
@@ -36,6 +36,8 @@ Sessions on the same host can also use the tools to message each other. The path
 
 agent-peer runs on macOS and Linux, on amd64 and arm64. Native Windows is not supported.
 
-Claude Code v2.1.224 or later is required. Every Claude Code behavior this site describes is noted with the version it was observed on, and there is no compatibility promise for other versions. See [design choices and caveats]({{< relref "limitations.md" >}}).
+Claude Code v2.1.224 or later is required. See [design choices and caveats]({{< relref "limitations.md" >}}) for how agent-peer depends on Claude Code.
+
+## Next steps
 
 To learn the vocabulary, continue with [Concepts]({{< relref "/docs/concepts" >}}). To set up a host, see the [Guides]({{< relref "/docs/guides" >}}); the [Reference]({{< relref "/docs/reference" >}}) lists tools, commands and configuration keys.

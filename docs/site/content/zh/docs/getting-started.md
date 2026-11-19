@@ -8,11 +8,11 @@ agent-peer 让运行在不同主机上的 Claude Code 会话互相连接。会�
 
 ## 开始之前
 
-agent-peer 运行在 macOS 与 Linux 上，支持 amd64 和 arm64；不支持原生 Windows。需要 Claude Code v2.1.224 或更高版本。本站提到的 Claude Code 行为都注明了观测所用的版本，对其他版本不承诺兼容。见[设计取舍与注意事项]({{< relref "limitations.md" >}})与[简介]({{< relref "/docs" >}})。
+agent-peer 运行在 macOS 与 Linux 上，支持 amd64 和 arm64；不支持原生 Windows。需要 Claude Code v2.1.224 或更高版本。
 
 ## 安装
 
-目前尚未发布正式版本。需要用 Go 1.27 从源码构建：
+从源码构建 agent-peer，需要 Go 1.27：
 
 ```sh
 git clone https://github.com/wangzw/agent-peer
@@ -68,7 +68,7 @@ agent-peer broker
 
 在一个会话里让模型调用 `list_agents`。结果会给出你自己的地址，以及对方会话的地址，形式为 `name@alias`，例如 `frontend@workstation-17443`。再让它用这个地址调用 `send_message`，消息只含纯文本。
 
-消息写入接收方会话的 inbox socket 后，发送方会话报告成功。在 Claude Code v2.1.327 上观测到，空闲的接收会话无需用户输入就会开始处理；不承诺兼容其他版本。消息带有发送方的 Agent 地址，会话可以用 `send_message` 向这个地址发送消息。
+消息写入接收方会话的 inbox socket 后，发送方会话报告成功。空闲的接收会话无需用户输入就会开始处理。消息带有发送方的 Agent 地址，会话可以用 `send_message` 向这个地址发送消息。
 
 ## 在两台主机之间互发消息
 

@@ -36,7 +36,7 @@ Every session started in that directory or one of its descendants joins these to
 
 Ask the model to call `send_message` with the other agent's address and a plain-text message. The sending session reports success once the message is written into the receiving session's inbox socket.
 
-The receiving Broker writes the message into the target session's inbox socket with the sender's address as the receiver sees it. On Claude Code v2.1.327, an idle session was observed to start working on the message without user input; there is no compatibility promise for other versions. A session can call `send_message` with the sender's address to send a message back.
+The receiving Broker writes the message into the target session's inbox socket with the sender's address as the receiver sees it. An idle session starts working on the message without user input. A session can call `send_message` with the sender's address to send a message back.
 
 ## When there is no shared topic
 

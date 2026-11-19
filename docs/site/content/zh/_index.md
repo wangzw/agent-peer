@@ -36,7 +36,7 @@ layout: hextra-home
   {{< hextra/feature-card title="凭指纹配对" icon="finger-print" link="docs/concepts/pairing" subtitle="两位用户用配对密钥让两个 Broker 配对，之后各自凭对方的公钥指纹确认身份。" >}}
   {{< hextra/feature-card title="直接连接" icon="link" link="docs/concepts/links" subtitle="Broker 之间直接连接，消息不经第三个 Broker 转发，也没有集中式注册中心。" >}}
   {{< hextra/feature-card title="系统级与用户级 Broker" icon="server" link="docs/concepts/broker" subtitle="一个 Broker 可以服务主机上所有获准的账户，也可以作为普通进程只服务一个账户。" >}}
-  {{< hextra/feature-card title="空闲会话自动开始处理" icon="lightning-bolt" link="docs/concepts/agents" subtitle="空闲会话收到消息后无需用户输入就开始处理（在 Claude Code v2.1.327 上观测到）。" >}}
+  {{< hextra/feature-card title="空闲会话自动开始处理" icon="lightning-bolt" link="docs/concepts/agents" subtitle="空闲会话收到消息后无需用户输入就开始处理。" >}}
 {{< /hextra/feature-grid >}}
 </div>
 

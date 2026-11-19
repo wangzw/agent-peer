@@ -37,7 +37,7 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer。用 `claude
 
 ### Broker
 
-`list_brokers` 返回 `brokers`。每项有 `alias`、小写十六进制的 `fingerprint`、`advertised_addresses`（每项含 `kind` 与 `addr`，目前只有 `direct` 一种）、`is_peer`、`status`（`connected`、`connectable` 或 `not_directly_reachable`）以及 `status_detail`。对端还有 `role`，取 `dialer` 或 `acceptor`，表示本 Broker 的角色；还有 `link_state`：`dialing`、`waiting`、`handshaking`、`established`、`backoff` 或 `rejected`。
+`list_brokers` 返回 `brokers`。每项有 `alias`、小写十六进制的 `fingerprint`、`advertised_addresses`（每项含 `kind` 与 `addr`，只有 `direct` 一种）、`is_peer`、`status`（`connected`、`connectable` 或 `not_directly_reachable`）以及 `status_detail`。对端还有 `role`，取 `dialer` 或 `acceptor`，表示本 Broker 的角色；还有 `link_state`：`dialing`、`waiting`、`handshaking`、`established`、`backoff` 或 `rejected`。
 
 `connect_broker` 返回对端的 `alias` 和 `fingerprint`，以及 `shown_host` 和可能的 `warnings`。`disconnect_broker` 返回 `result`。`create_pairing_key` 返回 `key`、RFC 3339 UTC 格式的 `expires_at`、`shown_addresses` 和可选的 `note`。地址只是给用户转交对端的，不属于密钥本身。
 

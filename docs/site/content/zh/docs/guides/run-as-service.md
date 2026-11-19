@@ -24,7 +24,7 @@ agent-peer service install
 
 在装有 systemd 的 Linux 上，单元文件是 `~/.config/systemd/user/agent-peer.service`（或位于 `$XDG_CONFIG_HOME` 下）。在 macOS 上，LaunchAgent 是 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`，安装只能在图形登录会话里执行；没有图形会话的主机改用系统级服务。
 
-单元或 plist 以该账户身份运行 `agent-peer broker`。它在账户登录时启动，Broker 退出后重新启动。macOS 与 Linux 上的用户级服务都有 CI 端到端测试覆盖，包括安装、运行、登录后恢复链路和卸载。
+单元或 plist 以该账户身份运行 `agent-peer broker`。它在账户登录时启动，Broker 退出后重新启动。
 
 ## 安装系统级服务
 
@@ -38,8 +38,6 @@ sudo /usr/local/bin/agent-peer service install --system
 安装会检查二进制以及它上面的每一层目录，然后立即启动 Broker。
 
 在 Linux 上，命令写入 `/etc/systemd/system/agent-peer.service`，启用并启动它；在 macOS 上写入并加载 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`。系统级安装还会在不存在时创建 `/etc/agent-peer/config.yaml`，属主为 root，权限 0600。
-
-系统级安装在 Linux 与 macOS 上都有 CI 端到端测试覆盖。
 
 ## 卸载服务
 

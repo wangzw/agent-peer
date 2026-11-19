@@ -24,7 +24,7 @@ The command writes the unit file or plist, enables the service, and starts the B
 
 On Linux with systemd, the unit is `~/.config/systemd/user/agent-peer.service` (or under `$XDG_CONFIG_HOME`). On macOS, the LaunchAgent is `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`, and the install must run in a graphical login session; a host without one uses the system-level service instead.
 
-The unit or plist runs `agent-peer broker` as that account. It starts when the account logs in and restarts the Broker if it exits. The user-level service on macOS and Linux is covered by CI end-to-end tests: installation, running, restoring links after login, and uninstallation.
+The unit or plist runs `agent-peer broker` as that account. It starts when the account logs in and restarts the Broker if it exits.
 
 ## Install a system-level service
 
@@ -38,8 +38,6 @@ sudo /usr/local/bin/agent-peer service install --system
 The install checks the binary and every directory above it, then starts the Broker immediately.
 
 On Linux the command writes `/etc/systemd/system/agent-peer.service`, enables it and starts it. On macOS it writes and loads `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`. A system install also creates `/etc/agent-peer/config.yaml` if it does not exist, owned by root with mode 0600.
-
-System-level installation is covered by CI end-to-end tests on Linux and macOS.
 
 ## Uninstall a service
 

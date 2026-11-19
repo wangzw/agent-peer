@@ -15,8 +15,10 @@ An agent address combines the name, an optional disambiguator, `@` and the alias
 
 An agent can list the agents visible to it, join and leave topics, list topics and Brokers, send messages, and, with the right file permissions, read or change its Broker's configuration and manage pairings. Visibility follows [topics]({{< relref "/docs/concepts/topics" >}}): two agents see each other only when they share at least one topic and their Brokers are the same or connected.
 
-Messages are plain text. A send succeeds once the message has been written into the target session's inbox socket, which does not mean the target model has read it. On Claude Code v2.1.327, an idle session was observed to start working on the message without user input; there is no compatibility promise for other versions.
+Messages are plain text. A send succeeds once the message has been written into the target session's inbox socket, which does not mean the target model has read it. An idle session starts working on the message without user input unless its inbound controls hold the message. See the [security model]({{< relref "/docs/security" >}}) for those controls.
 
 A session's status in a list comes from Claude Code's session registry: `idle`, `busy`, `waiting` or `shell`.
+
+Subagents call the tools as their main session. Headless sessions and sessions in an IDE or another host register the same way interactive sessions do.
 
 See [Broker]({{< relref "/docs/concepts/broker" >}}) for the daemon behind the registration, [Collaborate in a topic]({{< relref "/docs/guides/collaborate-in-topic" >}}) for collaboration steps, and the [MCP tools reference]({{< relref "/docs/reference/mcp-tools" >}}) for the tools an agent calls.

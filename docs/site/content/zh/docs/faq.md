@@ -5,7 +5,7 @@ weight: 8
 
 ## 如何安装 agent-peer？
 
-目前还没有正式发布版本。按[快速开始]({{< relref "getting-started.md" >}})的步骤从源码构建，把二进制放到 `PATH` 上，再用名字 `peer` 注册 MCP 服务。
+从源码构建 agent-peer，需要 Go 1.27。然后按[快速开始]({{< relref "getting-started.md" >}})把二进制放进 `PATH`，再用名字 `peer` 注册 MCP 服务。
 
 ## 支持哪些平台？
 
@@ -13,7 +13,7 @@ macOS 与 Linux，支持 amd64 与 arm64。不支持原生 Windows。见[设计�
 
 ## 需要哪个版本的 Claude Code？
 
-Claude Code v2.1.224 或更高版本。本站描述的每项 Claude Code 行为，都是在各自标注的版本上观测到的，不承诺兼容其他版本。见[快速开始]({{< relref "getting-started.md" >}})。
+Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见[设计取舍与注意事项]({{< relref "limitations.md" >}})。
 
 ## 有中心服务器吗？
 
@@ -57,7 +57,7 @@ topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会�
 
 ## 为什么重复发送的同一条消息不见了？
 
-在 Claude Code v2.1.311 上的实验确认，接收端的 Claude Code 会丢弃同一发送方在 30 秒内发来的、与上一条内容完全相同的消息。这些规则属于 Claude Code，可能改动。见[安全模型]({{< relref "security.md" >}})与[设计取舍与注意事项]({{< relref "limitations.md" >}})。
+接收端的 Claude Code 会丢弃同一发送方在 30 秒内发来的、与上一条内容完全相同的消息。这条规则属于 Claude Code，可能改动。见[安全模型]({{< relref "security.md" >}})。
 
 ## 谁能修改 Broker 的配置？
 

@@ -36,7 +36,7 @@ topics:
 
 让模型用对方的 Agent 地址调用 `send_message`，发送纯文本消息。消息写入接收方会话的 inbox socket 后，发送方会话报告成功。
 
-接收方 Broker 把消息写进目标会话的 inbox socket，并附上接收方视角下的发送方地址。在 Claude Code v2.1.327 上观测到，空闲的目标会话无需用户输入就会开始处理；不承诺兼容其他版本。会话可以用 `send_message` 向这个发送方地址发送消息。
+接收方 Broker 把消息写进目标会话的 inbox socket，并附上接收方视角下的发送方地址。空闲的目标会话无需用户输入就会开始处理。会话可以用 `send_message` 向这个发送方地址发送消息。
 
 ## 没有共同 topic 时
 
