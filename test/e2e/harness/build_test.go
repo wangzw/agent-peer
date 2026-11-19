@@ -26,7 +26,7 @@ func TestImageTagCarriesAccountAndOwner(t *testing.T) {
 		t.Fatalf("imageTagOwnerGone(%q) = true; the owner is this live process", tag)
 	}
 
-	dead := imageReference("0123456789ab", 1234, 5678, owner{pid: 999999999, start: 1})
+	dead := imageReference("0123456789ab", 1234, 5678, owner{pid: 999999999, start: 1, ns: current.ns})
 	if !imageTagOwnerGone(dead) {
 		t.Fatalf("imageTagOwnerGone(%q) = false; want the dead owner reported", dead)
 	}

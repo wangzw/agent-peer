@@ -26,10 +26,12 @@ const supervisorChildEnv = "APE2E_TEST_SUPERVISOR_CHILD"
 // CleanResidue removes what runs whose owner is gone leave behind: processes
 // whose runtime root is under /tmp/ape2e, the compose containers, networks and
 // volumes named ape2e-*, the test images named agent-peer-e2e, and the runtime
-// roots themselves. Every project, root and image carries its owner's PID and
-// start time, so resources of a live owner are left alone and two suites can
-// run on one host. It tolerates an empty system and reports failures through
-// logf instead of stopping.
+// roots themselves. Every project, root and image carries its owner's PID,
+// start time and PID namespace, so resources of a live owner are left alone and
+// two suites can run on one host. A resource whose owner lies in another PID
+// namespace is left alone too: this process cannot tell whether that owner is
+// alive. It tolerates an empty system and reports failures through logf instead
+// of stopping.
 func CleanResidue(logf func(format string, args ...any)) {
 	killRuntimeProcesses(logf)
 	removeDockerResidue(logf)

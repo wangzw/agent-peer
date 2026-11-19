@@ -498,10 +498,12 @@ var (
 )
 
 // projectName derives a compose project name from a test name:
-// ape2e-<owner pid>-<owner start time>-<slug, at most 32 characters>-<six hex
-// digits>. The owner marker lets a cleanup tell a live suite's project from one
-// a killed suite left behind, and the start time keeps a reused PID from
-// protecting stale residue. Two calls never return the same name.
+// ape2e-<owner pid>-<owner start time>-pidns<owner namespace>-<slug, at most 32
+// characters>-<six hex digits>. The owner marker lets a cleanup tell a live
+// suite's project from one a killed suite left behind, and the start time keeps
+// a reused PID from protecting stale residue. The namespace keeps a cleanup
+// from mistaking another PID namespace's PID for one of its own. Two calls never
+// return the same name.
 func projectName(testName string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(testName) {

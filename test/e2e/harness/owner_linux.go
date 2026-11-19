@@ -30,3 +30,19 @@ func processStartTime(pid int) (uint64, error) {
 	}
 	return strconv.ParseUint(fields[19], 10, 64)
 }
+
+// processNamespace returns the inode of the PID namespace of pid, as reported
+// by /proc/<pid>/ns/pid. Two PIDs are comparable only when their namespaces
+// have the same inode.
+func processNamespace(pid int) (uint64, error) {
+	link, err := os.Readlink(fmt.Sprintf("/proc/%d/ns/pid", pid))
+	if err != nil {
+		return 0, err
+	}
+	open := strings.IndexByte(link, '[')
+	close := strings.IndexByte(link, ']')
+	if open < 0 || close <= open+1 {
+		return 0, fmt.Errorf("harness: malformed pid namespace link %q", link)
+	}
+	return strconv.ParseUint(link[open+1:close], 10, 64)
+}
