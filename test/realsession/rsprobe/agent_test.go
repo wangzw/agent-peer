@@ -375,6 +375,57 @@ func TestRecordedPeerPIDSwallowsOtherErrors(t *testing.T) {
 	}
 }
 
+// TestPeerPIDReportsThePeerProcess connects a Unix socket to a listener in this
+// process and checks that the peer pid is this process. Linux reads the pid
+// with SO_PEERCRED and macOS with LOCAL_PEERPID.
+func TestPeerPIDReportsThePeerProcess(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skipf("peer credentials are not implemented on %s", runtime.GOOS)
+	}
+	// Darwin sizes sun_path at 104 bytes, and t.TempDir keeps the test name in
+	// the path; a short directory under /tmp keeps the socket path below it.
+	dir, err := os.MkdirTemp("/tmp", "rspeer-")
+	if err != nil {
+		t.Fatalf("creating the socket directory: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "peer.sock")
+	listener, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatalf("listening on %s: %v", sock, err)
+	}
+	defer func() { _ = listener.Close() }()
+
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			close(accepted)
+			return
+		}
+		accepted <- conn
+	}()
+
+	client, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatalf("dialing %s: %v", sock, err)
+	}
+	defer func() { _ = client.Close() }()
+	server, ok := <-accepted
+	if !ok {
+		t.Fatal("accepting the connection")
+	}
+	defer func() { _ = server.Close() }()
+
+	pid, err := peerPID(server)
+	if err != nil {
+		t.Fatalf("peerPID: %v", err)
+	}
+	if want := os.Getpid(); pid != want {
+		t.Fatalf("peerPID = %d, want this process %d", pid, want)
+	}
+}
+
 func TestAgentSetRewritesInPlace(t *testing.T) {
 	agent := startTestAgent(t)
 

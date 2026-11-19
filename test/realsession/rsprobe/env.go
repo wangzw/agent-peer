@@ -433,10 +433,16 @@ func envWrappedEnvNames(root string) (map[string]bool, error) {
 	return names, nil
 }
 
+// envBrokerLockPath names the account's Broker lock. It is a seam so tests can
+// run the check against a temporary lock instead of the runtime directory.
+var envBrokerLockPath = func() string {
+	return filepath.Join(fmt.Sprintf("/tmp/agent-peer-%d", os.Getuid()), "broker.lock")
+}
+
 // envBrokerLockFree tests the account's Broker lock. It returns false with a
 // reason when a process other than this probe's own agent-peer holds it.
 func envBrokerLockFree(root string) (bool, string) {
-	lockPath := filepath.Join(fmt.Sprintf("/tmp/agent-peer-%d", os.Getuid()), "broker.lock")
+	lockPath := envBrokerLockPath()
 	f, err := os.OpenFile(lockPath, os.O_RDWR, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return true, ""
@@ -456,8 +462,8 @@ func envBrokerLockFree(root string) (bool, string) {
 		}
 		own := filepath.Join(root, "bin", "agent-peer")
 		for _, pid := range pids {
-			exe, _ := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
-			if exe != own {
+			exe := envProcessExe(pid)
+			if !envSameExecutable(exe, own) {
 				return false, fmt.Sprintf("broker.lock is held by pid %d (%s)", pid, exe)
 			}
 		}
@@ -467,37 +473,44 @@ func envBrokerLockFree(root string) (bool, string) {
 	return true, ""
 }
 
-// envLockHolders finds the processes that have lockPath open, excluding self.
-// The caller opens the lock file to test the lock, so its own descriptor would
-// otherwise make the checker look like a holder.
-func envLockHolders(lockPath string, self int) []int {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return nil
-	}
+// envLsofPIDs parses lsof's "p" and "n" field output for the processes that
+// have a file open. The macOS holder scan asks lsof for the lock path and hands
+// the output here; one p line precedes each process's n lines, so a process
+// with several descriptors on the file appears once.
+func envLsofPIDs(output string, self int) []int {
 	var pids []int
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
+	for _, line := range strings.Split(output, "\n") {
+		if !strings.HasPrefix(line, "p") {
+			continue
+		}
+		pid, err := strconv.Atoi(line[1:])
 		if err != nil || pid == self {
 			continue
 		}
-		fdDir := fmt.Sprintf("/proc/%d/fd", pid)
-		fds, err := os.ReadDir(fdDir)
-		if err != nil {
-			continue
-		}
-		for _, fd := range fds {
-			target, err := os.Readlink(filepath.Join(fdDir, fd.Name()))
-			if err != nil {
-				continue
-			}
-			if target == lockPath || target == lockPath+" (deleted)" {
-				pids = append(pids, pid)
-				break
-			}
-		}
+		pids = append(pids, pid)
 	}
 	return pids
+}
+
+// envSameExecutable reports whether two paths name the same executable. The
+// kernel and lsof report canonical paths while the probe names $R, which on
+// macOS sits under the /tmp symlink, so both sides are resolved before the
+// comparison.
+func envSameExecutable(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return envResolvedPath(a) == envResolvedPath(b)
+}
+
+// envResolvedPath resolves symlinks, falling back to the given path when the
+// file cannot be resolved, for example because the process has exited.
+func envResolvedPath(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path
+	}
+	return resolved
 }
 
 // envCountInotify counts the inotify instances held by this account's

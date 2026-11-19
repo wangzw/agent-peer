@@ -430,7 +430,7 @@ func fromNameOf(content string) string {
 }
 
 // peerCredentialUnsupported explains why a sender's pid cannot be recorded.
-const peerCredentialUnsupported = "peer credentials are only available on Linux; the probes run on Linux runners"
+const peerCredentialUnsupported = "peer credentials are not available on this platform"
 
 // recordedPeerPID returns the peer pid to write to the receive log. It reports
 // an unsupported platform on warn and records 0 for an unknown sender; a frame

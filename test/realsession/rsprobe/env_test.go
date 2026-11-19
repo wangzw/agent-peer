@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -344,21 +348,236 @@ func TestEnvLockHoldersSkipsSelf(t *testing.T) {
 	}
 	defer func() { _ = file.Close() }()
 
-	contains := func(pids []int, want int) bool {
-		for _, pid := range pids {
-			if pid == want {
-				return true
-			}
-		}
-		return false
-	}
-
-	if pids := envLockHolders(path, 0); !contains(pids, os.Getpid()) {
+	if pids := envLockHolders(path, 0); !containsPID(pids, os.Getpid()) {
 		t.Fatalf("envLockHolders = %v, want it to contain this process %d", pids, os.Getpid())
 	}
-	if pids := envLockHolders(path, os.Getpid()); contains(pids, os.Getpid()) {
+	if pids := envLockHolders(path, os.Getpid()); containsPID(pids, os.Getpid()) {
 		t.Fatalf("envLockHolders = %v, want this process %d excluded", pids, os.Getpid())
 	}
+}
+
+// TestEnvLockHoldersFindsAnotherHolder checks that the scan attributes the lock
+// to a process that actually holds it, not merely that it omits the caller. A
+// child shell opens the file and waits on stdin, so its descriptor stays open
+// for the whole scan. The test runs on Linux, where the scan reads /proc, and
+// on macOS, where it asks lsof.
+func TestEnvLockHoldersFindsAnotherHolder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broker.lock")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("creating %s: %v", path, err)
+	}
+
+	cmd := exec.Command("/bin/sh", "-c", `exec 3>>"$1"; echo ready; read line`, "sh", path)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatalf("opening the holder's stdin: %v", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("opening the holder's stdout: %v", err)
+	}
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("starting the holder: %v", err)
+	}
+	defer func() {
+		_ = stdin.Close()
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}()
+
+	line, err := bufio.NewReader(stdout).ReadString('\n')
+	if err != nil || strings.TrimSpace(line) != "ready" {
+		t.Fatalf("the holder did not report its open descriptor: line %q, err %v", line, err)
+	}
+	if pids := envLockHolders(path, os.Getpid()); !containsPID(pids, cmd.Process.Pid) {
+		t.Fatalf("envLockHolders = %v, want it to contain the holder %d", pids, cmd.Process.Pid)
+	}
+}
+
+// containsPID reports whether pids contains want.
+func containsPID(pids []int, want int) bool {
+	for _, pid := range pids {
+		if pid == want {
+			return true
+		}
+	}
+	return false
+}
+
+// TestEnvLsofPIDsParsesTheHolderScan checks the parser behind the macOS scan.
+// lsof prints one p line per process and one or more n lines per open file, so
+// a process with several descriptors on the lock must appear once.
+func TestEnvLsofPIDsParsesTheHolderScan(t *testing.T) {
+	cases := []struct {
+		name   string
+		output string
+		self   int
+		want   []int
+	}{
+		{
+			name:   "two holders",
+			output: "p123\nn/tmp/broker.lock\np456\nn/tmp/broker.lock\n",
+			want:   []int{123, 456},
+		},
+		{
+			name:   "self excluded",
+			output: "p123\nn/tmp/broker.lock\np456\nn/tmp/broker.lock\n",
+			self:   123,
+			want:   []int{456},
+		},
+		{
+			name:   "one process with two descriptors",
+			output: "p123\nn/tmp/broker.lock\nn/tmp/broker.lock\n",
+			want:   []int{123},
+		},
+		{
+			name:   "file field line is ignored",
+			output: "p123\nf3\nn/tmp/broker.lock\n",
+			want:   []int{123},
+		},
+		{
+			name:   "no holders",
+			output: "",
+			want:   nil,
+		},
+		{
+			name:   "malformed pid",
+			output: "pabc\nn/tmp/broker.lock\n",
+			want:   nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := envLsofPIDs(tc.output, tc.self); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("envLsofPIDs = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestEnvSameExecutableResolvesSymlinks checks that the path lsof reports and
+// the path the probe root names are compared after resolving symlinks. On
+// macOS lsof reports /private/tmp/... while the probe root is written as
+// /tmp/..., and the same holds for any symlinked directory.
+func TestEnvSameExecutableResolvesSymlinks(t *testing.T) {
+	root := t.TempDir()
+	exe := filepath.Join(root, "agent-peer")
+	if err := os.WriteFile(exe, nil, 0o755); err != nil {
+		t.Fatalf("creating %s: %v", exe, err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(root, link); err != nil {
+		t.Fatalf("linking %s to %s: %v", link, root, err)
+	}
+	if !envSameExecutable(filepath.Join(link, "agent-peer"), exe) {
+		t.Errorf("envSameExecutable did not resolve the symlinked root")
+	}
+
+	other := filepath.Join(root, "other")
+	if err := os.WriteFile(other, nil, 0o755); err != nil {
+		t.Fatalf("creating %s: %v", other, err)
+	}
+	if envSameExecutable(other, exe) {
+		t.Errorf("envSameExecutable matched two different files")
+	}
+	if envSameExecutable("", exe) {
+		t.Errorf("envSameExecutable matched an empty path")
+	}
+
+	// The literal macOS shape: the probe root under /tmp and the canonical
+	// path under /private/tmp. On Linux both spellings are the same path.
+	tmpRoot, err := os.MkdirTemp("/tmp", "rsprobe-exe-")
+	if err != nil {
+		t.Fatalf("creating the /tmp root: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tmpRoot) })
+	tmpExe := filepath.Join(tmpRoot, "agent-peer")
+	if err := os.WriteFile(tmpExe, nil, 0o755); err != nil {
+		t.Fatalf("creating %s: %v", tmpExe, err)
+	}
+	canonicalRoot, err := filepath.EvalSymlinks(tmpRoot)
+	if err != nil {
+		t.Fatalf("resolving %s: %v", tmpRoot, err)
+	}
+	if !envSameExecutable(tmpExe, filepath.Join(canonicalRoot, "agent-peer")) {
+		t.Errorf("envSameExecutable did not match /tmp with its canonical path %s", canonicalRoot)
+	}
+}
+
+// TestEnvBrokerLockFreeRejectsAForeignHolder runs the whole lock check with the
+// lock held by another process. The holder is this test binary re-executed, so
+// its executable is not the probe's agent-peer and the check must report a
+// foreign holder rather than accept the lock as the probe's own.
+func TestEnvBrokerLockFreeRejectsAForeignHolder(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
+		t.Fatalf("creating the probe bin directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "bin", "agent-peer"), nil, 0o755); err != nil {
+		t.Fatalf("creating the probe's agent-peer: %v", err)
+	}
+	lockPath := filepath.Join(t.TempDir(), "broker.lock")
+	if err := os.WriteFile(lockPath, nil, 0o600); err != nil {
+		t.Fatalf("creating %s: %v", lockPath, err)
+	}
+	original := envBrokerLockPath
+	envBrokerLockPath = func() string { return lockPath }
+	t.Cleanup(func() { envBrokerLockPath = original })
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestEnvBrokerLockHolderHelper$")
+	cmd.Env = append(os.Environ(), "RSPROBE_LOCK_HOLDER_PATH="+lockPath)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatalf("opening the holder's stdin: %v", err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("opening the holder's stdout: %v", err)
+	}
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("starting the holder: %v", err)
+	}
+	defer func() {
+		_ = stdin.Close()
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}()
+
+	line, err := bufio.NewReader(stdout).ReadString('\n')
+	if err != nil || strings.TrimSpace(line) != "ready" {
+		t.Fatalf("the holder did not report its lock: line %q, err %v", line, err)
+	}
+	ok, detail := envBrokerLockFree(root)
+	if ok {
+		t.Fatalf("envBrokerLockFree accepted a foreign holder: %s", detail)
+	}
+	if !strings.Contains(detail, fmt.Sprintf("broker.lock is held by pid %d", cmd.Process.Pid)) {
+		t.Fatalf("detail = %q, want the holder's pid %d", detail, cmd.Process.Pid)
+	}
+}
+
+// TestEnvBrokerLockHolderHelper is not a test of its own. The parent re-executes
+// the test binary with this name to hold the lock in another process; without
+// the environment variable it skips.
+func TestEnvBrokerLockHolderHelper(t *testing.T) {
+	path := os.Getenv("RSPROBE_LOCK_HOLDER_PATH")
+	if path == "" {
+		t.Skip("only runs as the parent's lock holder")
+	}
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatalf("opening %s: %v", path, err)
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatalf("locking %s: %v", path, err)
+	}
+	if _, err := fmt.Fprintln(os.Stdout, "ready"); err != nil {
+		t.Fatalf("reporting the lock: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, os.Stdin)
+	_ = file.Close()
 }
 
 func TestUsageCountsDistinctMessageIDs(t *testing.T) {
