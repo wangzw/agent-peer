@@ -1,0 +1,157 @@
+/* Home page: hero actions with a primary and a secondary button. */
+.home-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Secondary button paired with the theme's primary hero button. The padding
+   subtracts the 1px border so both buttons have the same height. */
+.home-secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: calc(0.75rem - 1px) calc(1.5rem - 1px);
+  border: 1px solid var(--hx-color-gray-300);
+  border-radius: 9999px;
+  background-color: transparent;
+  color: var(--hx-color-gray-700);
+  font-weight: 500;
+  line-height: 1.5rem;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 200ms ease-in, border-color 200ms ease-in, color 200ms ease-in;
+}
+
+.home-secondary-button:hover {
+  border-color: var(--hx-color-gray-500);
+  background-color: var(--hx-color-gray-100);
+  color: var(--hx-color-gray-900);
+}
+
+:root.dark .home-secondary-button {
+  border-color: var(--hx-color-neutral-700);
+  color: var(--hx-color-gray-300);
+}
+
+:root.dark .home-secondary-button:hover {
+  border-color: var(--hx-color-neutral-500);
+  background-color: var(--hx-color-neutral-800);
+  color: var(--hx-color-gray-50);
+}
+
+.home-secondary-button svg {
+  display: block;
+  flex: none;
+}
+
+/* Home page: "How it works" section below the feature cards. */
+.home-features .hextra-feature-card h3 {
+  align-items: flex-start;
+}
+
+.home-how-it-works {
+  width: 100%;
+  margin-top: 3.5rem;
+}
+
+.home-section-title {
+  margin: 0 0 1.5rem;
+  color: var(--hx-color-gray-900);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 2rem;
+  letter-spacing: -0.025em;
+}
+
+:root.dark .home-section-title {
+  color: var(--hx-color-gray-100);
+}
+
+.home-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.home-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding: 1.25rem;
+  border: 1px solid var(--hx-color-gray-200);
+  border-radius: 1.5rem;
+  background-color: var(--hx-color-gray-50);
+  color: var(--hx-color-gray-700);
+  text-decoration: none;
+  transition: background-color 200ms ease-in, border-color 200ms ease-in;
+}
+
+.home-step:hover {
+  border-color: var(--hx-color-gray-400);
+  background-color: var(--hx-color-gray-100);
+}
+
+:root.dark .home-step {
+  border-color: var(--hx-color-neutral-800);
+  background-color: var(--hx-color-neutral-900);
+  color: var(--hx-color-gray-300);
+}
+
+:root.dark .home-step:hover {
+  border-color: var(--hx-color-neutral-600);
+  background-color: var(--hx-color-neutral-800);
+}
+
+.home-step-number {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  background-color: var(--hx-color-primary-600);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.home-step-text {
+  font-size: 0.9375rem;
+  line-height: 1.5rem;
+}
+
+.home-how-code {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  white-space: pre;
+  border: 1px solid var(--hx-color-gray-200);
+  border-radius: 1rem;
+  background-color: var(--hx-color-gray-50);
+  color: var(--hx-color-gray-800);
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+}
+
+.home-how-code code {
+  font-family: var(--hx-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+}
+
+:root.dark .home-how-code {
+  border-color: var(--hx-color-neutral-800);
+  background-color: var(--hx-color-neutral-900);
+  color: var(--hx-color-gray-200);
+}
+
+@media (max-width: 640px) {
+  .home-steps {
+    grid-template-columns: 1fr;
+  }
+}
