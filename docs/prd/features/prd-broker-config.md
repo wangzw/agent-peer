@@ -44,8 +44,8 @@ Broker 有两种部署形态。生产部署时由管理员把它作为系统服�
 所属账户对 Broker 的配置文件有写权限的 Agent，必须能修改该 Broker 的配置项，`REQ-broker-pairing-031` 与 `REQ-broker-config-029` 规定不能经工具修改的情形除外。权限前提由 `REQ-broker-config-021` 规定。
 
 - **验收**：把别名改为新值，调用成功后再读取配置，别名是新值。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/config_tools_test.go` 的 `TestConfigTools/SetAliasIsAudited`
 
 ### REQ-broker-config-003
 
@@ -76,8 +76,8 @@ Broker 有两种部署形态。生产部署时由管理员把它作为系统服�
 Agent 对配置的每次修改必须写入审计日志，记录发起修改的 Agent 及其所属账户、被修改的配置项、修改前的值、修改后的值和时间。预置静态密钥只记录发生了变化，不记录取值。
 
 - **验收**：修改别名后，审计日志新增一条记录，各项内容与这次修改一致。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/config_tools_test.go` 的 `TestConfigTools/SetAliasIsAudited`
 
 ### REQ-broker-config-007
 
@@ -101,7 +101,7 @@ Agent 对配置的每次修改必须写入审计日志，记录发起修改的 A
 
 - **验收**：以有读权限的账户在终端执行查看审计日志的命令，输出包含此前产生的全部审计记录；以没有读权限的账户执行，得到权限不足的错误。
 - **状态**：未实现
-- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker`（系统级一半）
+- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker`（系统级一半）；用户级一半由 `test/e2e/config_tools_test.go` 的 `TestConfigTools/TerminalAuditCommand` 覆盖
 
 ### REQ-broker-config-010
 
@@ -164,8 +164,8 @@ Broker 必须以结构化格式输出运行日志。
 用户直接修改 Broker 的配置文件后，Broker 必须在不重启的情况下采用其中合法的新值，不合法的配置项保持原值，并为每个采用了新值的配置项写一条审计记录；预置静态密钥只记录发生了变化，不记录取值。以启动参数给定监听地址的运行期间，监听地址一项的变化不在此列。
 
 - **验收**：Broker 运行期间在配置文件中把别名改为新值，不重启 Broker，再读取配置得到新值，审计日志新增一条写有该配置项前后取值的审计记录；同一次修改中把别名改为新值、同时把另一个配置项改为不合法的值时，别名采用新值，另一个配置项保持原值。以启动参数指定监听 `:17444` 运行时，在配置文件中同时修改监听地址和别名：Broker 仍在 17444 端口上监听，审计日志只新增别名一项的记录。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/config_tools_test.go` 的 `TestConfigTools/FileEditHotReload`
 
 ### REQ-broker-config-018
 
@@ -260,8 +260,8 @@ Broker 在未经配置时必须在本机全部地址的 17443 端口上监听，
 以启动参数给定监听地址的运行期间，经工具修改监听地址的调用必须失败并说明原因，配置文件不得被改动。
 
 - **验收**：以启动参数指定监听 `:17444` 启动 Broker，经工具把监听地址改为 `:17445`：调用返回错误，说明本次运行的监听地址由启动参数给定；配置文件的内容没有变化，Broker 仍在 17444 端口上监听。不带该参数重新启动后，同样的修改成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/config_tools_test.go` 的 `TestConfigTools/ListenFlagBlocksSet`
 
 ### REQ-broker-config-030
 
@@ -284,8 +284,8 @@ Broker 监听全部地址且未配置含主机的对外地址时，对外地址�
 监听地址含具体主机而对外地址只含端口时，或监听地址为空而对外地址、追加的对外地址非空时，Broker 必须拒绝启动并指出这两项配置；运行期间的此类修改必须失败并保留原值。
 
 - **验收**：把监听地址配置为 `192.0.2.20:17443`、对外地址配置为只含端口的 `:18443` 后启动 Broker，启动失败，错误同时指出监听地址与对外地址这两项配置。以监听 `192.0.2.20:17443`、不配置对外地址运行时，经工具把对外地址改为 `:18443`，调用返回错误，再读取配置得到原值；在配置文件中做同样的修改，Broker 不采用，读取配置仍得到原值。监听地址配置为空而对外地址或追加的对外地址非空时，结果相同。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：运行期间经工具修改由 `test/e2e/config_tools_test.go` 的 `TestConfigTools/RuntimeAddressRulesThroughTools` 覆盖，配置文件路径由 `TestConfigTools/FileEditRejectsCombination` 覆盖，监听地址为空时工具与配置文件两条路径由 `TestConfigTools/EmptyListenRejectsAddresses` 覆盖；启动失败一半由 `test/e2e/addresses_test.go` 的 `TestAdvertisedAddresses/REQ-broker-config-032 and 036 startup half` 覆盖
 
 ### REQ-broker-config-033
 
@@ -300,8 +300,8 @@ Broker 监听全部地址且未配置含主机的对外地址时，对外地址�
 运行期间把监听地址改为无法绑定的地址时，修改必须失败，Broker 必须继续在原来的监听地址上监听。
 
 - **验收**：Broker 在 `:17444` 上监听，另一个进程占用着本机全部地址的 17445 端口；经工具把监听地址改为 `:17445`，调用返回说明该地址不可用的错误，再读取配置得到 `:17444`，另一台主机仍能连到它的 17444 端口；在配置文件中做同样的修改，结果相同。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/config_tools_test.go` 的 `TestConfigTools/UnbindableListen`（工具与配置文件两条路径；本机拨号）
 
 ### REQ-broker-config-035
 
@@ -316,8 +316,8 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 对外地址的配置使对外地址列表超过 8 项时，Broker 必须拒绝启动并指出该配置项；运行期间的此类修改必须失败并保留原值。
 
 - **验收**：配置含主机的对外地址，并追加 8 项对外地址后启动 Broker，启动失败，错误指出追加的对外地址这一项；以只追加 7 项的配置运行时，经工具再追加 1 项，调用返回错误，再读取配置得到原值。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：运行期间经工具修改由 `test/e2e/config_tools_test.go` 的 `TestConfigTools/RuntimeAddressRulesThroughTools` 覆盖，配置文件路径由 `TestConfigTools/FileEditRejectsAddressOverflow` 覆盖；启动失败一半由 `test/e2e/addresses_test.go` 的 `TestAdvertisedAddresses/REQ-broker-config-032 and 036 startup half` 覆盖
 
 ### REQ-broker-config-037
 

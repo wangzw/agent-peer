@@ -323,8 +323,9 @@ func TestAliases(t *testing.T) {
 	})
 }
 
-// TestLongHostnameAlias checks the default alias of a long hostname: the
-// hostname part is shortened so the alias stays at most 24 characters.
+// TestLongHostnameAlias covers REQ-broker-pairing-037: the default alias of a
+// long hostname shortens the hostname part so the alias stays at most 24
+// characters.
 func TestLongHostnameAlias(t *testing.T) {
 	// The compose file reads HOSTA_NAME for hostA's hostname; the harness
 	// passes the test process's environment through to docker compose.
