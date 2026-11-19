@@ -1,0 +1,27 @@
+//go:build agentpeer_testenv
+
+package update
+
+import "testing"
+
+func TestAPIBaseUsesTestOverride(t *testing.T) {
+	t.Setenv(testAPIEnv, "http://127.0.0.1:18123")
+	if got, want := APIBase(), "http://127.0.0.1:18123"; got != want {
+		t.Fatalf("APIBase() = %q, want the override %q", got, want)
+	}
+	t.Setenv(testAPIEnv, "")
+	if got := APIBase(); got != DefaultAPI {
+		t.Fatalf("APIBase() with no override = %q, want %q", got, DefaultAPI)
+	}
+}
+
+// TestReleaseURLUsesTestOverrideWhenAPIEmpty proves that a caller which leaves
+// the base empty, as the Broker's periodic check does, still reaches the test
+// API in a test build.
+func TestReleaseURLUsesTestOverrideWhenAPIEmpty(t *testing.T) {
+	t.Setenv(testAPIEnv, "http://127.0.0.1:18123")
+	want := "http://127.0.0.1:18123/repos/wangzw/agent-peer/releases/latest"
+	if got := releaseURL("", "latest"); got != want {
+		t.Fatalf("releaseURL with an empty base = %q, want the test base %q", got, want)
+	}
+}

@@ -1,0 +1,497 @@
+package update
+
+import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+func TestApplyReplacesBinary(t *testing.T) {
+	const version = "0.2.0"
+	original := []byte("original binary")
+	target, before := newTarget(t, original, 0o750)
+
+	archive := releaseArchive(t, version)
+	// A checksums file lists every platform; only the matching line counts.
+	checksums := checksumsFor([]byte("another platform"), "agent-peer_0.2.0_darwin_arm64.tar.gz") +
+		checksumsFor(archive, testArchiveName(version))
+	srv := newApplyServer(t, version, writeBytes(archive), checksums)
+
+	if err := Apply(context.Background(), testApplyOptions(srv, target, version)); err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("reading the replaced binary: %v", err)
+	}
+	if !bytes.Equal(got, versionScript(version)) {
+		t.Errorf("target content = %q, want the staged binary", got)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if info.Mode().Perm() != before.Mode().Perm() {
+		t.Errorf("target mode = %v, want the original %v", info.Mode().Perm(), before.Mode().Perm())
+	}
+	assertSameOwner(t, target, before)
+
+	entries, err := os.ReadDir(filepath.Dir(target))
+	if err != nil {
+		t.Fatalf("reading the target directory: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".agent-peer-update-") {
+			t.Errorf("temporary file %q was left behind", entry.Name())
+		}
+	}
+}
+
+func TestApplyFailureLeavesTargetUnchanged(t *testing.T) {
+	const version = "0.2.0"
+	original := []byte("original binary")
+
+	good := releaseArchive(t, version)
+	corrupt := []byte("this is not a gzip archive")
+	traversal := releaseArchive(t, version, tarEntry{name: "../escape", body: []byte("x")})
+	// Both link archives also carry a valid agent-peer, so the failure can
+	// only come from the link entry.
+	symlink := tarGz(t,
+		tarEntry{name: binaryName, body: versionScript(version), mode: 0o755},
+		tarEntry{name: "agent-peer-link", typeflag: tar.TypeSymlink, linkname: binaryName})
+	hardlink := tarGz(t,
+		tarEntry{name: binaryName, body: versionScript(version), mode: 0o755},
+		tarEntry{name: "agent-peer-link", typeflag: tar.TypeLink, linkname: binaryName})
+	duplicateBinary := tarGz(t,
+		tarEntry{name: binaryName, body: versionScript(version), mode: 0o755},
+		tarEntry{name: binaryName, body: versionScript(version), mode: 0o755})
+	wrongName := tarGz(t, tarEntry{name: "agent-peer-other", body: versionScript(version), mode: 0o755})
+	wrongVersion := releaseArchive(t, "9.9.9")
+
+	tests := []struct {
+		name         string
+		writeArchive func(http.ResponseWriter) error
+		checksums    string
+		errContains  string
+	}{
+		{"checksum mismatch", writeBytes(good), checksumsFor([]byte("another archive"), testArchiveName(version)), "checksum"},
+		{"corrupt archive", writeBytes(corrupt), checksumsFor(corrupt, testArchiveName(version)), "archive"},
+		{"path traversal", writeBytes(traversal), checksumsFor(traversal, testArchiveName(version)), "unsafe path"},
+		{"symbolic link", writeBytes(symlink), checksumsFor(symlink, testArchiveName(version)), "link"},
+		{"hard link", writeBytes(hardlink), checksumsFor(hardlink, testArchiveName(version)), "link"},
+		{"duplicate binary", writeBytes(duplicateBinary), checksumsFor(duplicateBinary, testArchiveName(version)), "more than one"},
+		{"wrong package name", writeBytes(wrongName), checksumsFor(wrongName, testArchiveName(version)), "no agent-peer"},
+		{"wrong binary version", writeBytes(wrongVersion), checksumsFor(wrongVersion, testArchiveName(version)), "reported"},
+		{"duplicate checksum", writeBytes(good), checksumsFor(good, testArchiveName(version)) + checksumsFor(good, testArchiveName(version)), "more than once"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			target, before := newTarget(t, original, 0o750)
+			srv := newApplyServer(t, version, tc.writeArchive, tc.checksums)
+
+			err := Apply(context.Background(), testApplyOptions(srv, target, version))
+			if err == nil {
+				t.Fatal("Apply() = nil, want an error")
+			}
+			if !strings.Contains(err.Error(), tc.errContains) {
+				t.Errorf("Apply() error = %v, want it to contain %q", err, tc.errContains)
+			}
+			assertUnchanged(t, target, original, before)
+		})
+	}
+}
+
+func TestApplyRejectsOversizedDownload(t *testing.T) {
+	const version = "0.2.0"
+	original := []byte("original binary")
+	target, before := newTarget(t, original, 0o750)
+
+	oversized := func(w http.ResponseWriter) error {
+		w.Header().Set("Content-Length", strconv.FormatInt(maxDownloadSize+1, 10))
+		_, err := io.CopyN(w, zeroReader{}, maxDownloadSize+1)
+		return err
+	}
+	srv := newApplyServer(t, version, oversized, "")
+
+	err := Apply(context.Background(), testApplyOptions(srv, target, version))
+	if err == nil {
+		t.Fatal("Apply() = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "limit") {
+		t.Errorf("Apply() error = %v, want a size-limit error", err)
+	}
+	assertUnchanged(t, target, original, before)
+}
+
+func TestApplyRejectsOversizedExtraction(t *testing.T) {
+	const version = "0.2.0"
+	original := []byte("original binary")
+	target, before := newTarget(t, original, 0o750)
+
+	archive := oversizedBinaryArchive(t)
+	srv := newApplyServer(t, version, writeBytes(archive), checksumsFor(archive, testArchiveName(version)))
+
+	err := Apply(context.Background(), testApplyOptions(srv, target, version))
+	if err == nil {
+		t.Fatal("Apply() = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "limit") {
+		t.Errorf("Apply() error = %v, want a size-limit error", err)
+	}
+	assertUnchanged(t, target, original, before)
+}
+
+func TestApplyRejectsOversizedChecksums(t *testing.T) {
+	const version = "0.2.0"
+	original := []byte("original binary")
+	target, before := newTarget(t, original, 0o750)
+
+	oversized := func(w http.ResponseWriter) error {
+		w.Header().Set("Content-Length", strconv.FormatInt(maxDownloadSize+1, 10))
+		_, err := io.CopyN(w, zeroReader{}, maxDownloadSize+1)
+		return err
+	}
+	srv := newFakeReleaseServer(t, fakeRelease{
+		version:        version,
+		tagName:        "v" + version,
+		writeArchive:   writeBytes(releaseArchive(t, version)),
+		writeChecksums: oversized,
+	})
+
+	err := Apply(context.Background(), testApplyOptions(srv, target, version))
+	if err == nil {
+		t.Fatal("Apply() = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "limit") {
+		t.Errorf("Apply() error = %v, want a size-limit error", err)
+	}
+	assertUnchanged(t, target, original, before)
+}
+
+func TestApplyRejectsReleaseMetadata(t *testing.T) {
+	const version = "0.2.0"
+	original := []byte("original binary")
+	archive := releaseArchive(t, version)
+	checksums := checksumsFor(archive, testArchiveName(version))
+
+	tests := []struct {
+		name        string
+		tagName     string
+		draft       bool
+		prerelease  bool
+		errContains string
+	}{
+		{"tag mismatch", "v9.9.9", false, false, "tag"},
+		{"draft", "v0.2.0", true, false, "draft"},
+		{"prerelease", "v0.2.0", false, true, "prerelease"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			target, before := newTarget(t, original, 0o750)
+			srv := newFakeReleaseServer(t, fakeRelease{
+				version:        version,
+				tagName:        tc.tagName,
+				draft:          tc.draft,
+				prerelease:     tc.prerelease,
+				writeArchive:   writeBytes(archive),
+				writeChecksums: writeBytes([]byte(checksums)),
+			})
+
+			err := Apply(context.Background(), testApplyOptions(srv, target, version))
+			if err == nil {
+				t.Fatal("Apply() = nil, want an error")
+			}
+			if !strings.Contains(err.Error(), tc.errContains) {
+				t.Errorf("Apply() error = %v, want it to contain %q", err, tc.errContains)
+			}
+			assertUnchanged(t, target, original, before)
+		})
+	}
+}
+
+func TestApplyRejectsNonReleaseVersion(t *testing.T) {
+	for _, version := range []string{"0.2.0-rc.1", "dev", "0.1", "0.2.0+build.7"} {
+		t.Run(version, func(t *testing.T) {
+			original := []byte("original binary")
+			target, before := newTarget(t, original, 0o750)
+
+			err := Apply(context.Background(), ApplyOptions{
+				Target:  target,
+				Version: version,
+				GOOS:    "linux",
+				GOARCH:  "amd64",
+			})
+			if err == nil {
+				t.Fatal("Apply() = nil, want an error")
+			}
+			assertUnchanged(t, target, original, before)
+		})
+	}
+}
+
+func TestApplyRejectsSymlinkTarget(t *testing.T) {
+	original := []byte("original binary")
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real-agent-peer")
+	if err := os.WriteFile(real, original, 0o755); err != nil {
+		t.Fatalf("writing the real binary: %v", err)
+	}
+	link := filepath.Join(dir, binaryName)
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatalf("creating the target symlink: %v", err)
+	}
+
+	err := Apply(context.Background(), ApplyOptions{
+		Target:  link,
+		Version: "0.2.0",
+		GOOS:    "linux",
+		GOARCH:  "amd64",
+	})
+	if err == nil {
+		t.Fatal("Apply() = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "symbolic link") {
+		t.Errorf("Apply() error = %v, want it to mention a symbolic link", err)
+	}
+	got, err := os.ReadFile(real)
+	if err != nil {
+		t.Fatalf("reading the real binary: %v", err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Errorf("real binary changed: got %q, want %q", got, original)
+	}
+}
+
+// oversizedBinaryArchive builds an archive whose agent-peer header claims one
+// byte over the download limit. The body is streamed through gzip, so the
+// archive itself stays small while the extracted file is too large.
+func oversizedBinaryArchive(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	hdr := &tar.Header{Name: binaryName, Mode: 0o755, Size: maxDownloadSize + 1, Typeflag: tar.TypeReg}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatalf("writing the archive header: %v", err)
+	}
+	if _, err := io.CopyN(tw, zeroReader{}, maxDownloadSize+1); err != nil {
+		t.Fatalf("writing the oversized binary: %v", err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("closing the tar writer: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("closing the gzip writer: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// tarEntry describes one entry of a fake release archive.
+type tarEntry struct {
+	name     string
+	body     []byte
+	mode     int64
+	typeflag byte
+	linkname string
+}
+
+// tarGz builds a tar.gz archive from entries.
+func tarGz(t *testing.T, entries ...tarEntry) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, entry := range entries {
+		mode := entry.mode
+		if mode == 0 {
+			mode = 0o644
+		}
+		typeflag := entry.typeflag
+		if typeflag == 0 {
+			typeflag = tar.TypeReg
+		}
+		hdr := &tar.Header{Name: entry.name, Mode: mode, Typeflag: typeflag, Linkname: entry.linkname}
+		if typeflag == tar.TypeReg {
+			hdr.Size = int64(len(entry.body))
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			t.Fatalf("writing the archive header: %v", err)
+		}
+		if hdr.Size > 0 {
+			if _, err := tw.Write(entry.body); err != nil {
+				t.Fatalf("writing the archive entry: %v", err)
+			}
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("closing the tar writer: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("closing the gzip writer: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// versionScript returns an executable that prints the version line the
+// preflight expects.
+func versionScript(version string) []byte {
+	return []byte("#!/bin/sh\necho \"agent-peer " + version + "\"\n")
+}
+
+// releaseArchive builds a normal release archive whose staged binary reports
+// scriptVersion. Extra entries are appended after the binary.
+func releaseArchive(t *testing.T, scriptVersion string, extra ...tarEntry) []byte {
+	t.Helper()
+	entries := []tarEntry{
+		{name: "README.md", body: []byte("readme\n")},
+		{name: binaryName, body: versionScript(scriptVersion), mode: 0o755},
+	}
+	entries = append(entries, extra...)
+	return tarGz(t, entries...)
+}
+
+// checksumsFor renders one checksums.txt line.
+func checksumsFor(archive []byte, name string) string {
+	sum := sha256.Sum256(archive)
+	return fmt.Sprintf("%x  %s\n", sum, name)
+}
+
+// testArchiveName is the asset name Apply requests for linux/amd64.
+func testArchiveName(version string) string {
+	return fmt.Sprintf("%s_%s_linux_amd64.tar.gz", binaryName, version)
+}
+
+// writeBytes adapts a byte slice to the archive writer used by the fake API.
+func writeBytes(b []byte) func(http.ResponseWriter) error {
+	return func(w http.ResponseWriter) error {
+		_, err := w.Write(b)
+		return err
+	}
+}
+
+// fakeRelease describes the release metadata and assets a fake API serves.
+type fakeRelease struct {
+	version        string
+	tagName        string
+	draft          bool
+	prerelease     bool
+	writeArchive   func(http.ResponseWriter) error
+	writeChecksums func(http.ResponseWriter) error
+}
+
+// newApplyServer serves a release whose metadata matches version.
+func newApplyServer(t *testing.T, version string, writeArchive func(http.ResponseWriter) error, checksums string) *httptest.Server {
+	t.Helper()
+	return newFakeReleaseServer(t, fakeRelease{
+		version:        version,
+		tagName:        "v" + version,
+		writeArchive:   writeArchive,
+		writeChecksums: writeBytes([]byte(checksums)),
+	})
+}
+
+// newFakeReleaseServer serves rel over TLS so the release build's https rule
+// holds. Its client trusts the test certificate.
+func newFakeReleaseServer(t *testing.T, rel fakeRelease) *httptest.Server {
+	t.Helper()
+	var srv *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/wangzw/agent-peer/releases/tags/v"+rel.version, func(w http.ResponseWriter, _ *http.Request) {
+		payload := map[string]any{
+			"tag_name":   rel.tagName,
+			"draft":      rel.draft,
+			"prerelease": rel.prerelease,
+			"html_url":   srv.URL + "/releases/" + rel.tagName,
+			"assets": []map[string]string{
+				{"name": testArchiveName(rel.version), "browser_download_url": srv.URL + "/download/archive"},
+				{"name": checksumsAsset, "browser_download_url": srv.URL + "/download/checksums"},
+			},
+		}
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			t.Errorf("encoding the fake release: %v", err)
+		}
+	})
+	mux.HandleFunc("/download/archive", func(w http.ResponseWriter, _ *http.Request) {
+		// A write error here usually means the client stopped reading because
+		// of a size limit, which the test asserts on the Apply error instead.
+		_ = rel.writeArchive(w)
+	})
+	mux.HandleFunc("/download/checksums", func(w http.ResponseWriter, _ *http.Request) {
+		_ = rel.writeChecksums(w)
+	})
+	srv = httptest.NewTLSServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// testApplyOptions points Apply at the fake server for linux/amd64.
+func testApplyOptions(srv *httptest.Server, target, version string) ApplyOptions {
+	return ApplyOptions{
+		Target:  target,
+		Version: version,
+		API:     srv.URL,
+		Client:  srv.Client(),
+		GOOS:    "linux",
+		GOARCH:  "amd64",
+	}
+}
+
+// newTarget creates the binary Apply replaces and returns its initial bytes and
+// metadata.
+func newTarget(t *testing.T, content []byte, mode os.FileMode) (string, os.FileInfo) {
+	t.Helper()
+	target := filepath.Join(t.TempDir(), binaryName)
+	if err := os.WriteFile(target, content, mode); err != nil {
+		t.Fatalf("writing the target: %v", err)
+	}
+	// WriteFile applies the umask, so set the mode explicitly.
+	if err := os.Chmod(target, mode); err != nil {
+		t.Fatalf("chmod the target: %v", err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("stat the target: %v", err)
+	}
+	return target, info
+}
+
+// assertUnchanged checks that a failed Apply left the target as it was.
+func assertUnchanged(t *testing.T, target string, want []byte, before os.FileInfo) {
+	t.Helper()
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("reading the target after a failed Apply: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Errorf("target bytes changed after a failed Apply: got %q, want %q", got, want)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("stat after a failed Apply: %v", err)
+	}
+	if info.Mode().Perm() != before.Mode().Perm() {
+		t.Errorf("target mode changed after a failed Apply: got %v, want %v", info.Mode().Perm(), before.Mode().Perm())
+	}
+	assertSameOwner(t, target, before)
+}
+
+// zeroReader yields zeros without allocating a buffer.
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	clear(p)
+	return len(p), nil
+}

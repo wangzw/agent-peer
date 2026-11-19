@@ -1,0 +1,116 @@
+// Package update checks the latest release of agent-peer on GitHub, compares
+// versions, and downloads, verifies and atomically installs a release archive.
+// It never installs without the caller's explicit request.
+package update
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
+
+// DefaultAPI is the GitHub API base used by release builds.
+const DefaultAPI = "https://api.github.com"
+
+const (
+	// repository is the only repository this package ever addresses. The
+	// owner and name are fixed so a caller cannot redirect the check or the
+	// download to another project.
+	repositoryOwner = "wangzw"
+	repositoryName  = "agent-peer"
+
+	checksumsAsset = "checksums.txt"
+
+	// maxAPIBodySize caps a JSON API response at 1 MiB. Release metadata is
+	// a few kilobytes; anything larger is a sign of a hostile or broken peer.
+	maxAPIBodySize int64 = 1 << 20
+)
+
+// Release describes the latest formal release.
+type Release struct {
+	Version string // without the v prefix, for example "0.1.2"
+	URL     string // release page
+}
+
+// Latest returns the newest formal release of the repository behind api.
+// Prereleases and drafts are rejected: the endpoint only returns a formal
+// release, but the tag is validated as well.
+func Latest(ctx context.Context, c *http.Client, api string) (Release, error) {
+	var payload struct {
+		TagName string `json:"tag_name"`
+		HTMLURL string `json:"html_url"`
+	}
+	if err := getJSON(ctx, c, releaseURL(api, "latest"), &payload); err != nil {
+		return Release{}, err
+	}
+	version, err := releaseVersion(payload.TagName)
+	if err != nil {
+		return Release{}, err
+	}
+	return Release{Version: version, URL: payload.HTMLURL}, nil
+}
+
+// releaseURL builds a releases endpoint URL. ref is either "latest" or
+// "tags/v<version>".
+func releaseURL(api, ref string) string {
+	if api == "" {
+		api = APIBase()
+	}
+	return strings.TrimRight(api, "/") + "/repos/" + repositoryOwner + "/" + repositoryName + "/releases/" + ref
+}
+
+// releaseVersion turns a release tag into a version without the v prefix and
+// rejects anything that is not a formal release version.
+func releaseVersion(tag string) (string, error) {
+	version := strings.TrimPrefix(tag, "v")
+	if !isReleaseVersion(version) {
+		return "", fmt.Errorf("release tag %q is not a formal version", tag)
+	}
+	return version, nil
+}
+
+// getJSON performs one GET request and decodes its JSON body into v.
+func getJSON(ctx context.Context, c *http.Client, url string, v any) error {
+	resp, err := get(ctx, c, url)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIBodySize))
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", url, err)
+	}
+	if err := json.Unmarshal(body, v); err != nil {
+		return fmt.Errorf("decoding %s: %w", url, err)
+	}
+	return nil
+}
+
+// get issues one GET request and turns a non-200 response into an error.
+func get(ctx context.Context, c *http.Client, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building a request for %s: %w", url, err)
+	}
+	resp, err := httpClient(c).Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("requesting %s: %w", url, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("requesting %s: %s", url, resp.Status)
+	}
+	return resp, nil
+}
+
+// httpClient returns c, or the default client when c is nil.
+func httpClient(c *http.Client) *http.Client {
+	if c == nil {
+		return http.DefaultClient
+	}
+	return c
+}
