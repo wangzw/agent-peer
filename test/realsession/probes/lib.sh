@@ -152,6 +152,60 @@ rs_wait_turn_idle() {
 	return 1
 }
 
+# rs_submit_line submits one line to a session's composer. It waits for the
+# previous turn to end, types the text literally (send-keys -l), waits until the
+# composer echoes NEEDLE, pauses 0.3 seconds, and sends Enter as a second tmux
+# write. 2.1.311 reads a text-and-Enter burst as one paste: the Enter stays in
+# the composer as a newline and the line never submits. Prompts and bash-mode
+# commands both go through this one path.
+#
+# Usage: rs_submit_line WINDOW TEXT NEEDLE [READY_SECONDS]
+# READY_SECONDS bounds the idle wait and defaults to 60 seconds.
+rs_submit_line() {
+	local window="$1" text="$2" needle="$3" seconds="${4:-60}"
+	if ! rs_wait_turn_idle "$window" "$seconds"; then
+		rs_snap "$window" "prompt-busy-$window.txt"
+		rs_obs "$window: previous turn still running after ${seconds}s, so the text was not typed"
+		return 1
+	fi
+	rs_keys_literal "$window" "$text"
+	if ! rs_wait_pane_literal "$window" "$needle" 10; then
+		rs_obs "$window: the composer did not echo the typed text"
+		return 1
+	fi
+	# The text is on screen; the pause keeps the last keystroke and Enter in
+	# separate reads so the TUI does not fold them into one paste.
+	sleep 0.3
+	rs_keys "$window" Enter
+}
+
+# rs_send_prompt submits one prompt through rs_submit_line.
+#
+# Usage: rs_send_prompt WINDOW PROMPT [NEEDLE] [READY_SECONDS]
+# NEEDLE defaults to the first 24 characters of PROMPT. A prompt that wraps far
+# enough for its beginning to scroll off the composer needs a NEEDLE taken from
+# the part that stays visible.
+rs_send_prompt() {
+	local window="$1" prompt="$2" needle="${3:-}" seconds="${4:-60}"
+	if [[ -z "$needle" ]]; then
+		needle="${prompt:0:24}"
+	fi
+	rs_submit_line "$window" "$prompt" "$needle" "$seconds"
+}
+
+# rs_send_shell submits one bash-mode command through rs_submit_line. The
+# caller passes the command without the leading "!". NEEDLE defaults to the
+# first 24 characters of the "!" line.
+#
+# Usage: rs_send_shell WINDOW COMMAND [NEEDLE] [READY_SECONDS]
+rs_send_shell() {
+	local window="$1" command="$2" needle="${3:-}" seconds="${4:-60}"
+	if [[ -z "$needle" ]]; then
+		needle="! ${command:0:22}"
+	fi
+	rs_submit_line "$window" "! $command" "$needle" "$seconds"
+}
+
 # rs_wait_file polls until the path exists.
 rs_wait_file() {
 	local path="$1" seconds="$2"
