@@ -7,7 +7,7 @@
 - 按账户与部署形态给出运行时目录、配置文件、数据目录、审计日志和账户锁的路径（[ADR-broker-deployment-modes](../../adr/adr-broker-deployment-modes.md)）。
 - 启动时加载配置文件，对缺失的键取默认值，键的类型或取值不合法时拒绝启动并指出该键；监听地址与对外地址配置的组合非法时拒绝启动并同时指出这两项，对外地址列表超过 8 项时拒绝启动并指出该项，运行期间的这类修改不提交（`REQ-broker-config-032`、`REQ-broker-config-036`）。
 - 把启动参数给出的监听地址作为本次运行的取值，不把它写入配置文件，配置文件中的 `broker.listen` 在本次运行中不起作用；其间经本机接口修改 `broker.listen` 的调用失败（`REQ-broker-config-025`、`REQ-broker-config-029`）。
-- 在没有配置别名时按监听地址得出默认别名（`REQ-broker-pairing-002`）。
+- 在没有配置别名时按系统主机名与运行 Broker 的账户得出默认别名（`REQ-broker-pairing-002`）。
 - 由监听地址、`broker.advertise` 与 `broker.advertise_extra` 得出本次运行的对外地址列表，监听全部地址时取默认路由所在接口的地址，供 [link](design-link.md)、[pairing](design-pairing.md) 与 [directory](design-directory.md) 使用（[ADR-advertised-address](../../adr/adr-advertised-address.md)，`REQ-broker-config-030`、`REQ-broker-config-031`、`REQ-broker-config-033`、`REQ-broker-config-035`）。
 - 每隔 `broker.address_check_interval` 重新枚举本机地址，对外地址列表变化时通知订阅者（`REQ-broker-discovery-016`）。
 - 给出系统主机名，供 `pairing` 在生成配对密钥的结果中展示本机地址（`REQ-broker-pairing-028`）。
@@ -217,7 +217,7 @@ type PathSet struct {
 
 配置文件的结构与键名一一对应，例如 `broker.alias` 对应顶层 `broker` 下的 `alias`。文件中没有出现的键取默认值，文件不存在等同于空文件。`Set` 只改动文件中它所修改的那个键，文件里的其他内容原样保留；文件不存在时，以运行 Broker 的账户创建它，属主与权限按形态设置。
 
-默认别名：没有配置 `broker.alias` 时，本次运行有监听地址的，取“系统主机名、`-`、监听端口”，例如 `buildbox-17443`；没有监听地址的，取系统主机名。规则对所有端口相同，默认配置下的别名因此带有端口；别名取监听端口，与对外地址中的端口无关。系统主机名中不属于别名字符集的字符替换为 `-`。结果超过 24 个字符时从末尾截短主机名部分，保留 `-` 与端口，使别名恰为 24 个字符；不监听时取主机名的前 24 个字符（`REQ-broker-pairing-037`）。监听端口变化使默认别名随之变化，按 `broker.alias` 的变更通知订阅者。
+默认别名：没有配置 `broker.alias` 时，系统级 Broker 取所在主机系统主机名的第一段（第一个 `.` 之前的部分），用户级 Broker 取主机名的第一段、`.` 与所属账户名依次组成的字符串。主机名取自 `os.Hostname()`，保留原有大小写；账户名取运行 Broker 的账户，经账户数据库查出，与审计 `account` 字段的来源相同；账户名查不到或为空时，账户名部分改用 `os.Geteuid()` 的十进制数字 uid，例如 `hostA.1000`，同一主机上唯一且每次结果相同，同时以 Warn 级别写一条运行日志，说明账户名查不到、改用 uid。别名与监听地址、监听端口和对外地址都无关。主机名和账户名中不属于别名字符集的字符替换为 `-`。主机名取不到或为空时，主机名部分取 `broker`。总长不超过 24 个字符（`REQ-broker-pairing-037`）：超长时先截短主机名部分，至少保留 1 个字符；仍然超长时再截短账户名部分，账户名部分改用 uid 时即截短 uid。截短后去掉末尾的 `.` 与 `-`，结果为空时取 `broker`。配置了 `broker.alias` 时取配置值，本节规则不适用。
 
 监听地址：`broker.listen` 的主机部分为空时，在本机的全部地址上监听，启用了 IPv6 时包括 IPv6 地址；写出了主机部分的，按字面绑定该地址，其中 `0.0.0.0` 与 `::` 在计算对外地址时按全部地址对待。端口不得为 0。
 
@@ -316,7 +316,7 @@ type PathSet struct {
 
 通知队列由一个协程按提交的顺序逐个调用订阅者，对同一个键的两次修改因此按修改的先后生效。校验函数用于需要别的包判断的情形，由 `broker` 注册：`broker.listen` 的新值只做绑定探测，校验函数绑定后立即关闭，不保留 listener，变更提交后由订阅者实际绑定；探测失败则修改不提交，原有的监听不受影响（`REQ-broker-config-034`）。新值与当前值相同时不探测，直接接受这次修改：正在运行的监听仍占着该地址，探测必然失败。探测与真正的绑定之间存在时间差，期间端口可能被其他进程占用。校验函数在包内互斥锁持有期间执行，不得调用本包的其他导出函数。`broker.alias` 的新值与某个已提交对端的生效别名或一次进行中的握手预占相同时修改不提交；校验函数调用 `pairing` 的 `AliasConflict`，后者只取 `pairing` 的锁。本次运行的监听地址来自启动参数时，`Set` 对 `broker.listen` 的修改在校验之前即以 `invalid_argument` 拒绝，错误说明本次运行的监听地址由启动参数给定，配置文件与内存中的值都不变（`REQ-broker-config-029`）。
 
-订阅者使修改立即生效，订阅在 `broker` 装配完成后交给各包：`broker.alias` 的变更使各链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片，同时调用 `pairing` 的 `SetOwnAlias` 推入新的本机别名，`broker` 在装配时也推入一次当前值；`broker.listen` 的变更使 `link` 改在新地址上监听，没有配置别名时默认别名随端口变化，按别名变更处理；对外地址列表的变化，不论来自 `broker.listen`、`broker.advertise`、`broker.advertise_extra` 的修改还是定期的重新枚举，都经 `SubscribeAdvertised` 送达，使本方是[接受方](../../glossary.md)的各条链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片；`broker.public` 的变更使 `directory` 发布或撤回本机的记录；改为公开时，`broker` 另行按各 Agent 的公开 topic 集合重新声明。`pairing.static_key` 没有订阅者，`pairing` 在下一次握手查找密钥时读取新值；`Secret` 返回取值之前读取配置文件并比较内容哈希，内容不同即重新加载，文件变化通知丢失时删除或更换仍能生效。各项间隔、次数与上限在下一次使用时取新值。
+订阅者使修改立即生效，订阅在 `broker` 装配完成后交给各包：`broker.alias` 的变更使各链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片，同时调用 `pairing` 的 `SetOwnAlias` 推入新的本机别名，`broker` 在装配时也推入一次当前值；`broker.listen` 的变更使 `link` 改在新地址上监听；对外地址列表的变化，不论来自 `broker.listen`、`broker.advertise`、`broker.advertise_extra` 的修改还是定期的重新枚举，都经 `SubscribeAdvertised` 送达，使本方是[接受方](../../glossary.md)的各条链路收到 `PeerInfo` 帧，并使 `directory` 重新签发名片；`broker.public` 的变更使 `directory` 发布或撤回本机的记录；改为公开时，`broker` 另行按各 Agent 的公开 topic 集合重新声明。`pairing.static_key` 没有订阅者，`pairing` 在下一次握手查找密钥时读取新值；`Secret` 返回取值之前读取配置文件并比较内容哈希，内容不同即重新加载，文件变化通知丢失时删除或更换仍能生效。各项间隔、次数与上限在下一次使用时取新值。
 
 `link.keepalive_interval` 与 `link.keepalive_timeout` 的生效时机与其余间隔不同：[link](design-link.md) 在接受方一侧于第一次监听、创建 gRPC 服务端时读取，修改后接受方一侧重启才生效；拨号方一侧对下一条拨出的连接生效。只修改 `broker.listen` 的主机部分（例如把 `:17443` 改为 `127.0.0.1:17443`）会被拒绝：校验以新值探测绑定时，`link` 的旧监听仍占着同一端口，探测因此失败；修改这一项需要同时改端口，或改配置文件后重启 Broker，修改失败时继续在原地址监听（`REQ-broker-config-034`）。
 
@@ -325,7 +325,7 @@ type PathSet struct {
 本包监视配置文件，重载只由文件系统通知驱动，没有周期性重扫。文件内容变化时重新解析，与内存中的值逐键比较：
 
 - 解析失败或读到空文件：不采用任何改动，内存中的值不变，运行日志以错误级别记录原因。空文件包括其他程序就地改写时落在截断与写入之间的窗口；只有启动加载把空文件当作空配置。截断恰好落在行边界时，剩下的一段仍可能是合法的 YAML 文档，重载会把它当作删除了其余键的外部改动采用，不再出现的键因此取默认值；这是只凭文件内容判断改动所接受的代价。
-- 解析成功：逐键判定。取值合法并通过校验函数的键采用新值；不合法或未通过校验函数的键保留原值，运行日志以错误级别记录。成对约束的键作为一组判定，组合合法时一起采用，否则整组保留原值，结果与键名的字典序无关。`broker.listen`、`broker.advertise` 与 `broker.advertise_extra` 另作为一组判定：按改动后的整体检查组合规则与项数上限，合法则一起采用，否则三项都保留原值。文件未配置 `broker.alias` 时，生效别名由改动后的监听地址派生；派生值未通过校验函数时，`broker.listen`、`broker.advertise` 与 `broker.advertise_extra` 整组回滚，别名保留原值。
+- 解析成功：逐键判定。取值合法并通过校验函数的键采用新值；不合法或未通过校验函数的键保留原值，运行日志以错误级别记录。成对约束的键作为一组判定，组合合法时一起采用，否则整组保留原值，结果与键名的字典序无关。`broker.listen`、`broker.advertise` 与 `broker.advertise_extra` 另作为一组判定：按改动后的整体检查组合规则与项数上限，合法则一起采用，否则三项都保留原值。
 - 对每个采用了新值的键更新内存、追加一条 `config_file_changed` 审计记录、放入通知队列。
 
 本包自己写入文件期间不处理文件变化；写入完成后把文件内容的哈希记为已采纳，不产生记录。文件变化通知丢失时由 `Secret` 在返回取值前比对文件内容哈希兜底，因此没有周期性重扫也不会让旧密钥一直生效。

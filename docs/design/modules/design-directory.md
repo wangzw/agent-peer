@@ -230,7 +230,7 @@ C 接受 `v1` 之后，列出已知 Broker 的结果包含 `hostA`，状态为�
 
 Broker 离线期间不续签，离线超过 7 天后其记录在各处到期；重新上线并仍为公开时立即签发新版本。重启后从文件加载的本机声明不在活动集合中，不续签；`broker` 在启动 2 分钟后调用一次 `RetireInactiveTopics`，为这些声明签发撤回。
 
-别名或对外地址列表变化时，`broker` 调用 `Reissue`，本机立即签发新版本的名片，不等续签间隔（`REQ-broker-discovery-016`）。对外地址列表的变化来自 `broker.listen`、`broker.advertise`、`broker.advertise_extra` 的修改，或 `config` 定期重新枚举本机地址时发现的变化；没有配置别名时，监听端口的变更同时改变默认别名和列表中的端口。
+别名或对外地址列表变化时，`broker` 调用 `Reissue`，本机立即签发新版本的名片，不等续签间隔（`REQ-broker-discovery-016`）。对外地址列表的变化来自 `broker.listen`、`broker.advertise`、`broker.advertise_extra` 的修改，或 `config` 定期重新枚举本机地址时发现的变化；监听端口的变更改变列表中的端口，默认别名不随监听端口变化。
 
 发布者为本机的记录从网络回来时，本机先抬高已签发的最高版本，再按当前状态纠正。
 

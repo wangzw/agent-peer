@@ -6,7 +6,7 @@
 
 ## 前置条件
 
-- A 的 [Broker](../../glossary.md) 与 B 的 Broker 已配对，并且已连接。两个 Broker 都按默认配置运行，没有配置别名，也没有设本地别名；两台主机的系统主机名分别是 `hostA` 与 `hostB`，因此 A 以别名 `hostB-17443` 称呼 B 的 Broker，B 以别名 `hostA-17443` 称呼 A 的 Broker。
+- A 的 [Broker](../../glossary.md) 与 B 的 Broker 已配对，并且已连接。两个 Broker 都以系统级形态按默认配置运行，没有配置别名，也没有设本地别名；两台主机的系统主机名分别是 `hostA` 与 `hostB`，因此 A 以别名 `hostB` 称呼 B 的 Broker，B 以别名 `hostA` 称呼 A 的 Broker。
 - 两台主机上各有该项目仓库的工作区，两个工作区的 `origin` 远端指向同一个仓库，地址写法可以不同。
 - 项目配置文件没有声明 topic，也没有关闭自动加入。
 
@@ -14,12 +14,12 @@
 
 1. A 的用户在工作区中启动一个启用了本系统工具的会话，会话名为 `api-worker`。
 2. B 的用户在工作区中启动一个启用了本系统工具的会话，会话名为 `frontend`。
-3. A 的用户要求 Agent 列出可见的 Agent，看到 `frontend@hostB-17443` 以及共同所在的 topic，该 topic 以仓库地址命名。
-4. A 的用户要求 Agent 向 `frontend@hostB-17443` 发送一条消息，说明某个接口已经变更。
+3. A 的用户要求 Agent 列出可见的 Agent，看到 `frontend@hostB` 以及共同所在的 topic，该 topic 以仓库地址命名。
+4. A 的用户要求 Agent 向 `frontend@hostB` 发送一条消息，说明某个接口已经变更。
 5. A 的用户看到发送成功的结果。
-6. B 的用户看到自己空闲的会话自行开始处理一条署名为 `api-worker@hostA-17443` 的消息。
-7. B 的会话处理完后向 `api-worker@hostA-17443` 发送回复。
-8. A 的用户看到自己的会话收到一条署名为 `frontend@hostB-17443` 的消息。
+6. B 的用户看到自己空闲的会话自行开始处理一条署名为 `api-worker@hostA` 的消息。
+7. B 的会话处理完后向 `api-worker@hostA` 发送回复。
+8. A 的用户看到自己的会话收到一条署名为 `frontend@hostB` 的消息。
 
 ## 结果
 

@@ -109,7 +109,7 @@ type PairConn interface {
 
 `Connect` 的 `address` 有两种写法：`地址:端口`，或接受方生成密钥时展示的 `主机名(地址:端口)`。后一种写法只取括号里的部分用于拨号；主机名部分被读取后只作为 `shownHost` 交回调用方展示，不用于拨号，不参与身份的判定，也不记入候选地址。地址是 IP 地址或域名，IPv6 地址带方括号，端口不可省略。
 
-别名由字母、数字、`.`、`-`、`_` 组成，长度 1 至 24，本地别名同样如此（`REQ-broker-pairing-037`）。本机自报的别名取自 `config`：配置了 `broker.alias` 时取它，否则是按监听地址得出的默认别名，有监听地址时形如 `buildbox-17443`（`REQ-broker-pairing-002`）。
+别名由字母、数字、`.`、`-`、`_` 组成，长度 1 至 24，本地别名同样如此（`REQ-broker-pairing-037`）。本机自报的别名取自 `config`：配置了 `broker.alias` 时取它，否则是按主机名与账户得出的默认别名，系统级形如 `buildbox`，用户级形如 `buildbox.alice`（`REQ-broker-pairing-002`）。
 
 ## 依赖
 
