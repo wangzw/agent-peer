@@ -1,0 +1,14 @@
+# The peer host used by the cross-host probes. It runs a Broker that reports
+# the alias hostA and a few simulated Agents; no Claude Code session runs here.
+name: agent-peer-rs
+
+services:
+  hosta:
+    image: debian:bookworm-slim
+    hostname: hosta
+    init: true
+    command: ["sleep", "infinity"]
+    volumes:
+      - "${RS_ROOT:?RS_ROOT must point at the rsprobe environment root}/bin/agent-peer:/usr/local/bin/agent-peer:ro"
+      - "${RS_ROOT:?RS_ROOT must point at the rsprobe environment root}/bin/rsprobe:/usr/local/bin/rsprobe:ro"
+      - "./hosta-init.sh:/hosta-init.sh:ro"
