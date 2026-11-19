@@ -27,8 +27,8 @@
 会话启用本系统的工具且会话名可用的，系统必须在无需用户额外操作的情况下把它登记为本机 Agent。
 
 - **验收**：启动一个启用了工具的会话，该会话调用列出 Agent 的能力时，返回结果里包含它自己的 Agent 地址。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/registration_test.go` 的 `TestLocalRegistration/REQ-agent-messaging-001 self address in list`
 
 ### REQ-agent-messaging-002
 
@@ -59,16 +59,16 @@ Agent 地址必须由下列部分依次组成：Agent 的名字；名字在所�
 会话改名后，系统必须以新名字作为该 Agent 的名字，旧地址随之失效。
 
 - **验收**：会话改名后，同一主机上的另一个 Agent 随即列出 Agent，结果显示新名字；以旧地址为目标的发送返回错误。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/session_lifecycle_test.go` 的 `TestLocalSessionChanges/REQ-agent-messaging-005 rename`
 
 ### REQ-agent-messaging-006
 
 Agent 的消歧标识必须采用与 Claude Code 在其会话列表中为同一会话显示的标识相同的算法，由会话的 inbox socket 路径算出；候选集合相同时两者取值相同，候选集合不同时本 Broker 的取值是该标识的前缀。它在会话改名和清空对话之后必须保持不变。
 
 - **验收**：在 Claude Code 的默认配置下以会话名 `a<b` 启动一个启用了工具的会话，列表中它的地址带消歧标识，该标识是 Claude Code 会话列表中该会话方括号内标识的前缀；把会话改名为 `c<d`，再清空对话，它的消歧标识不变。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/registration_test.go` 的 `TestLocalRegistration/REQ-agent-messaging-006 ref algorithm`
 
 ### REQ-agent-messaging-007
 
@@ -99,8 +99,8 @@ Agent 必须能列出所有对自己可见的在线 Agent，包括本机上的�
 列表给出某个 Agent 的状态时，取值必须原样取自 Claude Code 会话注册表中该会话的状态。
 
 - **验收**：一个 Agent 的会话正在执行耗时的工具调用，另一个 Agent 的会话空闲；列表给出这两项的状态时，正在执行工具调用的那一项为忙碌，空闲的那一项为空闲。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/session_lifecycle_test.go` 的 `TestLocalSessionChanges/REQ-agent-messaging-010 status`
 
 ### REQ-agent-messaging-011
 
@@ -187,40 +187,40 @@ Agent 必须能向一个 Agent 地址发送一条纯文本消息。
 入站控制放行的消息到达空闲的目标会话时，系统的投递必须使该会话在没有用户输入的情况下开始处理这条消息。
 
 - **验收**：向一个空闲且入站策略为接收的会话发送，该会话自行开启新回合并读到消息。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-021 system side`
 
 ### REQ-agent-messaging-022
 
 目标会话看到的消息必须以发送方的 Agent 地址署名，该地址取目标所在 Broker 视角下的形式（`REQ-agent-messaging-004`）。
 
 - **验收**：主机 B 以别名 `hostA` 称呼主机 A 的 Broker；A 上的 `api-worker` 发出的消息，在 B 上的目标会话中显示的发送方是 `api-worker@hostA`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/visibility_remote_test.go` 的 `TestRemoteVisibility/REQ-agent-messaging-022 signature from receiver view`
 
 ### REQ-agent-messaging-023
 
 消息正文不得改变目标会话看到的署名。
 
 - **验收**：正文中包含伪造的署名标记时，目标会话看到的发送方仍是真实发送方的 Agent 地址，伪造的标记作为普通文本出现。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-023 forged envelope`
 
 ### REQ-agent-messaging-024
 
 系统投递的消息必须受目标会话的入站控制约束（[REF-claude-code-cross-session-messaging](../../references.md)）。
 
 - **验收**：目标会话的入站策略为拒收时，消息不进入该会话；目标会话以跳过权限确认的模式运行且未设置入站策略时，消息留待用户批准。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessLocal/REQ-broker-config-012 auto launch`；`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-021 system side`
 
 ### REQ-agent-messaging-025
 
 收到消息的 Agent 必须能以消息署名中的 Agent 地址为目标，经本系统的发送能力回复发送方。
 
 - **验收**：目标 Agent 把署名中的地址原样作为目标发送回复，原发送方的会话中出现以目标 Agent 的地址署名的消息；发送方在其 Broker 上有同名 Agent 时同样如此。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/visibility_remote_test.go` 的 `TestRemoteVisibility/REQ-agent-messaging-025 reply by signature`
 
 ### REQ-agent-messaging-026
 
@@ -251,8 +251,8 @@ Agent 必须能向一个 Agent 地址发送一条纯文本消息。
 Agent 的名字经接收方会话对署名的清洗后与原名不同时，该 Agent 的地址与署名都必须带消歧标识。
 
 - **验收**：以会话名 `a<b` 启动的 Agent 向另一台主机上的 Agent 发送消息，目标会话看到的署名带消歧标识，目标 Agent 按署名原样回复，回复送达 `a<b` 的会话；同一主机上另有会话名为 `ab` 的 Agent 时，回复不会到达它。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/visibility_remote_test.go` 的 `TestRemoteVisibility/REQ-agent-messaging-029 cleaned name gets ref`
 
 ### REQ-agent-messaging-030
 
@@ -282,49 +282,49 @@ Agent 的名字经接收方会话对署名的清洗后与原名不同时，该 A
 
 会话清空对话后，其 Agent 的地址与 topic 成员关系必须保持不变，此前已到达而尚未处理的消息不得因清空而丢失。
 
-- **验收**：一个加入了 topic `t1` 的 Agent 在会话中清空对话，其他 Agent 的列表中它的地址与共同 topic 不变，以原地址发送的消息进入该会话；会话中有已到达而尚未处理的消息时清空对话，这条消息在清空之后的对话中被处理。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **验收**：一个加入了 topic `t1` 的 Agent 在会话中清空对话，其他 Agent 的列表中它的地址与共同 topic 不变，以原地址发送的消息进入该会话；会话忙碌时有消息到达，随后清空对话，清空要等这条已到达的消息处理完才生效，这条消息不丢失。
+- **状态**：已实现
+- **端到端测试**：`test/realsession/probes/ref-clear.sh`（经 `.github/workflows/real-session.yml` 推送 `probe/ref-clear` 运行）
 
 ### REQ-agent-messaging-034
 
 用户在会话中停用本系统的 MCP 服务后，该会话的 Agent 必须被注销；重新启用后必须以相同的 Agent 身份和名字重新登记，地址的消歧标识按当时的 Agent 集合计算，且只重新加入默认 topic，停用前手动加入的 topic 不恢复。
 
 - **验收**：在会话中停用本系统的 MCP 服务，其他 Agent 随即列出 Agent，结果不含它；重新启用后，列表中重新出现它，名字与停用前相同，停用前手动加入的 topic 不再出现。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/session_lifecycle_test.go` 的 `TestLocalSessionChanges/REQ-agent-messaging-034 disable and enable`
 
 ### REQ-agent-messaging-035
 
 子代理经本系统工具发起的调用必须以所属主会话的 Agent 身份进行，子代理不得成为独立的 Agent。
 
 - **验收**：会话中的子代理调用发送，目标会话看到的署名是主会话的 Agent 地址；子代理运行期间，其他 Agent 的列表中对应该会话的只有一项。子代理的定义中自行声明本系统的 MCP 服务时同样如此。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/registration_test.go` 的 `TestLocalRegistration/REQ-agent-messaging-035 second MCP process`
 
 ### REQ-agent-messaging-036
 
 以无界面方式运行，或在 IDE 等宿主中运行的会话，启用本系统的工具后，必须与交互式会话同样成为 Agent。
 
 - **验收**：以无界面方式或作为 IDE 中的主会话运行一个启用了工具的会话，它运行期间，同在一个 topic 的另一个 Agent 的列表包含它，它向该 Agent 发送的消息进入对方会话。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/realsession/probes/headless.sh`（经 `.github/workflows/real-session.yml` 推送 `probe/headless` 运行）
 
 ### REQ-agent-messaging-037
 
 系统生成的署名必须能被接收方会话识别为发送方。Agent 地址超出可署名的长度时，系统必须截短名字部分并附上消歧标识，使署名仍能唯一指向发送方。
 
 - **验收**：以 70 个字符的会话名启动的 Agent 向另一台主机上的 Agent 发送消息，目标会话显示出发送方，署名带消歧标识，名字部分是会话名的开头部分；目标 Agent 按署名原样回复，回复送达原发送方。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/visibility_remote_test.go` 的 `TestRemoteVisibility/REQ-agent-messaging-037 truncated signature`
 
 ### REQ-agent-messaging-038
 
 本机 Broker 不可用或登记未完成时，工具调用必须返回说明原因的错误，会话不得因此需要用户重新连接 MCP 服务。
 
 - **验收**：让另一个进程占用默认监听地址，再启动一个启用了工具的会话：Claude Code 显示本系统的 MCP 服务已连接，工具调用返回说明监听地址不可用的错误。结束占用该地址的进程后，不在 Claude Code 中重新连接 MCP 服务，下一次列出 Agent 成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessInContainer/REQ-agent-messaging-038 recover without reconnect`
 
 ## 数据需求
 
@@ -345,8 +345,9 @@ Agent 的名字经接收方会话对署名的清洗后与原名不同时，该 A
 - inbox socket 的消息格式与会话注册表都没有公开的兼容承诺，Claude Code 的版本更新可能使登记或投递失效。
 - 下列会话不能成为 Agent：没有绑定 inbox socket 的会话；Claude Code 没有为其保存会话注册表记录的会话，包括从另一个会话的命令行里启动的交互式会话；会话名不可用的会话（`REQ-agent-messaging-030`）。
 - 系统以账户为隔离的边界：同一账户下的任何进程都能把该账户的任一会话登记为 Agent，并以该 Agent 的身份调用。
+- 以无界面方式运行且跳过权限确认的会话收不到本系统的消息：接收方的 Claude Code 会暂扣未声明权限类别的发送方发来的消息，等用户批准；无界面会话没有批准界面，暂扣的消息到期即被丢弃，而发送方的发送已经返回成功。
 - Claude Code 启动 MCP 服务进程时，握手超过 30 秒未完成或进程启动失败的，交互式会话把该服务标为失败，要用户手动重新连接；该进程崩溃后，交互式会话不会自动重启它。
-- 发送限速、重复消息的丢弃和待处理消息的排队上限由接收方的 Claude Code 负责，系统不改变这些行为。在 Claude Code v2.1.327 上观测到的规则如下，数值可由 Claude Code 调整：接收方按发送方限速与去重，写入的消息没有回复地址时以写入进程识别发送方；每个发送方的额度至多 30 条，每秒恢复 0.5 条；同一发送方在 30 秒内发来与上一条内容完全相同的消息时，后一条被丢弃；未处理的会话间消息至多排队 50 条。由此有下列后果：
+- 发送限速、重复消息的丢弃和待处理消息的排队上限由接收方的 Claude Code 负责，系统不改变这些行为。规则如下，数值可由 Claude Code 调整：接收方按发送方限速与去重，写入的消息没有回复地址时以写入进程识别发送方；每个发送方的额度至多 30 条，每秒恢复 0.5 条；同一发送方在 30 秒内发来与上一条内容完全相同的消息时，后一条被丢弃；未处理的会话间消息至多排队 50 条；回合进行中入队的消息在回合结束时以 `remove` 结束，不成为用户记录，因此排队上限只能按队列深度观察。由此有下列后果：
   - 经同一个 Broker 写入同一个会话的全部消息，不论来自哪个 Agent，在接收方那里属于同一个发送方，共用一份额度。
   - 同一个 Agent 在 30 秒内向同一个会话连续发送两条内容完全相同的消息时，后一条被接收方丢弃，而发送已经返回成功。署名不同则内容不同，不同 Agent 之间不会因此互相导致消息被丢弃。
   - Claude Code 自带的消息循环检测对本系统的消息不起作用，能约束 Agent 之间往复的消息的只有上述限速。

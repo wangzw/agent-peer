@@ -259,7 +259,7 @@ Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间�
 ### 安全边界
 
 - 链路上的全部内容由 TLS 1.3 加密。
-- 入站消息不带认证令牌，Claude Code 把它当作未声明权限类别的发送方处理（[REF-claude-code-cross-session-messaging](../references.md)），以跳过权限确认的模式运行的会话在未设置入站策略时把消息留待用户批准。
+- 入站消息不带认证令牌，Claude Code 把它当作未声明权限类别的发送方处理（[REF-claude-code-cross-session-messaging](../references.md)），以跳过权限确认的模式运行的会话在未设置入站策略时把消息留待用户批准。以无界面方式运行的会话没有批准界面，这类留待批准的消息到期即被丢弃，发送方的发送已经返回成功。
 - Broker 与它派生的进程都不是任何会话的后代进程，写入的远端消息因此不会被当作会话自己的子进程所发而绕过入站控制（[ADR-inbox-delivery-without-auth-token](../adr/adr-inbox-delivery-without-auth-token.md)）。
 - 系统级 Broker 不以 root 的身份读取、监听账户的会话注册表，也不以 root 的身份写入 inbox socket，这些操作都由切换到该账户的辅助进程执行；inbox socket 属主的核对由 Broker 自己执行。
 - 系统级 Broker 下，同一主机上不同账户的 Agent 加入同一个 topic 后互相可见、可以互发消息，账户之间的隔离只体现在管理操作与会话归属上。

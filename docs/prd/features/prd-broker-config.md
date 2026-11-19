@@ -52,8 +52,8 @@ Broker 有两种部署形态。生产部署时由管理员把它作为系统服�
 读取配置与修改配置必须能分别授权。
 
 - **验收**：在 Claude Code 权限设置中只放行读取配置的工具，Agent 读取配置不触发确认，修改配置触发确认。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/realsession/probes/permissions.sh`（经 `.github/workflows/real-session.yml` 推送 `probe/permissions` 运行）
 
 ### REQ-broker-config-004
 
@@ -68,8 +68,8 @@ Broker 有两种部署形态。生产部署时由管理员把它作为系统服�
 生成配对密钥必须能独立于修改配置获得授权。
 
 - **验收**：在 Claude Code 权限设置中只放行生成配对密钥的工具，Agent 生成一次性配对密钥不触发确认，修改配置触发确认。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/realsession/probes/permissions.sh`（经 `.github/workflows/real-session.yml` 推送 `probe/permissions` 运行）
 
 ### REQ-broker-config-006
 
