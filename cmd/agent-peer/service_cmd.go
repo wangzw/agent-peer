@@ -10,60 +10,73 @@ import (
 	"github.com/wangzw/agent-peer/internal/broker/service"
 )
 
-const serviceUsage = "usage: agent-peer service install [--system]\n"
+const serviceUsage = "usage: agent-peer service install [--system]\n" +
+	"       agent-peer service uninstall [--system]\n"
 
 // The test seams replace the installation steps so the command tests can check
 // the option mapping and the exit-code mapping without touching the system.
 var (
 	defaultOptionsFn = service.DefaultOptions
 	installFn        = service.Install
+	uninstallFn      = service.Uninstall
 )
 
 func init() {
 	subcommands["service"] = (*app).serviceCmd
 }
 
-// serviceCmd implements "agent-peer service install [--system]". The
-// installation enables the service and starts it immediately.
+// serviceCmd implements "agent-peer service install [--system]" and
+// "agent-peer service uninstall [--system]". install enables the service and
+// starts it immediately.
 func (a *app) serviceCmd(_ context.Context, args []string) int {
 	if len(args) == 0 {
 		return a.serviceUsageError("service", "missing command")
 	}
 
-	switch args[0] {
+	command := args[0]
+	switch command {
 	case "-h", "--help", "help":
 		_, _ = fmt.Fprint(a.stdout, serviceUsage)
 		return exitOK
-	case "install":
+	case "install", "uninstall":
 	default:
-		return a.serviceUsageError("service", fmt.Sprintf("unknown command %q", args[0]))
+		return a.serviceUsageError("service", fmt.Sprintf("unknown command %q", command))
 	}
 
-	fs := flag.NewFlagSet("service install", flag.ContinueOnError)
+	fs := flag.NewFlagSet("service "+command, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	system := fs.Bool("system", false, "install the system-level service")
+	system := fs.Bool("system", false, "use the system-level service")
 	if err := fs.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			_, _ = fmt.Fprint(a.stdout, serviceUsage)
 			return exitOK
 		}
-		return a.serviceUsageError("service install", err.Error())
+		return a.serviceUsageError("service "+command, err.Error())
 	}
 	if fs.NArg() > 0 {
-		return a.serviceUsageError("service install", fmt.Sprintf("unexpected argument %q", fs.Arg(0)))
+		return a.serviceUsageError("service "+command, fmt.Sprintf("unexpected argument %q", fs.Arg(0)))
 	}
 
 	opts, err := defaultOptionsFn(*system)
 	if err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer service install: %s\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer service %s: %s\n", command, err)
 		return exitFailure
 	}
-	result, err := installFn(opts)
+	if command == "install" {
+		result, err := installFn(opts)
+		if err != nil {
+			_, _ = fmt.Fprintf(a.stderr, "agent-peer service install: %s\n", err)
+			return exitFailure
+		}
+		a.printInstalled(result)
+		return exitOK
+	}
+	result, err := uninstallFn(opts)
 	if err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer service install: %s\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer service uninstall: %s\n", err)
 		return exitFailure
 	}
-	a.printInstalled(result)
+	a.printUninstalled(result)
 	return exitOK
 }
 
@@ -74,6 +87,20 @@ func (a *app) printInstalled(result service.Result) {
 		return
 	}
 	_, _ = fmt.Fprintf(a.stdout, "installed and started %s\n", service.UnitName)
+}
+
+// printUninstalled reports what uninstall removed, or that nothing was
+// installed.
+func (a *app) printUninstalled(result service.Result) {
+	if !result.Removed {
+		_, _ = fmt.Fprintln(a.stdout, "agent-peer service is not installed")
+		return
+	}
+	if result.Domain != "" {
+		_, _ = fmt.Fprintf(a.stdout, "uninstalled %s from %s\n", service.Label, result.Domain)
+		return
+	}
+	_, _ = fmt.Fprintf(a.stdout, "uninstalled %s\n", service.UnitName)
 }
 
 // serviceUsageError reports a usage error found before the operation starts.

@@ -20,6 +20,9 @@ Commands:
   audit [--limit <n>]         read the audit log
   service install [--system]  install and start the Broker as a user-level service,
                               or system-level with --system
+  service uninstall [--system]
+                              stop and remove the installed service; configuration,
+                              identity and audit logs are kept
 `
 
 // app holds the process's standard streams, the version to report, and the
