@@ -162,6 +162,15 @@ func parseIDList(value string) ([]uint32, error) {
 // process to be root, which the Broker arranges by execing it without a
 // credential change. The real and saved uid are deliberately left alone.
 func becomeAccount(uid, gid uint32, groups []uint32) error {
+	// A check whose target identity is already the process's effective
+	// identity needs no switch. This also covers the root access check on
+	// macOS, where the account database can list more groups than Darwin's
+	// NGROUPS limit and setgroups would fail with EINVAL. Root's read and write
+	// checks do not depend on its supplementary groups.
+	if uint32(os.Geteuid()) == uid && uint32(os.Getegid()) == gid {
+		return nil
+	}
+
 	intGroups := make([]int, len(groups))
 	for i, group := range groups {
 		intGroups[i] = int(group)

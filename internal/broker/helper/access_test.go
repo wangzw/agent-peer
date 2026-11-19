@@ -543,3 +543,27 @@ func TestCheckFaccessat2RefusedIsError(t *testing.T) {
 		})
 	}
 }
+
+// TestBecomeAccountSkipsTheCurrentIdentity covers the root access check on
+// macOS: the account database lists more groups than Darwin's NGROUPS limit, so
+// setgroups would fail even though the process is already root. A check for the
+// current effective identity must not touch the groups.
+func TestBecomeAccountSkipsTheCurrentIdentity(t *testing.T) {
+	groups := make([]uint32, 64)
+	for i := range groups {
+		groups[i] = uint32(i)
+	}
+	if err := becomeAccount(uint32(os.Geteuid()), uint32(os.Getegid()), groups); err != nil {
+		t.Fatalf("becomeAccount for the current identity: %v", err)
+	}
+}
+
+// TestBecomeAccountRejectsADifferentGID covers the other half of the skip
+// condition: an equal uid alone does not skip the switch. A non-root process
+// cannot change its groups, so the attempted switch reports an error.
+func TestBecomeAccountRejectsADifferentGID(t *testing.T) {
+	skipUnlessAccessChecksAreMeaningful(t)
+	if err := becomeAccount(uint32(os.Geteuid()), uint32(os.Getegid())+1, nil); err == nil {
+		t.Fatal("becomeAccount with the current uid and a different gid: got nil, want an error")
+	}
+}
