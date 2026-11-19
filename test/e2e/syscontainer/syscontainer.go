@@ -400,38 +400,21 @@ func randomHex6() string {
 	return fmt.Sprintf("%06x", projectNameSeq&0xffffff)
 }
 
-var (
-	systemSubnetMu    sync.Mutex
-	systemSubnetSlots []string
-)
-
 // allocSystemSubnet reserves one /24 for one compose project and returns it as
 // a CIDR. Docker refuses two live networks with overlapping subnets, and every
 // system test starts its own project, so a subnet fixed in compose.yaml would
-// make parallel tests fail. The slots come from systemSubnetPrefixes, a range
-// disjoint from the harness allocator's.
+// make parallel tests fail. The reservation goes through the harness allocator,
+// which locks the shared state directory and records the owner: a second suite
+// running at the same time takes another /24 instead of the same one. The range
+// is disjoint from the harness routed allocator's.
 func allocSystemSubnet(t *testing.T) string {
 	t.Helper()
 
-	systemSubnetMu.Lock()
-	if systemSubnetSlots == nil {
-		systemSubnetSlots = systemSubnetPrefixes()
+	index, err := harness.ReserveSubnetIndex(t, systemSubnetFirst, systemSubnetLast)
+	if err != nil {
+		t.Fatalf("syscontainer: reserving a system network subnet: %v", err)
 	}
-	if len(systemSubnetSlots) == 0 {
-		systemSubnetMu.Unlock()
-		t.Fatalf("syscontainer: no free subnet left for the system network")
-	}
-	subnet := systemSubnetSlots[0]
-	systemSubnetSlots = systemSubnetSlots[1:]
-	systemSubnetMu.Unlock()
-
-	t.Cleanup(func() {
-		systemSubnetMu.Lock()
-		systemSubnetSlots = append(systemSubnetSlots, subnet)
-		systemSubnetMu.Unlock()
-	})
-
-	return subnet
+	return systemSubnetCIDR(index)
 }
 
 // WaitFor waits up to three seconds for cond to return true, delegating the

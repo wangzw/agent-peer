@@ -65,6 +65,53 @@ func allocRoutedSubnets(t *testing.T) [3]string {
 	return [3]string{routedSubnet(indices[0]), routedSubnet(indices[1]), routedSubnet(indices[2])}
 }
 
+// ReserveSubnetIndex reserves one /24 index in [first, last] for the current
+// test process and returns it. The reservation uses the same cross-process lock
+// and owner-marked state files as allocRoutedSubnets, so a second suite running
+// at the same time takes a different index, and a reservation whose owner is
+// gone is reclaimed. The caller's t.Cleanup releases the index.
+func ReserveSubnetIndex(t testing.TB, first, last int) (int, error) {
+	t.Helper()
+	if first < 0 || last >= routedSubnetCount || first > last {
+		return 0, fmt.Errorf("subnet index range [%d, %d] is outside 198.18.0.0/15", first, last)
+	}
+	o := currentOwner()
+	index, err := reserveSubnetIndex(o, first, last)
+	if err != nil {
+		return 0, err
+	}
+	t.Cleanup(func() { releaseSubnetIndex(index, o) })
+	return index, nil
+}
+
+// reserveSubnetIndex finds one free index in [first, last] under the state lock
+// and writes this owner's marker to it.
+func reserveSubnetIndex(o owner, first, last int) (int, error) {
+	subnetMu.Lock()
+	defer subnetMu.Unlock()
+
+	unlock, err := lockSubnetState()
+	if err != nil {
+		return 0, err
+	}
+	defer unlock()
+
+	taken, err := readSubnetReservations()
+	if err != nil {
+		return 0, err
+	}
+	for index := first; index <= last; index++ {
+		if taken[index] {
+			continue
+		}
+		if err := os.WriteFile(subnetStatePath(index), []byte(o.String()), 0o600); err != nil {
+			return 0, err
+		}
+		return index, nil
+	}
+	return 0, fmt.Errorf("no free /24 left in [%d, %d]", first, last)
+}
+
 // reserveSubnetBlock finds three consecutive free indices under the state lock
 // and writes this owner's marker to each.
 func reserveSubnetBlock(o owner) ([3]int, error) {
@@ -154,13 +201,31 @@ func releaseSubnetBlock(indices [3]int, o owner) {
 	}
 	defer unlock()
 	for _, index := range indices {
-		data, err := os.ReadFile(subnetStatePath(index))
-		if err != nil {
-			continue
-		}
-		if got, ok := parseOwnerValue(string(data)); ok && got == o {
-			_ = os.Remove(subnetStatePath(index))
-		}
+		releaseSubnetFile(index, o)
+	}
+}
+
+// releaseSubnetIndex removes this owner's reservation of one index.
+func releaseSubnetIndex(index int, o owner) {
+	subnetMu.Lock()
+	defer subnetMu.Unlock()
+	unlock, err := lockSubnetState()
+	if err != nil {
+		return
+	}
+	defer unlock()
+	releaseSubnetFile(index, o)
+}
+
+// releaseSubnetFile removes the reservation file of index when it still names
+// o, so a file re-reserved by another owner is left alone.
+func releaseSubnetFile(index int, o owner) {
+	data, err := os.ReadFile(subnetStatePath(index))
+	if err != nil {
+		return
+	}
+	if got, ok := parseOwnerValue(string(data)); ok && got == o {
+		_ = os.Remove(subnetStatePath(index))
 	}
 }
 

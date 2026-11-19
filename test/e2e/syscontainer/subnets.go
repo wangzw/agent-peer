@@ -18,7 +18,14 @@ const (
 func systemSubnetPrefixes() []string {
 	out := make([]string, 0, systemSubnetLast-systemSubnetFirst+1)
 	for index := systemSubnetFirst; index <= systemSubnetLast; index++ {
-		out = append(out, fmt.Sprintf("198.%d.%d.0/24", 18+index/256, index%256))
+		out = append(out, systemSubnetCIDR(index))
 	}
 	return out
+}
+
+// systemSubnetCIDR formats the index-th /24 of 198.18.0.0/15 as a CIDR. The
+// index is the same one the harness reservation records in its shared state
+// directory.
+func systemSubnetCIDR(index int) string {
+	return fmt.Sprintf("198.%d.%d.0/24", 18+index/256, index%256)
 }
