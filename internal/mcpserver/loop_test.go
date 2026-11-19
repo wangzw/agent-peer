@@ -26,34 +26,54 @@ func loopTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+// loopWaitLimit bounds every wait for an observable loop event. Each wait ends
+// on an event (a Register stream, a status change, or a fake-clock request),
+// not on elapsed time, so the bound is a safety net that turns a stuck loop
+// into a test failure rather than a hang. It is helloTimeout plus one second:
+// a Hello that hangs reaches helloTimeout, and the test must not reach its own
+// bound at the same moment, or a loaded runner fails both at once. The extra
+// second keeps the failure report about the loop instead of racing the
+// product's own timeout.
+const loopWaitLimit = helloTimeout + time.Second
+
 // loopClock replaces time.After in the loop. Every wait is recorded, and the
-// test drives it with advance. An advance that arrives before the wait is
-// remembered and fires the next wait at once.
+// test drives it with advance or autoAdvance. An advance that arrives before
+// the wait is remembered and fires the next wait at once. It also closes a
+// changed channel whenever a wait is recorded, so a test can wait for that
+// event instead of polling the recorded waits on a wall-clock deadline.
 type loopClock struct {
 	mu      sync.Mutex
 	waits   []time.Duration
 	pending chan time.Time
 	queued  int
+	auto    bool
+	changed chan struct{}
 }
 
 func newLoopClock() *loopClock {
-	return &loopClock{}
+	return &loopClock{changed: make(chan struct{})}
 }
 
 func (c *loopClock) after(d time.Duration) <-chan time.Time {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.waits = append(c.waits, d)
 	ch := make(chan time.Time, 1)
-	if c.queued > 0 {
+	switch {
+	case c.queued > 0:
 		c.queued--
 		ch <- time.Now()
-	} else {
+	case c.auto:
+		ch <- time.Now()
+	default:
 		c.pending = ch
 	}
-	c.mu.Unlock()
+	close(c.changed)
+	c.changed = make(chan struct{})
 	return ch
 }
 
+// advance releases the pending wait, or queues one tick for the next wait.
 func (c *loopClock) advance() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -65,6 +85,20 @@ func (c *loopClock) advance() {
 	c.queued++
 }
 
+// autoAdvance releases the pending wait and every later wait as soon as the
+// loop requests it. A test that only needs the loop to reconnect uses this
+// instead of sequencing every wait, so it never has to observe the loop's
+// internal progress before it can let the loop proceed.
+func (c *loopClock) autoAdvance() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.auto = true
+	if c.pending != nil {
+		c.pending <- time.Now()
+		c.pending = nil
+	}
+}
+
 func (c *loopClock) durations() []time.Duration {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -74,23 +108,34 @@ func (c *loopClock) durations() []time.Duration {
 }
 
 // loopWaitCount waits until the loop has requested n waits and returns them.
+// It ends on the clock's notification, not on a poll interval.
 func loopWaitCount(t *testing.T, c *loopClock, n int) []time.Duration {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if got := c.durations(); len(got) >= n {
-			return got
+	deadline := time.NewTimer(loopWaitLimit)
+	defer deadline.Stop()
+	for {
+		c.mu.Lock()
+		if len(c.waits) >= n {
+			out := append([]time.Duration(nil), c.waits...)
+			c.mu.Unlock()
+			return out
 		}
-		time.Sleep(2 * time.Millisecond)
+		changed := c.changed
+		c.mu.Unlock()
+
+		select {
+		case <-changed:
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for %d backoff waits; saw %v", n, c.durations())
+			return nil
+		}
 	}
-	t.Fatalf("timed out waiting for %d backoff waits; saw %v", n, c.durations())
-	return nil
 }
 
 // loopWaitStatus polls the status store until cond holds.
 func loopWaitStatus(t *testing.T, st *statusStore, what string, cond func(Status) bool) Status {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(loopWaitLimit)
 	for time.Now().Before(deadline) {
 		s := st.Get()
 		if cond(s) {
@@ -105,7 +150,7 @@ func loopWaitStatus(t *testing.T, st *statusStore, what string, cond func(Status
 // loopNextRegister waits for the next Register stream on srv.
 func loopNextRegister(t *testing.T, srv *fakelocal.Server) *fakelocal.RegisterConn {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), loopWaitLimit)
 	defer cancel()
 	conn, err := srv.NextRegister(ctx)
 	if err != nil {
@@ -120,7 +165,7 @@ func loopAwaitString(t *testing.T, ch <-chan string, what string) string {
 	select {
 	case v := <-ch:
 		return v
-	case <-time.After(3 * time.Second):
+	case <-time.After(loopWaitLimit):
 		t.Fatalf("timed out waiting for %s", what)
 		return ""
 	}
@@ -140,7 +185,7 @@ func loopCountCalls(srv *fakelocal.Server, method string) int {
 // loopWaitCalls waits until calls() reaches want.
 func loopWaitCalls(t *testing.T, calls func() int, want int, what string) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(loopWaitLimit)
 	for time.Now().Before(deadline) {
 		if calls() >= want {
 			return
@@ -205,8 +250,8 @@ func loopStart(t *testing.T, deps loopDeps) (stop func()) {
 			cancel()
 			select {
 			case <-done:
-			case <-time.After(3 * time.Second):
-				t.Errorf("runLoop did not return within 3s of cancelling its context")
+			case <-time.After(loopWaitLimit):
+				t.Errorf("runLoop did not return within %v of cancelling its context", loopWaitLimit)
 			}
 		})
 	}
@@ -245,14 +290,17 @@ func TestRunLoop(t *testing.T) {
 
 		srv.Stop()
 
-		waits := loopWaitCount(t, clock, 1)
-		if waits[0] != 250*time.Millisecond {
-			t.Fatalf("first reconnect wait = %v, want 250ms", waits[0])
-		}
+		// Start the replacement and let the fake clock release the reconnect
+		// wait without first waiting for the loop to request that wait. The
+		// clock fires a wait as soon as it is asked for, so the only real-time
+		// wait below is for the Register stream itself.
 		replacement := fakelocal.Start(t, path, fakelocal.Handlers{})
-		clock.advance()
+		clock.autoAdvance()
 
 		second := loopNextRegister(t, replacement)
+		if waits := clock.durations(); len(waits) == 0 || waits[0] != 250*time.Millisecond {
+			t.Fatalf("reconnect waits before the second Register = %v, want the first one to be 250ms", waits)
+		}
 		if got, want := second.First.GetInboxSocketPath(), first.First.GetInboxSocketPath(); got != want {
 			t.Errorf("second first frame inbox_socket_path = %q, want %q", got, want)
 		}
@@ -264,6 +312,57 @@ func TestRunLoop(t *testing.T) {
 		}
 		if got := loopAwaitString(t, completed, "the second completion"); got != "id1" {
 			t.Fatalf("second onComplete agent ID = %q, want id1", got)
+		}
+		stop()
+	})
+
+	t.Run("a reconnect retries after a transient dial failure", func(t *testing.T) {
+		// A loaded runner can fail the first dial after a reconnect wait. The
+		// test must release the following wait as well instead of assuming one
+		// attempt is enough; otherwise the Register stream is still correct
+		// but the test times out waiting for it.
+		path := fakelocal.SocketPath(t)
+		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
+		completed := make(chan string, 8)
+
+		st := &statusStore{}
+		clock := newLoopClock()
+		deps := loopBaseDeps(st, clock)
+		deps.selectTarget = func(context.Context) (target, error) {
+			return target{Path: path, Kind: kindUser}, nil
+		}
+		var dials atomic.Int32
+		baseDial := deps.dial
+		deps.dial = func(path string) (*grpc.ClientConn, localpb.LocalClient, error) {
+			if dials.Add(1) == 2 {
+				return nil, nil, errors.New("transient dial failure")
+			}
+			return baseDial(path)
+		}
+		deps.onComplete = func(_ context.Context, _ localpb.LocalClient, agentID string, _ bool) {
+			completed <- agentID
+		}
+		stop := loopStart(t, deps)
+
+		first := loopNextRegister(t, srv)
+		if err := first.Complete("id1", "me@h", false); err != nil {
+			t.Fatalf("sending registration_complete: %v", err)
+		}
+		if got := loopAwaitString(t, completed, "the first completion"); got != "id1" {
+			t.Fatalf("onComplete agent ID = %q, want id1", got)
+		}
+
+		srv.Stop()
+		replacement := fakelocal.Start(t, path, fakelocal.Handlers{})
+		clock.autoAdvance()
+
+		second := loopNextRegister(t, replacement)
+		if waits := clock.durations(); len(waits) < 2 ||
+			waits[0] != 250*time.Millisecond || waits[1] != 500*time.Millisecond {
+			t.Fatalf("waits before the second Register = %v, want 250ms then 500ms", waits)
+		}
+		if err := second.Complete("id2", "me@h", false); err != nil {
+			t.Fatalf("sending the second registration_complete: %v", err)
 		}
 		stop()
 	})
@@ -291,14 +390,13 @@ func TestRunLoop(t *testing.T) {
 		}
 		userSrv.Stop()
 
-		waits := loopWaitCount(t, clock, 1)
-		if waits[0] != 250*time.Millisecond {
-			t.Fatalf("first reconnect wait = %v, want 250ms", waits[0])
-		}
 		replacement := fakelocal.Start(t, userPath, fakelocal.Handlers{})
-		clock.advance()
+		clock.autoAdvance()
 
 		second := loopNextRegister(t, replacement)
+		if waits := clock.durations(); len(waits) == 0 || waits[0] != 250*time.Millisecond {
+			t.Fatalf("reconnect waits before the second Register = %v, want the first one to be 250ms", waits)
+		}
 		if err := second.Complete("id2", "me@h", false); err != nil {
 			t.Fatalf("sending the second registration_complete: %v", err)
 		}
@@ -335,14 +433,13 @@ func TestRunLoop(t *testing.T) {
 		}
 		srv.Stop()
 
-		waits := loopWaitCount(t, clock, 1)
-		if waits[0] != 250*time.Millisecond {
-			t.Fatalf("first wait = %v, want 250ms", waits[0])
-		}
 		replacement := fakelocal.Start(t, path, fakelocal.Handlers{})
-		clock.advance()
+		clock.autoAdvance()
 
 		second := loopNextRegister(t, replacement)
+		if waits := clock.durations(); len(waits) == 0 || waits[0] != 250*time.Millisecond {
+			t.Fatalf("reconnect waits before the second Register = %v, want the first one to be 250ms", waits)
+		}
 		if got, want := second.First.GetInboxSocketPath(), first.First.GetInboxSocketPath(); got != want {
 			t.Errorf("first frame after the restart = %q, want %q", got, want)
 		}
@@ -374,14 +471,13 @@ func TestRunLoop(t *testing.T) {
 		if !strings.Contains(status.Detail, "AGENT_PEER_SOCKET") {
 			t.Fatalf("Detail = %q, want it to name AGENT_PEER_SOCKET", status.Detail)
 		}
-		waits := loopWaitCount(t, clock, 1)
-		if waits[0] != 250*time.Millisecond {
-			t.Fatalf("first wait = %v, want 250ms", waits[0])
-		}
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
-		clock.advance()
+		clock.autoAdvance()
 
 		conn := loopNextRegister(t, srv)
+		if waits := clock.durations(); len(waits) == 0 || waits[0] != 250*time.Millisecond {
+			t.Fatalf("reconnect waits before the Register = %v, want the first one to be 250ms", waits)
+		}
 		if err := conn.Complete("id1", "me@h", false); err != nil {
 			t.Fatalf("sending registration_complete: %v", err)
 		}
@@ -412,13 +508,12 @@ func TestRunLoop(t *testing.T) {
 
 		// The retry uses the connection backoff; there is no separate launch
 		// backoff to wait through.
-		waits := loopWaitCount(t, clock, 1)
-		if waits[0] != 250*time.Millisecond {
-			t.Fatalf("first wait after no Broker = %v, want 250ms", waits[0])
-		}
-		clock.advance()
+		clock.autoAdvance()
 
 		conn := loopNextRegister(t, srv)
+		if waits := clock.durations(); len(waits) == 0 || waits[0] != 250*time.Millisecond {
+			t.Fatalf("first wait after no Broker = %v, want 250ms", waits)
+		}
 		if err := conn.Complete("id1", "me@h", false); err != nil {
 			t.Fatalf("sending registration_complete: %v", err)
 		}
@@ -580,13 +675,12 @@ func TestRunLoop(t *testing.T) {
 
 		// The Broker leaving READY is still a failed attempt: reconnect waits
 		// one connection backoff before dialing again.
-		waits := loopWaitCount(t, clock, 1)
-		if waits[0] != 250*time.Millisecond {
-			t.Fatalf("reconnect wait after a version mismatch = %v, want 250ms", waits[0])
-		}
-		clock.advance()
+		clock.autoAdvance()
 
 		conn := loopNextRegister(t, srv)
+		if waits := clock.durations(); len(waits) == 0 || waits[0] != 250*time.Millisecond {
+			t.Fatalf("reconnect waits before the Register = %v, want the first one to be 250ms", waits)
+		}
 		if err := conn.Complete("id1", "me@h", false); err != nil {
 			t.Fatalf("sending registration_complete: %v", err)
 		}
@@ -628,12 +722,11 @@ func TestRunLoop(t *testing.T) {
 		brokerVersion.Store(1)
 		srv.Restart()
 
-		waits := loopWaitCount(t, clock, 1)
-		if waits[0] != 250*time.Millisecond {
-			t.Fatalf("wait before reconnecting to the system-level Broker = %v, want 250ms", waits[0])
-		}
-		clock.advance()
+		clock.autoAdvance()
 		conn := loopNextRegister(t, srv)
+		if waits := clock.durations(); len(waits) == 0 || waits[0] != 250*time.Millisecond {
+			t.Fatalf("waits before reconnecting to the system-level Broker = %v, want the first one to be 250ms", waits)
+		}
 		if err := conn.Complete("id1", "me@h", false); err != nil {
 			t.Fatalf("sending registration_complete: %v", err)
 		}
@@ -787,13 +880,12 @@ func TestRunLoop(t *testing.T) {
 		}
 		loopStart(t, deps)
 
-		waits := loopWaitCount(t, clock, 1)
-		if waits[0] != 250*time.Millisecond {
-			t.Fatalf("wait after the panic = %v, want 250ms", waits[0])
-		}
-		clock.advance()
+		clock.autoAdvance()
 
 		conn := loopNextRegister(t, srv)
+		if waits := clock.durations(); len(waits) == 0 || waits[0] != 250*time.Millisecond {
+			t.Fatalf("waits after the panic = %v, want the first one to be 250ms", waits)
+		}
 		if err := conn.Complete("id1", "me@h", false); err != nil {
 			t.Fatalf("sending registration_complete: %v", err)
 		}
@@ -828,12 +920,12 @@ func TestRunLoop(t *testing.T) {
 		cancel()
 		select {
 		case <-done:
-		case <-time.After(3 * time.Second):
-			t.Fatal("runLoop did not return within 3s of cancelling its context")
+		case <-time.After(loopWaitLimit):
+			t.Fatalf("runLoop did not return within %v of cancelling its context", loopWaitLimit)
 		}
 		select {
 		case <-conn.Done():
-		case <-time.After(3 * time.Second):
+		case <-time.After(loopWaitLimit):
 			t.Fatal("the Register stream stayed open after the context was cancelled")
 		}
 	})
