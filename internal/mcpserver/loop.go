@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -171,6 +172,19 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 	}
 	launch.reset()
 
+	// launched records that a launch succeeded and its one immediate
+	// connection attempt has not failed yet. The next launch waits the
+	// connection backoff; the connection itself does not. A completed
+	// registration ends the launch cycle and clears it. The completion runs
+	// in its own goroutine, so the flag is atomic.
+	var launched atomic.Bool
+	complete := d.onComplete
+	onComplete := func(ctx context.Context, c localpb.LocalClient, agentID string, autoJoin bool) {
+		launched.Store(false)
+		if complete != nil {
+			complete(ctx, c, agentID, autoJoin)
+		}
+	}
 	for {
 		if ctx.Err() != nil {
 			return true
@@ -180,7 +194,7 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 		if err != nil {
 			loopSetStatus(d.st, PhaseUnavailable,
 				fmt.Sprintf("the Broker at %s is unavailable: %v", t.Path, err), "", nil)
-			if !loopReconnect(ctx, d, t, conn, launch) {
+			if !loopReconnect(ctx, d, t, conn, launch, &launched) {
 				return true
 			}
 			continue
@@ -191,7 +205,7 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 			_ = cc.Close()
 			loopSetStatus(d.st, PhaseUnavailable,
 				fmt.Sprintf("the Broker at %s is unavailable: %v", t.Path, err), "", nil)
-			if !loopReconnect(ctx, d, t, conn, launch) {
+			if !loopReconnect(ctx, d, t, conn, launch, &launched) {
 				return true
 			}
 			continue
@@ -218,7 +232,7 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 			if ctx.Err() != nil {
 				return true
 			}
-			if !loopReconnect(ctx, d, t, conn, launch) {
+			if !loopReconnect(ctx, d, t, conn, launch, &launched) {
 				return true
 			}
 			continue
@@ -231,7 +245,7 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 			s.Client = client
 		})
 
-		_ = d.register(ctx, client, d.first, d.st, d.onComplete, d.log)
+		_ = d.register(ctx, client, d.first, d.st, onComplete, d.log)
 		_ = cc.Close()
 		if ctx.Err() != nil {
 			return true
@@ -239,7 +253,7 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 		loopSetStatus(d.st, PhaseUnavailable, loopLostText, "", nil)
 		// Reconnect to the same target through the same rules as a failed dial,
 		// so a Register stream that ends at once does not spin.
-		if !loopReconnect(ctx, d, t, conn, launch) {
+		if !loopReconnect(ctx, d, t, conn, launch, &launched) {
 			return true
 		}
 	}
@@ -249,7 +263,8 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 // Broker is launched when its socket is gone; a socket that still answers, one
 // served by another account, a system-level Broker and the one named by
 // AGENT_PEER_SOCKET are only retried. It returns false when ctx is done.
-func loopReconnect(ctx context.Context, d loopDeps, t target, conn *loopConnBackoff, launch *loopLaunchBackoff) bool {
+func loopReconnect(ctx context.Context, d loopDeps, t target, conn *loopConnBackoff, launch *loopLaunchBackoff,
+	launched *atomic.Bool) bool {
 	if t.Kind != kindUser {
 		return loopWait(ctx, d.after, conn.next())
 	}
@@ -271,8 +286,20 @@ func loopReconnect(ctx context.Context, d loopDeps, t target, conn *loopConnBack
 		return false
 	}
 
+	if launched.Load() {
+		// The launch got its one immediate connection attempt, which failed.
+		// Pace the next launch by the connection backoff; a successful launch
+		// must not reset it. This is not a connection attempt, so it does not
+		// delay the connection that follows a successful launch.
+		launched.Store(false)
+		if !loopWait(ctx, d.after, conn.next()) {
+			return false
+		}
+	}
+
 	err := d.launch.Launch(ctx)
 	if err == nil {
+		launched.Store(true)
 		return true
 	}
 	if ctx.Err() != nil {

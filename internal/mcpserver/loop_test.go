@@ -494,6 +494,196 @@ func TestRunLoop(t *testing.T) {
 		}
 	})
 
+	t.Run("a successful launch still backs off before retrying", func(t *testing.T) {
+		// design:119, design:125: the connection is retried in the background
+		// under a backoff. A launch that reports success is not a connection,
+		// so a socket that never appears must not turn the retries into a tight
+		// launch loop.
+		path := fakelocal.SocketPath(t)
+		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
+
+		st := &statusStore{}
+		clock := newLoopClock()
+		deps := loopBaseDeps(st, clock)
+		deps.selectTarget = func(context.Context) (target, error) {
+			return target{Path: path, Kind: kindUser}, nil
+		}
+		// The launcher reports success every time and never binds the socket,
+		// which is what a Broker that starts and exits at once looks like.
+		launcher := &loopLauncher{}
+		deps.launch = launcher
+		var gone atomic.Bool
+		realProbe := deps.probe
+		deps.probe = func(ctx context.Context, p string) probeResult {
+			if gone.Load() {
+				return probeMissing
+			}
+			return realProbe(ctx, p)
+		}
+		stop := loopStart(t, deps)
+
+		first := loopNextRegister(t, srv)
+		if err := first.Complete("id1", "me@h", false); err != nil {
+			t.Fatalf("sending registration_complete: %v", err)
+		}
+		loopWaitStatus(t, st, "the registered agent", func(s Status) bool { return s.AgentID == "id1" })
+
+		gone.Store(true)
+		srv.Stop()
+
+		// Every launch is followed by the connection backoff: 250ms, then
+		// 500ms, then 1s. A loop that retried at once records no wait at all.
+		deadline := time.Now().Add(3 * time.Second)
+		for len(clock.durations()) == 0 && time.Now().Before(deadline) {
+			time.Sleep(2 * time.Millisecond)
+		}
+		waits := clock.durations()
+		if len(waits) == 0 {
+			t.Fatalf("no backoff after a successful launch; the loop launched a Broker %d times", launcher.count())
+		}
+		if waits[0] != 250*time.Millisecond {
+			t.Fatalf("backoff after the first launch = %v, want 250ms", waits[0])
+		}
+		if got := launcher.count(); got != 1 {
+			t.Fatalf("launches when the first backoff started = %d, want 1", got)
+		}
+		clock.advance()
+
+		waits = loopWaitCount(t, clock, 2)
+		if waits[1] != 500*time.Millisecond {
+			t.Fatalf("backoff after the second launch = %v, want 500ms", waits[1])
+		}
+		if got := launcher.count(); got != 2 {
+			t.Fatalf("launches when the second backoff started = %d, want 2", got)
+		}
+		clock.advance()
+
+		waits = loopWaitCount(t, clock, 3)
+		if waits[2] != time.Second {
+			t.Fatalf("backoff after the third launch = %v, want 1s", waits[2])
+		}
+		if got := launcher.count(); got != 3 {
+			t.Fatalf("launches when the third backoff started = %d, want 3", got)
+		}
+		stop()
+	})
+
+	t.Run("a launch that binds the socket connects without waiting", func(t *testing.T) {
+		// design:119: the launch is followed by one immediate connection
+		// attempt. The backoff paces the next launch after that attempt fails,
+		// not the connection itself.
+		path := fakelocal.SocketPath(t)
+		newServers := make(chan *fakelocal.Server, 1)
+
+		st := &statusStore{}
+		clock := newLoopClock()
+		deps := loopBaseDeps(st, clock)
+		deps.selectTarget = func(context.Context) (target, error) {
+			return target{Path: path, Kind: kindUser}, nil
+		}
+		deps.launch = &loopLauncher{fn: func(context.Context) error {
+			s := fakelocal.Start(t, path, fakelocal.Handlers{})
+			newServers <- s
+			return nil
+		}}
+		stop := loopStart(t, deps)
+
+		var srv *fakelocal.Server
+		select {
+		case srv = <-newServers:
+		case <-time.After(3 * time.Second):
+			t.Fatal("the loop did not launch the user-level Broker")
+		}
+		// The clock is never advanced: the connection after the launch must not
+		// wait for a backoff.
+		conn := loopNextRegister(t, srv)
+		if err := conn.Complete("id1", "me@h", false); err != nil {
+			t.Fatalf("sending registration_complete: %v", err)
+		}
+		loopWaitStatus(t, st, "the registered agent", func(s Status) bool { return s.AgentID == "id1" })
+		if waits := clock.durations(); len(waits) != 0 {
+			t.Fatalf("waits before the first connection after a launch = %v, want none", waits)
+		}
+		stop()
+	})
+
+	t.Run("a reconnect after a completed registration launches without an extra wait", func(t *testing.T) {
+		// design:125: only a completed registration resets the backoff. It also
+		// ends the launch cycle, so a later disconnect does not wait for the
+		// backoff that paces launches after a failed attempt.
+		path := fakelocal.SocketPath(t)
+		servers := make(chan *fakelocal.Server, 2)
+		completed := make(chan struct{}, 1)
+
+		st := &statusStore{}
+		clock := newLoopClock()
+		deps := loopBaseDeps(st, clock)
+		deps.selectTarget = func(context.Context) (target, error) {
+			return target{Path: path, Kind: kindUser}, nil
+		}
+		var gone atomic.Bool
+		stopped := make(chan struct{})
+		deps.launch = &loopLauncher{fn: func(ctx context.Context) error {
+			if gone.Load() {
+				// The second launch can start while Stop is still removing the
+				// old socket file; bind only after Stop has returned.
+				select {
+				case <-stopped:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+			s := fakelocal.Start(t, path, fakelocal.Handlers{})
+			if gone.Load() {
+				gone.Store(false)
+			}
+			servers <- s
+			return nil
+		}}
+		deps.onComplete = func(context.Context, localpb.LocalClient, string, bool) {
+			completed <- struct{}{}
+		}
+		stop := loopStart(t, deps)
+
+		var first *fakelocal.Server
+		select {
+		case first = <-servers:
+		case <-time.After(3 * time.Second):
+			t.Fatal("the loop did not launch the user-level Broker")
+		}
+		conn := loopNextRegister(t, first)
+		if err := conn.Complete("id1", "me@h", false); err != nil {
+			t.Fatalf("sending registration_complete: %v", err)
+		}
+		select {
+		case <-completed:
+		case <-time.After(3 * time.Second):
+			t.Fatal("the first registration did not complete")
+		}
+
+		// The Broker goes away after the completed registration. The next
+		// launch must not wait for a backoff; the clock is never advanced.
+		gone.Store(true)
+		first.Stop()
+		close(stopped)
+
+		var second *fakelocal.Server
+		select {
+		case second = <-servers:
+		case <-time.After(3 * time.Second):
+			t.Fatal("the loop waited a backoff before relaunching after a completed registration")
+		}
+		conn = loopNextRegister(t, second)
+		if err := conn.Complete("id2", "me@h", false); err != nil {
+			t.Fatalf("sending the second registration_complete: %v", err)
+		}
+		loopWaitStatus(t, st, "the re-registered agent", func(s Status) bool { return s.AgentID == "id2" })
+		if waits := clock.durations(); len(waits) != 0 {
+			t.Fatalf("waits after a completed registration and disconnect = %v, want none", waits)
+		}
+		stop()
+	})
+
 	t.Run("version mismatch waits for the Broker instead of polling", func(t *testing.T) {
 		// REQ-broker-config-016
 		path := fakelocal.SocketPath(t)
