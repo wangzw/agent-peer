@@ -25,6 +25,8 @@ Commands:
   peer connect <address> --key <key> [--alias <alias>]
                               pair with another Broker
   peer disconnect <broker>    remove a pairing
+  update [--yes]              update to the latest release and restart the
+                              installed service; --yes skips the question
   service install [--system]  install and start the Broker as a user-level service,
                               or system-level with --system
   service uninstall [--system]

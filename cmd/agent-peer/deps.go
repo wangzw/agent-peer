@@ -3,6 +3,10 @@ package main
 import (
 	"context"
 	"io"
+	"net/http"
+
+	"github.com/wangzw/agent-peer/internal/broker/service"
+	"github.com/wangzw/agent-peer/internal/broker/update"
 )
 
 // brokerOptions is the subset of the Broker's run options that the command
@@ -91,4 +95,14 @@ type deps struct {
 	runPeerList         func(ctx context.Context, stdout io.Writer) error
 	runPeerConnect      func(ctx context.Context, address, key, alias string, stdout, warn io.Writer) error
 	runPeerDisconnect   func(ctx context.Context, broker string, stdout io.Writer) error
+
+	// Update command. The command asks GitHub for the latest release, replaces
+	// the binary, and restarts the service installed at the level the effective
+	// user belongs to.
+	updateAPIBase  func() string
+	updateLatest   func(ctx context.Context, client *http.Client, api string) (update.Release, error)
+	updateNewer    func(current, candidate string) bool
+	updateApply    func(ctx context.Context, o update.ApplyOptions) error
+	serviceOptions func(system bool) (service.Options, error)
+	serviceRestart func(ctx context.Context, opts service.Options) (bool, error)
 }

@@ -6,6 +6,8 @@ import (
 	"io"
 
 	"github.com/wangzw/agent-peer/internal/broker"
+	"github.com/wangzw/agent-peer/internal/broker/service"
+	"github.com/wangzw/agent-peer/internal/broker/update"
 	"github.com/wangzw/agent-peer/internal/mcpserver"
 	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
 )
@@ -78,6 +80,13 @@ func realDeps(version string) deps {
 		runPeerDisconnect: func(ctx context.Context, broker string, stdout io.Writer) error {
 			return termcmd.RunPeerDisconnect(ctx, findBroker, broker, stdout)
 		},
+
+		updateAPIBase:  update.APIBase,
+		updateLatest:   update.Latest,
+		updateNewer:    update.Newer,
+		updateApply:    update.Apply,
+		serviceOptions: service.DefaultOptions,
+		serviceRestart: service.Restart,
 	}
 }
 

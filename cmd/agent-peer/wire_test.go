@@ -50,6 +50,24 @@ func TestRealDepsAllWired(t *testing.T) {
 	if d.runPeerDisconnect == nil {
 		t.Error("runPeerDisconnect is nil")
 	}
+	if d.updateAPIBase == nil {
+		t.Error("updateAPIBase is nil")
+	}
+	if d.updateLatest == nil {
+		t.Error("updateLatest is nil")
+	}
+	if d.updateNewer == nil {
+		t.Error("updateNewer is nil")
+	}
+	if d.updateApply == nil {
+		t.Error("updateApply is nil")
+	}
+	if d.serviceOptions == nil {
+		t.Error("serviceOptions is nil")
+	}
+	if d.serviceRestart == nil {
+		t.Error("serviceRestart is nil")
+	}
 }
 
 func TestClassifyBrokerErr(t *testing.T) {
