@@ -8,8 +8,13 @@ if ! rs_start_broker; then
 fi
 
 # registry.sh probes whether the Broker follows the Claude Code session
-# registry reliably on Linux, and whether a renamed session is listed under its
-# new name with its previous name.
+# registry reliably on Linux and macOS, and whether a renamed session is listed
+# under its new name with its previous name.
+#
+# The measurements that only Linux can make (the inotify instance count and
+# limit, and strace) are skipped on macOS and recorded as skipped; a macOS
+# Broker watches the directory with kqueue, and the probe reads the Broker's
+# open file descriptors only as a note, not as a criterion.
 #
 # The pre-push check of the plan ("Status must not reread records") holds: the
 # Status handler in internal/broker/status.go reads only the in-memory table,
@@ -22,6 +27,9 @@ fi
 # notifications, and rsprobe status reports the Broker's table.
 
 PROMPT='When a cross-session message arrives, reply with the single word ok and do nothing else. Do not call any tool unless the user explicitly asks.'
+
+# REG_OS selects the platform-specific process and clock helpers below.
+REG_OS="$(uname -s)"
 
 printf 'op\tsubject\tattempt\telapsed_ms\tdetail\n' >"$OUT/timings.tsv"
 
@@ -67,9 +75,14 @@ reg_wait_present() {
 	reg_line_present "$name"
 }
 
-# reg_now_ms prints the current time in milliseconds.
+# reg_now_ms prints the current time in milliseconds. GNU date prints %3N;
+# BSD date, which macOS ships, does not, so Darwin reads the clock from python3.
 reg_now_ms() {
-	date +%s%3N
+	if [[ "$REG_OS" == Darwin ]]; then
+		python3 -c 'import time; print(int(time.time() * 1000))'
+	else
+		date +%s%3N
+	fi
 }
 
 # reg_timing appends one row to timings.tsv.
@@ -143,8 +156,16 @@ reg_call_error() {
 }
 
 # reg_broker_pid prints the pid of the Broker rs_start_broker started. It runs
-# as "<exe> broker" with its standard error in $OUT/broker.log.
+# as "<exe> broker" with its standard error in $OUT/broker.log. Linux reads
+# /proc; macOS has none, so Darwin matches the command line with pgrep.
 reg_broker_pid() {
+	if [[ "$REG_OS" == Darwin ]]; then
+		local pid
+		pid="$(pgrep -f -- "$R/bin/agent-peer broker" 2>/dev/null | sed -n '1p')" || true
+		[[ -n "$pid" ]] || return 1
+		printf '%s\n' "$pid"
+		return 0
+	fi
 	local proc exe second
 	for proc in /proc/[0-9]*; do
 		exe="$(readlink "$proc/exe" 2>/dev/null)" || continue
@@ -314,26 +335,48 @@ for attempt in 2 3 4 5 6 7 8 9 10; do
 	fi
 done
 
-# Record the inotify capacity and how many instances the Broker holds.
-max_instances=unreadable
-if [[ -r /proc/sys/fs/inotify/max_user_instances ]]; then
-	max_instances="$(cat /proc/sys/fs/inotify/max_user_instances)"
-fi
-{
-	printf 'max_user_instances=%s\n' "$max_instances"
-	if broker_pid="$(reg_broker_pid)"; then
-		instances=0
-		for fdinfo in "/proc/$broker_pid"/fdinfo/*; do
-			[[ -e "$fdinfo" ]] || continue
-			if grep -q '^inotify ' "$fdinfo"; then
-				instances=$((instances + 1))
+# Record the inotify capacity and how many instances the Broker holds. macOS
+# has neither inotify nor strace: its Broker watches with kqueue, so both
+# measurements are recorded as skipped, and the Broker's open descriptors are
+# recorded only as a note.
+if [[ "$REG_OS" == Darwin ]]; then
+	{
+		printf 'inotify_max_user_instances=skipped (Linux only)\n'
+		printf 'inotify_instances=skipped (macOS: the Broker watches with kqueue)\n'
+		printf 'strace=skipped (Linux only; this probe does not use it)\n'
+		if broker_pid="$(reg_broker_pid)"; then
+			printf 'broker_pid=%s\n' "$broker_pid"
+			if command -v lsof >/dev/null 2>&1; then
+				fd_count="$(lsof -p "$broker_pid" 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')"
+				printf 'broker_open_fds=%s (recorded only; not a criterion)\n' "$fd_count"
+			else
+				printf 'broker_open_fds=skipped (lsof not found)\n'
 			fi
-		done
-		printf 'broker_pid=%s\nbroker_inotify_instances=%s\n' "$broker_pid" "$instances"
-	else
-		printf 'broker_pid=not found\nbroker_inotify_instances=unknown\n'
+		else
+			printf 'broker_pid=not found\n'
+		fi
+	} >"$OUT/inotify.txt"
+else
+	max_instances=unreadable
+	if [[ -r /proc/sys/fs/inotify/max_user_instances ]]; then
+		max_instances="$(cat /proc/sys/fs/inotify/max_user_instances)"
 	fi
-} >"$OUT/inotify.txt"
+	{
+		printf 'max_user_instances=%s\n' "$max_instances"
+		if broker_pid="$(reg_broker_pid)"; then
+			instances=0
+			for fdinfo in "/proc/$broker_pid"/fdinfo/*; do
+				[[ -e "$fdinfo" ]] || continue
+				if grep -q '^inotify ' "$fdinfo"; then
+					instances=$((instances + 1))
+				fi
+			done
+			printf 'broker_pid=%s\nbroker_inotify_instances=%s\n' "$broker_pid" "$instances"
+		else
+			printf 'broker_pid=not found\nbroker_inotify_instances=unknown\n'
+		fi
+	} >"$OUT/inotify.txt"
+fi
 
 # Step 9: stop the watcher and record what it saw.
 reg_status >"$OUT/status-final.txt"
