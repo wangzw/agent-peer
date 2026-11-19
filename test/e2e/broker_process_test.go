@@ -201,6 +201,18 @@ func TestBrokerProcessLocal(t *testing.T) {
 			t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 		}
 
+		// The one retry rewrites the FreeAddr addresses it finds in the
+		// arguments and in the configuration file. Check the listener and the
+		// file the product leaves behind against those actual addresses; the
+		// assertion itself is unchanged: --listen must not touch the file and
+		// only the override may be listening.
+		override = start.Address(override)
+		configured = start.Address(configured)
+		expectedConfig := string(before)
+		for old, actual := range start.Addrs {
+			expectedConfig = strings.ReplaceAll(expectedConfig, old, actual)
+		}
+
 		addrs, err := node.ListeningAddrs(start.PID)
 		if err != nil {
 			t.Fatalf("reading the Broker's listening addresses: %v", err)
@@ -212,15 +224,15 @@ func TestBrokerProcessLocal(t *testing.T) {
 			t.Fatalf("the Broker listens on the configured address %s although --listen named %s: %v", configured, override, addrs)
 		}
 
-		if after := host.ReadConfig(t); string(after) != string(before) {
-			t.Fatalf("--listen changed the configuration file:\nbefore %q\nafter  %q", before, after)
+		if after := host.ReadConfig(t); string(after) != expectedConfig {
+			t.Fatalf("--listen changed the configuration file:\nbefore %q\nafter  %q", expectedConfig, after)
 		}
 
 		if code := host.StopBroker(t, syscall.SIGTERM); code != 0 {
 			t.Fatalf("the Broker exited %d on SIGTERM, want 0", code)
 		}
-		if after := host.ReadConfig(t); string(after) != string(before) {
-			t.Fatalf("shutdown changed the configuration file:\nbefore %q\nafter  %q", before, after)
+		if after := host.ReadConfig(t); string(after) != expectedConfig {
+			t.Fatalf("shutdown changed the configuration file:\nbefore %q\nafter  %q", expectedConfig, after)
 		}
 	})
 }

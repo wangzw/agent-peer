@@ -544,8 +544,9 @@ func logHasAddressInUse(path string) bool {
 // replaceFreeAddrs replaces every address this node handed out through
 // FreeAddr that appears in args or configText with a fresh one. Addresses the
 // test obtained elsewhere are left alone, so a scenario that deliberately
-// occupies a port still sees the Broker fail.
-func (l *localNode) replaceFreeAddrs(tb testing.TB, args []string, configText string) ([]string, string, bool) {
+// occupies a port still sees the Broker fail. The returned map records each
+// replacement so callers can learn the address the Broker actually used.
+func (l *localNode) replaceFreeAddrs(tb testing.TB, args []string, configText string) ([]string, string, map[string]string) {
 	l.mu.Lock()
 	addrs := make([]string, 0, len(l.freeAddrs))
 	for addr := range l.freeAddrs {
@@ -557,7 +558,6 @@ func (l *localNode) replaceFreeAddrs(tb testing.TB, args []string, configText st
 	sort.Slice(addrs, func(i, j int) bool { return len(addrs[i]) > len(addrs[j]) })
 
 	replacements := map[string]string{}
-	changed := false
 	replace := func(text string) string {
 		for _, old := range addrs {
 			if !strings.Contains(text, old) {
@@ -569,7 +569,6 @@ func (l *localNode) replaceFreeAddrs(tb testing.TB, args []string, configText st
 				replacements[old] = fresh
 			}
 			text = strings.ReplaceAll(text, old, fresh)
-			changed = true
 		}
 		return text
 	}
@@ -578,7 +577,7 @@ func (l *localNode) replaceFreeAddrs(tb testing.TB, args []string, configText st
 	for i, arg := range args {
 		newArgs[i] = replace(arg)
 	}
-	return newArgs, replace(configText), changed
+	return newArgs, replace(configText), replacements
 }
 
 func (l *localNode) startBroker(tb testing.TB, spec BrokerSpec) BrokerStart {
@@ -605,6 +604,10 @@ func (l *localNode) startBroker(tb testing.TB, spec BrokerSpec) BrokerStart {
 		l.writeConfig(tb, spec.ConfigYAML)
 	}
 
+	// replaced records the address changes the one retry made, so the caller
+	// learns the address the Broker actually used.
+	var replaced map[string]string
+
 	for attempt := 0; ; attempt++ {
 		l.mu.Lock()
 		l.brokers++
@@ -627,6 +630,7 @@ func (l *localNode) startBroker(tb testing.TB, spec BrokerSpec) BrokerStart {
 			l.mu.Lock()
 			l.broker = proc
 			l.mu.Unlock()
+			start.Addrs = replaced
 			return start
 		}
 
@@ -634,16 +638,18 @@ func (l *localNode) startBroker(tb testing.TB, spec BrokerSpec) BrokerStart {
 		// bind. Accept that race once: move every such address to a new one,
 		// rewrite the configuration file, and start again.
 		if attempt == 0 && logHasAddressInUse(logPath) {
-			newArgs, newConfig, changed := l.replaceFreeAddrs(tb, args, configText)
-			if changed {
+			newArgs, newConfig, replacements := l.replaceFreeAddrs(tb, args, configText)
+			if len(replacements) > 0 {
 				if newConfig != "" {
 					l.writeConfig(tb, newConfig)
 				}
 				args = newArgs
 				configText = newConfig
+				replaced = replacements
 				continue
 			}
 		}
+		start.Addrs = replaced
 		return start
 	}
 }

@@ -25,8 +25,8 @@ import (
 func TestLocalTopics(t *testing.T) {
 	host := harness.NewLocalHost(t, harness.LocalOptions{Name: "topics"})
 	listen := host.FreeAddr(t)
+	listen = topicsStartBroker(t, host, topicsConfig(listen, true), listen)
 	defaultConfig := topicsConfig(listen, true)
-	topicsStartBroker(t, host, defaultConfig)
 
 	t.Run("REQ-topics-001 join", func(t *testing.T) {
 		s := topicsSession(t, host, "joiner", topicsPlain(t))
@@ -185,7 +185,8 @@ func TestLocalTopics(t *testing.T) {
 	})
 
 	t.Run("REQ-topics-020 broker auto_join off", func(t *testing.T) {
-		topicsRestartBroker(t, host, topicsConfig(listen, false))
+		listen = topicsRestartBroker(t, host, topicsConfig(listen, false), listen)
+		defaultConfig = topicsConfig(listen, true)
 
 		s := topicsSession(t, host, "no-join", topicsOrigin(t, "https://github.com/org/repo"))
 		defer s.End(t)
@@ -202,7 +203,7 @@ func TestLocalTopics(t *testing.T) {
 	})
 
 	t.Run("REQ-topics-021 project auto_join off", func(t *testing.T) {
-		topicsRestartBroker(t, host, defaultConfig)
+		topicsRestartBroker(t, host, defaultConfig, listen)
 
 		off := topicsSession(t, host, "off", topicsProject(t, "auto_join: false\n", "https://github.com/org/repo"))
 		defer off.End(t)
@@ -253,24 +254,26 @@ func topicsSession(t *testing.T, host *harness.Node, name, workdir string) *harn
 }
 
 // topicsStartBroker starts the node's Broker and fails when it does not come
-// up.
-func topicsStartBroker(t *testing.T, host *harness.Node, config string) {
+// up. It returns the address the Broker actually uses in place of requested.
+func topicsStartBroker(t *testing.T, host *harness.Node, config, requested string) string {
 	t.Helper()
 	start := host.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
 	if !start.Running {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
+	return start.Address(requested)
 }
 
-// topicsRestartBroker stops the Broker and starts it with config. A session
-// process may start its own Broker first; that Broker refuses to start with
-// exit code 3, and the helper then waits for the process the session started.
-func topicsRestartBroker(t *testing.T, host *harness.Node, config string) {
+// topicsRestartBroker stops the Broker and starts it with config, returning the
+// address the Broker actually uses in place of requested. A session process may
+// start its own Broker first; that Broker refuses to start with exit code 3,
+// and the helper then waits for the process the session started.
+func topicsRestartBroker(t *testing.T, host *harness.Node, config, requested string) string {
 	t.Helper()
 	host.StopBroker(t, syscall.SIGTERM)
 	start := host.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
 	if start.Running {
-		return
+		return start.Address(requested)
 	}
 	if start.ExitCode != 3 {
 		t.Fatalf("the Broker did not restart: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
@@ -285,6 +288,9 @@ func topicsRestartBroker(t *testing.T, host *harness.Node, config string) {
 		}
 		return false, fmt.Sprintf("agent-peer status exited %d: %s", result.ExitCode, strings.TrimSpace(result.Stderr))
 	})
+	// The session's Broker read the configuration file as written, so no retry
+	// replaced its address.
+	return start.Address(requested)
 }
 
 // topicsGitEnv is the environment of the git commands that create test

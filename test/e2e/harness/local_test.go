@@ -388,6 +388,46 @@ func TestStartBrokerRetriesFreeAddrConflict(t *testing.T) {
 	})
 }
 
+// TestStartBrokerReportsActualAddrAfterRetry holds the address FreeAddr handed
+// out, so the first start fails on "address already in use" and the retry moves
+// the Broker to a new one. The caller must learn the address the Broker
+// actually listens on, and that address must answer.
+func TestStartBrokerReportsActualAddrAfterRetry(t *testing.T) {
+	host := NewLocalHost(t, LocalOptions{Name: "retry-address"})
+
+	var (
+		addr string
+		held net.Listener
+		err  error
+	)
+	for attempt := 0; attempt < 5; attempt++ {
+		addr = host.FreeAddr(t)
+		held, err = net.Listen("tcp", addr)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		t.Fatalf("holding a FreeAddr address: %v", err)
+	}
+	defer func() { _ = held.Close() }()
+
+	start := host.StartBroker(t, BrokerSpec{Args: []string{"--listen", addr}})
+	if !start.Running {
+		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
+	}
+
+	actual := start.Address(addr)
+	if actual == addr {
+		t.Fatalf("StartBroker reports %s, the address it was given; the Broker listens elsewhere", actual)
+	}
+	conn, err := net.DialTimeout("tcp", actual, 3*time.Second)
+	if err != nil {
+		t.Fatalf("dialing the reported address %s: %v", actual, err)
+	}
+	_ = conn.Close()
+}
+
 // TestExportedTypeShapes pins the names and signatures downstream work items
 // quote from the plan: the three aliases, the field names of the broker and
 // exec results, and the methods scenarios call.
@@ -398,7 +438,8 @@ func TestExportedTypeShapes(t *testing.T) {
 
 	var _ = BrokerSpec{Args: nil, ConfigYAML: "", Env: nil, Bound: 0}
 	var _ = ExecResult{ExitCode: 0, Stdout: "", Stderr: ""}
-	var _ = BrokerStart{Running: false, PID: 0, ExitCode: 0, StderrLast: ""}
+	var _ = BrokerStart{Running: false, PID: 0, ExitCode: 0, StderrLast: "", Addrs: nil}
+	var _ = (func(string) string)(BrokerStart{}.Address)
 
 	var _ = (func(testing.TB) *localpb.HelloResponse)((*OracleClient)(nil).Hello)
 	var _ = (func(testing.TB) (*localpb.ListBrokersResponse, *localpb.ErrorDetail))((*OracleClient)(nil).ListBrokers)

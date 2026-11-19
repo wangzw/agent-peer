@@ -30,8 +30,10 @@ const lifecycleRestoreBound = 5 * time.Second
 // restart. The Broker and the MCP server processes are real processes.
 func TestLocalSessionChanges(t *testing.T) {
 	host := harness.NewLocalHost(t, harness.LocalOptions{Name: "lifecycle"})
-	brokerConfig := harness.ConfigYAML("broker:\n  listen: " + host.FreeAddr(t))
-	lifecycleStartBroker(t, host, brokerConfig)
+	listen := host.FreeAddr(t)
+	brokerConfig := harness.ConfigYAML("broker:\n  listen: " + listen)
+	listen = lifecycleStartBroker(t, host, brokerConfig, listen)
+	brokerConfig = harness.ConfigYAML("broker:\n  listen: " + listen)
 	workspace := lifecycleWorkspace(t)
 
 	t.Run("REQ-agent-messaging-005 rename", func(t *testing.T) {
@@ -332,7 +334,7 @@ func TestLocalSessionChanges(t *testing.T) {
 				fmt.Sprintf("shared topics are %v", entry.SharedTopics)
 		})
 
-		lifecycleRestartBroker(t, host, brokerConfig)
+		lifecycleRestartBroker(t, host, brokerConfig, listen)
 
 		harness.Eventually(t, lifecycleRestoreBound, "the MCP server process restores its topics after the Broker restart", func() (bool, string) {
 			out, state := lifecycleListTopics(t, y)
@@ -364,25 +366,27 @@ func lifecycleSession(t *testing.T, host *harness.Node, name, workdir string) *h
 }
 
 // lifecycleStartBroker starts the node's Broker and fails when it does not come
-// up.
-func lifecycleStartBroker(t *testing.T, host *harness.Node, config string) {
+// up. It returns the address the Broker actually uses in place of requested.
+func lifecycleStartBroker(t *testing.T, host *harness.Node, config, requested string) string {
 	t.Helper()
 	start := host.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
 	if !start.Running {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
+	return start.Address(requested)
 }
 
-// lifecycleRestartBroker stops the Broker and starts it again. A session
-// process may win the race and start its own Broker first; that Broker refuses
-// to start with exit code 3, and the helper then waits for the process the
-// session started to answer instead.
-func lifecycleRestartBroker(t *testing.T, host *harness.Node, config string) {
+// lifecycleRestartBroker stops the Broker and starts it again, returning the
+// address the Broker actually uses in place of requested. A session process may
+// win the race and start its own Broker first; that Broker refuses to start
+// with exit code 3, and the helper then waits for the process the session
+// started to answer instead.
+func lifecycleRestartBroker(t *testing.T, host *harness.Node, config, requested string) string {
 	t.Helper()
 	host.StopBroker(t, syscall.SIGTERM)
 	start := host.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
 	if start.Running {
-		return
+		return start.Address(requested)
 	}
 	if start.ExitCode != 3 {
 		t.Fatalf("the Broker did not restart: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
@@ -395,6 +399,9 @@ func lifecycleRestartBroker(t *testing.T, host *harness.Node, config string) {
 		}
 		return false, fmt.Sprintf("agent-peer status exited %d: %s", result.ExitCode, strings.TrimSpace(result.Stderr))
 	})
+	// The session's Broker read the configuration file as written, so no retry
+	// replaced its address.
+	return start.Address(requested)
 }
 
 // lifecycleGitEnv is the environment of the git commands that create test

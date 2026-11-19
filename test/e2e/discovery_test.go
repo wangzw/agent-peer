@@ -97,12 +97,18 @@ func discYAMLString(addr string) string {
 }
 
 // start starts the node's Broker with its configuration and fails when it does
-// not come up.
+// not come up. When the one retry moves the listen address because the port
+// race was lost, addr and config follow it to the address the Broker actually
+// uses, so later comparisons and dials do not go to a stale port.
 func (d *discNode) start(t *testing.T) {
 	t.Helper()
 	start := d.StartBroker(t, harness.BrokerSpec{ConfigYAML: d.config})
 	if !start.Running {
 		t.Fatalf("Broker %s did not start: exit code %d: %s", d.name, start.ExitCode, strings.TrimSpace(start.StderrLast))
+	}
+	if actual := start.Address(d.addr); actual != d.addr {
+		d.config = strings.ReplaceAll(d.config, d.addr, actual)
+		d.addr = actual
 	}
 }
 

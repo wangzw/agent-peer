@@ -74,7 +74,7 @@ func TestLinkVersionMismatchAndRecovery(t *testing.T) {
 	a.WriteConfig(t, harness.ConfigYAML(harness.FastTimers, "broker:\n  listen: "+a.FreeAddr(t)+"\n"))
 	b.WriteConfig(t, harness.ConfigYAML(harness.FastTimers, "broker:\n  listen: "+addrB+"\n"))
 	vlStartBroker(t, a, harness.BrokerSpec{})
-	vlStartBroker(t, b, harness.BrokerSpec{})
+	addrB = vlStartBroker(t, b, harness.BrokerSpec{}).Address(addrB)
 
 	// Pair A, the dialer, with B, the acceptor.
 	sb := vlOperator(t, b, "operator-b")

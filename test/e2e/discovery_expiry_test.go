@@ -74,10 +74,10 @@ func TestCardExpiresAfterSevenDays(t *testing.T) {
 	clockB := dxClockFile(t)
 	clockC := dxClockFile(t)
 
-	dxStartBroker(t, aHost, dxConfig(listenA, true), nil)
-	dxStartBroker(t, bHost, dxConfig(listenB, false),
+	listenA = dxStartBroker(t, aHost, dxConfig(listenA, true), listenA, nil)
+	listenB = dxStartBroker(t, bHost, dxConfig(listenB, false), listenB,
 		map[string]string{dxClockEnv: clockB})
-	dxStartBroker(t, cHost, dxConfig(listenC, false),
+	listenC = dxStartBroker(t, cHost, dxConfig(listenC, false), listenC,
 		map[string]string{dxClockEnv: clockC})
 
 	opA := adOperator(t, aHost)
@@ -140,9 +140,9 @@ func TestCardRenewedDaily(t *testing.T) {
 	clock := dxClockFile(t)
 	clockEnv := map[string]string{dxClockEnv: clock}
 
-	dxStartBroker(t, aHost, dxConfig(listenA, true), clockEnv)
-	dxStartBroker(t, bHost, dxConfig(listenB, false), clockEnv)
-	dxStartBroker(t, cHost, dxConfig(listenC, false), clockEnv)
+	listenA = dxStartBroker(t, aHost, dxConfig(listenA, true), listenA, clockEnv)
+	listenB = dxStartBroker(t, bHost, dxConfig(listenB, false), listenB, clockEnv)
+	listenC = dxStartBroker(t, cHost, dxConfig(listenC, false), listenC, clockEnv)
 
 	opA := adOperator(t, aHost)
 	defer opA.End(t)
@@ -200,7 +200,7 @@ func TestDirectoryTotalLimitKeepsRenewals(t *testing.T) {
 	b.config = discConfig(b.addr, b.alias, false,
 		fmt.Sprintf("directory:\n  max_records: %d", dxLimitMaxRecords))
 	clock := dxClockFile(t)
-	dxStartBroker(t, host, b.config, map[string]string{dxClockEnv: clock})
+	b.addr = dxStartBroker(t, host, b.config, b.addr, map[string]string{dxClockEnv: clock})
 
 	f := startFakePeer(t)
 	f.Pair(t, b.addr, hostilePairKey(t, b))
@@ -387,8 +387,8 @@ func TestPublicTopicExpiresWithDeclarer(t *testing.T) {
 	listenB := bHost.FreeAddr(t)
 	clockB := dxClockFile(t)
 
-	dxStartBroker(t, aHost, dxConfig(listenA, true), nil)
-	dxStartBroker(t, bHost, dxConfig(listenB, false),
+	listenA = dxStartBroker(t, aHost, dxConfig(listenA, true), listenA, nil)
+	listenB = dxStartBroker(t, bHost, dxConfig(listenB, false), listenB,
 		map[string]string{dxClockEnv: clockB})
 
 	opA := adOperator(t, aHost)
@@ -515,14 +515,16 @@ func dxConfig(listen string, public bool) string {
 }
 
 // dxStartBroker starts a Broker with the given environment and fails the test
-// when it does not come up.
-func dxStartBroker(t *testing.T, node *harness.Node, config string, env map[string]string) {
+// when it does not come up. It returns the address the Broker actually uses in
+// place of requested.
+func dxStartBroker(t *testing.T, node *harness.Node, config, requested string, env map[string]string) string {
 	t.Helper()
 	start := node.StartBroker(t, harness.BrokerSpec{ConfigYAML: config, Env: env})
 	if !start.Running {
 		t.Fatalf("the Broker did not start: exit code %d: %s",
 			start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
+	return start.Address(requested)
 }
 
 // dxPair makes the dialer connect to the acceptor's listen address and returns

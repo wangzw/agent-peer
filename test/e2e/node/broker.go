@@ -53,6 +53,18 @@ type StartResult struct {
 	PID        int
 	ExitCode   int
 	StderrLast string
+	// Addrs maps each address the one retry replaced to the address the
+	// Broker actually used instead. It is nil when nothing was replaced.
+	Addrs map[string]string
+}
+
+// Address returns the address the Broker used in place of requested: the
+// replacement chosen by the retry, or requested when it was not replaced.
+func (s StartResult) Address(requested string) string {
+	if actual, ok := s.Addrs[requested]; ok {
+		return actual
+	}
+	return requested
 }
 
 // BrokerProc is one started Broker process.
