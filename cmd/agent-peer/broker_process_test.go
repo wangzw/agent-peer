@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/wangzw/agent-peer/internal/broker"
 )
 
 // dialBroker fails the test when the address is not accepting connections.
@@ -36,13 +39,15 @@ func assertDialFails(t *testing.T, addr string) {
 	}
 }
 
-// waitListen polls until the Broker accepts connections on addr. A Broker
-// started from a terminal reports readiness only by listening; this polls that
-// external condition rather than replacing a decision with a sleep. It reports
-// false when the process exits or the deadline passes first.
-func waitListen(t *testing.T, p *brokerProc, addr string) bool {
+// waitBrokerStarted polls until the child writes its broker_started record.
+// The record is written in Step 10 of Run in run.go, after the account lock
+// and both listeners are in place, so it means the Broker is serving this
+// account. It reports false when the process exits or the deadline passes
+// first.
+func waitBrokerStarted(t *testing.T, p *brokerProc) bool {
 	t.Helper()
 
+	pid := p.cmd.Process.Pid
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		select {
@@ -50,34 +55,44 @@ func waitListen(t *testing.T, p *brokerProc, addr string) bool {
 			return false
 		default:
 		}
+		if hasBrokerStarted(p, pid) {
+			return true
+		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			return false
 		}
-		// Cap the dial and the retry interval by the time left, so one last
-		// attempt cannot push the whole wait past the deadline.
-		dialTimeout := 200 * time.Millisecond
-		if remaining < dialTimeout {
-			dialTimeout = remaining
-		}
-		conn, err := net.DialTimeout("tcp", addr, dialTimeout)
-		if err == nil {
-			_ = conn.Close()
-			return true
-		}
-		// Recompute the remaining time after the dial, which may have consumed
-		// all of it; the next iteration reports the timeout.
-		poll := time.Until(deadline)
-		if poll > 20*time.Millisecond {
-			poll = 20 * time.Millisecond
+		poll := remaining
+		if poll > 10*time.Millisecond {
+			poll = 10 * time.Millisecond
 		}
 		<-time.After(poll)
 	}
 }
 
+// hasBrokerStarted reports whether standard error already holds this process's
+// broker_started record. Every line is a structured log record; the event name
+// comes from internal/broker so the test does not spell it out, and the pid
+// must match the child, so a record from another process cannot satisfy it.
+func hasBrokerStarted(p *brokerProc, pid int) bool {
+	for _, line := range strings.Split(p.stderr.String(), "\n") {
+		var rec struct {
+			Event string `json:"event"`
+			PID   int    `json:"pid"`
+		}
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			continue
+		}
+		if rec.Event == broker.EvBrokerStarted && rec.PID == pid {
+			return true
+		}
+	}
+	return false
+}
+
 // startBrokerTerminal runs "agent-peer broker" the way a terminal launch does.
-// The returned process has no reader, so readiness is observed by dialing the
-// listen address.
+// The returned process has no reader, so readiness is observed in standard
+// error.
 func startBrokerTerminal(t *testing.T, sb *sandbox, args ...string) *brokerProc {
 	t.Helper()
 
@@ -101,9 +116,10 @@ func startBrokerTerminal(t *testing.T, sb *sandbox, args ...string) *brokerProc 
 }
 
 // startBrokerTerminalOnFreePort starts a terminal Broker with --listen on a
-// port that freePort released and waits until it accepts connections. The port
-// can be taken between freePort's close and the Broker's bind, so a Broker that
-// exits because the address is unavailable is retried once on a fresh port.
+// port that freePort released and waits until the child reports that it
+// started. The port can be taken between freePort's close and the Broker's
+// bind, so a Broker that exits because the address is unavailable is retried
+// once on a fresh port.
 func startBrokerTerminalOnFreePort(t *testing.T, sb *sandbox, args ...string) (*brokerProc, int) {
 	t.Helper()
 
@@ -112,13 +128,13 @@ func startBrokerTerminalOnFreePort(t *testing.T, sb *sandbox, args ...string) (*
 		port := freePort(t)
 		addr := listenAddr(port)
 		p := startBrokerTerminal(t, sb, append([]string{"--listen", addr}, args...)...)
-		if waitListen(t, p, addr) {
+		if waitBrokerStarted(t, p) {
 			return p, port
 		}
 		select {
 		case <-p.exited:
 		default:
-			t.Fatalf("broker did not listen on %s within 3s while still running (stderr: %s)", addr, p.stderr.String())
+			t.Fatalf("broker did not report %s on %s within 3s while still running (stderr: %s)", broker.EvBrokerStarted, addr, p.stderr.String())
 		}
 		code := p.cmd.ProcessState.ExitCode()
 		if code != exitListenUnavailable || attempt == attempts {
@@ -183,9 +199,11 @@ func TestBrokerSecondInstanceFailsWithAnotherListenAddress(t *testing.T) {
 	first, firstPort := startBrokerTerminalOnFreePort(t, sb)
 
 	// Pick the second address while the first Broker holds its own port, so
-	// the two addresses differ. The second instance acquires the account lock
-	// before it binds, so a port taken by another process cannot change its
-	// exit code and this start needs no retry.
+	// the two addresses differ. The first Broker is ready only after its
+	// broker_started record, which it writes once the account lock is held, so
+	// the second instance fails on the lock before it binds. A port taken by
+	// another process therefore cannot change its exit code, and this start
+	// needs no retry.
 	secondPort := freePort(t)
 
 	second := startBrokerTerminal(t, sb, "--listen", listenAddr(secondPort))
