@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"google.golang.org/protobuf/proto"
 )
 
 // statusAccessAgents registers two agents, gives them different owners, and
@@ -36,14 +37,29 @@ func TestStatusWithoutReadAccess(t *testing.T) {
 	if len(resp.Agents) != 1 || resp.Agents[0].AgentId != string(mine) {
 		t.Fatalf("Status agents = %v, want only %s", resp.Agents, mine)
 	}
-	if len(resp.Peers) != 0 {
-		t.Fatalf("Status returned peers without read access: %v", resp.Peers)
+	if len(resp.Peers) == 0 {
+		t.Fatalf("Status returned no peers without read access: %v", resp.Peers)
+	}
+
+	grantedCtx := withReadGranted(accessCallerContext(1000, "alice"), true)
+	granted, err := tb.b.Status(grantedCtx, &localpb.StatusRequest{})
+	if err != nil {
+		t.Fatalf("Status with read access: %v", err)
+	}
+	if len(resp.Peers) != len(granted.Peers) {
+		t.Fatalf("Status returned %d peers without read access, want the %d returned with read access", len(resp.Peers), len(granted.Peers))
+	}
+	for i := range resp.Peers {
+		if !proto.Equal(resp.Peers[i], granted.Peers[i]) {
+			t.Fatalf("Status peer %d without read access = %v, want %v", i, resp.Peers[i], granted.Peers[i])
+		}
 	}
 }
 
 // TestStatusWithoutCallerIdentity checks that Status does not fall back to
 // filtering by UID 0 when the context carries no caller identity: without a
-// caller it returns no agents, not the agents owned by UID 0.
+// caller it returns no agents, not the agents owned by UID 0, while the peer
+// list stays visible as it does for any caller without read permission.
 func TestStatusWithoutCallerIdentity(t *testing.T) {
 	// REQ-broker-config-010
 	tb := newTestBroker(t)
@@ -63,8 +79,8 @@ func TestStatusWithoutCallerIdentity(t *testing.T) {
 	if len(resp.Agents) != 0 {
 		t.Fatalf("Status returned %d agents without caller identity, want 0: %v", len(resp.Agents), resp.Agents)
 	}
-	if len(resp.Peers) != 0 {
-		t.Fatalf("Status returned peers without caller identity: %v", resp.Peers)
+	if len(resp.Peers) != 1 {
+		t.Fatalf("Status returned %d peers without caller identity, want 1: %v", len(resp.Peers), resp.Peers)
 	}
 }
 

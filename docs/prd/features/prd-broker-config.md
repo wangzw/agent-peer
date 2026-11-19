@@ -105,11 +105,11 @@ Agent 对配置的每次修改必须写入审计日志，记录发起修改的 A
 
 ### REQ-broker-config-010
 
-用户必须能在本机终端查看 Broker 的状态，包括已登记的 Agent、各 Agent 所在的 topic、全部对端及其连接状态。所属账户对配置文件没有读权限的用户，只能看到自己账户下的 Agent。
+用户必须能在本机终端查看 Broker 的状态，包括已登记的 Agent、各 Agent 所在的 topic、全部对端及其连接状态。所属账户对配置文件没有读权限的用户，只能看到自己账户下的 Agent，对端及其连接状态照常可见。
 
-- **验收**：登记两个 Agent 并让它们加入不同的 topic，与一个对端配对后断开网络；以有读权限的账户在终端执行查看状态的命令，输出列出这两个 Agent 及各自的 topic，并显示该对端未连接。在系统级 Broker 上以没有读权限的账户执行，输出只含该账户自己的 Agent。
+- **验收**：登记两个 Agent 并让它们加入不同的 topic，与一个对端配对后断开网络；以有读权限的账户在终端执行查看状态的命令，输出列出这两个 Agent 及各自的 topic，并显示该对端未连接。在系统级 Broker 上以没有读权限的账户执行，输出只含该账户自己的 Agent，并同样列出该对端及其连接状态。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents`（无读权限的账户只看到自己的 Agent；有读权限的非 root 账户看到两个 Agent 及各自 topic，与对端配对后停掉对端 Broker 代替“断开网络”，对端仍列出且显示为未连接）
+- **端到端测试**：`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents`（无读权限的账户只看到自己的 Agent，并看到对端未连接；有读权限的非 root 账户看到两个 Agent 及各自 topic，与对端配对后停掉对端 Broker 代替“断开网络”，对端仍列出且显示为未连接）
 
 ### REQ-broker-config-011
 

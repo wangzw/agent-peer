@@ -313,9 +313,9 @@ func TestREQBrokerConfig022_ReadNeedsConfigReadPermission(t *testing.T) {
 }
 
 // TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents checks that
-// status without read permission returns only the caller's own agents and no
-// peers, while an account that may read the configuration sees both the agents
-// and the paired peer.
+// status without read permission returns only the caller's own agents but still
+// lists the paired peer and its connection state, while an account that may
+// read the configuration sees both the agents and the same peer.
 func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing.T) {
 	if !syscontainer.InContainer() {
 		syscontainer.Run(t, syscontainer.Plain)
@@ -364,8 +364,7 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 	}
 
 	// root may read the configuration file, so its status lists both agents
-	// with their topics and the paired peer, connected. other may not, and its
-	// status must keep the peer list empty below.
+	// with their topics and the paired peer, connected.
 	harness.Eventually(t, 3*time.Second, "the root status to list both agents, their topics and the connected peer", func() (bool, string) {
 		res := syscontainer.RunAs(t, "root", nil, "status")
 		line, found := permStatusPeerLine(res.Stdout, connected.Alias)
@@ -381,18 +380,33 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 		return ok, res.Stdout + res.Stderr
 	})
 
-	res := syscontainer.RunAs(t, "other", nil, "status")
-	if res.ExitCode != 0 {
-		t.Fatalf("status as other: exit %d\n%s", res.ExitCode, res.Stderr)
-	}
-	if !strings.Contains(res.Stdout, "otheragent@sys") || !strings.Contains(res.Stdout, "e2e/other") {
-		t.Errorf("status as other does not show its own agent and topic:\n%s", res.Stdout)
-	}
+	// Break the peer's network. Both accounts must still list the peer, now not
+	// connected.
+	peerBroker.Stop(t)
+
+	// other may not read the configuration file, so its status keeps only its
+	// own agent and topic. The peer and its connection state stay visible.
+	harness.Eventually(t, 3*time.Second, "other's status to show its own agent, its topic and the disconnected peer", func() (bool, string) {
+		res := syscontainer.RunAs(t, "other", nil, "status")
+		if res.ExitCode != 0 {
+			return false, res.Stderr
+		}
+		line, found := permStatusPeerLine(res.Stdout, connected.Alias)
+		ok := strings.Contains(res.Stdout, "otheragent@sys") &&
+			strings.Contains(res.Stdout, "e2e/other") &&
+			!strings.Contains(res.Stdout, "peeragent") &&
+			!strings.Contains(res.Stdout, "e2e/peer") &&
+			strings.Contains(res.Stdout, "Peers (") &&
+			found &&
+			!strings.Contains(line, "connected") &&
+			!strings.Contains(line, "established")
+		return ok, res.Stdout + res.Stderr
+	})
 
 	// The filtered result is stable: other's status must keep excluding peer's
-	// agent, peer's topic and every peer Broker. Both agents are registered
-	// already, so a one-second observation is enough.
-	harness.Consistently(t, time.Second, "other's status never shows peer's agent or a peer", func() (bool, string) {
+	// agent and peer's topic, while the peer row stays and stays disconnected.
+	// Both agents are registered already, so a one-second observation is enough.
+	harness.Consistently(t, time.Second, "other's status never shows peer's agent and keeps the disconnected peer", func() (bool, string) {
 		res := syscontainer.RunAs(t, "other", nil, "status")
 		if res.ExitCode != 0 {
 			return false, res.Stderr
@@ -400,17 +414,17 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 		if strings.Contains(res.Stdout, "peeragent") || strings.Contains(res.Stdout, "e2e/peer") {
 			return false, res.Stdout
 		}
-		if !strings.HasSuffix(res.Stdout, "Peers: none\n") {
+		line, found := permStatusPeerLine(res.Stdout, connected.Alias)
+		if !found || strings.Contains(line, "connected") || strings.Contains(line, "established") {
 			return false, res.Stdout
 		}
 		return true, res.Stdout
 	})
 
-	// Grant other read permission through the configuration file's group, then
-	// break the peer's network. other's status must list both agents with their
-	// topics and the paired peer, with the peer no longer connected.
+	// Grant other read permission through the configuration file's group.
+	// other's status must now list both agents with their topics and the paired
+	// peer, still not connected.
 	permGrantAdmins(t, "0640")
-	peerBroker.Stop(t)
 	harness.Eventually(t, 3*time.Second, "other's status to list both agents, their topics and the disconnected peer", func() (bool, string) {
 		res := syscontainer.RunAs(t, "other", nil, "status")
 		if res.ExitCode != 0 {
