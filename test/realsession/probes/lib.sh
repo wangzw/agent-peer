@@ -391,10 +391,19 @@ rs_proc_vars() {
 }
 
 # socket_owner_pid prints the pid of the process listening on the Unix socket at
-# path. It reads the pid ss reports for that socket, so a socket left by another
-# process is not mistaken for the one the probe started.
+# path. Linux reads the pid ss reports for that socket; macOS has no ss, so lsof
+# is asked for the bound endpoint. lsof marks a connected client's name with a
+# leading "->", and only the exact bound name matches, so a client that merely
+# holds the socket is not mistaken for the listener. Either way a socket left by
+# another process is not taken for the one the probe started.
 socket_owner_pid() {
 	local path="$1"
+	if [[ "$(uname -s)" == Darwin ]]; then
+		lsof -U -Fpn 2>/dev/null | awk -v s="$path" '
+			/^p/ { pid = substr($0, 2) }
+			$0 == "n" s { print pid; exit }'
+		return
+	fi
 	ss -xlpn 2>/dev/null | awk -v s="$path" '
 		index($0, s) {
 			if (match($0, /pid=[0-9]+/)) {

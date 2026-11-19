@@ -500,6 +500,68 @@ func TestLibExportsRSRoot(t *testing.T) {
 	}
 }
 
+// TestSocketOwnerPIDDarwin checks the macOS branch of socket_owner_pid. macOS
+// has no ss, so the helper asks lsof for the bound endpoint; a connected
+// client's name carries a leading "->" and must not be taken for the listener.
+func TestSocketOwnerPIDDarwin(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "uname"), []byte("#!/bin/sh\nprintf 'Darwin\\n'\n"), 0o755); err != nil {
+		t.Fatalf("writing the uname stub: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "lsof"), []byte("#!/bin/sh\ncat \"$LSOF_FILE\"\n"), 0o755); err != nil {
+		t.Fatalf("writing the lsof stub: %v", err)
+	}
+
+	sock := "/private/tmp/agent-peer-501/broker.sock"
+	cases := []struct {
+		name string
+		lsof string
+		want string
+	}{
+		{
+			name: "bound endpoint wins over a connected client",
+			lsof: "p124\nn->" + sock + "\np123\nn" + sock + "\n",
+			want: "123\n",
+		},
+		{
+			name: "a connected client is not the listener",
+			lsof: "p125\nn->" + sock + "\n",
+			want: "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lsofFile := filepath.Join(root, "lsof.txt")
+			if err := os.WriteFile(lsofFile, []byte(tc.lsof), 0o644); err != nil {
+				t.Fatalf("writing the lsof output: %v", err)
+			}
+			cmd := exec.Command("bash", "-c", `source "$1"; socket_owner_pid "$2"`, "bash", lib, sock)
+			cmd.Dir = root
+			cmd.Env = []string{
+				"R=" + root,
+				"PROBE=selftest",
+				"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+				"LSOF_FILE=" + lsofFile,
+			}
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("calling socket_owner_pid: %v\n%s", err, out)
+			}
+			if got := string(out); got != tc.want {
+				t.Errorf("socket_owner_pid = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestRsAcceptTrustDialogChoosesTheFocusableEntry checks how the library
 // answers the workspace trust dialog. On macOS the probe root's /tmp resolves
 // to /private/tmp, so the trust entry written for the literal path does not
