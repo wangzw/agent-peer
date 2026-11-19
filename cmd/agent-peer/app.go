@@ -18,7 +18,8 @@ Commands:
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker
   audit [--limit <n>]         read the audit log
-  service install [--system]  install the Broker as a user-level service, or system-level with --system
+  service install [--system]  install and start the Broker as a user-level service,
+                              or system-level with --system
 `
 
 // app holds the process's standard streams, the version to report, and the

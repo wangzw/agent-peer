@@ -4,12 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const (
@@ -17,7 +21,19 @@ const (
 	systemdUnitDir   = "/etc/systemd/system"
 	launchDaemonDir  = "/Library/LaunchDaemons"
 	systemLogDir     = "/var/log/agent-peer"
+
+	// readyBound bounds the wait for the local socket to answer after the
+	// service starts. It covers the Broker's own startup and launchd's default
+	// ThrottleInterval of 10 seconds, which launchd applies before relaunching
+	// a process that exited too quickly.
+	readyBound        = 20 * time.Second
+	readyPollInterval = 100 * time.Millisecond
+	// probeTimeout bounds one dial of the local socket.
+	probeTimeout = 500 * time.Millisecond
 )
+
+// launchdPIDPattern matches the "pid = <n>" line of launchctl print.
+var launchdPIDPattern = regexp.MustCompile(`(?m)^\s*pid = (\d+)$`)
 
 // Options is everything Install needs. DefaultOptions fills it from the running
 // process; tests fill it by hand and set Root to a temporary directory.
@@ -35,16 +51,19 @@ type Options struct {
 	Run           func(name string, args ...string) ([]byte, error)           // run a command, returning combined output
 	Owner         func(path string) (uid uint32, mode fs.FileMode, err error) // owner and permission bits, not following symlinks
 	EvalSymlinks  func(path string) (string, error)                           // filepath.EvalSymlinks
+	Probe         func(socketPath string) (pid int, answering bool)           // peer pid of the Broker answering on the local socket
+	ReadyTimeout  time.Duration                                               // wait for the local socket after start; zero uses readyBound
 }
 
-// Result describes what Install did. On error it lists the steps that already
-// finished.
+// Result describes what Install or Uninstall did. On error it lists the steps
+// that already finished.
 type Result struct {
-	UnitPath   string   // written unit file or plist
-	ConfigPath string   // --system only: /etc/agent-peer/config.yaml
+	UnitPath   string   // written or removed unit file or plist
+	ConfigPath string   // --system install only: /etc/agent-peer/config.yaml
 	ConfigNew  bool     // this run created the configuration file
-	Commands   []string // commands run, in order
-	StartHint  string   // command that starts the service now
+	Commands   []string // commands that changed state, in order
+	Domain     string   // macOS: the launchd domain the service was loaded into or out of
+	Removed    bool     // Uninstall: a unit file or plist was removed
 }
 
 // DefaultOptions fills Options from the running process.
@@ -86,6 +105,24 @@ func DefaultOptions(system bool) (Options, error) {
 			return st.Uid, fi.Mode(), nil
 		},
 		EvalSymlinks: filepath.EvalSymlinks,
+		Probe: func(socketPath string) (int, bool) {
+			conn, err := net.DialTimeout("unix", socketPath, probeTimeout)
+			if err != nil {
+				return 0, false
+			}
+			defer func() { _ = conn.Close() }()
+			unixConn, ok := conn.(*net.UnixConn)
+			if !ok {
+				return 0, true
+			}
+			pid, err := socketPeerPID(unixConn)
+			if err != nil {
+				// A Broker is answering even though its pid is unknown; report
+				// it so the caller does not take it for the service's process.
+				return 0, true
+			}
+			return pid, true
+		},
 	}, nil
 }
 
@@ -133,6 +170,20 @@ func Install(opts Options) (Result, error) {
 		}
 	}
 
+	// The launchd domain decides both where the service is loaded and which
+	// instance counts as this service's own when a Broker is already answering.
+	domain := ""
+	if opts.GOOS == "darwin" {
+		var err error
+		domain, err = launchdDomain(opts)
+		if err != nil {
+			return res, err
+		}
+	}
+	if err := checkExistingBroker(opts, domain); err != nil {
+		return res, err
+	}
+
 	unitPath, err := writeUnit(opts)
 	if err != nil {
 		return res, err
@@ -146,14 +197,241 @@ func Install(opts Options) (Result, error) {
 		}
 	}
 
-	if opts.GOOS == "linux" {
+	switch opts.GOOS {
+	case "linux":
 		if err := runSystemctl(opts, &res); err != nil {
 			return res, err
 		}
+	case "darwin":
+		if err := runLaunchctl(opts, domain, unitPath, &res); err != nil {
+			return res, err
+		}
+	}
+	if err := waitReady(opts, domain); err != nil {
+		return res, err
 	}
 
-	res.StartHint = startHint(opts, unitPath)
+	res.Domain = domain
 	return res, nil
+}
+
+// unitPath returns the production path of the unit file or plist for opts.
+func unitPath(opts Options) (string, error) {
+	switch {
+	case opts.GOOS == "linux" && !opts.System:
+		return filepath.Join(configHome(opts), "systemd", "user", UnitName), nil
+	case opts.GOOS == "linux" && opts.System:
+		return filepath.Join(systemdUnitDir, UnitName), nil
+	case opts.GOOS == "darwin" && !opts.System:
+		return filepath.Join(opts.Home, "Library", "LaunchAgents", Label+".plist"), nil
+	case opts.GOOS == "darwin" && opts.System:
+		return filepath.Join(launchDaemonDir, Label+".plist"), nil
+	default:
+		return "", fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+	}
+}
+
+// localSocketPath returns the local socket a running Broker of this deployment
+// level binds. It matches the runtime directory config picks for the level.
+func localSocketPath(opts Options) string {
+	if opts.System {
+		if opts.GOOS == "darwin" {
+			return "/var/run/agent-peer/broker.sock"
+		}
+		return "/run/agent-peer/broker.sock"
+	}
+	return fmt.Sprintf("/tmp/agent-peer-%d/broker.sock", opts.UID)
+}
+
+// checkExistingBroker refuses the installation when a Broker outside the
+// agent-peer service already answers on this level's local socket. Replacing a
+// service-managed Broker is fine: the start step restarts it with the new
+// binary. The Broker is the service's own only when the pid the service
+// manager reports equals the socket's peer pid; a loaded unit alone proves
+// nothing about which process owns the socket.
+func checkExistingBroker(opts Options, domain string) error {
+	path := localSocketPath(opts)
+	brokerPID, answering := opts.Probe(path)
+	if !answering {
+		return nil
+	}
+	servicePID, managed := serviceMainPID(opts, domain)
+	if managed && servicePID == brokerPID {
+		return nil
+	}
+	level := "user-level Broker for this account"
+	if opts.System {
+		level = "system-level Broker"
+	}
+	return fmt.Errorf("service: a %s is already answering on %s and was not started by the agent-peer service (service pid %d, socket peer pid %d); stop it before installing", level, path, servicePID, brokerPID)
+}
+
+// serviceMainPID returns the pid the service manager reports for the unit and
+// whether it reports a running one.
+func serviceMainPID(opts Options, domain string) (int, bool) {
+	switch opts.GOOS {
+	case "linux":
+		args := []string{"show", "--property", "MainPID", "--value", UnitName}
+		if !opts.System {
+			args = append([]string{"--user"}, args...)
+		}
+		out, err := opts.Run("systemctl", args...)
+		if err != nil {
+			return 0, false
+		}
+		pid, err := strconv.Atoi(strings.TrimSpace(string(out)))
+		if err != nil || pid == 0 {
+			return 0, false
+		}
+		return pid, true
+	case "darwin":
+		out, err := opts.Run("launchctl", "print", domain+"/"+Label)
+		if err != nil {
+			return 0, false
+		}
+		match := launchdPIDPattern.FindStringSubmatch(string(out))
+		if match == nil {
+			return 0, false
+		}
+		pid, err := strconv.Atoi(match[1])
+		if err != nil || pid == 0 {
+			return 0, false
+		}
+		return pid, true
+	}
+	return 0, false
+}
+
+// launchdDomain picks the launchd domain for a user-level service. launchd
+// exposes gui/<uid> only to an account with a graphical login session. Probe
+// 44498306091 showed that user/<uid> accepts print but rejects bootstrap with
+// exit 5, so installing there would leave a loaded-looking, stopped service;
+// the installation refuses before writing anything instead.
+func launchdDomain(opts Options) (string, error) {
+	if opts.System {
+		return "system", nil
+	}
+	gui := fmt.Sprintf("gui/%d", opts.UID)
+	if launchctlDomainExists(opts, gui) {
+		return gui, nil
+	}
+	return "", fmt.Errorf("service: launchd has no %s domain for uid %d; install the user-level service from a graphical login session, or use --system on a host without one", gui, opts.UID)
+}
+
+// launchctlDomainExists reports whether launchd knows the domain.
+func launchctlDomainExists(opts Options, domain string) bool {
+	_, err := opts.Run("launchctl", "print", domain)
+	return err == nil
+}
+
+// runLaunchctl replaces the loaded service, if any, with the freshly written
+// plist. A failed bootstrap removes the plist this run wrote, so a failed
+// installation leaves no installed but unloaded service behind.
+func runLaunchctl(opts Options, domain, plistPath string, res *Result) error {
+	if err := bootoutService(opts, domain, res); err != nil {
+		return err
+	}
+
+	cmdline := "launchctl bootstrap " + domain + " " + plistPath
+	res.Commands = append(res.Commands, cmdline)
+	out, err := opts.Run("launchctl", "bootstrap", domain, plistPath)
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if rmErr := os.Remove(rooted(opts, plistPath)); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
+			if msg != "" {
+				return fmt.Errorf("service: %s: %w: %s; also could not remove %s: %v", cmdline, err, msg, plistPath, rmErr)
+			}
+			return fmt.Errorf("service: %s: %w; also could not remove %s: %v", cmdline, err, plistPath, rmErr)
+		}
+		if msg != "" {
+			return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+		}
+		return fmt.Errorf("service: %s: %w", cmdline, err)
+	}
+	return nil
+}
+
+// bootoutService unloads the service before a replacement or removal. launchctl
+// exits 3 with "No such process" when the service is not loaded (probe
+// 44498306091); that is the only bootout failure ignored. Any other failure is
+// returned, because the old service may still own the account lock or the
+// socket.
+func bootoutService(opts Options, domain string, res *Result) error {
+	target := domain + "/" + Label
+	cmdline := "launchctl bootout " + target
+	res.Commands = append(res.Commands, cmdline)
+	out, err := opts.Run("launchctl", "bootout", target)
+	if err == nil {
+		return nil
+	}
+	if exitStatus(err) == 3 {
+		return nil
+	}
+	if msg := strings.TrimSpace(string(out)); msg != "" {
+		return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+	}
+	return fmt.Errorf("service: %s: %w", cmdline, err)
+}
+
+// exitStatus returns the exit code of a command error, or -1 when the error
+// did not come from an exited process.
+func exitStatus(err error) int {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
+}
+
+// waitReady waits until the Broker answering on this level's local socket is
+// the service's own process. It applies the same test as the pre-install
+// check: the service manager's pid must equal the socket peer pid. An answer
+// from any other process is not readiness, because the service cannot take over
+// that process's account lock. A timeout reports the log location, since the
+// service manager owns the process and its standard error.
+func waitReady(opts Options, domain string) error {
+	bound := opts.ReadyTimeout
+	if bound <= 0 {
+		bound = readyBound
+	}
+	path := localSocketPath(opts)
+	deadline := time.Now().Add(bound)
+	var (
+		peerPID    int
+		answering  bool
+		servicePID int
+		managed    bool
+	)
+	for {
+		peerPID, answering = opts.Probe(path)
+		if answering {
+			servicePID, managed = serviceMainPID(opts, domain)
+			if managed && servicePID == peerPID {
+				return nil
+			}
+		}
+		if time.Now().After(deadline) {
+			if answering {
+				return fmt.Errorf("service: the Broker answering on %s is not the service's process (service pid %d, socket peer pid %d); stop it and check the service log with %s", path, servicePID, peerPID, logHint(opts))
+			}
+			return fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s", path, bound, logHint(opts))
+		}
+		time.Sleep(readyPollInterval)
+	}
+}
+
+// logHint names where the service manager writes the Broker's standard error.
+func logHint(opts Options) string {
+	switch {
+	case opts.GOOS == "darwin" && !opts.System:
+		return filepath.Join(opts.Home, "Library", "Logs", "agent-peer", "broker.log")
+	case opts.GOOS == "darwin":
+		return "/var/log/agent-peer/broker.log"
+	case opts.System:
+		return "journalctl -u " + UnitName
+	default:
+		return "journalctl --user -u " + UnitName
+	}
 }
 
 // configHome returns the base directory for user configuration.
@@ -174,31 +452,31 @@ func rooted(opts Options, path string) string {
 
 // writeUnit writes the unit file or plist and returns its production path.
 func writeUnit(opts Options) (string, error) {
+	path, err := unitPath(opts)
+	if err != nil {
+		return "", err
+	}
 	var (
-		path    string
 		content string
 		dirs    []string
-		err     error
 	)
 	switch {
 	case opts.GOOS == "linux" && !opts.System:
-		path = filepath.Join(configHome(opts), "systemd", "user", UnitName)
 		content, err = SystemdUserUnit(opts.Exe)
 		dirs = []string{filepath.Dir(path)}
 	case opts.GOOS == "linux" && opts.System:
-		path = filepath.Join(systemdUnitDir, UnitName)
 		content, err = SystemdSystemUnit(opts.Exe)
 		dirs = []string{systemdUnitDir}
 	case opts.GOOS == "darwin" && !opts.System:
 		logDir := filepath.Join(opts.Home, "Library", "Logs", "agent-peer")
 		logPath := filepath.Join(logDir, "broker.log")
-		path = filepath.Join(opts.Home, "Library", "LaunchAgents", Label+".plist")
 		content, err = LaunchAgentPlist(opts.Exe, logPath)
 		dirs = []string{logDir, filepath.Dir(path)}
 	case opts.GOOS == "darwin" && opts.System:
-		path = filepath.Join(launchDaemonDir, Label+".plist")
 		content, err = LaunchDaemonPlist(opts.Exe)
 		dirs = []string{systemLogDir, launchDaemonDir}
+	default:
+		return "", fmt.Errorf("service: unsupported platform %q", opts.GOOS)
 	}
 	if err != nil {
 		return "", err
@@ -259,39 +537,35 @@ func createSystemConfig(opts Options, res *Result) error {
 	return nil
 }
 
-// runSystemctl reloads the unit database and enables the unit.
+// runSystemctl reloads the unit database, enables the unit and starts it.
+// restart also starts a unit that is not running yet, and replaces the process
+// when the unit was already running from an older binary.
 func runSystemctl(opts Options, res *Result) error {
-	base := []string{"systemctl"}
-	if !opts.System {
-		base = append(base, "--user")
-	}
-	for _, args := range [][]string{{"daemon-reload"}, {"enable", UnitName}} {
-		argv := append(append([]string{}, base[1:]...), args...)
-		cmdline := strings.Join(append(append([]string{}, base...), args...), " ")
-		res.Commands = append(res.Commands, cmdline)
-		out, err := opts.Run(base[0], argv...)
-		if err != nil {
-			if msg := strings.TrimSpace(string(out)); msg != "" {
-				return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
-			}
-			return fmt.Errorf("service: %s: %w", cmdline, err)
+	for _, args := range [][]string{{"daemon-reload"}, {"enable", UnitName}, {"restart", UnitName}} {
+		if err := runSystemctlCommand(opts, res, args...); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// startHint returns the command that starts the service immediately.
-func startHint(opts Options, unitPath string) string {
-	switch {
-	case opts.GOOS == "linux" && !opts.System:
-		return "systemctl --user start " + UnitName
-	case opts.GOOS == "linux" && opts.System:
-		return "systemctl start " + UnitName
-	case opts.GOOS == "darwin" && !opts.System:
-		return fmt.Sprintf("launchctl bootstrap gui/%d %s", opts.UID, unitPath)
-	default:
-		return "launchctl bootstrap system " + unitPath
+// runSystemctlCommand runs one systemctl command, records it and reports its
+// output on failure.
+func runSystemctlCommand(opts Options, res *Result, args ...string) error {
+	argv := append([]string{}, args...)
+	if !opts.System {
+		argv = append([]string{"--user"}, argv...)
 	}
+	cmdline := strings.Join(append([]string{"systemctl"}, argv...), " ")
+	res.Commands = append(res.Commands, cmdline)
+	out, err := opts.Run("systemctl", argv...)
+	if err != nil {
+		if msg := strings.TrimSpace(string(out)); msg != "" {
+			return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+		}
+		return fmt.Errorf("service: %s: %w", cmdline, err)
+	}
+	return nil
 }
 
 // checkTempBinary refuses binaries under the temporary directory.

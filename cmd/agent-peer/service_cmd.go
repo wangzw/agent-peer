@@ -10,7 +10,7 @@ import (
 	"github.com/wangzw/agent-peer/internal/broker/service"
 )
 
-const serviceInstallUsage = "usage: agent-peer service install [--system]\n"
+const serviceUsage = "usage: agent-peer service install [--system]\n"
 
 // The test seams replace the installation steps so the command tests can check
 // the option mapping and the exit-code mapping without touching the system.
@@ -23,9 +23,8 @@ func init() {
 	subcommands["service"] = (*app).serviceCmd
 }
 
-// serviceCmd implements "agent-peer service install [--system]". It installs
-// and enables the service but does not start it; the last line on standard
-// output is the command that starts it.
+// serviceCmd implements "agent-peer service install [--system]". The
+// installation enables the service and starts it immediately.
 func (a *app) serviceCmd(_ context.Context, args []string) int {
 	if len(args) == 0 {
 		return a.serviceUsageError("service", "missing command")
@@ -33,7 +32,7 @@ func (a *app) serviceCmd(_ context.Context, args []string) int {
 
 	switch args[0] {
 	case "-h", "--help", "help":
-		_, _ = fmt.Fprint(a.stdout, serviceInstallUsage)
+		_, _ = fmt.Fprint(a.stdout, serviceUsage)
 		return exitOK
 	case "install":
 	default:
@@ -45,7 +44,7 @@ func (a *app) serviceCmd(_ context.Context, args []string) int {
 	system := fs.Bool("system", false, "install the system-level service")
 	if err := fs.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			_, _ = fmt.Fprint(a.stdout, serviceInstallUsage)
+			_, _ = fmt.Fprint(a.stdout, serviceUsage)
 			return exitOK
 		}
 		return a.serviceUsageError("service install", err.Error())
@@ -64,16 +63,23 @@ func (a *app) serviceCmd(_ context.Context, args []string) int {
 		_, _ = fmt.Fprintf(a.stderr, "agent-peer service install: %s\n", err)
 		return exitFailure
 	}
-	if result.StartHint != "" {
-		_, _ = fmt.Fprintln(a.stdout, result.StartHint)
-	}
+	a.printInstalled(result)
 	return exitOK
 }
 
-// serviceUsageError reports a usage error found before the installation starts.
+// printInstalled reports that the service is installed and running.
+func (a *app) printInstalled(result service.Result) {
+	if result.Domain != "" {
+		_, _ = fmt.Fprintf(a.stdout, "installed and started %s in %s\n", service.Label, result.Domain)
+		return
+	}
+	_, _ = fmt.Fprintf(a.stdout, "installed and started %s\n", service.UnitName)
+}
+
+// serviceUsageError reports a usage error found before the operation starts.
 // It prints the subcommand's usage, not the top-level one.
 func (a *app) serviceUsageError(command, reason string) int {
-	_, _ = fmt.Fprint(a.stderr, serviceInstallUsage)
+	_, _ = fmt.Fprint(a.stderr, serviceUsage)
 	_, _ = fmt.Fprintf(a.stderr, "agent-peer %s: %s\n", command, reason)
 	return exitUsage
 }

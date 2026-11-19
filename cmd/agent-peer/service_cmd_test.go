@@ -55,7 +55,7 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 				func(opts service.Options) (service.Result, error) {
 					installCalls++
 					installed = opts
-					return service.Result{StartHint: "systemctl --user start agent-peer.service"}, nil
+					return service.Result{UnitPath: "/x/agent-peer.service"}, nil
 				},
 			)
 
@@ -69,7 +69,7 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 			if optionsSystem != tc.wantSystem || installed.System != tc.wantSystem {
 				t.Fatalf("system = %v (options) / %v (install), want %v", optionsSystem, installed.System, tc.wantSystem)
 			}
-			if want := "systemctl --user start agent-peer.service\n"; stdout.String() != want {
+			if want := "installed and started agent-peer.service\n"; stdout.String() != want {
 				t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 			}
 			if stderr.Len() != 0 {
@@ -79,7 +79,24 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 	}
 }
 
-func TestServiceInstallReportsErrors(t *testing.T) {
+func TestServiceInstallPrintsTheLaunchdDomain(t *testing.T) {
+	setServiceSeams(t,
+		func(bool) (service.Options, error) { return service.Options{}, nil },
+		func(service.Options) (service.Result, error) {
+			return service.Result{Domain: "gui/501"}, nil
+		},
+	)
+
+	a, stdout, stderr, _ := newDispatchApp("dev")
+	if got := a.run(context.Background(), []string{"service", "install"}); got != exitOK {
+		t.Fatalf("run(service install) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	}
+	if want := "installed and started io.github.wangzw.agent-peer in gui/501\n"; stdout.String() != want {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	}
+}
+
+func TestServiceReportsErrors(t *testing.T) {
 	t.Run("default options", func(t *testing.T) {
 		var installCalls int
 		setServiceSeams(t,
@@ -109,7 +126,7 @@ func TestServiceInstallReportsErrors(t *testing.T) {
 		setServiceSeams(t,
 			func(bool) (service.Options, error) { return service.Options{}, nil },
 			func(service.Options) (service.Result, error) {
-				return service.Result{StartHint: "ignored"}, errors.New("systemctl failed")
+				return service.Result{}, errors.New("systemctl failed")
 			},
 		)
 
@@ -121,7 +138,7 @@ func TestServiceInstallReportsErrors(t *testing.T) {
 			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 		}
 		if stdout.Len() != 0 {
-			t.Fatalf("stdout = %q, want no start hint after a failure", stdout.String())
+			t.Fatalf("stdout = %q, want no success line after a failure", stdout.String())
 		}
 	})
 }
@@ -132,7 +149,7 @@ func TestServiceUsageErrors(t *testing.T) {
 		want string
 	}{
 		{[]string{"service"}, "agent-peer service: missing command\n"},
-		{[]string{"service", "uninstall"}, "agent-peer service: unknown command \"uninstall\"\n"},
+		{[]string{"service", "bogus"}, "agent-peer service: unknown command \"bogus\"\n"},
 		{[]string{"service", "install", "extra"}, "agent-peer service install: unexpected argument \"extra\"\n"},
 		{[]string{"service", "install", "--bogus"}, "agent-peer service install: flag provided but not defined: -bogus\n"},
 	}
@@ -160,8 +177,8 @@ func TestServiceUsageErrors(t *testing.T) {
 			if stdout.Len() != 0 {
 				t.Fatalf("stdout = %q, want empty", stdout.String())
 			}
-			if !strings.HasPrefix(stderr.String(), serviceInstallUsage) {
-				t.Fatalf("stderr = %q, want the install usage first", stderr.String())
+			if !strings.HasPrefix(stderr.String(), serviceUsage) {
+				t.Fatalf("stderr = %q, want the service usage first", stderr.String())
 			}
 			if got := brokerLastLine(stderr.String()); got != strings.TrimSuffix(tc.want, "\n") {
 				t.Fatalf("last stderr line = %q, want %q", got, strings.TrimSuffix(tc.want, "\n"))
@@ -192,8 +209,8 @@ func TestServiceHelpPrintsUsage(t *testing.T) {
 			if got := a.run(context.Background(), args); got != exitOK {
 				t.Fatalf("run(%q) = %d, want %d", args, got, exitOK)
 			}
-			if stdout.String() != serviceInstallUsage {
-				t.Fatalf("stdout = %q, want %q", stdout.String(), serviceInstallUsage)
+			if stdout.String() != serviceUsage {
+				t.Fatalf("stdout = %q, want %q", stdout.String(), serviceUsage)
 			}
 			if stderr.Len() != 0 {
 				t.Fatalf("stderr = %q, want empty", stderr.String())
