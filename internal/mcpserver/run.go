@@ -32,6 +32,10 @@ type Options struct {
 	launch       launcher
 	readOrigin   originReader
 	after        func(time.Duration) <-chan time.Time
+	// probe replaces the background loop's raw socket probe; nil means
+	// probeSocket. Tests use it to order the loop's probe against a Broker
+	// restart, whose socket path is briefly missing between the two listeners.
+	probe func(context.Context, string) probeResult
 }
 
 // Run serves the MCP server "peer" until ctx is done or the client closes the
@@ -128,6 +132,11 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
+	probe := opts.probe
+	if probe == nil {
+		probe = probeSocket
+	}
+
 	sel := &selector{
 		getenv:       getenv,
 		userSocket:   userSocket,
@@ -143,7 +152,7 @@ func Run(ctx context.Context, opts Options) error {
 		defer close(loopDone)
 		runLoop(loopCtx, loopDeps{
 			selectTarget: sel.Select,
-			probe:        probeSocket,
+			probe:        probe,
 			launch:       launch,
 			dial:         dialLocal,
 			hello:        hello,

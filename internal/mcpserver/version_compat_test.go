@@ -267,12 +267,31 @@ func TestMismatchRecoversAfterBrokerRestart(t *testing.T) {
 	})
 
 	opts, launch, _ := versionOptions(t, sock, fakelocal.SocketPath(t))
+	// A restart closes the old listener before the replacement binds, so the
+	// socket path is briefly missing. Probing in that window launches the
+	// user-level Broker, which is what the design asks for when the socket is
+	// gone. Gate the loop's probe until the replacement listener is up, so the
+	// test observes the claim it asserts: a restarted socket that answers is
+	// reached without a launch.
+	restarted := make(chan struct{})
+	var restarting atomic.Bool
+	opts.probe = func(ctx context.Context, path string) probeResult {
+		if restarting.Load() {
+			select {
+			case <-restarted:
+			case <-ctx.Done():
+			}
+		}
+		return probeSocket(ctx, path)
+	}
 	h := startRunClient(t, opts)
 	versionWaitMismatch(t, h.cs)
 
 	// The user restarts the Broker with a version this MCP server speaks.
 	version.Store(localpb.ProtocolVersion)
+	restarting.Store(true)
 	srv.Restart()
+	close(restarted)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
