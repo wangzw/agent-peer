@@ -580,6 +580,34 @@ func TestEnvBrokerLockHolderHelper(t *testing.T) {
 	_ = file.Close()
 }
 
+// TestEnvDarwinProbePIDs checks the ps parser the macOS cleanup uses. It must
+// select only executables under R/bin, ignore other commands, skip the process
+// running the cleanup itself, and not treat a sibling directory whose name
+// starts with "bin" as the probe's bin directory.
+func TestEnvDarwinProbePIDs(t *testing.T) {
+	root := filepath.Join(string(os.PathSeparator), "private", "tmp", "agent-peer-rs")
+	prefix := filepath.Join(root, "bin") + string(os.PathSeparator)
+	psOutput := strings.Join([]string{
+		"  123 " + prefix + "claude --model haiku",
+		"  124 /usr/bin/python3 -c x",
+		"  125 " + prefix + "agent-peer broker --ready-fd=3",
+		"  126 " + prefix + "rsprobe watch --dir x",
+		"  abc " + prefix + "claude",
+		"  127 " + root + "binother/agent-peer",
+		"",
+	}, "\n")
+	got := envDarwinProbePIDs(psOutput, prefix, 125)
+	want := []int{123, 126}
+	if len(got) != len(want) {
+		t.Fatalf("pids = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("pids[%d] = %d, want %d (all: %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
 func TestUsageCountsDistinctMessageIDs(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "cfg", "projects", "some-project")

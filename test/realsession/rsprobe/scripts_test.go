@@ -21,6 +21,9 @@ const (
 
 // TestRealSessionWorkflowShape checks the parts of the workflow that decide
 // when a probe runs, what it may do, and where its evidence may be uploaded.
+// Both jobs are checked: the Linux job keeps the apt-installed tools, and the
+// macOS job installs tmux and jq through Homebrew. Each job runs only for its
+// own branch prefix, so adding the macOS job leaves the Linux triggers intact.
 func TestRealSessionWorkflowShape(t *testing.T) {
 	doc := loadRealSessionWorkflow(t)
 
@@ -33,8 +36,14 @@ func TestRealSessionWorkflowShape(t *testing.T) {
 		t.Fatalf("push trigger = %v, want only branches", mapKeys(push))
 	}
 	branches := asSlice(t, push["branches"], "on.push.branches")
-	if len(branches) != 1 || branches[0] != "probe/**" {
-		t.Errorf("on.push.branches = %v, want [probe/**]", branches)
+	wantBranches := []string{"probe/**", "probe-macos/**"}
+	if len(branches) != len(wantBranches) {
+		t.Fatalf("on.push.branches = %v, want %v", branches, wantBranches)
+	}
+	for i, want := range wantBranches {
+		if got := asString(t, branches[i], "on.push.branches entry"); got != want {
+			t.Errorf("on.push.branches[%d] = %q, want %q", i, got, want)
+		}
 	}
 
 	permissions := asMap(t, doc["permissions"], "permissions")
@@ -43,112 +52,159 @@ func TestRealSessionWorkflowShape(t *testing.T) {
 	}
 
 	jobs := asMap(t, doc["jobs"], "jobs")
-	if len(jobs) != 1 {
-		t.Fatalf("jobs = %v, want only probe", mapKeys(jobs))
-	}
-	probe := asMap(t, jobs["probe"], "jobs.probe")
-	if _, ok := probe["permissions"]; ok {
-		t.Errorf("jobs.probe has its own permissions block; the job must rely on the workflow-level contents: read")
+	if len(jobs) != 2 {
+		t.Fatalf("jobs = %v, want probe and probe-macos", mapKeys(jobs))
 	}
 
-	env := asMap(t, probe["env"], "jobs.probe.env")
-	if _, ok := env["CLAUDE_CODE_OAUTH_TOKEN"]; ok {
-		t.Errorf("jobs.probe.env contains CLAUDE_CODE_OAUTH_TOKEN; the token must be step-scoped")
+	// The macOS root is /private/tmp, not /tmp: macOS makes /tmp a symlink,
+	// and Claude Code keys workspace trust by the resolved path, so a root
+	// under /tmp would miss the pre-accepted entry and stop at the dialog.
+	cases := []struct {
+		job        string
+		prefix     string
+		runsOn     string
+		root       string
+		uploadName string
+		tools      string
+	}{
+		{"probe", "probe/", "ubuntu-24.04", "/tmp/agent-peer-rs", "probe-${{ env.PROBE }}", "apt-get"},
+		{"probe-macos", "probe-macos/", "macos-latest", "/private/tmp/agent-peer-rs", "probe-macos-${{ env.PROBE }}", "brew install"},
 	}
-	if got := asString(t, env["R"], "jobs.probe.env.R"); got != "/tmp/agent-peer-rs" {
-		t.Errorf("jobs.probe.env.R = %q, want /tmp/agent-peer-rs", got)
-	}
+	for _, tc := range cases {
+		t.Run(tc.job, func(t *testing.T) {
+			job := asMap(t, jobs[tc.job], "jobs."+tc.job)
+			if _, ok := job["permissions"]; ok {
+				t.Errorf("jobs.%s has its own permissions block; the job must rely on the workflow-level contents: read", tc.job)
+			}
+			if got := asString(t, job["runs-on"], "jobs."+tc.job+".runs-on"); got != tc.runsOn {
+				t.Errorf("jobs.%s.runs-on = %q, want %q", tc.job, got, tc.runsOn)
+			}
+			wantIf := "startsWith(github.ref_name, '" + tc.prefix + "')"
+			if got := asString(t, job["if"], "jobs."+tc.job+".if"); got != wantIf {
+				t.Errorf("jobs.%s.if = %q, want %q", tc.job, got, wantIf)
+			}
 
-	// The token reaches exactly the steps that need it, and no other step.
-	steps := asSlice(t, probe["steps"], "jobs.probe.steps")
-	const wantToken = "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
-	var tokenSteps []string
-	for _, raw := range steps {
-		step := asMap(t, raw, "workflow step")
-		rawEnv, ok := step["env"]
-		if !ok {
-			continue
-		}
-		stepEnv := asMap(t, rawEnv, "step env")
-		value, ok := stepEnv["CLAUDE_CODE_OAUTH_TOKEN"]
-		if !ok {
-			continue
-		}
-		name := asString(t, step["name"], "step name")
-		tokenSteps = append(tokenSteps, name)
-		if value != wantToken {
-			t.Errorf("%s: CLAUDE_CODE_OAUTH_TOKEN = %v, want %q", name, value, wantToken)
-		}
-	}
-	wantTokenSteps := []string{"Prepare", "Run the probe", "Scan the evidence for the token"}
-	if strings.Join(tokenSteps, ",") != strings.Join(wantTokenSteps, ",") {
-		t.Errorf("steps with CLAUDE_CODE_OAUTH_TOKEN = %v, want %v", tokenSteps, wantTokenSteps)
-	}
+			env := asMap(t, job["env"], "jobs."+tc.job+".env")
+			if _, ok := env["CLAUDE_CODE_OAUTH_TOKEN"]; ok {
+				t.Errorf("jobs.%s.env contains CLAUDE_CODE_OAUTH_TOKEN; the token must be step-scoped", tc.job)
+			}
+			if got := asString(t, env["R"], "jobs."+tc.job+".env.R"); got != tc.root {
+				t.Errorf("jobs.%s.env.R = %q, want %q", tc.job, got, tc.root)
+			}
 
-	// The setup steps touch the network and have hung before; each carries a
-	// timeout so a stuck download fails the run instead of holding the job
-	// until the workflow timeout.
-	for name, want := range map[string]int{
-		"Install tools":       10,
-		"Install Claude Code": 10,
-		"Build":               15,
-	} {
-		step := findWorkflowStepByName(t, steps, name)
-		got, ok := step["timeout-minutes"].(int)
-		if !ok {
-			t.Errorf("%s has no integer timeout-minutes; got %v", name, step["timeout-minutes"])
-			continue
-		}
-		if got != want {
-			t.Errorf("%s timeout-minutes = %d, want %d", name, got, want)
-		}
-	}
+			// The token reaches exactly the steps that need it, and no other.
+			steps := asSlice(t, job["steps"], "jobs."+tc.job+".steps")
+			const wantToken = "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"
+			var tokenSteps []string
+			for _, raw := range steps {
+				step := asMap(t, raw, "workflow step")
+				rawEnv, ok := step["env"]
+				if !ok {
+					continue
+				}
+				stepEnv := asMap(t, rawEnv, "step env")
+				value, ok := stepEnv["CLAUDE_CODE_OAUTH_TOKEN"]
+				if !ok {
+					continue
+				}
+				name := asString(t, step["name"], "step name")
+				tokenSteps = append(tokenSteps, name)
+				if value != wantToken {
+					t.Errorf("%s: CLAUDE_CODE_OAUTH_TOKEN = %v, want %q", name, value, wantToken)
+				}
+			}
+			wantTokenSteps := []string{"Prepare", "Run the probe", "Scan the evidence for the token"}
+			if strings.Join(tokenSteps, ",") != strings.Join(wantTokenSteps, ",") {
+				t.Errorf("%s: steps with CLAUDE_CODE_OAUTH_TOKEN = %v, want %v", tc.job, tokenSteps, wantTokenSteps)
+			}
 
-	// The scan is the main defense: it runs before the upload, removes the
-	// evidence on a hit, and fails when the token is empty. It runs even when
-	// an earlier step failed, so a failed probe still leaves evidence.
-	scanIndex := findWorkflowStepIndex(t, steps, "Scan the evidence for the token")
-	uploadIndex := findWorkflowStepIndexByUses(t, steps, "actions/upload-artifact@")
-	if scanIndex > uploadIndex {
-		t.Errorf("the scan step is at index %d, after the upload at %d", scanIndex, uploadIndex)
-	}
-	scan := asMap(t, steps[scanIndex], "scan step")
-	if got := asString(t, scan["id"], "scan id"); got != "scan" {
-		t.Errorf("the scan step id = %q, want scan", got)
-	}
-	const wantScanIf = "${{ !cancelled() }}"
-	if got := asString(t, scan["if"], "scan if"); got != wantScanIf {
-		t.Errorf("the scan step if = %q, want %q", got, wantScanIf)
-	}
-	scanRun := asString(t, scan["run"], "scan run")
-	for _, want := range []string{
-		`-z "$CLAUDE_CODE_OAUTH_TOKEN"`,
-		`grep -rqF -- "$CLAUDE_CODE_OAUTH_TOKEN" "$R/out"`,
-		`rm -rf "$R/out"`,
-	} {
-		if !strings.Contains(scanRun, want) {
-			t.Errorf("the scan step does not contain %q", want)
-		}
-	}
+			// The setup steps touch the network and have hung before; each
+			// carries a timeout so a stuck download fails the run instead of
+			// holding the job until the workflow timeout.
+			for name, want := range map[string]int{
+				"Install tools":       10,
+				"Install Claude Code": 10,
+				"Build":               15,
+			} {
+				step := findWorkflowStepByName(t, steps, name)
+				got, ok := step["timeout-minutes"].(int)
+				if !ok {
+					t.Errorf("%s: %s has no integer timeout-minutes; got %v", tc.job, name, step["timeout-minutes"])
+					continue
+				}
+				if got != want {
+					t.Errorf("%s: %s timeout-minutes = %d, want %d", tc.job, name, got, want)
+				}
+			}
 
-	// The upload runs only after a passing scan and only when the job was not
-	// cancelled; that way a failed probe still uploads its evidence, while a
-	// token hit or a cancelled run leaves nothing behind.
-	upload := asMap(t, steps[uploadIndex], "upload step")
-	const wantUploadIf = "${{ !cancelled() && steps.scan.outcome == 'success' }}"
-	if got := asString(t, upload["if"], "upload-artifact if"); got != wantUploadIf {
-		t.Errorf("upload-artifact if = %q, want %q", got, wantUploadIf)
-	}
-	with := asMap(t, upload["with"], "upload-artifact.with")
-	const wantPath = "/tmp/agent-peer-rs/out/${{ env.PROBE }}/"
-	if got := asString(t, with["path"], "upload-artifact.path"); got != wantPath {
-		t.Errorf("upload-artifact path = %q, want %q", got, wantPath)
-	}
-	if got := asString(t, with["name"], "upload-artifact.name"); got != "probe-${{ env.PROBE }}" {
-		t.Errorf("upload-artifact name = %q, want %q", got, "probe-${{ env.PROBE }}")
-	}
-	if got := asString(t, with["if-no-files-found"], "upload-artifact.if-no-files-found"); got != "error" {
-		t.Errorf("upload-artifact if-no-files-found = %q, want error", got)
+			// The install step names the package manager its runner family
+			// provides; the macOS job must not fall back to apt packages.
+			install := findWorkflowStepByName(t, steps, "Install tools")
+			installRun := asString(t, install["run"], "Install tools run")
+			if !strings.Contains(installRun, tc.tools) {
+				t.Errorf("%s: Install tools does not use %q", tc.job, tc.tools)
+			}
+			if tc.job == "probe-macos" && (strings.Contains(installRun, "apt-get") || strings.Contains(installRun, "sudo")) {
+				t.Errorf("the macOS job installs packages with apt-get or sudo")
+			}
+
+			// The scan is the main defense: it runs before the upload, removes
+			// the evidence on a hit, and fails when the token is empty. It runs
+			// even when an earlier step failed, so a failed probe still leaves
+			// evidence.
+			scanIndex := findWorkflowStepIndex(t, steps, "Scan the evidence for the token")
+			uploadIndex := findWorkflowStepIndexByUses(t, steps, "actions/upload-artifact@")
+			if scanIndex > uploadIndex {
+				t.Errorf("%s: the scan step is at index %d, after the upload at %d", tc.job, scanIndex, uploadIndex)
+			}
+			scan := asMap(t, steps[scanIndex], "scan step")
+			if got := asString(t, scan["id"], "scan id"); got != "scan" {
+				t.Errorf("%s: the scan step id = %q, want scan", tc.job, got)
+			}
+			const wantScanIf = "${{ !cancelled() }}"
+			if got := asString(t, scan["if"], "scan if"); got != wantScanIf {
+				t.Errorf("%s: the scan step if = %q, want %q", tc.job, got, wantScanIf)
+			}
+			scanRun := asString(t, scan["run"], "scan run")
+			for _, want := range []string{
+				`-z "$CLAUDE_CODE_OAUTH_TOKEN"`,
+				`grep -rqF -- "$CLAUDE_CODE_OAUTH_TOKEN" "$R/out"`,
+				`rm -rf "$R/out"`,
+			} {
+				if !strings.Contains(scanRun, want) {
+					t.Errorf("%s: the scan step does not contain %q", tc.job, want)
+				}
+			}
+
+			// The upload runs only after a passing scan and only when the job
+			// was not cancelled; that way a failed probe still uploads its
+			// evidence, while a token hit or a cancelled run leaves nothing
+			// behind.
+			upload := asMap(t, steps[uploadIndex], "upload step")
+			const wantUploadIf = "${{ !cancelled() && steps.scan.outcome == 'success' }}"
+			if got := asString(t, upload["if"], "upload-artifact if"); got != wantUploadIf {
+				t.Errorf("%s: upload-artifact if = %q, want %q", tc.job, got, wantUploadIf)
+			}
+			with := asMap(t, upload["with"], "upload-artifact.with")
+			wantPath := tc.root + "/out/${{ env.PROBE }}/"
+			if got := asString(t, with["path"], "upload-artifact.path"); got != wantPath {
+				t.Errorf("%s: upload-artifact path = %q, want %q", tc.job, got, wantPath)
+			}
+			if got := asString(t, with["name"], "upload-artifact.name"); got != tc.uploadName {
+				t.Errorf("%s: upload-artifact name = %q, want %q", tc.job, got, tc.uploadName)
+			}
+			if got := asString(t, with["if-no-files-found"], "upload-artifact.if-no-files-found"); got != "error" {
+				t.Errorf("%s: upload-artifact if-no-files-found = %q, want error", tc.job, got)
+			}
+
+			// Each job strips its own branch prefix before the shared case
+			// list, so the Linux and macOS jobs accept different branch names.
+			selectStep := findWorkflowStepByName(t, steps, "Select the probe")
+			selectRun := asString(t, selectStep["run"], "Select the probe run")
+			if !strings.Contains(selectRun, "${GITHUB_REF_NAME#"+tc.prefix+"}") {
+				t.Errorf("%s: Select the probe does not strip the %q prefix", tc.job, tc.prefix)
+			}
+		})
 	}
 }
 
@@ -340,6 +396,28 @@ func TestProbeNamesMatchScripts(t *testing.T) {
 	for _, name := range probeNames {
 		if !seen[name] {
 			t.Errorf("the workflow case does not list %q", name)
+		}
+	}
+
+	// The macOS job runs a subset of the same probes. Every name it accepts
+	// must be a known probe, and the two this unit runs must be present.
+	macOSNames := workflowCaseNamesInJob(t, doc, "probe-macos")
+	if len(macOSNames) == 0 {
+		t.Errorf("jobs.probe-macos Select the probe has no case labels")
+	}
+	macOSSeen := make(map[string]bool, len(macOSNames))
+	for _, name := range macOSNames {
+		if !known[name] {
+			t.Errorf("the macOS workflow case lists %q, which is not in probeNames", name)
+		}
+		if macOSSeen[name] {
+			t.Errorf("the macOS workflow case lists %q twice", name)
+		}
+		macOSSeen[name] = true
+	}
+	for _, name := range []string{"preflight", "registry"} {
+		if !macOSSeen[name] {
+			t.Errorf("the macOS workflow case does not list %q", name)
 		}
 	}
 }
@@ -859,8 +937,16 @@ func exitCodeIn(body string) (int, bool) {
 
 func workflowCaseNames(t *testing.T, doc map[string]any) []string {
 	t.Helper()
-	probe := realSessionProbeJob(t, doc)
-	steps := asSlice(t, probe["steps"], "jobs.probe.steps")
+	return workflowCaseNamesInJob(t, doc, "probe")
+}
+
+// workflowCaseNamesInJob returns the labels of a job's "Select the probe" case
+// list, excluding the catch-all.
+func workflowCaseNamesInJob(t *testing.T, doc map[string]any, jobName string) []string {
+	t.Helper()
+	jobs := asMap(t, doc["jobs"], "jobs")
+	job := asMap(t, jobs[jobName], "jobs."+jobName)
+	steps := asSlice(t, job["steps"], "jobs."+jobName+".steps")
 	selectStep := findWorkflowStepByName(t, steps, "Select the probe")
 	run := asString(t, selectStep["run"], "Select the probe run")
 

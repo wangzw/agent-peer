@@ -2,7 +2,7 @@ name: Real session probe
 
 on:
   push:
-    branches: ["probe/**"]
+    branches: ["probe/**", "probe-macos/**"]
 
 permissions:
   contents: read
@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   probe:
+    if: startsWith(github.ref_name, 'probe/')
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -113,5 +114,110 @@ jobs:
         with:
           name: probe-${{ env.PROBE }}
           path: /tmp/agent-peer-rs/out/${{ env.PROBE }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  # The macOS job runs the probes that need no Linux-only tooling: it installs
+  # tmux and jq through Homebrew, copies the same pinned Claude Code build and
+  # agent-peer binaries, and runs the same probe scripts. The Linux job keeps
+  # the apt packages, strace and stress-ng, which no macOS probe uses.
+  #
+  # The probe root is /private/tmp rather than /tmp because macOS makes /tmp a
+  # symlink to /private/tmp. Claude Code keys its workspace trust entries by
+  # the resolved path, so a root under /tmp would miss the entry env init wrote
+  # and every session would stop at the trust dialog before registering.
+  probe-macos:
+    if: startsWith(github.ref_name, 'probe-macos/')
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      R: /private/tmp/agent-peer-rs
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache: true
+      - name: Select the probe
+        run: |
+          p="${GITHUB_REF_NAME#probe-macos/}"
+          case "$p" in
+            preflight) ;;
+            registry) ;;
+            *)
+              echo "unknown macOS probe: $p" >&2
+              exit 1
+              ;;
+          esac
+          echo "PROBE=$p" >> "$GITHUB_ENV"
+      - name: Install tools
+        timeout-minutes: 10
+        run: |
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install tmux jq
+          tmux -V
+          jq --version
+      - name: Install Claude Code
+        timeout-minutes: 10
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash -s 2.1.311
+          "$HOME/.local/bin/claude" --version
+      - name: Build
+        timeout-minutes: 15
+        run: |
+          mkdir -p "$RUNNER_TEMP/build"
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/agent-peer" ./cmd/agent-peer
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/rsprobe" ./test/realsession/rsprobe
+      - name: Prepare
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "secret CLAUDE_CODE_OAUTH_TOKEN is missing" >&2
+            exit 1
+          fi
+          # macOS readlink has no -f; python3 resolves the installed symlink.
+          claude_bin="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$HOME/.local/bin/claude")"
+          "$RUNNER_TEMP/build/rsprobe" env init --root "$R" --claude-bin "$claude_bin" --agent-peer-bin "$RUNNER_TEMP/build/agent-peer"
+          "$R/bin/rsprobe" env check --root "$R"
+          "$R/run" claude mcp add --scope user peer -- "$R/bin/agent-peer" mcp
+      - name: Run the probe
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: bash "test/realsession/probes/$PROBE.sh"
+      - name: Count model calls
+        if: always()
+        run: '"$R/bin/rsprobe" env usage --root "$R" > "$R/out/$PROBE/usage.txt"'
+      - name: Clean up
+        if: always()
+        run: '"$R/bin/rsprobe" env clean --root "$R"'
+      - name: Scan the evidence for the token
+        id: scan
+        if: ${{ !cancelled() }}
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "secret CLAUDE_CODE_OAUTH_TOKEN is missing" >&2
+            exit 1
+          fi
+          status=0
+          grep -rqF -- "$CLAUDE_CODE_OAUTH_TOKEN" "$R/out" || status=$?
+          if [ "$status" -eq 0 ]; then
+            rm -rf "$R/out"
+            echo "the evidence contains the token; removed it and skipped the upload" >&2
+            exit 1
+          fi
+          if [ "$status" -ne 1 ]; then
+            echo "cannot scan the evidence: grep exited with status $status" >&2
+            exit 1
+          fi
+      - name: Upload
+        if: ${{ !cancelled() && steps.scan.outcome == 'success' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: probe-macos-${{ env.PROBE }}
+          path: /private/tmp/agent-peer-rs/out/${{ env.PROBE }}/
           if-no-files-found: error
           retention-days: 30

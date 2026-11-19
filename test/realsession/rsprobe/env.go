@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -293,9 +294,13 @@ func envWriteJSON(path string, v any) error {
 // envRunScript renders the wrapper that starts every probe process with a
 // clean, reproducible environment. The OAuth token is passed by reference from
 // the caller's environment and never written into the file.
+//
+// The PATH lists both Homebrew prefixes so that tmux and jq resolve on an
+// Apple-silicon (/opt/homebrew) as well as an Intel (/usr/local) macOS runner;
+// the extra directory is harmless on Linux.
 func envRunScript(root, name string) string {
 	return fmt.Sprintf(`#!/bin/sh
-exec env -i HOME=%s/home USER=%s LOGNAME=%s PATH=%s/bin:/usr/local/bin:/usr/bin:/bin TERM=xterm-256color LANG=C.UTF-8 CLAUDE_CONFIG_DIR=%s/cfg DISABLE_AUTOUPDATER=1 CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" "$@"
+exec env -i HOME=%s/home USER=%s LOGNAME=%s PATH=%s/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin TERM=xterm-256color LANG=C.UTF-8 CLAUDE_CONFIG_DIR=%s/cfg DISABLE_AUTOUPDATER=1 CLAUDE_CODE_OAUTH_TOKEN="$CLAUDE_CODE_OAUTH_TOKEN" "$@"
 `, root, name, name, root, root)
 }
 
@@ -397,11 +402,17 @@ func runEnvCheck(args []string, stdout io.Writer) error {
 		fail(detail)
 	}
 
-	limit := strings.TrimSpace(string(mustReadFile("/proc/sys/fs/inotify/max_user_instances")))
-	if limit == "" {
-		limit = "unknown"
+	// inotify exists only on Linux; a macOS Broker watches the registry with
+	// kqueue. Say so instead of reporting an unreadable limit as a value.
+	if runtime.GOOS == "linux" {
+		limit := strings.TrimSpace(string(mustReadFile("/proc/sys/fs/inotify/max_user_instances")))
+		if limit == "" {
+			limit = "unknown"
+		}
+		_, _ = fmt.Fprintf(stdout, "inotify: max_user_instances=%s in_use=%d\n", limit, envCountInotify())
+	} else {
+		_, _ = fmt.Fprintf(stdout, "inotify: skipped (not available on %s; the macOS Broker watches with kqueue)\n", runtime.GOOS)
 	}
-	_, _ = fmt.Fprintf(stdout, "inotify: max_user_instances=%s in_use=%d\n", limit, envCountInotify())
 
 	if len(failures) > 0 {
 		return fmt.Errorf("environment check failed: %s", strings.Join(failures, "; "))
@@ -743,7 +754,7 @@ func runEnvClean(args []string, stdout io.Writer) error {
 		}
 	}
 
-	if err := os.RemoveAll(homePath); err != nil {
+	if err := envRemoveAll(homePath); err != nil {
 		return fmt.Errorf("remove %s: %w", homePath, err)
 	}
 	entries, err := os.ReadDir(rootPath)
@@ -757,7 +768,7 @@ func runEnvClean(args []string, stdout io.Writer) error {
 		if entry.Name() == "out" {
 			continue
 		}
-		if err := os.RemoveAll(filepath.Join(rootPath, entry.Name())); err != nil {
+		if err := envRemoveAll(filepath.Join(rootPath, entry.Name())); err != nil {
 			return err
 		}
 	}
@@ -778,9 +789,14 @@ func envWithOverride(env []string, key, value string) []string {
 }
 
 // envKillProbeProcesses stops every process started from the probe: binaries
-// under R/bin and processes whose HOME is R/home.
+// under R/bin and processes whose HOME is R/home. Linux reads /proc; macOS has
+// none, so it matches the executable path in ps output.
 func envKillProbeProcesses(root string, stdout io.Writer) {
 	binPrefix := filepath.Join(root, "bin") + string(os.PathSeparator)
+	if runtime.GOOS == "darwin" {
+		envKillDarwinProcesses(binPrefix, stdout)
+		return
+	}
 	homeValue := "HOME=" + filepath.Join(root, "home")
 	self := os.Getpid()
 
@@ -812,6 +828,12 @@ func envKillProbeProcesses(root string, stdout io.Writer) {
 			pids = append(pids, pid)
 		}
 	}
+	envTerminate(pids, stdout)
+}
+
+// envTerminate stops pids with SIGTERM, waits up to two seconds, then uses
+// SIGKILL on whatever is left.
+func envTerminate(pids []int, stdout io.Writer) {
 	if len(pids) == 0 {
 		return
 	}
@@ -831,6 +853,51 @@ func envKillProbeProcesses(root string, stdout io.Writer) {
 		}
 	}
 	_, _ = fmt.Fprintf(stdout, "stopped %d probe process(es)\n", len(pids))
+}
+
+// envDarwinProbePIDs returns the pids in ps output whose command starts with
+// binPrefix, excluding self. Each line is "pid command"; the command field is
+// argv[0] of the process, which the run wrapper sets to the copied binary.
+func envDarwinProbePIDs(psOutput, binPrefix string, self int) []int {
+	var pids []int
+	for _, line := range strings.Split(psOutput, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil || pid == self {
+			continue
+		}
+		if strings.HasPrefix(fields[1], binPrefix) {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
+}
+
+// envKillDarwinProcesses lists processes with ps, picks the probe executables
+// and terminates them.
+func envKillDarwinProcesses(binPrefix string, stdout io.Writer) {
+	out, err := exec.Command("ps", "-ax", "-ww", "-o", "pid=,command=").Output()
+	if err != nil {
+		return
+	}
+	envTerminate(envDarwinProbePIDs(string(out), binPrefix, os.Getpid()), stdout)
+}
+
+// envRemoveAll removes path, retrying briefly: on macOS a process that was
+// just stopped can create a file between the directory scan and the removal,
+// which makes RemoveAll report "directory not empty".
+func envRemoveAll(path string) error {
+	var err error
+	for i := 0; i < 5; i++ {
+		if err = os.RemoveAll(path); err == nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return err
 }
 
 func envAnyAlive(pids []int) bool {
