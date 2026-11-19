@@ -12,7 +12,6 @@ const mcpUsage = "usage: agent-peer mcp"
 
 func init() {
 	subcommands["mcp"] = (*app).mcpCmd
-	subcommands["internal broker-launcher"] = (*app).launcherCmd
 }
 
 // mcpCmd runs the MCP server over the process's own stdin and stdout. It must
@@ -38,15 +37,4 @@ func (a *app) mcpCmd(ctx context.Context, args []string) int {
 		return exitFailure
 	}
 	return exitOK
-}
-
-// launcherCmd is the body of the hidden "internal broker-launcher" subcommand.
-// RunLauncher already reports its own failure through the ready pipe, so this
-// function only forwards its exit code.
-func (a *app) launcherCmd(_ context.Context, args []string) int {
-	if len(args) > 0 {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer internal broker-launcher: unexpected argument %q\n", args[0])
-		return exitUsage
-	}
-	return a.deps.runLauncher()
 }

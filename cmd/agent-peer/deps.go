@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"io"
-	"os"
 )
 
 // brokerOptions is the subset of the Broker's run options that the command
@@ -12,7 +11,6 @@ import (
 type brokerOptions struct {
 	System    bool
 	Listen    string
-	Ready     *os.File // nil means there is no ready pipe
 	Version   string
 	LogOutput io.Writer
 }
@@ -81,7 +79,6 @@ type deps struct {
 	runBroker         func(ctx context.Context, o brokerOptions) error
 	classifyBrokerErr func(err error) startFailure
 	runMCP            func(ctx context.Context) error // MCP over the process's own stdin/stdout
-	runLauncher       func() int                      // body of "internal broker-launcher", returns the exit code
 	runStatus         func(ctx context.Context, stdout io.Writer) error
 	runAudit          func(ctx context.Context, stdout io.Writer, limit uint32) error
 }

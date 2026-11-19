@@ -134,29 +134,3 @@ func TestMCPHelp(t *testing.T) {
 		}
 	}
 }
-
-func TestLauncherRouted(t *testing.T) {
-	for _, code := range []int{exitOK, exitFailure} {
-		stub := &stubDeps{launcherCode: code}
-		a, _, _ := newMCPApp(stub)
-
-		if got := a.run(context.Background(), []string{"internal", "broker-launcher"}); got != code {
-			t.Fatalf("run(internal broker-launcher) returned %d, want %d", got, code)
-		}
-		if stub.launcherCalls != 1 {
-			t.Fatalf("runLauncher called %d times, want 1", stub.launcherCalls)
-		}
-	}
-
-	stub := &stubDeps{}
-	a, _, stderr := newMCPApp(stub)
-	if got := a.run(context.Background(), []string{"internal", "broker-launcher", "x"}); got != exitUsage {
-		t.Fatalf("run(internal broker-launcher x) returned %d, want %d", got, exitUsage)
-	}
-	if stub.launcherCalls != 0 {
-		t.Fatalf("runLauncher called %d times, want 0", stub.launcherCalls)
-	}
-	if want := "agent-peer internal broker-launcher: unexpected argument \"x\"\n"; stderr.String() != want {
-		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
-	}
-}

@@ -6,9 +6,8 @@ import (
 )
 
 // testRoles holds the entry points of the test double executables. The package
-// may only have one TestMain, and both the launcher and the process entry tests
-// re-execute the test binary, so each test file registers its roles here from
-// init.
+// may only have one TestMain, and each process entry test re-executes the test
+// binary, so each test file registers its roles here from init.
 var testRoles = map[string]func() int{}
 
 func TestMain(m *testing.M) {

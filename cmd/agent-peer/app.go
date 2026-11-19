@@ -37,7 +37,7 @@ type app struct {
 
 // subcommands maps a command name to its handler. Command implementations
 // register themselves from init so this file stays free of their details.
-// The hidden internal helper commands use keys such as "internal broker-launcher".
+// The hidden internal helper commands use keys such as "internal account-helper".
 var subcommands = map[string]func(*app, context.Context, []string) int{}
 
 // signalRestoreHook runs after the first signal has cancelled ctx and the

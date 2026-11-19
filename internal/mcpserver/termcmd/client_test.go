@@ -96,10 +96,11 @@ func TestRunStatusUsesSelectedSocket(t *testing.T) {
 }
 
 func TestRunStatusSelectorError(t *testing.T) {
-	want := "cannot reach the Broker: no running Broker found"
+	const noBroker = "no Broker is available for this account; if a system-level Broker is installed on this host, ask the administrator to start it. Otherwise start a user-level Broker with `agent-peer service install`, or run `agent-peer broker` in a terminal outside the Claude Code session (a Broker started inside the session exits with code 6)"
+	want := "cannot reach the Broker: " + noBroker
 	var got bytes.Buffer
 	err := RunStatus(t.Context(), func(context.Context) (string, Dialer, error) {
-		return "", nil, errors.New("no running Broker found")
+		return "", nil, errors.New(noBroker)
 	}, &got)
 	if err == nil || err.Error() != want {
 		t.Fatalf("RunStatus error = %v, want %q", err, want)

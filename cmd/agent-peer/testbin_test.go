@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"net"
@@ -200,35 +199,6 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-// startBrokerOnFreePort starts the Broker with --listen on a port that
-// freePort released and waits for its readiness line. The port can be taken
-// between freePort's close and the Broker's bind, so a Broker that exits
-// because the address is unavailable is retried once on a fresh port. Any
-// other failure is reported as it is. The returned port is the one the Broker
-// listens on.
-func startBrokerOnFreePort(t *testing.T, sb *sandbox, args ...string) (*brokerProc, int) {
-	t.Helper()
-
-	const attempts = 2
-	for attempt := 1; ; attempt++ {
-		port := freePort(t)
-		brokerArgs := append([]string{"--listen", listenAddr(port)}, args...)
-		p := startBroker(t, sb, brokerArgs...)
-		line := p.readyLine(3 * time.Second)
-		if line == "ok" {
-			return p, port
-		}
-		code := p.wait(3 * time.Second)
-		if code != exitListenUnavailable || attempt == attempts {
-			t.Fatalf("broker start on %s: exit code %d, ready line %q (stderr: %s)",
-				listenAddr(port), code, line, p.stderr.String())
-		}
-		// Another process took the port between freePort's close and the
-		// Broker's bind. The Broker has exited; retry on a fresh port.
-		p.stop()
-	}
-}
-
 // lockedBuffer is the standard error sink for a child process. os/exec copies
 // the child's output from another goroutine, and tests read the buffer while
 // the child may still write, so every access is guarded.
@@ -249,92 +219,14 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-// brokerProc is one Broker child process started by startBroker.
+// brokerProc is one Broker child process started by a test helper.
 type brokerProc struct {
 	t      *testing.T
 	cmd    *exec.Cmd
-	ready  *os.File
-	reader *bufio.Reader
 	stderr *lockedBuffer
 
 	exited  chan struct{}
 	waitErr error
-}
-
-// startBroker runs "agent-peer broker" with a readiness pipe on fd 3. The
-// caller reads the pipe with readyLine and collects the exit code with wait.
-func startBroker(t *testing.T, sb *sandbox, args ...string) *brokerProc {
-	t.Helper()
-
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("create readiness pipe: %v", err)
-	}
-
-	cmdArgs := append([]string{"broker"}, args...)
-	cmdArgs = append(cmdArgs, "--ready-fd=3")
-	cmd := exec.Command(testBinary, cmdArgs...)
-	cmd.Env = sb.env()
-	cmd.WaitDelay = waitDelay
-	// ExtraFiles are inherited starting at fd 3, matching the --ready-fd=3
-	// argument and mcpserver.ReadyFD.
-	cmd.ExtraFiles = []*os.File{w}
-	stderr := &lockedBuffer{}
-	cmd.Stderr = stderr
-
-	if err := cmd.Start(); err != nil {
-		_ = r.Close()
-		_ = w.Close()
-		t.Fatalf("start broker: %v", err)
-	}
-	// The child holds the write end as fd 3. Closing ours turns an exiting
-	// Broker into an EOF on the read end instead of a wait for the timeout.
-	_ = w.Close()
-
-	p := &brokerProc{
-		t:      t,
-		cmd:    cmd,
-		ready:  r,
-		reader: bufio.NewReader(r),
-		stderr: stderr,
-		exited: make(chan struct{}),
-	}
-	go func() {
-		p.waitErr = cmd.Wait()
-		close(p.exited)
-	}()
-	t.Cleanup(p.stop)
-	return p
-}
-
-// readyLine reads one line from the readiness pipe, failing the test when none
-// arrives in time.
-func (p *brokerProc) readyLine(timeout time.Duration) string {
-	p.t.Helper()
-
-	deadline := time.Now().Add(timeout)
-	if err := p.ready.SetReadDeadline(deadline); err != nil {
-		p.t.Fatalf("set readiness deadline: %v", err)
-	}
-	line, err := p.reader.ReadString('\n')
-	if err != nil {
-		// A closed pipe usually means the process is exiting. Wait for the same
-		// deadline rather than adding a fixed delay, so the whole call stays
-		// within timeout; the failure message can then carry the exit code and
-		// the complete standard error instead of racing the copy goroutine.
-		select {
-		case <-p.exited:
-		case <-time.After(time.Until(deadline)):
-		}
-		state := "still running"
-		select {
-		case <-p.exited:
-			state = fmt.Sprintf("exit code %d (%v)", p.cmd.ProcessState.ExitCode(), p.waitErr)
-		default:
-		}
-		p.t.Fatalf("read readiness line: %v (process: %s; stderr: %s)", err, state, p.stderr.String())
-	}
-	return strings.TrimRight(line, "\r\n")
 }
 
 // wait waits for the process to exit and returns its exit code.
@@ -367,13 +259,9 @@ func (p *brokerProc) lastStderrLine(prefix string) string {
 	return ""
 }
 
-// stop is the cleanup registered by startBroker: terminate a still running
-// Broker with SIGTERM and fall back to SIGKILL after three seconds.
+// stop is the cleanup registered by the start helpers: terminate a still
+// running Broker with SIGTERM and fall back to SIGKILL after three seconds.
 func (p *brokerProc) stop() {
-	if p.ready != nil {
-		_ = p.ready.Close()
-	}
-
 	select {
 	case <-p.exited:
 		return

@@ -47,12 +47,13 @@ func errSystemWiring(detail string) error {
 }
 
 // RunOptions is the process entry point's input to Run. The exported fields
-// mirror the command line; checkTick and afterCheck exist only so tests can
-// drive the periodic runtime-directory review without waiting a minute.
+// mirror the command line, except Ready, which is a test seam for reading the
+// startup result. checkTick and afterCheck exist only so tests can drive the
+// periodic runtime-directory review without waiting a minute.
 type RunOptions struct {
 	System               bool
 	Listen               string
-	Ready                io.WriteCloser
+	Ready                io.WriteCloser // tests only; nil means no readiness pipe
 	LogOutput            io.Writer
 	Version              string
 	LocalProtocolVersion uint32      // 0: localpb.ProtocolVersion
@@ -316,8 +317,8 @@ func Run(ctx context.Context, opts RunOptions) error {
 		}
 	}
 
-	// Step 10: the readiness pipe reports success only after both listeners
-	// exist. The local service is served from here on.
+	// Step 10: the readiness pipe, when a test supplies one, reports success
+	// only after both listeners exist. The local service is served from here on.
 	writeReadyLine(opts.Ready, "ok")
 	deps.Logger.Info(EvBrokerStarted, "socket", sockPath, "pid", os.Getpid(), "version", opts.Version)
 	go serveLocal(b, sock.Listener(), deps.Logger)
@@ -412,7 +413,7 @@ func serveLocal(b *Broker, ln net.Listener, log *slog.Logger) {
 }
 
 // writeReadyLine writes one line to the readiness pipe and closes it. A nil
-// pipe, as when the process was started from a terminal, is a no-op.
+// pipe is a no-op; only tests supply one.
 func writeReadyLine(w io.WriteCloser, text string) {
 	if w == nil {
 		return

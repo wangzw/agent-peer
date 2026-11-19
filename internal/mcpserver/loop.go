@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -19,7 +18,6 @@ import (
 type loopDeps struct {
 	selectTarget func(ctx context.Context) (target, error)
 	probe        func(ctx context.Context, path string) probeResult
-	launch       launcher
 	dial         func(path string) (*grpc.ClientConn, localpb.LocalClient, error)
 	hello        func(ctx context.Context, c localpb.LocalClient, version uint32) (helloResult, error)
 	waitNotReady func(ctx context.Context, cc *grpc.ClientConn)
@@ -39,7 +37,7 @@ type loopDeps struct {
 const (
 	loopLostText = "the connection to the Broker was lost; reconnecting"
 
-	loopRemedyUser   = "restart the Broker of this account with the same agent-peer version; this session reconnects by itself"
+	loopRemedyUser   = "restart the Broker of this account with the same agent-peer version, starting it with `agent-peer service install` or with `agent-peer broker` in a terminal outside the session; this session reconnects by itself"
 	loopRemedySystem = "ask the administrator to restart the Broker system service with the same agent-peer version; this session reconnects by itself"
 	loopRemedyEnv    = "restart the Broker at %s with the same agent-peer version; this session reconnects by itself"
 )
@@ -56,11 +54,16 @@ func loopRemedy(t target) string {
 	}
 }
 
+// ConnBackoffCap is the longest wait between reconnection attempts to a known
+// socket. It is exported so end-to-end tests can derive their wait bounds from
+// it.
+const ConnBackoffCap = 5 * time.Second
+
 // loopConnBackoff paces reconnection attempts to a known socket: the first
-// retry after a failure waits 250ms, later ones double up to 5s. Only a
-// registration completion resets it; a successful Hello must not, or a Broker
-// that fails every Register stream would be retried without any wait. It is
-// safe for concurrent use because the reset runs from the goroutine that
+// retry after a failure waits 250ms, later ones double up to ConnBackoffCap.
+// Only a registration completion resets it; a successful Hello must not, or a
+// Broker that fails every Register stream would be retried without any wait. It
+// is safe for concurrent use because the reset runs from the goroutine that
 // handles registration_complete.
 type loopConnBackoff struct {
 	mu   sync.Mutex
@@ -74,10 +77,10 @@ func (b *loopConnBackoff) next() time.Duration {
 	switch {
 	case b.wait == 0:
 		b.wait = 250 * time.Millisecond
-	case b.wait < 5*time.Second:
+	case b.wait < ConnBackoffCap:
 		b.wait *= 2
-		if b.wait > 5*time.Second {
-			b.wait = 5 * time.Second
+		if b.wait > ConnBackoffCap {
+			b.wait = ConnBackoffCap
 		}
 	}
 	return b.wait
@@ -90,46 +93,12 @@ func (b *loopConnBackoff) reset() {
 	b.mu.Unlock()
 }
 
-// loopLaunchBackoff paces re-running the full selection after launching the
-// user-level Broker failed: 1s, 2s, 4s, ... up to 30s. A successful selection
-// resets it.
-type loopLaunchBackoff struct {
-	mu   sync.Mutex
-	wait time.Duration
-}
-
-// next returns the wait before the next selection and advances the sequence.
-func (b *loopLaunchBackoff) next() time.Duration {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	switch {
-	case b.wait == 0:
-		b.wait = time.Second
-	case b.wait < 30*time.Second:
-		b.wait *= 2
-		if b.wait > 30*time.Second {
-			b.wait = 30 * time.Second
-		}
-	}
-	return b.wait
-}
-
-// reset restarts the sequence at 1s.
-func (b *loopLaunchBackoff) reset() {
-	b.mu.Lock()
-	b.wait = 0
-	b.mu.Unlock()
-}
-
 // runLoop runs until ctx is done. It selects a Broker, connects, performs the
 // version handshake and keeps the Register stream open. A lost connection
-// reconnects to the same Broker: the user-level one is launched again when its
-// socket is gone, the system-level one and the one named by AGENT_PEER_SOCKET
-// are only retried. Every iteration is guarded against panics, because no
-// Broker-side failure may end this process.
+// reconnects to the same Broker and never starts one. Every iteration is
+// guarded against panics, because no Broker-side failure may end this process.
 func runLoop(ctx context.Context, d loopDeps) {
 	conn := &loopConnBackoff{}
-	launch := &loopLaunchBackoff{}
 	if d.onComplete != nil {
 		complete := d.onComplete
 		d.onComplete = func(ctx context.Context, c localpb.LocalClient, agentID string, autoJoin bool) {
@@ -138,7 +107,7 @@ func runLoop(ctx context.Context, d loopDeps) {
 		}
 	}
 	for ctx.Err() == nil {
-		if loopOnce(ctx, d, conn, launch) {
+		if loopOnce(ctx, d, conn) {
 			return
 		}
 	}
@@ -147,7 +116,7 @@ func runLoop(ctx context.Context, d loopDeps) {
 // loopOnce performs one full pass: selection, connection and registration, or
 // the wait that precedes the next attempt. It returns true when ctx is done
 // and the loop must stop.
-func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *loopLaunchBackoff) (stop bool) {
+func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff) (stop bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			if d.log != nil {
@@ -162,29 +131,14 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 		if ctx.Err() != nil {
 			return true
 		}
-		var le *launchError
-		if errors.As(err, &le) {
-			loopSetStatus(d.st, PhaseLaunchFailed, le.Reason, "", nil)
-			return !loopWait(ctx, d.after, launch.next())
+		if errors.Is(err, errNoBroker) {
+			loopSetStatus(d.st, PhaseNoBroker, "", "", nil)
+		} else {
+			loopSetStatus(d.st, PhaseUnavailable, err.Error(), "", nil)
 		}
-		loopSetStatus(d.st, PhaseUnavailable, err.Error(), "", nil)
 		return !loopWait(ctx, d.after, conn.next())
 	}
-	launch.reset()
 
-	// launched records that a launch succeeded and its one immediate
-	// connection attempt has not failed yet. The next launch waits the
-	// connection backoff; the connection itself does not. A completed
-	// registration ends the launch cycle and clears it. The completion runs
-	// in its own goroutine, so the flag is atomic.
-	var launched atomic.Bool
-	complete := d.onComplete
-	onComplete := func(ctx context.Context, c localpb.LocalClient, agentID string, autoJoin bool) {
-		launched.Store(false)
-		if complete != nil {
-			complete(ctx, c, agentID, autoJoin)
-		}
-	}
 	for {
 		if ctx.Err() != nil {
 			return true
@@ -192,9 +146,10 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 
 		cc, client, err := d.dial(t.Path)
 		if err != nil {
-			loopSetStatus(d.st, PhaseUnavailable,
-				fmt.Sprintf("the Broker at %s is unavailable: %v", t.Path, err), "", nil)
-			if !loopReconnect(ctx, d, t, conn, launch, &launched) {
+			phase, detail := loopFailureStatus(ctx, d, t,
+				fmt.Sprintf("the Broker at %s is unavailable: %v", t.Path, err))
+			loopSetStatus(d.st, phase, detail, "", nil)
+			if !loopReconnect(ctx, d, conn) {
 				return true
 			}
 			continue
@@ -203,9 +158,10 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 		res, err := d.hello(ctx, client, d.version)
 		if err != nil {
 			_ = cc.Close()
-			loopSetStatus(d.st, PhaseUnavailable,
-				fmt.Sprintf("the Broker at %s is unavailable: %v", t.Path, err), "", nil)
-			if !loopReconnect(ctx, d, t, conn, launch, &launched) {
+			phase, detail := loopFailureStatus(ctx, d, t,
+				fmt.Sprintf("the Broker at %s is unavailable: %v", t.Path, err))
+			loopSetStatus(d.st, phase, detail, "", nil)
+			if !loopReconnect(ctx, d, conn) {
 				return true
 			}
 			continue
@@ -232,7 +188,7 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 			if ctx.Err() != nil {
 				return true
 			}
-			if !loopReconnect(ctx, d, t, conn, launch, &launched) {
+			if !loopReconnect(ctx, d, conn) {
 				return true
 			}
 			continue
@@ -245,80 +201,51 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff, launch *lo
 			s.Client = client
 		})
 
-		_ = d.register(ctx, client, d.first, d.st, onComplete, d.log)
+		_ = d.register(ctx, client, d.first, d.st, d.onComplete, d.log)
 		_ = cc.Close()
 		if ctx.Err() != nil {
 			return true
 		}
-		loopSetStatus(d.st, PhaseUnavailable, loopLostText, "", nil)
+		phase, detail := loopFailureStatus(ctx, d, t, loopLostText)
+		loopSetStatus(d.st, phase, detail, "", nil)
 		// Reconnect to the same target through the same rules as a failed dial,
 		// so a Register stream that ends at once does not spin.
-		if !loopReconnect(ctx, d, t, conn, launch, &launched) {
+		if !loopReconnect(ctx, d, conn) {
 			return true
 		}
 	}
 }
 
-// loopReconnect prepares the next attempt at the fixed target t. A user-level
-// Broker is launched when its socket is gone; a socket that still answers, one
-// served by another account, a system-level Broker and the one named by
-// AGENT_PEER_SOCKET are only retried. It returns false when ctx is done.
-func loopReconnect(ctx context.Context, d loopDeps, t target, conn *loopConnBackoff, launch *loopLaunchBackoff,
-	launched *atomic.Bool) bool {
-	if t.Kind != kindUser {
-		return loopWait(ctx, d.after, conn.next())
-	}
-	switch d.probe(ctx, t.Path) {
-	case probeOK:
-		// The socket still answers, but the last attempt failed anyway (a Hello
-		// error, a Register stream that ended at once, or a version mismatch
-		// followed by a disconnect). Wait before retrying, or the loop spins as
-		// fast as the Broker answers.
-		return loopWait(ctx, d.after, conn.next())
-	case probeWrongPeer:
-		// Another account now serves the socket. Launching a Broker cannot take
-		// the path back, so, as in the selection phase, treat the socket as
-		// unavailable and back off instead of launching.
-		return loopWait(ctx, d.after, conn.next())
-	}
-	if ctx.Err() != nil {
-		// The session is shutting down; do not start a Broker on its way out.
-		return false
-	}
+// loopReconnect waits before the next attempt at the fixed target. It never
+// starts a Broker; a Broker that has exited is left for the service manager or
+// the user to start again. It returns false when ctx is done.
+func loopReconnect(ctx context.Context, d loopDeps, conn *loopConnBackoff) bool {
+	return loopWait(ctx, d.after, conn.next())
+}
 
-	if launched.Load() {
-		// The launch got its one immediate connection attempt, which failed.
-		// Pace the next launch by the connection backoff; a successful launch
-		// must not reset it. This is not a connection attempt, so it does not
-		// delay the connection that follows a successful launch.
-		launched.Store(false)
-		if !loopWait(ctx, d.after, conn.next()) {
-			return false
+// loopFailureStatus chooses the phase for a failed attempt at t. A user-level
+// socket that is missing or refuses connections has no Broker listening, so it
+// is reported as no Broker with the same text as a session that never found
+// one; that includes a Broker killed without removing its socket. A socket
+// that answers and then fails is reported as unavailable. A system-level
+// Broker that was selected and now fails is reported as no system-level
+// Broker, so the user is sent to the administrator rather than to a user-level
+// Broker (REQ-broker-config-037, REQ-broker-config-038).
+func loopFailureStatus(ctx context.Context, d loopDeps, t target, detail string) (Phase, string) {
+	switch t.Kind {
+	case kindUser:
+		probe := d.probe
+		if probe == nil {
+			probe = probeSocket
 		}
+		switch probe(ctx, t.Path) {
+		case probeMissing, probeRefused:
+			return PhaseNoBroker, ""
+		}
+	case kindSystem:
+		return PhaseNoBroker, textNoSystemBroker
 	}
-
-	err := d.launch.Launch(ctx)
-	if err == nil {
-		launched.Store(true)
-		return true
-	}
-	if ctx.Err() != nil {
-		return false
-	}
-	// Another MCP server process may have launched the Broker while this one
-	// was waiting for its own launch; its Broker exits at once for lack of the
-	// account lock, but the socket may now be served.
-	if d.probe(ctx, t.Path) == probeOK {
-		return true
-	}
-
-	reason := err.Error()
-	var le *launchError
-	if errors.As(err, &le) {
-		reason = le.Reason
-	}
-	loopSetStatus(d.st, PhaseLaunchFailed, reason, "", nil)
-	return loopWait(ctx, d.after, launch.next())
+	return PhaseUnavailable, detail
 }
 
 // loopSetStatus replaces the connection status with one that has no usable

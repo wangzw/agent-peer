@@ -17,9 +17,10 @@ const (
 	PhaseStarting Phase = iota
 	// PhaseUnavailable means Broker selection or connection failed; Detail says why.
 	PhaseUnavailable
-	// PhaseLaunchFailed means launching the Broker failed; Detail is the
-	// Broker's failure reason, verbatim.
-	PhaseLaunchFailed
+	// PhaseNoBroker means no Broker is available for this account; Detail is
+	// empty for the general text and holds the system-level text when the
+	// session was using the system-level Broker.
+	PhaseNoBroker
 	// PhaseVersionMismatch means Hello found an incompatible local protocol
 	// version; Detail names both versions and Remedy says how to fix it.
 	PhaseVersionMismatch
@@ -97,8 +98,12 @@ func (h *handlers) preflight(tool string, kind callKind, needAgent bool) (Status
 		return st, toolError(phrase, textStarting, localpb.ErrorCode_ERROR_CODE_INTERNAL)
 	case PhaseUnavailable:
 		return st, toolError(phrase, fmt.Sprintf(textUnavailable, st.Detail), localpb.ErrorCode_ERROR_CODE_INTERNAL)
-	case PhaseLaunchFailed:
-		return st, toolError(phrase, fmt.Sprintf(textLaunchFailed, st.Detail), localpb.ErrorCode_ERROR_CODE_INTERNAL)
+	case PhaseNoBroker:
+		body := st.Detail
+		if body == "" {
+			body = textNoBroker
+		}
+		return st, toolError(phrase, body, localpb.ErrorCode_ERROR_CODE_INTERNAL)
 	case PhaseVersionMismatch:
 		return st, toolError(phrase, fmt.Sprintf(textVersionMismatch, st.Detail, st.Remedy), localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH)
 	case PhaseConnected:

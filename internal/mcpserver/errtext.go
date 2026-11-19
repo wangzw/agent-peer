@@ -34,7 +34,8 @@ const (
 const (
 	textStarting        = "the connection to the Broker is still being set up; retry shortly"
 	textUnavailable     = "the Broker is unavailable: %s; retrying in the background"
-	textLaunchFailed    = "the Broker could not start: %s"
+	textNoBroker        = "no Broker is available for this account; if a system-level Broker is installed on this host, ask the administrator to start it. Otherwise start a user-level Broker with `agent-peer service install`, or run `agent-peer broker` in a terminal outside the Claude Code session (a Broker started inside the session exits with code 6)"
+	textNoSystemBroker  = "the system-level Broker is unavailable; ask the administrator to start it"
 	textVersionMismatch = "%s. To fix it, %s"
 	textNotRegistered   = "this session is not registered as an agent: %s"
 
@@ -45,6 +46,10 @@ const (
 	textNeedRead  = "The calling account needs read permission on the Broker's config file"
 	textNeedWrite = "The calling account needs write permission on the Broker's config file"
 )
+
+// errNoBroker is the selection result when no Broker socket answers. Its text
+// names the two ways to start a Broker, so the model can tell the user.
+var errNoBroker = errors.New(textNoBroker)
 
 // openingPhrase returns the phrase that starts the error text for a call kind.
 func openingPhrase(tool string, kind callKind) string {

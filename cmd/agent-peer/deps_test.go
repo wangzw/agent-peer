@@ -28,7 +28,6 @@ type stubDeps struct {
 	runBroker         func(ctx context.Context, o brokerOptions) error
 	classifyBrokerErr func(err error) startFailure
 	runMCP            func(ctx context.Context) error
-	runLauncher       func() int
 	runStatus         func(ctx context.Context, stdout io.Writer) error
 	runAudit          func(ctx context.Context, stdout io.Writer, limit uint32) error
 
@@ -36,16 +35,14 @@ type stubDeps struct {
 	brokerErr      error
 	classifyResult startFailure
 	mcpErr         error
-	launcherCode   int
 	statusErr      error
 	auditErr       error
 
 	// Recorded calls.
-	brokerCalls   []brokerOptions
-	mcpCalls      int
-	launcherCalls int
-	statusCalls   []stubStatusCall
-	auditCalls    []stubAuditCall
+	brokerCalls []brokerOptions
+	mcpCalls    int
+	statusCalls []stubStatusCall
+	auditCalls  []stubAuditCall
 }
 
 // deps returns a deps whose function fields record into s and then delegate to
@@ -71,13 +68,6 @@ func (s *stubDeps) deps() deps {
 				return s.runMCP(ctx)
 			}
 			return s.mcpErr
-		},
-		runLauncher: func() int {
-			s.launcherCalls++
-			if s.runLauncher != nil {
-				return s.runLauncher()
-			}
-			return s.launcherCode
 		},
 		runStatus: func(ctx context.Context, stdout io.Writer) error {
 			s.statusCalls = append(s.statusCalls, stubStatusCall{stdout: stdout})

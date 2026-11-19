@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,13 +30,14 @@ type target struct {
 	Kind targetKind
 }
 
-// systemRetryDeadline is how long step three keeps retrying a system-level
-// socket that exists and may be connected to but has no process answering.
-// It matches the readiness deadline of a launched Broker.
-const systemRetryDeadline = 10 * time.Second
+// SystemRetryDeadline is how long step three keeps retrying a system-level
+// socket that exists and may be connected to but has no process answering. It
+// is exported so end-to-end tests can derive their wait bounds from it rather
+// than repeat the number.
+const SystemRetryDeadline = 10 * time.Second
 
 // systemRetryWaits are the waits between probes of a refused system-level
-// socket. The remaining time up to systemRetryDeadline is waited last, so the
+// socket. The remaining time up to SystemRetryDeadline is waited last, so the
 // total is exactly the deadline.
 var systemRetryWaits = []time.Duration{
 	250 * time.Millisecond,
@@ -54,46 +54,19 @@ type selector struct {
 	userSocket   string
 	systemSocket string
 	probe        func(ctx context.Context, path string) probeInfo
-	launch       launcher // nil in Find
 	after        func(time.Duration) <-chan time.Time
 }
 
-// Select returns the first target that holds, launching the user-level Broker
-// when no socket answers. On failure the error text is shown to the model as
-// the Detail of PhaseUnavailable or PhaseLaunchFailed; a *launchError means the
-// Broker reported a launch failure.
-func (s *selector) Select(ctx context.Context) (target, error) {
-	t, found, err := s.find(ctx)
-	if err != nil {
-		return target{}, err
-	}
-	if found {
-		return t, nil
-	}
-	if s.launch == nil {
-		return target{}, errors.New("no running Broker found")
-	}
-	if err := s.launch.Launch(ctx); err != nil {
-		return target{}, err
-	}
-	switch r := s.probePath(ctx, s.userSocket, kindUser); r.Outcome {
-	case probeOK:
-		return target{Path: s.userSocket, Kind: kindUser}, nil
-	case probeWrongPeer:
-		return target{}, peerMismatchError(s.userSocket, kindUser, r.PeerUID)
-	default:
-		return target{}, fmt.Errorf("the Broker reported ready but %s does not accept connections", s.userSocket)
-	}
-}
-
-// Find applies steps one to three only. It never launches a Broker.
+// Find returns the first target of the selection order that holds. It never
+// starts a Broker: when no socket answers it returns errNoBroker, whose text
+// tells the model how to start one.
 func (s *selector) Find(ctx context.Context) (target, error) {
 	t, found, err := s.find(ctx)
 	if err != nil {
 		return target{}, err
 	}
 	if !found {
-		return target{}, errors.New("no running Broker found")
+		return target{}, errNoBroker
 	}
 	return t, nil
 }
@@ -143,7 +116,7 @@ func (s *selector) find(ctx context.Context) (target, bool, error) {
 }
 
 // probeSystemWithRetry probes the system-level socket. A refused connection is
-// retried for systemRetryDeadline, because a service manager may be restarting
+// retried for SystemRetryDeadline, because a service manager may be restarting
 // the Broker; a socket the account may not use, a missing socket and any other
 // failure are not retried.
 func (s *selector) probeSystemWithRetry(ctx context.Context) (bool, error) {
@@ -165,7 +138,7 @@ func (s *selector) probeSystemWithRetry(ctx context.Context) (bool, error) {
 			return true, nil
 		}
 	}
-	if rest := systemRetryDeadline - waited; rest > 0 {
+	if rest := SystemRetryDeadline - waited; rest > 0 {
 		if err := s.wait(ctx, rest); err != nil {
 			return false, err
 		}
@@ -260,9 +233,9 @@ func probeDescription(r probeResult) string {
 	}
 }
 
-// FindBroker applies steps one to three of the Broker selection order and
-// returns the socket path of the first that holds. It never launches a Broker.
-// The error text is suitable for a terminal user.
+// FindBroker applies the Broker selection order and returns the socket path of
+// the first step that holds. It never starts a Broker. The error text is
+// suitable for a terminal user.
 func FindBroker(ctx context.Context) (string, error) {
 	s := &selector{
 		getenv:       os.Getenv,

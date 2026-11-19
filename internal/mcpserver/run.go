@@ -29,12 +29,11 @@ type Options struct {
 	getwd        func() (string, error)
 	userSocket   string
 	systemSocket string
-	launch       launcher
 	readOrigin   originReader
 	after        func(time.Duration) <-chan time.Time
-	// probe replaces the background loop's raw socket probe; nil means
-	// probeSocket. Tests use it to order the loop's probe against a Broker
-	// restart, whose socket path is briefly missing between the two listeners.
+	// probe replaces the loop's raw socket probe; nil means probeSocket. The
+	// loop uses it to tell a user-level Broker whose socket is gone from one
+	// whose socket still answers.
 	probe func(context.Context, string) probeResult
 }
 
@@ -116,22 +115,6 @@ func Run(ctx context.Context, opts Options) error {
 	if systemSocket == "" {
 		systemSocket = systemSocketPath()
 	}
-	launch := opts.launch
-	if launch == nil {
-		exe, exeErr := os.Executable()
-		if exeErr != nil {
-			// Keep a launcher so that a user-level Broker that has to be
-			// started reports the failure to the model instead of panicking.
-			log.Error("cannot find the agent-peer executable; the user-level Broker cannot be started", "error", exeErr)
-		}
-		launch = &execLauncher{
-			Executable:   exe,
-			LauncherArgs: LauncherArgs,
-			Env:          brokerEnv(os.Environ()),
-			ReadyTimeout: 10 * time.Second,
-		}
-	}
-
 	probe := opts.probe
 	if probe == nil {
 		probe = probeSocket
@@ -142,7 +125,6 @@ func Run(ctx context.Context, opts Options) error {
 		userSocket:   userSocket,
 		systemSocket: systemSocket,
 		probe:        inspectSocket,
-		launch:       launch,
 		after:        after,
 	}
 
@@ -151,9 +133,8 @@ func Run(ctx context.Context, opts Options) error {
 	go func() {
 		defer close(loopDone)
 		runLoop(loopCtx, loopDeps{
-			selectTarget: sel.Select,
+			selectTarget: sel.Find,
 			probe:        probe,
-			launch:       launch,
 			dial:         dialLocal,
 			hello:        hello,
 			waitNotReady: waitNotReady,

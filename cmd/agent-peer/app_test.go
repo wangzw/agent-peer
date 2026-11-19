@@ -96,9 +96,6 @@ func TestHelpPrintsUsageToStdout(t *testing.T) {
 			if strings.Contains(out, "internal") {
 				t.Fatalf("stdout leaks the hidden internal commands: %q", out)
 			}
-			if strings.Contains(out, "--ready-fd") {
-				t.Fatalf("stdout leaks the hidden --ready-fd flag: %q", out)
-			}
 			if stderr.Len() != 0 {
 				t.Fatalf("stderr = %q, want empty", stderr.String())
 			}

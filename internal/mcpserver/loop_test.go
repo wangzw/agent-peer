@@ -87,38 +87,6 @@ func loopWaitCount(t *testing.T, c *loopClock, n int) []time.Duration {
 	return nil
 }
 
-// loopLauncher is a launcher stub. fn runs for every launch.
-type loopLauncher struct {
-	mu    sync.Mutex
-	calls int
-	fn    func(context.Context) error
-}
-
-func (l *loopLauncher) Launch(ctx context.Context) error {
-	l.mu.Lock()
-	l.calls++
-	fn := l.fn
-	l.mu.Unlock()
-	if fn != nil {
-		return fn(ctx)
-	}
-	return nil
-}
-
-func (l *loopLauncher) count() int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.calls
-}
-
-// loopNoLaunch fails the test if a Broker is ever launched.
-type loopNoLaunch struct{ t *testing.T }
-
-func (l *loopNoLaunch) Launch(context.Context) error {
-	l.t.Errorf("the connection loop launched a Broker when it must not")
-	return errors.New("launch must not be called")
-}
-
 // loopWaitStatus polls the status store until cond holds.
 func loopWaitStatus(t *testing.T, st *statusStore, what string, cond func(Status) bool) Status {
 	t.Helper()
@@ -202,9 +170,9 @@ func loopRetryPaused(t *testing.T, calls func() int, what string, clock *loopClo
 	loopWaitCalls(t, calls, 2, what)
 }
 
-// loopBaseDeps builds dependencies that use the real socket probe, dial,
-// handshake and registration implementation; only the selection, launcher,
-// clock and onComplete are stubbed per test.
+// loopBaseDeps builds dependencies that use the real dial, handshake and
+// registration implementation. Every test stubs the selection, and each may
+// replace the clock, onComplete, register or waitNotReady.
 func loopBaseDeps(st *statusStore, clock *loopClock) loopDeps {
 	return loopDeps{
 		probe:        probeSocket,
@@ -251,7 +219,6 @@ func TestRunLoop(t *testing.T) {
 		// REQ-broker-config-037, REQ-topics-022
 		path := fakelocal.SocketPath(t)
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
-		newServers := make(chan *fakelocal.Server, 1)
 		completed := make(chan string, 8)
 
 		st := &statusStore{}
@@ -260,16 +227,6 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindUser}, nil
 		}
-		launcher := &loopLauncher{fn: func(ctx context.Context) error {
-			s := fakelocal.Start(t, path, fakelocal.Handlers{})
-			select {
-			case newServers <- s:
-				return nil
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		}}
-		deps.launch = launcher
 		deps.onComplete = func(_ context.Context, _ localpb.LocalClient, agentID string, _ bool) {
 			completed <- agentID
 		}
@@ -288,15 +245,13 @@ func TestRunLoop(t *testing.T) {
 
 		srv.Stop()
 
-		var replacement *fakelocal.Server
-		select {
-		case replacement = <-newServers:
-		case <-time.After(3 * time.Second):
-			t.Fatal("the loop did not launch a replacement Broker")
+		waits := loopWaitCount(t, clock, 1)
+		if waits[0] != 250*time.Millisecond {
+			t.Fatalf("first reconnect wait = %v, want 250ms", waits[0])
 		}
-		if launcher.count() != 1 {
-			t.Fatalf("launch calls = %d, want 1", launcher.count())
-		}
+		replacement := fakelocal.Start(t, path, fakelocal.Handlers{})
+		clock.advance()
+
 		second := loopNextRegister(t, replacement)
 		if got, want := second.First.GetInboxSocketPath(), first.First.GetInboxSocketPath(); got != want {
 			t.Errorf("second first frame inbox_socket_path = %q, want %q", got, want)
@@ -310,10 +265,6 @@ func TestRunLoop(t *testing.T) {
 		if got := loopAwaitString(t, completed, "the second completion"); got != "id1" {
 			t.Fatalf("second onComplete agent ID = %q, want id1", got)
 		}
-		// Cancel while the replacement Broker still serves the second Register
-		// stream. Letting the Broker's cleanup stop the stream first makes the
-		// loop launch another Broker during cleanup, whose own cleanup then runs
-		// before this loop's cancel.
 		stop()
 	})
 
@@ -323,27 +274,15 @@ func TestRunLoop(t *testing.T) {
 		systemPath := fakelocal.SocketPath(t)
 		userSrv := fakelocal.Start(t, userPath, fakelocal.Handlers{})
 		systemSrv := fakelocal.Start(t, systemPath, fakelocal.Handlers{})
-		newServers := make(chan *fakelocal.Server, 1)
+		var selectCalls atomic.Int32
 
 		st := &statusStore{}
 		clock := newLoopClock()
 		deps := loopBaseDeps(st, clock)
 		deps.selectTarget = func(context.Context) (target, error) {
+			selectCalls.Add(1)
 			return target{Path: userPath, Kind: kindUser}, nil
 		}
-		var launches atomic.Int32
-		deps.launch = &loopLauncher{fn: func(ctx context.Context) error {
-			if launches.Add(1) == 1 {
-				return &launchError{Reason: "the first launch failed"}
-			}
-			s := fakelocal.Start(t, userPath, fakelocal.Handlers{})
-			select {
-			case newServers <- s:
-				return nil
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		}}
 		stop := loopStart(t, deps)
 
 		first := loopNextRegister(t, userSrv)
@@ -353,43 +292,41 @@ func TestRunLoop(t *testing.T) {
 		userSrv.Stop()
 
 		waits := loopWaitCount(t, clock, 1)
-		if waits[0] != time.Second {
-			t.Fatalf("first wait = %v, want 1s after a failed launch", waits[0])
+		if waits[0] != 250*time.Millisecond {
+			t.Fatalf("first reconnect wait = %v, want 250ms", waits[0])
 		}
+		replacement := fakelocal.Start(t, userPath, fakelocal.Handlers{})
 		clock.advance()
 
-		var replacement *fakelocal.Server
-		select {
-		case replacement = <-newServers:
-		case <-time.After(3 * time.Second):
-			t.Fatal("the loop did not launch the user-level Broker on the second attempt")
-		}
 		second := loopNextRegister(t, replacement)
-		if got, want := second.First.GetInboxSocketPath(), first.First.GetInboxSocketPath(); got != want {
-			t.Errorf("second first frame inbox_socket_path = %q, want %q", got, want)
+		if err := second.Complete("id2", "me@h", false); err != nil {
+			t.Fatalf("sending the second registration_complete: %v", err)
 		}
 
 		// The second registration is the later event that proves the loop never
-		// fell through to the system-level Broker; its Call log stays empty.
+		// fell through to the system-level Broker or selected again.
 		if calls := systemSrv.Calls(); len(calls) != 0 {
 			t.Errorf("the system-level Broker received %d calls, want none: %v", len(calls), calls)
 		}
-		// Cancel while the replacement still serves the second Register stream.
+		if got := selectCalls.Load(); got != 1 {
+			t.Errorf("selection ran %d times, want once at startup", got)
+		}
 		stop()
 	})
 
-	t.Run("system-level Broker is retried, never launched or replaced", func(t *testing.T) {
+	t.Run("system-level Broker is retried, never replaced", func(t *testing.T) {
 		// design:108
 		path := fakelocal.SocketPath(t)
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
+		var selectCalls atomic.Int32
 
 		st := &statusStore{}
 		clock := newLoopClock()
 		deps := loopBaseDeps(st, clock)
 		deps.selectTarget = func(context.Context) (target, error) {
+			selectCalls.Add(1)
 			return target{Path: path, Kind: kindSystem}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
 		stop := loopStart(t, deps)
 
 		first := loopNextRegister(t, srv)
@@ -409,7 +346,9 @@ func TestRunLoop(t *testing.T) {
 		if got, want := second.First.GetInboxSocketPath(), first.First.GetInboxSocketPath(); got != want {
 			t.Errorf("first frame after the restart = %q, want %q", got, want)
 		}
-		// Cancel while the replacement still serves the second Register stream.
+		if got := selectCalls.Load(); got != 1 {
+			t.Errorf("selection ran %d times, want once at startup", got)
+		}
 		stop()
 	})
 
@@ -427,7 +366,6 @@ func TestRunLoop(t *testing.T) {
 			}
 			return target{Path: path, Kind: kindEnv}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
 		stop := loopStart(t, deps)
 
 		status := loopWaitStatus(t, st, "PhaseUnavailable", func(s Status) bool {
@@ -448,12 +386,11 @@ func TestRunLoop(t *testing.T) {
 			t.Fatalf("sending registration_complete: %v", err)
 		}
 		loopWaitStatus(t, st, "the registered agent", func(s Status) bool { return s.AgentID == "id1" })
-		// Cancel while the Broker still serves the Register stream.
 		stop()
 	})
 
-	t.Run("a launch failure backs off and retries the full selection", func(t *testing.T) {
-		// REQ-broker-config-024, REQ-agent-messaging-038
+	t.Run("no available Broker enters PhaseNoBroker and retries the selection", func(t *testing.T) {
+		// REQ-broker-config-038
 		path := fakelocal.SocketPath(t)
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
 		var selectCalls atomic.Int32
@@ -462,118 +399,104 @@ func TestRunLoop(t *testing.T) {
 		clock := newLoopClock()
 		deps := loopBaseDeps(st, clock)
 		deps.selectTarget = func(context.Context) (target, error) {
-			if selectCalls.Add(1) < 3 {
-				return target{}, &launchError{Reason: "listen address :17443 is unavailable"}
+			if selectCalls.Add(1) == 1 {
+				return target{}, errNoBroker
 			}
 			return target{Path: path, Kind: kindUser}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
+		stop := loopStart(t, deps)
+
+		loopWaitStatus(t, st, "PhaseNoBroker", func(s Status) bool {
+			return s.Phase == PhaseNoBroker
+		})
+
+		// The retry uses the connection backoff; there is no separate launch
+		// backoff to wait through.
+		waits := loopWaitCount(t, clock, 1)
+		if waits[0] != 250*time.Millisecond {
+			t.Fatalf("first wait after no Broker = %v, want 250ms", waits[0])
+		}
+		clock.advance()
+
+		conn := loopNextRegister(t, srv)
+		if err := conn.Complete("id1", "me@h", false); err != nil {
+			t.Fatalf("sending registration_complete: %v", err)
+		}
+		if got := selectCalls.Load(); got != 2 {
+			t.Errorf("selection ran %d times, want 2", got)
+		}
+		stop()
+	})
+
+	t.Run("a user-level Broker whose socket is gone reports no Broker", func(t *testing.T) {
+		// REQ-broker-config-037: the tool error is the same no-Broker text as a
+		// session that never found one.
+		path := fakelocal.SocketPath(t)
+
+		st := &statusStore{}
+		clock := newLoopClock()
+		deps := loopBaseDeps(st, clock)
+		deps.selectTarget = func(context.Context) (target, error) {
+			return target{Path: path, Kind: kindUser}, nil
+		}
+		deps.probe = func(context.Context, string) probeResult { return probeMissing }
 		loopStart(t, deps)
 
-		status := loopWaitStatus(t, st, "PhaseLaunchFailed", func(s Status) bool {
-			return s.Phase == PhaseLaunchFailed
+		status := loopWaitStatus(t, st, "PhaseNoBroker", func(s Status) bool {
+			return s.Phase == PhaseNoBroker
 		})
-		if status.Detail != "listen address :17443 is unavailable" {
-			t.Fatalf("Detail = %q, want the Broker's reason verbatim", status.Detail)
+		if status.Detail != "" {
+			t.Fatalf("Detail = %q, want the general no-Broker text", status.Detail)
 		}
-
+		h := &handlers{st: st}
+		_, err := h.preflight("list_agents", callGeneric, false)
+		if err == nil {
+			t.Fatal("preflight returned nil for a gone user-level Broker")
+		}
+		for _, want := range []string{"no Broker is available", "ask the administrator", "agent-peer service install", "agent-peer broker"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("error = %q, want it to contain %q", err, want)
+			}
+		}
 		waits := loopWaitCount(t, clock, 1)
-		if waits[0] != time.Second {
-			t.Fatalf("first launch wait = %v, want 1s", waits[0])
-		}
-		clock.advance()
-		waits = loopWaitCount(t, clock, 2)
-		if waits[1] != 2*time.Second {
-			t.Fatalf("second launch wait = %v, want 2s", waits[1])
-		}
-		clock.advance()
-
-		conn := loopNextRegister(t, srv)
-		if err := conn.Complete("id1", "me@h", false); err != nil {
-			t.Fatalf("sending registration_complete: %v", err)
-		}
-	})
-
-	t.Run("a successful launch still backs off before retrying", func(t *testing.T) {
-		// design:119, design:125: the connection is retried in the background
-		// under a backoff. A launch that reports success is not a connection,
-		// so a socket that never appears must not turn the retries into a tight
-		// launch loop.
-		path := fakelocal.SocketPath(t)
-		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
-
-		st := &statusStore{}
-		clock := newLoopClock()
-		deps := loopBaseDeps(st, clock)
-		deps.selectTarget = func(context.Context) (target, error) {
-			return target{Path: path, Kind: kindUser}, nil
-		}
-		// The launcher reports success every time and never binds the socket,
-		// which is what a Broker that starts and exits at once looks like.
-		launcher := &loopLauncher{}
-		deps.launch = launcher
-		var gone atomic.Bool
-		realProbe := deps.probe
-		deps.probe = func(ctx context.Context, p string) probeResult {
-			if gone.Load() {
-				return probeMissing
-			}
-			return realProbe(ctx, p)
-		}
-		stop := loopStart(t, deps)
-
-		first := loopNextRegister(t, srv)
-		if err := first.Complete("id1", "me@h", false); err != nil {
-			t.Fatalf("sending registration_complete: %v", err)
-		}
-		loopWaitStatus(t, st, "the registered agent", func(s Status) bool { return s.AgentID == "id1" })
-
-		gone.Store(true)
-		srv.Stop()
-
-		// Every launch is followed by the connection backoff: 250ms, then
-		// 500ms, then 1s. A loop that retried at once records no wait at all.
-		deadline := time.Now().Add(3 * time.Second)
-		for len(clock.durations()) == 0 && time.Now().Before(deadline) {
-			time.Sleep(2 * time.Millisecond)
-		}
-		waits := clock.durations()
-		if len(waits) == 0 {
-			t.Fatalf("no backoff after a successful launch; the loop launched a Broker %d times", launcher.count())
-		}
 		if waits[0] != 250*time.Millisecond {
-			t.Fatalf("backoff after the first launch = %v, want 250ms", waits[0])
+			t.Fatalf("first reconnect wait = %v, want 250ms", waits[0])
 		}
-		if got := launcher.count(); got != 1 {
-			t.Fatalf("launches when the first backoff started = %d, want 1", got)
-		}
-		clock.advance()
-
-		waits = loopWaitCount(t, clock, 2)
-		if waits[1] != 500*time.Millisecond {
-			t.Fatalf("backoff after the second launch = %v, want 500ms", waits[1])
-		}
-		if got := launcher.count(); got != 2 {
-			t.Fatalf("launches when the second backoff started = %d, want 2", got)
-		}
-		clock.advance()
-
-		waits = loopWaitCount(t, clock, 3)
-		if waits[2] != time.Second {
-			t.Fatalf("backoff after the third launch = %v, want 1s", waits[2])
-		}
-		if got := launcher.count(); got != 3 {
-			t.Fatalf("launches when the third backoff started = %d, want 3", got)
-		}
-		stop()
 	})
 
-	t.Run("a launch that binds the socket connects without waiting", func(t *testing.T) {
-		// design:119: the launch is followed by one immediate connection
-		// attempt. The backoff paces the next launch after that attempt fails,
-		// not the connection itself.
+	t.Run("a system-level Broker that fails reports no system Broker", func(t *testing.T) {
+		// REQ-broker-config-037: a session that was using the system-level Broker
+		// must be sent to the administrator, not to a user-level Broker.
 		path := fakelocal.SocketPath(t)
-		newServers := make(chan *fakelocal.Server, 1)
+
+		st := &statusStore{}
+		clock := newLoopClock()
+		deps := loopBaseDeps(st, clock)
+		deps.selectTarget = func(context.Context) (target, error) {
+			return target{Path: path, Kind: kindSystem}, nil
+		}
+		loopStart(t, deps)
+
+		status := loopWaitStatus(t, st, "PhaseNoBroker", func(s Status) bool {
+			return s.Phase == PhaseNoBroker
+		})
+		if status.Detail != textNoSystemBroker {
+			t.Fatalf("Detail = %q, want %q", status.Detail, textNoSystemBroker)
+		}
+		if strings.Contains(status.Detail, "agent-peer service install") {
+			t.Fatalf("Detail = %q, must not send the user to a user-level service", status.Detail)
+		}
+		waits := loopWaitCount(t, clock, 1)
+		if waits[0] != 250*time.Millisecond {
+			t.Fatalf("first reconnect wait = %v, want 250ms", waits[0])
+		}
+	})
+
+	t.Run("a user-level Broker whose socket refuses connections reports no Broker", func(t *testing.T) {
+		// REQ-broker-config-037: a refused connection means no Broker is
+		// listening, so the tool error must say how to start one. Only a socket
+		// that answers and then fails is reported as unavailable.
+		path := fakelocal.SocketPath(t)
 
 		st := &statusStore{}
 		clock := newLoopClock()
@@ -581,178 +504,29 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindUser}, nil
 		}
-		deps.launch = &loopLauncher{fn: func(context.Context) error {
-			s := fakelocal.Start(t, path, fakelocal.Handlers{})
-			newServers <- s
-			return nil
-		}}
-		stop := loopStart(t, deps)
+		deps.probe = func(context.Context, string) probeResult { return probeRefused }
+		loopStart(t, deps)
 
-		var srv *fakelocal.Server
-		select {
-		case srv = <-newServers:
-		case <-time.After(3 * time.Second):
-			t.Fatal("the loop did not launch the user-level Broker")
+		status := loopWaitStatus(t, st, "PhaseNoBroker", func(s Status) bool {
+			return s.Phase == PhaseNoBroker
+		})
+		if status.Detail != "" {
+			t.Fatalf("Detail = %q, want the general no-Broker text", status.Detail)
 		}
-		// The clock is never advanced: the connection after the launch must not
-		// wait for a backoff.
-		conn := loopNextRegister(t, srv)
-		if err := conn.Complete("id1", "me@h", false); err != nil {
-			t.Fatalf("sending registration_complete: %v", err)
+		h := &handlers{st: st}
+		_, err := h.preflight("list_agents", callGeneric, false)
+		if err == nil {
+			t.Fatal("preflight returned nil for a refused user-level socket")
 		}
-		loopWaitStatus(t, st, "the registered agent", func(s Status) bool { return s.AgentID == "id1" })
-		if waits := clock.durations(); len(waits) != 0 {
-			t.Fatalf("waits before the first connection after a launch = %v, want none", waits)
-		}
-		stop()
-	})
-
-	t.Run("a reconnect after a completed registration launches without an extra wait", func(t *testing.T) {
-		// design:125: only a completed registration resets the backoff. It also
-		// ends the launch cycle, so a later disconnect does not wait for the
-		// backoff that paces launches after a failed attempt.
-		path := fakelocal.SocketPath(t)
-		servers := make(chan *fakelocal.Server, 2)
-		completed := make(chan struct{}, 1)
-
-		st := &statusStore{}
-		clock := newLoopClock()
-		deps := loopBaseDeps(st, clock)
-		deps.selectTarget = func(context.Context) (target, error) {
-			return target{Path: path, Kind: kindUser}, nil
-		}
-		var gone atomic.Bool
-		stopped := make(chan struct{})
-		deps.launch = &loopLauncher{fn: func(ctx context.Context) error {
-			if gone.Load() {
-				// The second launch can start while Stop is still removing the
-				// old socket file; bind only after Stop has returned.
-				select {
-				case <-stopped:
-				case <-ctx.Done():
-					return ctx.Err()
-				}
+		for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("error = %q, want it to contain %q", err, want)
 			}
-			s := fakelocal.Start(t, path, fakelocal.Handlers{})
-			if gone.Load() {
-				gone.Store(false)
-			}
-			servers <- s
-			return nil
-		}}
-		deps.onComplete = func(context.Context, localpb.LocalClient, string, bool) {
-			completed <- struct{}{}
 		}
-		stop := loopStart(t, deps)
-
-		var first *fakelocal.Server
-		select {
-		case first = <-servers:
-		case <-time.After(3 * time.Second):
-			t.Fatal("the loop did not launch the user-level Broker")
+		waits := loopWaitCount(t, clock, 1)
+		if waits[0] != 250*time.Millisecond {
+			t.Fatalf("first reconnect wait = %v, want 250ms", waits[0])
 		}
-		conn := loopNextRegister(t, first)
-		if err := conn.Complete("id1", "me@h", false); err != nil {
-			t.Fatalf("sending registration_complete: %v", err)
-		}
-		select {
-		case <-completed:
-		case <-time.After(3 * time.Second):
-			t.Fatal("the first registration did not complete")
-		}
-
-		// The Broker goes away after the completed registration. The next
-		// launch must not wait for a backoff; the clock is never advanced.
-		gone.Store(true)
-		first.Stop()
-		close(stopped)
-
-		var second *fakelocal.Server
-		select {
-		case second = <-servers:
-		case <-time.After(3 * time.Second):
-			t.Fatal("the loop waited a backoff before relaunching after a completed registration")
-		}
-		conn = loopNextRegister(t, second)
-		if err := conn.Complete("id2", "me@h", false); err != nil {
-			t.Fatalf("sending the second registration_complete: %v", err)
-		}
-		loopWaitStatus(t, st, "the re-registered agent", func(s Status) bool { return s.AgentID == "id2" })
-		if waits := clock.durations(); len(waits) != 0 {
-			t.Fatalf("waits after a completed registration and disconnect = %v, want none", waits)
-		}
-		stop()
-	})
-
-	t.Run("a restart window launches once and then connects to the restarted Broker", func(t *testing.T) {
-		// design:119, design:125: a user-level Broker whose socket is gone is
-		// launched once; as soon as the replacement answers, the loop connects
-		// and registers instead of launching again.
-		path := fakelocal.SocketPath(t)
-		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
-
-		st := &statusStore{}
-		clock := newLoopClock()
-		deps := loopBaseDeps(st, clock)
-		deps.selectTarget = func(context.Context) (target, error) {
-			return target{Path: path, Kind: kindUser}, nil
-		}
-		// The restart window: the socket is missing until the replacement is
-		// bound. The launch binds it, so the window ends with one launch.
-		var gap atomic.Bool
-		realProbe := deps.probe
-		deps.probe = func(ctx context.Context, p string) probeResult {
-			if gap.Load() {
-				return probeMissing
-			}
-			return realProbe(ctx, p)
-		}
-		stopped := make(chan struct{})
-		replacement := make(chan *fakelocal.Server, 1)
-		launcher := &loopLauncher{fn: func(ctx context.Context) error {
-			// A launch can start while Stop is still removing the old socket
-			// file; bind only after Stop has returned.
-			select {
-			case <-stopped:
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-			s := fakelocal.Start(t, path, fakelocal.Handlers{})
-			gap.Store(false)
-			replacement <- s
-			return nil
-		}}
-		deps.launch = launcher
-		stop := loopStart(t, deps)
-
-		first := loopNextRegister(t, srv)
-		if err := first.Complete("id1", "me@h", false); err != nil {
-			t.Fatalf("sending registration_complete: %v", err)
-		}
-		loopWaitStatus(t, st, "the registered agent", func(s Status) bool { return s.AgentID == "id1" })
-
-		// The Broker goes away and the replacement is not bound yet: the real
-		// restart window.
-		gap.Store(true)
-		srv.Stop()
-		close(stopped)
-
-		var restarted *fakelocal.Server
-		select {
-		case restarted = <-replacement:
-		case <-time.After(3 * time.Second):
-			t.Fatal("the loop did not launch the user-level Broker during the restart window")
-		}
-		// The launch connects at once; the clock is not advanced.
-		conn := loopNextRegister(t, restarted)
-		if err := conn.Complete("id2", "me@h", false); err != nil {
-			t.Fatalf("sending registration_complete: %v", err)
-		}
-		loopWaitStatus(t, st, "the re-registered agent", func(s Status) bool { return s.AgentID == "id2" })
-		if got := launcher.count(); got != 1 {
-			t.Fatalf("launches during the restart window = %d, want 1", got)
-		}
-		stop()
 	})
 
 	t.Run("version mismatch waits for the Broker instead of polling", func(t *testing.T) {
@@ -766,7 +540,6 @@ func TestRunLoop(t *testing.T) {
 			},
 		}
 		srv := fakelocal.Start(t, path, handlers)
-		launcher := &loopLauncher{}
 
 		st := &statusStore{}
 		clock := newLoopClock()
@@ -774,29 +547,16 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindUser}, nil
 		}
-		deps.launch = launcher
-		// A restart leaves a window in which the socket file is gone. Gate the
-		// probe on the replacement listener so the loop sees a Broker that
-		// answers and takes the reconnect backoff instead of the launch path.
-		restarted := make(chan struct{})
-		var restarting atomic.Bool
-		probe := deps.probe
-		deps.probe = func(ctx context.Context, p string) probeResult {
-			if restarting.Load() {
-				select {
-				case <-restarted:
-				case <-ctx.Done():
-				}
-			}
-			return probe(ctx, p)
-		}
-		loopStart(t, deps)
+		stop := loopStart(t, deps)
 
 		status := loopWaitStatus(t, st, "PhaseVersionMismatch", func(s Status) bool {
 			return s.Phase == PhaseVersionMismatch
 		})
 		if !strings.Contains(status.Remedy, "restart the Broker") {
 			t.Fatalf("Remedy = %q, want it to say restart the Broker", status.Remedy)
+		}
+		if !strings.Contains(status.Remedy, "agent-peer service install") || !strings.Contains(status.Remedy, "agent-peer broker") {
+			t.Fatalf("Remedy = %q, want it to name both ways to start a Broker", status.Remedy)
 		}
 		if !strings.HasPrefix(status.Detail, "the running Broker speaks local protocol version 2") {
 			t.Fatalf("Detail = %q, want both versions", status.Detail)
@@ -805,8 +565,8 @@ func TestRunLoop(t *testing.T) {
 		if waits := clock.durations(); len(waits) != 0 {
 			t.Fatalf("waits during the version mismatch = %v, want none", waits)
 		}
-		// The version-mismatch status is the later event: the probe returned and
-		// the loop has not opened a Register stream.
+		// The version-mismatch status is the later event: the loop has not
+		// opened a Register stream.
 		if got := loopCountCalls(srv, "Hello"); got != 1 {
 			t.Fatalf("Hello calls at the version mismatch = %d, want 1 (no polling)", got)
 		}
@@ -815,10 +575,8 @@ func TestRunLoop(t *testing.T) {
 		}
 
 		brokerVersion.Store(1)
-		restarting.Store(true)
 		srv.Stop()
 		srv = fakelocal.Start(t, path, handlers)
-		close(restarted)
 
 		// The Broker leaving READY is still a failed attempt: reconnect waits
 		// one connection backoff before dialing again.
@@ -832,17 +590,13 @@ func TestRunLoop(t *testing.T) {
 		if err := conn.Complete("id1", "me@h", false); err != nil {
 			t.Fatalf("sending registration_complete: %v", err)
 		}
-		// The replacement listener's registration is the later event: the loop
-		// probed it once and then opened exactly one Register stream.
 		if got := loopCountCalls(srv, "Hello"); got != 1 {
 			t.Fatalf("Hello calls on the replacement listener = %d, want 1", got)
 		}
 		if got := loopCountCalls(srv, "Register"); got != 1 {
 			t.Fatalf("Register streams = %d after the second registration, want 1 (the post-mismatch attempt only)", got)
 		}
-		if launcher.count() != 0 {
-			t.Errorf("launch calls = %d, want 0 while the socket still answers", launcher.count())
-		}
+		stop()
 	})
 
 	t.Run("version mismatch of the system-level Broker tells the user to ask the administrator", func(t *testing.T) {
@@ -862,7 +616,6 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindSystem}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
 		loopStart(t, deps)
 
 		status := loopWaitStatus(t, st, "PhaseVersionMismatch", func(s Status) bool {
@@ -901,7 +654,6 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindEnv}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
 		loopStart(t, deps)
 
 		status := loopWaitStatus(t, st, "PhaseVersionMismatch", func(s Status) bool {
@@ -916,7 +668,8 @@ func TestRunLoop(t *testing.T) {
 	})
 
 	t.Run("AGENT_PEER_SOCKET Broker is only retried after a disconnect", func(t *testing.T) {
-		// rulings.md: AGENT_PEER_SOCKET never launches a Broker
+		// A socket named by AGENT_PEER_SOCKET is never replaced by a Broker the
+		// MCP server starts.
 		path := fakelocal.SocketPath(t)
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
 
@@ -926,7 +679,6 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindEnv}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
 		loopStart(t, deps)
 
 		first := loopNextRegister(t, srv)
@@ -954,61 +706,6 @@ func TestRunLoop(t *testing.T) {
 		}
 	})
 
-	t.Run("a user-level socket served by another account backs off without launching", func(t *testing.T) {
-		// design:102, REQ-broker-config-037
-		path := fakelocal.SocketPath(t)
-		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
-
-		var foreign atomic.Bool
-		foreign.Store(true)
-
-		st := &statusStore{}
-		clock := newLoopClock()
-		deps := loopBaseDeps(st, clock)
-		deps.selectTarget = func(context.Context) (target, error) {
-			return target{Path: path, Kind: kindUser}, nil
-		}
-		probe := deps.probe
-		deps.probe = func(ctx context.Context, p string) probeResult {
-			if foreign.Load() {
-				return probeWrongPeer
-			}
-			return probe(ctx, p)
-		}
-		dial := deps.dial
-		deps.dial = func(p string) (*grpc.ClientConn, localpb.LocalClient, error) {
-			if foreign.Load() {
-				return nil, nil, fmt.Errorf("the socket %s is served by another account", p)
-			}
-			return dial(p)
-		}
-		launcher := &loopLauncher{fn: func(context.Context) error {
-			return errors.New("a Broker must not be launched for a socket served by another account")
-		}}
-		deps.launch = launcher
-		loopStart(t, deps)
-
-		waits := loopWaitCount(t, clock, 1)
-		if status := st.Get(); status.Phase != PhaseUnavailable {
-			t.Fatalf("Phase = %v while backing off, want PhaseUnavailable", status.Phase)
-		}
-		if got := launcher.count(); got != 0 {
-			t.Fatalf("launch calls while the socket was served by another account = %d, want 0", got)
-		}
-		if waits[0] != 250*time.Millisecond {
-			t.Fatalf("first wait = %v, want 250ms", waits[0])
-		}
-
-		foreign.Store(false)
-		clock.advance()
-
-		conn := loopNextRegister(t, srv)
-		if err := conn.Complete("id1", "me@h", false); err != nil {
-			t.Fatalf("sending registration_complete: %v", err)
-		}
-		loopWaitStatus(t, st, "the registered agent", func(s Status) bool { return s.AgentID == "id1" })
-	})
-
 	t.Run("a Hello failure on a user-level Broker waits before retrying", func(t *testing.T) {
 		path := fakelocal.SocketPath(t)
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{
@@ -1023,10 +720,12 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindUser}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
 		loopStart(t, deps)
 
 		loopRetryPaused(t, func() int { return loopCountCalls(srv, "Hello") }, "Hello", clock)
+		if got := st.Get().Phase; got != PhaseUnavailable {
+			t.Fatalf("Phase while Hello keeps failing = %v, want PhaseUnavailable", got)
+		}
 	})
 
 	t.Run("a Register failure right after Hello waits before retrying", func(t *testing.T) {
@@ -1040,7 +739,6 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindUser}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
 		deps.register = func(context.Context, localpb.LocalClient, *localpb.RegisterRequest,
 			*statusStore, completeFunc, *slog.Logger) error {
 			registers.Add(1)
@@ -1065,7 +763,6 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindUser}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
 		// The Broker answers Hello and then drops the connection, which is what
 		// waitNotReady observes in production.
 		deps.waitNotReady = func(context.Context, *grpc.ClientConn) {}
@@ -1088,7 +785,6 @@ func TestRunLoop(t *testing.T) {
 			}
 			return target{Path: path, Kind: kindUser}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
 		loopStart(t, deps)
 
 		waits := loopWaitCount(t, clock, 1)
@@ -1114,7 +810,6 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindUser}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -1152,7 +847,6 @@ func TestRunLoop(t *testing.T) {
 		deps.selectTarget = func(context.Context) (target, error) {
 			return target{Path: path, Kind: kindSystem}, nil
 		}
-		deps.launch = &loopNoLaunch{t: t}
 		loopStart(t, deps)
 
 		want := []time.Duration{

@@ -39,12 +39,6 @@ func realDeps(version string) deps {
 				LocalProtocolVersion: local,
 				LinkProtocolVersion:  link,
 			}
-			// Assign the interface only when a pipe was passed. Storing a nil
-			// *os.File in the interface would make Run believe a readiness
-			// pipe exists and write to a nil file.
-			if o.Ready != nil {
-				opts.Ready = o.Ready
-			}
 			return brokerRun(ctx, opts)
 		},
 		classifyBrokerErr: classifyBrokerErr,
@@ -55,7 +49,6 @@ func realDeps(version string) deps {
 				LocalProtocolVersion: local,
 			})
 		},
-		runLauncher: mcpserver.RunLauncher,
 		runStatus: func(ctx context.Context, stdout io.Writer) error {
 			return termcmd.RunStatus(ctx, mcpserver.FindBrokerWithDial, stdout)
 		},

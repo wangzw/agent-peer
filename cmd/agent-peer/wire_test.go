@@ -4,12 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/wangzw/agent-peer/internal/broker"
-	"github.com/wangzw/agent-peer/internal/mcpserver"
 )
 
 func TestRealDepsAllWired(t *testing.T) {
@@ -24,9 +21,6 @@ func TestRealDepsAllWired(t *testing.T) {
 	}
 	if d.runMCP == nil {
 		t.Error("runMCP is nil")
-	}
-	if d.runLauncher == nil {
-		t.Error("runLauncher is nil")
 	}
 	if d.runStatus == nil {
 		t.Error("runStatus is nil")
@@ -74,27 +68,7 @@ func TestClassifyBrokerErr(t *testing.T) {
 	}
 }
 
-func TestReadyFDFlagMatchesMCPServer(t *testing.T) {
-	t.Parallel()
-
-	if got, want := "--"+readyFDFlagName, mcpserver.ReadyFDFlag; got != want {
-		t.Fatalf("cmd flag %q does not match mcpserver.ReadyFDFlag %q", got, want)
-	}
-	if mcpserver.ReadyFD != 3 {
-		t.Fatalf("mcpserver.ReadyFD = %d, want 3", mcpserver.ReadyFD)
-	}
-}
-
-func TestLauncherKeyMatchesMCPServer(t *testing.T) {
-	t.Parallel()
-
-	key := strings.Join(mcpserver.LauncherArgs, " ")
-	if _, ok := subcommands[key]; !ok {
-		t.Fatalf("subcommands has no %q; mcpserver would launch an unknown command", key)
-	}
-}
-
-func TestRealDepsReadyNilInterface(t *testing.T) {
+func TestRealDepsBrokerOptions(t *testing.T) {
 	// The brokerRun variable is package state; keep this test serial.
 	original := brokerRun
 	t.Cleanup(func() { brokerRun = original })
@@ -119,26 +93,14 @@ func TestRealDepsReadyNilInterface(t *testing.T) {
 		t.Fatal("RunOptions.System = true, want false")
 	}
 
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = r.Close()
-		_ = w.Close()
-	})
-
-	if err := d.runBroker(context.Background(), brokerOptions{Ready: w, System: true}); err != nil {
-		t.Fatalf("runBroker with ready pipe: %v", err)
+	if err := d.runBroker(context.Background(), brokerOptions{System: true, Listen: ":17444"}); err != nil {
+		t.Fatalf("runBroker with system mode: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("broker.Run called %d times, want 2", len(got))
 	}
-	if got[1].Ready == nil {
-		t.Fatal("RunOptions.Ready is nil although a readiness pipe was passed")
-	}
-	if !got[1].System {
-		t.Fatal("RunOptions.System = false, want true")
+	if !got[1].System || got[1].Listen != ":17444" {
+		t.Fatalf("RunOptions = %+v, want system mode on :17444", got[1])
 	}
 }
 

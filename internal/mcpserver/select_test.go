@@ -15,21 +15,6 @@ import (
 	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
 )
 
-// stubLauncher records how often it was asked to launch a Broker and lets the
-// test decide what the launch does.
-type stubLauncher struct {
-	calls int
-	fn    func(context.Context) error
-}
-
-func (l *stubLauncher) Launch(ctx context.Context) error {
-	l.calls++
-	if l.fn != nil {
-		return l.fn(ctx)
-	}
-	return nil
-}
-
 // recordingAfter returns an after function that records each requested wait and
 // releases it at once, so tests never sleep.
 func recordingAfter() (func(time.Duration) <-chan time.Time, func() []time.Duration) {
@@ -78,12 +63,12 @@ func TestSelectEnvSocketTakesPrecedence(t *testing.T) {
 		probe:        inspectSocket,
 	}
 
-	got, err := s.Select(context.Background())
+	got, err := s.Find(context.Background())
 	if err != nil {
-		t.Fatalf("Select: %v", err)
+		t.Fatalf("Find: %v", err)
 	}
 	if got.Kind != kindEnv || got.Path != envPath {
-		t.Fatalf("Select = %+v, want {%s kindEnv}", got, envPath)
+		t.Fatalf("Find = %+v, want {%s kindEnv}", got, envPath)
 	}
 }
 
@@ -92,25 +77,20 @@ func TestSelectEnvSocketMissingDoesNotFallThrough(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "absent.sock")
 	userPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, userPath, fakelocal.Handlers{})
-	launcher := &stubLauncher{}
 
 	s := &selector{
 		getenv:       func(string) string { return missing },
 		userSocket:   userPath,
 		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
 		probe:        inspectSocket,
-		launch:       launcher,
 	}
 
-	_, err := s.Select(context.Background())
+	_, err := s.Find(context.Background())
 	if err == nil {
-		t.Fatal("Select returned nil error for a dead AGENT_PEER_SOCKET")
+		t.Fatal("Find returned nil error for a dead AGENT_PEER_SOCKET")
 	}
 	if !strings.Contains(err.Error(), missing) || !strings.Contains(err.Error(), "AGENT_PEER_SOCKET") {
 		t.Fatalf("error = %q, want it to name %s and AGENT_PEER_SOCKET", err, missing)
-	}
-	if launcher.calls != 0 {
-		t.Fatalf("launch called %d times, want 0", launcher.calls)
 	}
 }
 
@@ -128,12 +108,12 @@ func TestSelectUserBeforeSystem(t *testing.T) {
 		probe:        inspectSocket,
 	}
 
-	got, err := s.Select(context.Background())
+	got, err := s.Find(context.Background())
 	if err != nil {
-		t.Fatalf("Select: %v", err)
+		t.Fatalf("Find: %v", err)
 	}
 	if got.Kind != kindUser || got.Path != userPath {
-		t.Fatalf("Select = %+v, want {%s kindUser}", got, userPath)
+		t.Fatalf("Find = %+v, want {%s kindUser}", got, userPath)
 	}
 }
 
@@ -155,26 +135,21 @@ func TestSelectSystemOnly(t *testing.T) {
 		probe:        inspectSocket,
 	}
 
-	got, err := s.Select(context.Background())
+	got, err := s.Find(context.Background())
 	if err != nil {
-		t.Fatalf("Select: %v", err)
+		t.Fatalf("Find: %v", err)
 	}
 	if got.Kind != kindSystem || got.Path != systemPath {
-		t.Fatalf("Select = %+v, want {%s kindSystem}", got, systemPath)
+		t.Fatalf("Find = %+v, want {%s kindSystem}", got, systemPath)
 	}
 }
 
-// A system-level socket the account may not use is not retried; the session
-// launches the user-level Broker instead (REQ-broker-config-027,
-// REQ-broker-config-012).
-func TestSelectSystemDeniedLaunches(t *testing.T) {
+// A system-level socket the account may not use is not retried, and with no
+// user-level Broker there is nothing to select (REQ-broker-config-027,
+// REQ-broker-config-038).
+func TestFindSystemDeniedReturnsNoBroker(t *testing.T) {
 	userPath := filepath.Join(t.TempDir(), "user.sock")
 	systemPath := filepath.Join(t.TempDir(), "system.sock")
-	started := false
-	launcher := &stubLauncher{fn: func(context.Context) error {
-		started = true
-		return nil
-	}}
 	after, waits := recordingAfter()
 
 	s := &selector{
@@ -185,103 +160,23 @@ func TestSelectSystemDeniedLaunches(t *testing.T) {
 			if path == systemPath {
 				return probeInfo{Outcome: probeDenied}
 			}
-			if started {
-				return probeInfo{Outcome: probeOK}
-			}
 			return probeInfo{Outcome: probeMissing}
 		},
-		launch: launcher,
-		after:  after,
+		after: after,
 	}
 
-	got, err := s.Select(context.Background())
-	if err != nil {
-		t.Fatalf("Select: %v", err)
-	}
-	if got.Kind != kindUser || got.Path != userPath {
-		t.Fatalf("Select = %+v, want {%s kindUser}", got, userPath)
-	}
-	if launcher.calls != 1 {
-		t.Fatalf("launch called %d times, want 1", launcher.calls)
+	_, err := s.Find(context.Background())
+	if !errors.Is(err, errNoBroker) {
+		t.Fatalf("Find error = %v, want errNoBroker", err)
 	}
 	if w := waits(); len(w) != 0 {
 		t.Fatalf("waits = %v, want none for a denied system socket", w)
 	}
 }
 
-func TestSelectLaunchesUserBroker(t *testing.T) {
-	userPath := fakelocal.SocketPath(t)
-	launcher := &stubLauncher{fn: func(context.Context) error {
-		fakelocal.Start(t, userPath, fakelocal.Handlers{})
-		return nil
-	}}
-
-	s := &selector{
-		getenv:       func(string) string { return "" },
-		userSocket:   userPath,
-		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
-		probe:        inspectSocket,
-		launch:       launcher,
-	}
-
-	got, err := s.Select(context.Background())
-	if err != nil {
-		t.Fatalf("Select: %v", err)
-	}
-	if got.Kind != kindUser || got.Path != userPath {
-		t.Fatalf("Select = %+v, want {%s kindUser}", got, userPath)
-	}
-	if launcher.calls != 1 {
-		t.Fatalf("launch called %d times, want 1", launcher.calls)
-	}
-}
-
-func TestSelectReportsLaunchError(t *testing.T) {
-	launchErr := &launchError{Reason: "listen address :17443 is unavailable"}
-	launcher := &stubLauncher{fn: func(context.Context) error { return launchErr }}
-
-	s := &selector{
-		getenv:       func(string) string { return "" },
-		userSocket:   filepath.Join(t.TempDir(), "user.sock"),
-		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
-		probe:        inspectSocket,
-		launch:       launcher,
-	}
-
-	_, err := s.Select(context.Background())
-	var got *launchError
-	if !errors.As(err, &got) {
-		t.Fatalf("Select error = %v, want *launchError", err)
-	}
-	if got != launchErr {
-		t.Fatalf("Select error = %v, want the launcher's own error", got)
-	}
-}
-
-func TestSelectLaunchReadyWithoutSocket(t *testing.T) {
-	launcher := &stubLauncher{}
-
-	s := &selector{
-		getenv:       func(string) string { return "" },
-		userSocket:   filepath.Join(t.TempDir(), "user.sock"),
-		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
-		probe:        inspectSocket,
-		launch:       launcher,
-	}
-
-	_, err := s.Select(context.Background())
-	if err == nil {
-		t.Fatal("Select returned nil error after a launch that left no socket")
-	}
-	if !strings.Contains(err.Error(), "does not accept connections") {
-		t.Fatalf("error = %q, want it to say does not accept connections", err)
-	}
-}
-
 // A socket served by another account must not be selected: that process would
 // receive the registration frame, message bodies, pairing keys and configuration
-// writes. The user-level Broker of this account is not launched either, because
-// the socket at its path belongs to someone else.
+// writes.
 func TestSelectRejectsForeignUserSocket(t *testing.T) {
 	userPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, userPath, fakelocal.Handlers{})
@@ -291,28 +186,23 @@ func TestSelectRejectsForeignUserSocket(t *testing.T) {
 	peerUID = func(net.Conn) (uint32, error) { return foreign, nil }
 	t.Cleanup(func() { peerUID = old })
 
-	launcher := &stubLauncher{}
 	s := &selector{
 		getenv:       func(string) string { return "" },
 		userSocket:   userPath,
 		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
 		probe:        inspectSocket,
-		launch:       launcher,
 	}
 
-	got, err := s.Select(context.Background())
+	got, err := s.Find(context.Background())
 	if err == nil {
-		t.Fatalf("Select = %+v, want an error for a socket served by uid %d", got, foreign)
+		t.Fatalf("Find = %+v, want an error for a socket served by uid %d", got, foreign)
 	}
 	if got.Kind == kindUser {
-		t.Fatalf("Select = %+v, want not kindUser", got)
+		t.Fatalf("Find = %+v, want not kindUser", got)
 	}
 	wantUID := strconv.FormatUint(uint64(foreign), 10)
 	if !strings.Contains(err.Error(), userPath) || !strings.Contains(err.Error(), wantUID) {
 		t.Fatalf("error = %q, want it to name %s and uid %s", err, userPath, wantUID)
-	}
-	if launcher.calls != 0 {
-		t.Fatalf("launch called %d times, want 0", launcher.calls)
 	}
 }
 
@@ -328,27 +218,22 @@ func TestSelectRejectsForeignEnvSocket(t *testing.T) {
 	peerUID = func(net.Conn) (uint32, error) { return foreign, nil }
 	t.Cleanup(func() { peerUID = old })
 
-	launcher := &stubLauncher{}
 	s := &selector{
 		getenv:       func(string) string { return envPath },
 		userSocket:   filepath.Join(t.TempDir(), "user.sock"),
 		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
 		probe:        inspectSocket,
-		launch:       launcher,
 	}
 
-	_, err := s.Select(context.Background())
+	_, err := s.Find(context.Background())
 	if err == nil {
-		t.Fatalf("Select accepted a socket served by uid %d", foreign)
+		t.Fatalf("Find accepted a socket served by uid %d", foreign)
 	}
 	wantUID := strconv.FormatUint(uint64(foreign), 10)
 	for _, want := range []string{envPath, wantUID, "AGENT_PEER_SOCKET"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error = %q, want it to contain %q", err, want)
 		}
-	}
-	if launcher.calls != 0 {
-		t.Fatalf("launch called %d times, want 0", launcher.calls)
 	}
 }
 
@@ -366,36 +251,27 @@ func TestSelectRejectsRootServedUserSocket(t *testing.T) {
 	peerUID = func(net.Conn) (uint32, error) { return 0, nil }
 	t.Cleanup(func() { peerUID = old })
 
-	launcher := &stubLauncher{}
 	s := &selector{
 		getenv:       func(string) string { return "" },
 		userSocket:   userPath,
 		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
 		probe:        inspectSocket,
-		launch:       launcher,
 	}
 
-	_, err := s.Select(context.Background())
+	_, err := s.Find(context.Background())
 	if err == nil {
-		t.Fatal("Select accepted a user-level socket served by root")
+		t.Fatal("Find accepted a user-level socket served by root")
 	}
 	if !strings.Contains(err.Error(), userPath) || !strings.Contains(err.Error(), "uid 0") {
 		t.Fatalf("error = %q, want it to name %s and uid 0", err, userPath)
 	}
-	if launcher.calls != 0 {
-		t.Fatalf("launch called %d times, want 0", launcher.calls)
-	}
 }
 
-// A system-level socket served by a non-root account is unusable, and selection
-// goes on to launch the user-level Broker.
-func TestSelectNonRootSystemSocketFallsThrough(t *testing.T) {
+// A system-level socket served by a non-root account is unusable, and with no
+// user-level Broker there is nothing to select.
+func TestFindNonRootSystemSocketFallsThrough(t *testing.T) {
 	userPath := fakelocal.SocketPath(t)
 	systemPath := filepath.Join(t.TempDir(), "system.sock")
-	launcher := &stubLauncher{fn: func(context.Context) error {
-		fakelocal.Start(t, userPath, fakelocal.Handlers{})
-		return nil
-	}}
 
 	s := &selector{
 		getenv:       func(string) string { return "" },
@@ -407,39 +283,32 @@ func TestSelectNonRootSystemSocketFallsThrough(t *testing.T) {
 			}
 			return inspectSocket(ctx, path)
 		},
-		launch: launcher,
 	}
 
-	got, err := s.Select(context.Background())
-	if err != nil {
-		t.Fatalf("Select: %v", err)
-	}
-	if got.Kind != kindUser || got.Path != userPath {
-		t.Fatalf("Select = %+v, want {%s kindUser}", got, userPath)
-	}
-	if launcher.calls != 1 {
-		t.Fatalf("launch called %d times, want 1", launcher.calls)
+	_, err := s.Find(context.Background())
+	if !errors.Is(err, errNoBroker) {
+		t.Fatalf("Find error = %v, want errNoBroker", err)
 	}
 }
 
-// The terminal commands never launch a Broker (design-broker.md:84).
+// No Broker at all is an error whose text names both ways to start one
+// (REQ-broker-config-038).
 func TestFindNoBroker(t *testing.T) {
-	launcher := &stubLauncher{}
-
 	s := &selector{
 		getenv:       func(string) string { return "" },
 		userSocket:   filepath.Join(t.TempDir(), "user.sock"),
 		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
 		probe:        inspectSocket,
-		launch:       launcher,
 	}
 
 	_, err := s.Find(context.Background())
-	if err == nil || err.Error() != "no running Broker found" {
-		t.Fatalf("Find error = %v, want no running Broker found", err)
+	if !errors.Is(err, errNoBroker) {
+		t.Fatalf("Find error = %v, want errNoBroker", err)
 	}
-	if launcher.calls != 0 {
-		t.Fatalf("launch called %d times, want 0", launcher.calls)
+	for _, want := range []string{"ask the administrator", "agent-peer service install", "agent-peer broker", "code 6"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q, want it to contain %q", err, want)
+		}
 	}
 }
 
@@ -459,12 +328,12 @@ func TestSelectRootSharedSocketPath(t *testing.T) {
 		},
 	}
 
-	got, err := s.Select(context.Background())
+	got, err := s.Find(context.Background())
 	if err != nil {
-		t.Fatalf("Select: %v", err)
+		t.Fatalf("Find: %v", err)
 	}
 	if got.Kind != kindUser || got.Path != same {
-		t.Fatalf("Select = %+v, want {%s kindUser}", got, same)
+		t.Fatalf("Find = %+v, want {%s kindUser}", got, same)
 	}
 	if probes != 1 {
 		t.Fatalf("probed %d times, want 1", probes)
@@ -472,14 +341,9 @@ func TestSelectRootSharedSocketPath(t *testing.T) {
 }
 
 // REQ-broker-config-026
-func TestSelectSystemRefusedRetriesThenLaunches(t *testing.T) {
+func TestFindSystemRefusedRetriesThenNoBroker(t *testing.T) {
 	userPath := filepath.Join(t.TempDir(), "user.sock")
 	systemPath := filepath.Join(t.TempDir(), "system.sock")
-	started := false
-	launcher := &stubLauncher{fn: func(context.Context) error {
-		started = true
-		return nil
-	}}
 	after, waits := recordingAfter()
 
 	s := &selector{
@@ -490,24 +354,14 @@ func TestSelectSystemRefusedRetriesThenLaunches(t *testing.T) {
 			if path == systemPath {
 				return probeInfo{Outcome: probeRefused}
 			}
-			if started {
-				return probeInfo{Outcome: probeOK}
-			}
 			return probeInfo{Outcome: probeMissing}
 		},
-		launch: launcher,
-		after:  after,
+		after: after,
 	}
 
-	got, err := s.Select(context.Background())
-	if err != nil {
-		t.Fatalf("Select: %v", err)
-	}
-	if got.Kind != kindUser || got.Path != userPath {
-		t.Fatalf("Select = %+v, want {%s kindUser}", got, userPath)
-	}
-	if launcher.calls != 1 {
-		t.Fatalf("launch called %d times, want 1", launcher.calls)
+	_, err := s.Find(context.Background())
+	if !errors.Is(err, errNoBroker) {
+		t.Fatalf("Find error = %v, want errNoBroker", err)
 	}
 	w := waits()
 	wantWaits(t, w,
@@ -522,8 +376,8 @@ func TestSelectSystemRefusedRetriesThenLaunches(t *testing.T) {
 	for _, d := range w {
 		total += d
 	}
-	if total != systemRetryDeadline {
-		t.Fatalf("waits total %v, want %v", total, systemRetryDeadline)
+	if total != SystemRetryDeadline {
+		t.Fatalf("waits total %v, want %v", total, SystemRetryDeadline)
 	}
 }
 
@@ -531,7 +385,6 @@ func TestSelectSystemRefusedThenUp(t *testing.T) {
 	userPath := filepath.Join(t.TempDir(), "user.sock")
 	systemPath := filepath.Join(t.TempDir(), "system.sock")
 	systemProbes := 0
-	launcher := &stubLauncher{}
 	after, waits := recordingAfter()
 
 	s := &selector{
@@ -548,26 +401,21 @@ func TestSelectSystemRefusedThenUp(t *testing.T) {
 			}
 			return probeInfo{Outcome: probeOK}
 		},
-		launch: launcher,
-		after:  after,
+		after: after,
 	}
 
-	got, err := s.Select(context.Background())
+	got, err := s.Find(context.Background())
 	if err != nil {
-		t.Fatalf("Select: %v", err)
+		t.Fatalf("Find: %v", err)
 	}
 	if got.Kind != kindSystem || got.Path != systemPath {
-		t.Fatalf("Select = %+v, want {%s kindSystem}", got, systemPath)
-	}
-	if launcher.calls != 0 {
-		t.Fatalf("launch called %d times, want 0", launcher.calls)
+		t.Fatalf("Find = %+v, want {%s kindSystem}", got, systemPath)
 	}
 	wantWaits(t, waits(), 250*time.Millisecond, 500*time.Millisecond)
 }
 
 func TestFindSystemRefusedRetries(t *testing.T) {
 	systemPath := filepath.Join(t.TempDir(), "system.sock")
-	launcher := &stubLauncher{}
 	after, waits := recordingAfter()
 
 	s := &selector{
@@ -580,16 +428,12 @@ func TestFindSystemRefusedRetries(t *testing.T) {
 			}
 			return probeInfo{Outcome: probeMissing}
 		},
-		launch: launcher,
-		after:  after,
+		after: after,
 	}
 
 	_, err := s.Find(context.Background())
-	if err == nil || err.Error() != "no running Broker found" {
-		t.Fatalf("Find error = %v, want no running Broker found", err)
-	}
-	if launcher.calls != 0 {
-		t.Fatalf("launch called %d times, want 0", launcher.calls)
+	if !errors.Is(err, errNoBroker) {
+		t.Fatalf("Find error = %v, want errNoBroker", err)
 	}
 	wantWaits(t, waits(),
 		250*time.Millisecond,

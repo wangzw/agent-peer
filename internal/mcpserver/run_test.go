@@ -111,8 +111,8 @@ func (h *runHandle) errValue() error {
 
 // runTestOptions builds options whose Broker-facing behaviour is under test
 // control: environment lookups come from env, the working directory is an empty
-// temporary directory, the sockets do not exist, no Broker is launched, and the
-// git origin is unavailable.
+// temporary directory, the sockets do not exist, and the git origin is
+// unavailable.
 func runTestOptions(t *testing.T, clock *loopClock, env map[string]string) Options {
 	t.Helper()
 	dir := t.TempDir()
@@ -122,7 +122,6 @@ func runTestOptions(t *testing.T, clock *loopClock, env map[string]string) Optio
 		getwd:        func() (string, error) { return dir, nil },
 		userSocket:   filepath.Join(t.TempDir(), "user.sock"),
 		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
-		launch:       &loopNoLaunch{t: t},
 		readOrigin:   func(context.Context, string) (string, error) { return "", errors.New("no origin") },
 		after:        clock.after,
 	}
@@ -640,14 +639,10 @@ func TestRunSendsInjectedProtocolVersion(t *testing.T) {
 	}
 }
 
-// REQ-broker-config-024
-func TestRunReportsLaunchFailure(t *testing.T) {
+// REQ-broker-config-038
+func TestRunReportsNoBroker(t *testing.T) {
 	clock := newLoopClock()
 	opts := runTestOptions(t, clock, map[string]string{"CLAUDE_CODE_MESSAGING_SOCKET": "/s"})
-	const reason = "listen address 0.0.0.0:17443 is unavailable: address already in use"
-	opts.launch = &stubLauncher{fn: func(context.Context) error {
-		return &launchError{Reason: reason}
-	}}
 	h := startRunClient(t, opts)
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -655,15 +650,17 @@ func TestRunReportsLaunchFailure(t *testing.T) {
 	for time.Now().Before(deadline) {
 		res := callTool(t, h.cs, "list_agents", nil)
 		text = textContent(t, res)
-		if strings.Contains(text, reason) {
+		if strings.Contains(text, "no Broker is available") {
 			break
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
-	if !strings.Contains(text, reason) {
-		t.Fatalf("list_agents error = %q, want the Broker's launch failure verbatim", text)
+	for _, want := range []string{"no Broker is available", "ask the administrator", "agent-peer service install", "agent-peer broker", "code 6", "(code: internal)"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("list_agents error = %q, want it to contain %q", text, want)
+		}
 	}
 	if h.finished() {
-		t.Fatalf("Run returned after a launch failure: %v", h.errValue())
+		t.Fatalf("Run returned after reporting no Broker: %v", h.errValue())
 	}
 }

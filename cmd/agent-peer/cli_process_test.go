@@ -261,14 +261,6 @@ func (p *mcpProc) killIfRunning() {
 	<-p.exited
 }
 
-// stop ends the MCP server: it closes the server's standard input and kills
-// the process if it is still running. The cleanup registered by startMCP
-// repeats both, which is safe.
-func (p *mcpProc) stop() {
-	_ = p.stdin.Close()
-	p.killIfRunning()
-}
-
 // assertNoBrokerFiles fails when root (searched recursively) contains a lock
 // or socket, which proves a Broker was launched.
 func assertNoBrokerFiles(t *testing.T, root string) {
@@ -418,8 +410,10 @@ func TestStatusDoesNotLaunchBroker(t *testing.T) {
 	if res.code != exitFailure {
 		t.Fatalf("exit code = %d, want %d (stderr %q)", res.code, exitFailure, res.stderr)
 	}
-	if !strings.Contains(res.stderr, "no running Broker found") {
-		t.Fatalf("stderr = %q, want it to contain %q", res.stderr, "no running Broker found")
+	for _, want := range []string{"no Broker is available", "ask the administrator", "agent-peer service install", "agent-peer broker"} {
+		if !strings.Contains(res.stderr, want) {
+			t.Fatalf("stderr = %q, want it to contain %q", res.stderr, want)
+		}
 	}
 	assertNoBrokerFiles(t, sb.root)
 }

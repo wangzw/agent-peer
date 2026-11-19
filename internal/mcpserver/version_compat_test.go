@@ -48,10 +48,9 @@ func (a *versionAfter) recorded() []time.Duration {
 
 // versionOptions builds options whose Broker-facing behaviour is fully under
 // test control: no environment overrides, an empty working directory, the given
-// sockets, a counting launcher, waits that resolve at once and no git origin.
-func versionOptions(t *testing.T, userSocket, systemSocket string) (Options, *loopLauncher, *versionAfter) {
+// sockets, waits that resolve at once and no git origin.
+func versionOptions(t *testing.T, userSocket, systemSocket string) (Options, *versionAfter) {
 	t.Helper()
-	launch := &loopLauncher{}
 	after := &versionAfter{}
 	dir := t.TempDir()
 	return Options{
@@ -60,10 +59,9 @@ func versionOptions(t *testing.T, userSocket, systemSocket string) (Options, *lo
 		getwd:        func() (string, error) { return dir, nil },
 		userSocket:   userSocket,
 		systemSocket: systemSocket,
-		launch:       launch,
 		readOrigin:   func(context.Context, string) (string, error) { return "", errors.New("no origin") },
 		after:        after.after,
-	}, launch, after
+	}, after
 }
 
 // versionMismatchRejecter answers Hello the way a version 2 Broker rejects a
@@ -127,7 +125,7 @@ func TestMismatchDoesNotRegisterOrSwitch(t *testing.T) {
 		},
 	})
 
-	opts, launch, _ := versionOptions(t, userSock, systemSock)
+	opts, _ := versionOptions(t, userSock, systemSock)
 	h := startRunClient(t, opts)
 	versionWaitMismatch(t, h.cs)
 
@@ -150,9 +148,6 @@ func TestMismatchDoesNotRegisterOrSwitch(t *testing.T) {
 	if got := systemHellos.Load(); got != 0 {
 		t.Errorf("the system-level Broker received %d Hello calls; a mismatch must not switch to it", got)
 	}
-	if got := launch.count(); got != 0 {
-		t.Errorf("the connection loop launched a Broker %d times after a version mismatch", got)
-	}
 	if h.finished() {
 		t.Fatalf("Run returned after a version mismatch: %v", h.errValue())
 	}
@@ -164,7 +159,7 @@ func TestMismatchBrokerOlder(t *testing.T) {
 	// The default Hello handler answers localpb.ProtocolVersion (1).
 	srv := fakelocal.Start(t, sock, fakelocal.Handlers{})
 
-	opts, _, _ := versionOptions(t, sock, fakelocal.SocketPath(t))
+	opts, _ := versionOptions(t, sock, fakelocal.SocketPath(t))
 	opts.LocalProtocolVersion = 2
 	h := startRunClient(t, opts)
 
@@ -187,7 +182,7 @@ func TestMismatchNoHelloPolling(t *testing.T) {
 	var hellos atomic.Int64
 	fakelocal.Start(t, sock, versionMismatchRejecter(&hellos))
 
-	opts, _, after := versionOptions(t, sock, fakelocal.SocketPath(t))
+	opts, after := versionOptions(t, sock, fakelocal.SocketPath(t))
 	h := startRunClient(t, opts)
 	versionWaitMismatch(t, h.cs)
 
@@ -225,7 +220,7 @@ func TestMismatchRejectionNamesNoBrokerVersion(t *testing.T) {
 	sock := fakelocal.SocketPath(t)
 	startMismatchBroker(t, sock)
 
-	opts, _, _ := versionOptions(t, sock, fakelocal.SocketPath(t))
+	opts, _ := versionOptions(t, sock, fakelocal.SocketPath(t))
 	h := startRunClient(t, opts)
 
 	text := versionWaitMismatch(t, h.cs)
@@ -266,32 +261,13 @@ func TestMismatchRecoversAfterBrokerRestart(t *testing.T) {
 		},
 	})
 
-	opts, launch, _ := versionOptions(t, sock, fakelocal.SocketPath(t))
-	// A restart closes the old listener before the replacement binds, so the
-	// socket path is briefly missing. Probing in that window launches the
-	// user-level Broker, which is what the design asks for when the socket is
-	// gone. Gate the loop's probe until the replacement listener is up, so the
-	// test observes the claim it asserts: a restarted socket that answers is
-	// reached without a launch.
-	restarted := make(chan struct{})
-	var restarting atomic.Bool
-	opts.probe = func(ctx context.Context, path string) probeResult {
-		if restarting.Load() {
-			select {
-			case <-restarted:
-			case <-ctx.Done():
-			}
-		}
-		return probeSocket(ctx, path)
-	}
+	opts, _ := versionOptions(t, sock, fakelocal.SocketPath(t))
 	h := startRunClient(t, opts)
 	versionWaitMismatch(t, h.cs)
 
 	// The user restarts the Broker with a version this MCP server speaks.
 	version.Store(localpb.ProtocolVersion)
-	restarting.Store(true)
 	srv.Restart()
-	close(restarted)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -303,8 +279,4 @@ func TestMismatchRecoversAfterBrokerRestart(t *testing.T) {
 		t.Fatalf("Complete: %v", err)
 	}
 	runWaitRegistered(t, h.cs)
-
-	if got := launch.count(); got != 0 {
-		t.Errorf("the connection loop launched a Broker %d times; the restarted socket answered", got)
-	}
 }

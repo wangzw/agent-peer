@@ -67,12 +67,21 @@ func TestPreflight(t *testing.T) {
 			want:   "Not sent: the Broker is unavailable: " + detail + "; retrying in the background (code: internal)",
 		},
 		{
-			// REQ-broker-config-024: the Broker's own reason is passed through.
-			name:   "launch failed",
-			status: Status{Phase: PhaseLaunchFailed, Detail: "listen address 0.0.0.0:17443 is unavailable: address already in use"},
+			// REQ-broker-config-038: the text names both ways to start a Broker.
+			name:   "no Broker",
+			status: Status{Phase: PhaseNoBroker},
 			tool:   "list_agents",
 			kind:   callGeneric,
-			want:   "list_agents failed: the Broker could not start: listen address 0.0.0.0:17443 is unavailable: address already in use (code: internal)",
+			want:   "list_agents failed: " + textNoBroker + " (code: internal)",
+		},
+		{
+			// REQ-broker-config-037: a system-level Broker that fails sends the
+			// user to the administrator only.
+			name:   "no system Broker",
+			status: Status{Phase: PhaseNoBroker, Detail: textNoSystemBroker},
+			tool:   "list_agents",
+			kind:   callGeneric,
+			want:   "list_agents failed: " + textNoSystemBroker + " (code: internal)",
 		},
 		{
 			name:   "version mismatch",
@@ -152,6 +161,31 @@ func TestPreflight(t *testing.T) {
 // TestPreflightVersionRemedies checks the three remedy clauses for a version
 // mismatch (REQ-broker-config-016): each must tell the reader to restart the
 // Broker, and none may drop the "To fix it" clause.
+// TestNoSystemBrokerTextOmitsUserLevelMethods checks the ruling for
+// REQ-broker-config-037: a session that was using the system-level Broker must
+// not be told to install or start a user-level Broker.
+func TestNoSystemBrokerTextOmitsUserLevelMethods(t *testing.T) {
+	st := &statusStore{}
+	st.Update(func(s *Status) {
+		s.Phase = PhaseNoBroker
+		s.Detail = textNoSystemBroker
+	})
+	h := &handlers{st: st}
+
+	_, err := h.preflight("list_agents", callGeneric, false)
+	if err == nil {
+		t.Fatal("preflight returned nil for PhaseNoBroker")
+	}
+	if !strings.Contains(err.Error(), "ask the administrator") {
+		t.Fatalf("error = %q, want it to name the administrator", err)
+	}
+	for _, unwanted := range []string{"agent-peer service install", "agent-peer broker"} {
+		if strings.Contains(err.Error(), unwanted) {
+			t.Fatalf("error = %q, must not mention %q", err, unwanted)
+		}
+	}
+}
+
 func TestPreflightVersionRemedies(t *testing.T) {
 	const (
 		detail = "the running Broker speaks local protocol version 2, this MCP server speaks 1"

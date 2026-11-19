@@ -36,10 +36,10 @@ func assertDialFails(t *testing.T, addr string) {
 	}
 }
 
-// waitListen polls until the Broker accepts connections on addr. A process
-// started without a readiness pipe has no other way to report readiness; this
-// polls an external condition rather than replacing a decision with a sleep.
-// It reports false when the process exits or the deadline passes first.
+// waitListen polls until the Broker accepts connections on addr. A Broker
+// started from a terminal reports readiness only by listening; this polls that
+// external condition rather than replacing a decision with a sleep. It reports
+// false when the process exits or the deadline passes first.
 func waitListen(t *testing.T, p *brokerProc, addr string) bool {
 	t.Helper()
 
@@ -75,9 +75,9 @@ func waitListen(t *testing.T, p *brokerProc, addr string) bool {
 	}
 }
 
-// startBrokerTerminal runs "agent-peer broker" the way a terminal launch does:
-// no readiness pipe and no --ready-fd. The returned process has no reader, so
-// readiness is observed by dialing the listen address.
+// startBrokerTerminal runs "agent-peer broker" the way a terminal launch does.
+// The returned process has no reader, so readiness is observed by dialing the
+// listen address.
 func startBrokerTerminal(t *testing.T, sb *sandbox, args ...string) *brokerProc {
 	t.Helper()
 
@@ -144,7 +144,7 @@ func TestBrokerListenFlagOverridesConfig(t *testing.T) {
 		t.Fatalf("read config before start: %v", err)
 	}
 
-	p, listenPort := startBrokerOnFreePort(t, sb)
+	p, listenPort := startBrokerTerminalOnFreePort(t, sb)
 	dialBroker(t, listenAddr(listenPort))
 
 	after, err := os.ReadFile(sb.configPath())
@@ -180,7 +180,7 @@ func TestBrokerSecondInstanceFailsWithAnotherListenAddress(t *testing.T) {
 	t.Parallel()
 
 	sb := newSandbox(t)
-	first, firstPort := startBrokerOnFreePort(t, sb)
+	first, firstPort := startBrokerTerminalOnFreePort(t, sb)
 
 	// Pick the second address while the first Broker holds its own port, so
 	// the two addresses differ. The second instance acquires the account lock
@@ -188,16 +188,13 @@ func TestBrokerSecondInstanceFailsWithAnotherListenAddress(t *testing.T) {
 	// exit code and this start needs no retry.
 	secondPort := freePort(t)
 
-	second := startBroker(t, sb, "--listen", listenAddr(secondPort))
-	ready := second.readyLine(3 * time.Second)
+	second := startBrokerTerminal(t, sb, "--listen", listenAddr(secondPort))
 	if code := second.wait(3 * time.Second); code != exitAlreadyRunning {
 		t.Fatalf("second exit code = %d, want %d (stderr: %s)", code, exitAlreadyRunning, second.stderr.String())
 	}
-	if want := "agent-peer broker: " + ready; second.lastStderrLine("agent-peer broker: ") != want {
-		t.Fatalf("second stderr line = %q, want %q", second.lastStderrLine("agent-peer broker: "), want)
-	}
-	if !strings.Contains(ready, "already running") {
-		t.Fatalf("second ready line = %q, want it to contain %q", ready, "already running")
+	reason := second.lastStderrLine("agent-peer broker: ")
+	if !strings.Contains(reason, "already running") {
+		t.Fatalf("second stderr line = %q, want it to contain %q", reason, "already running")
 	}
 	assertDialFails(t, listenAddr(secondPort))
 
@@ -215,7 +212,7 @@ func TestBrokerSecondInstanceFailsWithAnotherListenAddress(t *testing.T) {
 
 	// The lock is free again, so a Broker can start. The helper retries on a
 	// fresh port if this one was taken after freePort released it.
-	startBrokerOnFreePort(t, sb)
+	startBrokerTerminalOnFreePort(t, sb)
 }
 
 // TestBrokerListenAddressUnavailable covers REQ-broker-config-024: an
@@ -227,16 +224,13 @@ func TestBrokerListenAddressUnavailable(t *testing.T) {
 	port, _ := occupiedPort(t)
 	addr := listenAddr(port)
 
-	p := startBroker(t, sb, "--listen", addr)
-	ready := p.readyLine(3 * time.Second)
+	p := startBrokerTerminal(t, sb, "--listen", addr)
 	if code := p.wait(3 * time.Second); code != exitListenUnavailable {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitListenUnavailable, p.stderr.String())
 	}
-	if !strings.Contains(ready, addr) {
-		t.Fatalf("ready line = %q, want it to contain %q", ready, addr)
-	}
-	if want := "agent-peer broker: " + ready; p.lastStderrLine("agent-peer broker: ") != want {
-		t.Fatalf("stderr line = %q, want %q", p.lastStderrLine("agent-peer broker: "), want)
+	reason := p.lastStderrLine("agent-peer broker: ")
+	if !strings.Contains(reason, addr) {
+		t.Fatalf("stderr line = %q, want it to contain %q", reason, addr)
 	}
 }
 
@@ -249,16 +243,13 @@ func TestBrokerInvalidConfig(t *testing.T) {
 		sb := newSandbox(t)
 		sb.writeConfig("broker: [\n")
 
-		p := startBroker(t, sb)
-		ready := p.readyLine(3 * time.Second)
+		p := startBrokerTerminal(t, sb)
 		if code := p.wait(3 * time.Second); code != exitInvalidConfig {
 			t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitInvalidConfig, p.stderr.String())
 		}
-		if !strings.Contains(ready, "config file parse error") {
-			t.Fatalf("ready line = %q, want it to contain %q", ready, "config file parse error")
-		}
-		if want := "agent-peer broker: " + ready; p.lastStderrLine("agent-peer broker: ") != want {
-			t.Fatalf("stderr line = %q, want %q", p.lastStderrLine("agent-peer broker: "), want)
+		reason := p.lastStderrLine("agent-peer broker: ")
+		if !strings.Contains(reason, "config file parse error") {
+			t.Fatalf("stderr line = %q, want it to contain %q", reason, "config file parse error")
 		}
 	})
 
@@ -271,13 +262,13 @@ func TestBrokerInvalidConfig(t *testing.T) {
 			t.Fatalf("create config path as a directory: %v", err)
 		}
 
-		p := startBroker(t, sb)
-		ready := p.readyLine(3 * time.Second)
+		p := startBrokerTerminal(t, sb)
 		if code := p.wait(3 * time.Second); code != exitInvalidConfig {
 			t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitInvalidConfig, p.stderr.String())
 		}
-		if !strings.Contains(ready, sb.configPath()) {
-			t.Fatalf("ready line = %q, want it to name the config file %q", ready, sb.configPath())
+		reason := p.lastStderrLine("agent-peer broker: ")
+		if !strings.Contains(reason, sb.configPath()) {
+			t.Fatalf("stderr line = %q, want it to name the config file %q", reason, sb.configPath())
 		}
 	})
 }
@@ -288,16 +279,12 @@ func TestBrokerInsideSession(t *testing.T) {
 	sb := newSandbox(t)
 	sb.extraEnv = append(sb.extraEnv, "CLAUDE_CODE_MESSAGING_SOCKET=/tmp/x.sock")
 
-	p := startBroker(t, sb)
-	ready := p.readyLine(3 * time.Second)
+	p := startBrokerTerminal(t, sb)
 	if code := p.wait(3 * time.Second); code != exitInSession {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitInSession, p.stderr.String())
 	}
-	if ready == "" {
-		t.Fatal("ready line is empty, want the session failure reason")
-	}
-	if want := "agent-peer broker: " + ready; p.lastStderrLine("agent-peer broker: ") != want {
-		t.Fatalf("stderr line = %q, want %q", p.lastStderrLine("agent-peer broker: "), want)
+	if reason := p.lastStderrLine("agent-peer broker: "); reason == "" {
+		t.Fatal("standard error carries no failure line, want the session failure reason")
 	}
 }
 
@@ -315,8 +302,8 @@ func TestBrokerUsesTestHome(t *testing.T) {
 	first.writeConfig("broker:\n  alias: host-a\n")
 	second.writeConfig("broker:\n  alias: host-b\n")
 
-	startBrokerOnFreePort(t, first)
-	startBrokerOnFreePort(t, second)
+	startBrokerTerminalOnFreePort(t, first)
+	startBrokerTerminalOnFreePort(t, second)
 
 	for _, sb := range []*sandbox{first, second} {
 		for _, name := range []string{"identity.key", "identity.crt"} {
@@ -358,13 +345,13 @@ func TestBrokerRuntimeDirBadPermissions(t *testing.T) {
 		t.Fatalf("chmod runtime directory: %v", err)
 	}
 
-	p := startBroker(t, sb)
-	ready := p.readyLine(3 * time.Second)
+	p := startBrokerTerminal(t, sb)
 	if code := p.wait(3 * time.Second); code != exitRuntimeDir {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitRuntimeDir, p.stderr.String())
 	}
-	if !strings.Contains(ready, dir) {
-		t.Fatalf("ready line = %q, want it to name the runtime directory %q", ready, dir)
+	reason := p.lastStderrLine("agent-peer broker: ")
+	if !strings.Contains(reason, dir) {
+		t.Fatalf("stderr line = %q, want it to name the runtime directory %q", reason, dir)
 	}
 }
 
@@ -372,8 +359,7 @@ func TestBrokerInvalidListenValue(t *testing.T) {
 	t.Parallel()
 
 	sb := newSandbox(t)
-	p := startBroker(t, sb, "--listen", "not-an-address")
-	ready := p.readyLine(3 * time.Second)
+	p := startBrokerTerminal(t, sb, "--listen", "not-an-address")
 	if code := p.wait(3 * time.Second); code != exitUsage {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitUsage, p.stderr.String())
 	}
@@ -382,9 +368,6 @@ func TestBrokerInvalidListenValue(t *testing.T) {
 	}
 	if stderr := p.stderr.String(); !strings.Contains(stderr, "usage: agent-peer broker") {
 		t.Fatalf("stderr = %q, want the broker usage", stderr)
-	}
-	if !strings.Contains(ready, "--listen") {
-		t.Fatalf("ready line = %q, want it to mention %q", ready, "--listen")
 	}
 }
 
@@ -399,30 +382,25 @@ func TestBrokerSystemRequiresRoot(t *testing.T) {
 	}
 
 	sb := newSandbox(t)
-	p := startBroker(t, sb, "--system")
-	ready := p.readyLine(3 * time.Second)
+	p := startBrokerTerminal(t, sb, "--system")
 	if code := p.wait(3 * time.Second); code != exitNotRoot {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitNotRoot, p.stderr.String())
 	}
 	if stderr := p.stderr.String(); !strings.Contains(stderr, "must run as root") {
 		t.Fatalf("stderr = %q, want it to name the root requirement", stderr)
 	}
-	if !strings.Contains(ready, "must run as root") {
-		t.Fatalf("ready line = %q, want it to name the root requirement", ready)
-	}
-	if want := "agent-peer broker: " + ready; p.lastStderrLine("agent-peer broker: ") != want {
-		t.Fatalf("stderr line = %q, want %q", p.lastStderrLine("agent-peer broker: "), want)
+	if reason := p.lastStderrLine("agent-peer broker: "); !strings.Contains(reason, "must run as root") {
+		t.Fatalf("stderr line = %q, want it to name the root requirement", reason)
 	}
 }
 
-func TestBrokerFromTerminalHasNoReadyPipe(t *testing.T) {
+// TestBrokerShutsDownOnSIGINT checks the shutdown path of a Broker started
+// from a terminal.
+func TestBrokerShutsDownOnSIGINT(t *testing.T) {
 	t.Parallel()
 
 	sb := newSandbox(t)
 	p, _ := startBrokerTerminalOnFreePort(t, sb)
-
-	// The helper observed readiness by dialing the listen address; the
-	// process has no readiness pipe to read.
 
 	if err := p.cmd.Process.Signal(os.Interrupt); err != nil {
 		t.Fatalf("signal broker: %v", err)
