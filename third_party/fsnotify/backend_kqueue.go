@@ -1,12 +1,14 @@
 //go:build freebsd || openbsd || netbsd || dragonfly || darwin
 
-// This vendored copy of fsnotify v1.10.1 carries a local patch to the kqueue
+// This vendored copy of fsnotify v1.10.1 carries local patches to the kqueue
 // backend: Close no longer closes a watch descriptor whose EV_DELETE failed,
 // because a concurrent remove may already have closed it and released the
-// number for reuse (the defect from upstream #740, still present in v1.10.1),
-// and addWatch no longer closes the descriptor of an existing watch when a
-// re-registration fails. Remove the replace directive and this patch once a
-// release fixes it upstream.
+// number for reuse (the defect from upstream #740, still present in v1.10.1);
+// addWatch no longer closes the descriptor of an existing watch when a
+// re-registration fails; and sendCreateIfNew installs the watch for a new file
+// before sending its Create event, so a write made after a consumer sees
+// Create is reported instead of lost. Remove the replace directive and these
+// patches once a release fixes them upstream.
 
 package fsnotify
 
@@ -18,6 +20,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify/internal"
@@ -670,21 +673,39 @@ func (w *kqueue) dirChange(dir string) error {
 	return nil
 }
 
+// testBeforeCreateEvent, when set by a test, runs after the watch for a new
+// file found by the directory scan is installed and before its Create event
+// is sent. It makes that window observable: a test can write the file there
+// and require the write to be reported. It is atomic because the test sets it
+// while the backend goroutine is already running. Production leaves it nil.
+var testBeforeCreateEvent atomic.Pointer[func()]
+
 // Send a create event if the file isn't already being tracked, and start
 // watching this file.
 func (w *kqueue) sendCreateIfNew(path string, fi os.FileInfo) error {
-	if !w.watches.seenBefore(path) {
-		if !w.sendEvent(Event{Name: path, Op: Create}) {
-			return nil
-		}
-	}
+	newFile := !w.watches.seenBefore(path)
 
-	// Like watchDirectoryFiles, but without doing another ReadDir.
-	path, err := w.internalWatch(path, fi)
+	// Like watchDirectoryFiles, but without doing another ReadDir. The watch is
+	// installed before the Create event is sent so that a consumer reacting to
+	// Create by reading the file has every later write reported: kqueue
+	// reports only changes made after the watch exists.
+	cleanPath, err := w.internalWatch(path, fi)
 	if err != nil {
+		// The Create event still goes out for a new file whose watch could not
+		// be installed, matching the order the caller used to observe.
+		if newFile {
+			w.sendEvent(Event{Name: path, Op: Create})
+		}
 		return err
 	}
-	w.watches.markSeen(path, true)
+	w.watches.markSeen(cleanPath, true)
+
+	if newFile {
+		if hook := testBeforeCreateEvent.Load(); hook != nil {
+			(*hook)()
+		}
+		w.sendEvent(Event{Name: path, Op: Create})
+	}
 	return nil
 }
 

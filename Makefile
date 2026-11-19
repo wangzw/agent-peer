@@ -66,9 +66,9 @@ test:
 			./internal/config ./internal/mcpserver ./cmd/agent-peer; \
 	status=$$?; rm -rf "$$root" "$$home"; exit $$status
 	@if [ "$$(go env GOOS)" = darwin ]; then \
-		go -C $(CURDIR)/third_party/fsnotify test -race -count=1 -p $(JOBS) -parallel $(JOBS) -run '^Test(KqueueCloseDoesNotCloseAReusedDescriptor|AddWatchKeepsAnExistingDescriptorWhenReregisterFails)$$' ./; \
+		go -C $(CURDIR)/third_party/fsnotify test -race -count=1 -p $(JOBS) -parallel $(JOBS) -run '^Test(KqueueCloseDoesNotCloseAReusedDescriptor|AddWatchKeepsAnExistingDescriptorWhenReregisterFails|WriteAfterCreateIsReported)$$' ./; \
 	else \
-		echo "skipping the kqueue double-close test: GOOS is not darwin"; \
+		echo "skipping the kqueue backend tests: GOOS is not darwin"; \
 	fi
 
 # The e2e run cleans up after itself even when go test is killed or times out.
