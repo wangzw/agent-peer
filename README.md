@@ -31,35 +31,39 @@ On macOS, use `shasum` instead:
 grep agent-peer_0.1.0_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
 ```
 
-Extract the archive. The macOS binaries are not signed or notarized, so on macOS, if you downloaded it with a browser, clear the quarantine attribute from the extracted binary before running it; otherwise macOS blocks the binary:
+Create an empty directory and extract the archive into it. The archive has no top-level directory, so without one, LICENSE, README.md, third_party/ and THIRD_PARTY_LICENSES/ land directly in the current directory together with the binary.
+
+The macOS binaries are not signed or notarized, so on macOS, if you downloaded it with a browser, clear the quarantine attribute from the extracted binary before running it; otherwise macOS blocks the binary:
 
 ```sh
-tar -xzf agent-peer_0.1.0_darwin_arm64.tar.gz
-xattr -d com.apple.quarantine agent-peer
+mkdir agent-peer-0.1.0
+tar -xzf agent-peer_0.1.0_darwin_arm64.tar.gz -C agent-peer-0.1.0
+xattr -d com.apple.quarantine agent-peer-0.1.0/agent-peer
 ```
 
 On Linux, extract the archive without the `xattr` step:
 
 ```sh
-tar -xzf agent-peer_0.1.0_linux_arm64.tar.gz
+mkdir agent-peer-0.1.0
+tar -xzf agent-peer_0.1.0_linux_arm64.tar.gz -C agent-peer-0.1.0
 ```
 
-If you only use the user-level Broker, a per-user directory such as `~/.local/bin` is enough:
+Then install the binary in one of two ways. If you only use the user-level Broker, a per-user directory such as `~/.local/bin` is enough:
 
 ```sh
 mkdir -p ~/.local/bin
-mv agent-peer ~/.local/bin/
+mv agent-peer-0.1.0/agent-peer ~/.local/bin/
 agent-peer --version
 ```
 
-The last command prints `agent-peer 0.1.0`.
-
-If you want to run `sudo agent-peer service install --system`, the binary and every directory above it must be owned by `root` and not writable by group or others, such as `/usr/local/bin`. On an Intel Mac with Homebrew, `/usr/local/bin` belongs to the ordinary user, so the installation is refused; choose a directory owned by `root` instead. The system-level service starts the binary as `root`, and an ordinary account that can modify the binary or one of its parent directories could take over the service:
+If you want to run `sudo agent-peer service install --system`, install the binary with `sudo install -o root -g 0 -m 0755` instead of `mv`. The binary and every directory above it must be owned by `root` and not writable by group or others, such as `/usr/local/bin`. On an Intel Mac with Homebrew, `/usr/local/bin` belongs to the ordinary user, so the installation is refused; choose a directory owned by `root` instead. The system-level service starts the binary as `root`, and an ordinary account that can modify the binary or one of its parent directories could take over the service:
 
 ```sh
-sudo install -o root -g 0 -m 0755 agent-peer /usr/local/bin/agent-peer
+sudo install -o root -g 0 -m 0755 agent-peer-0.1.0/agent-peer /usr/local/bin/agent-peer
 agent-peer --version
 ```
+
+In both cases, `agent-peer --version` prints `agent-peer 0.1.0`.
 
 To build from source you need Go 1.27. Clone the repository and build:
 
