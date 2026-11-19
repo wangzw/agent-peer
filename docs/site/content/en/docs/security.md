@@ -39,7 +39,7 @@ This means a system Broker can delegate management with ordinary file permission
 
 Claude Code lets a process that writes to a session's inbox socket present an authentication token. agent-peer does not present it and does not read the token file. Delivered text therefore enters the target session as a sender with no declared permission category. What the receiving session does with such a message, including whether its inbound controls and permission prompts apply, has not yet been verified in a real session; see [known limitations]({{< relref "limitations.md" >}}).
 
-The Broker is designed not to be a descendant of any session. A user Broker started by an MCP server process detaches from the session's process tree, and a system Broker runs as a service outside it.
+The Broker is designed not to be a descendant of any session. A user Broker is started by the service manager or by the user in a terminal, outside the session's process tree, and a system Broker runs as a service outside it. An account that can use the host's system Broker needs no user Broker, and a running user Broker takes precedence over the system Broker, unless the session's tool configuration names a Broker.
 
 Native Windows is not supported because inbox connections there require the authentication line.
 

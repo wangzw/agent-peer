@@ -18,7 +18,7 @@ Broker 把配置、身份、对端表、名录和审计日志放在固定位置�
 | `/tmp/agent-peer-<uid>/broker.sock` | 本机 socket，权限 `0600`。 |
 | `/tmp/agent-peer-<uid>/broker.lock` | 账户锁，保证每个账户至多一个 Broker。 |
 
-`<uid>` 是账户的数字 ID。运行时目录权限为 `0700`。身份文件在 Broker 第一次启动时创建；`peers.json` 和 `directory.json` 在第一次有内容需要保存时出现。以 root 运行用户级 Broker 时（例如由 root 会话拉起的那一个），运行时目录是 Linux 上的 `/run/agent-peer`、macOS 上的 `/var/run/agent-peer`，与系统级 Broker 相同。
+`<uid>` 是账户的数字 ID。运行时目录权限为 `0700`。身份文件在 Broker 第一次启动时创建；`peers.json` 和 `directory.json` 在第一次有内容需要保存时出现。以 root 运行用户级 Broker 时（例如 root 在终端里启动的那一个），运行时目录是 Linux 上的 `/run/agent-peer`、macOS 上的 `/var/run/agent-peer`，与系统级 Broker 相同。
 
 ## 系统级 Broker
 
@@ -53,7 +53,7 @@ Broker 把运行日志写到标准错误，把审计日志写到上面的审计�
 
 - Linux 服务把日志写入 systemd journal：用户级服务用 `journalctl --user -u agent-peer.service`，系统级服务用 `journalctl -u agent-peer.service`。
 - macOS 用户级服务写入 `~/Library/Logs/agent-peer/broker.log`；系统级守护进程写入 `/var/log/agent-peer/broker.log`。
-- 由 MCP 服务进程自动启动的 Broker，标准输出与标准错误接到 `/dev/null`，因此没有运行日志。要日志就在终端运行 `agent-peer broker`，或安装服务。
+- 在终端里启动的 Broker，运行日志写进那个终端。
 
 ## 权限
 

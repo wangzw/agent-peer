@@ -25,15 +25,12 @@ agent-peer does what the rest of this site describes, and stops where this page 
 - At most one Broker runs per account.
 - The macOS binaries are not signed or notarized. If a browser downloaded the archive, clear the quarantine attribute before running the binary.
 - Linux release binaries are built with `CGO_ENABLED=0` and read accounts only from `/etc/passwd` and `/etc/group`. A system Broker cannot spawn helper processes for accounts supplied by a directory service such as LDAP or SSSD, and cannot use their group membership to decide configuration file permissions. When it cannot determine such an account's home directory, it uses `HOME`.
-- System-level service installation and operation are verified end to end only on Linux. Service installation on macOS needs manual verification.
 
 ## Sessions and operation
 
 - The inbox socket message format and the session registry have no public compatibility promise. A Claude Code upgrade may break registration or delivery.
 - Some sessions cannot become agents: sessions that do not bind an inbox socket, sessions for which Claude Code keeps no session registry record (including interactive sessions started from another session's command line), and sessions whose name is unusable.
-- A Broker started automatically by the MCP server process has its standard output and standard error connected to `/dev/null`, so it has no run log. For logs, run `agent-peer broker` from a terminal or install the Broker as a service.
 - If the MCP server process crashes, an interactive session does not restart it. A handshake that takes longer than 30 seconds or a failed start marks the service as failed, and the user has to reconnect it in `/mcp`.
-- When the calling account cannot read the configuration file, the peer section of `agent-peer status` shows `Peers: none`. It does not distinguish "no peers" from "no permission to see them".
 - The operating-system account is the isolation boundary. Any process running under the same account can register any of that account's sessions as an agent and act as it.
 
 ## Not yet verified in a real session
@@ -55,4 +52,3 @@ The following behaviors have not been confirmed in a real Claude Code session ru
 - Whether a sub-session inherits its parent's inbox socket variable, which would register it under the parent's agent.
 - The session registry's file change notifications on macOS and Linux, including whether a rename shows up in the list.
 - How the receiving Claude Code applies rate limiting and duplicate suppression when messages are written through one Broker process.
-- On macOS, the LaunchAgent starts a user Broker at login and restores its links.

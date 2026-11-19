@@ -40,7 +40,23 @@ claude mcp get peer
 
 输出里有 `Scope: User config`。此后启动的会话在 `/mcp` 里能看到 `peer`。
 
-第一个启用这些工具的会话会在后台为你的账户启动一个用户级 Broker，不需要手动启动。想改为随登录启动，见[把 Broker 安装为服务]({{< relref "guides/run-as-service.md" >}})。
+## 启动 Broker
+
+会话只连接 Broker，不会启动它。主机上已经有你能使用的系统级 Broker 时，跳过这一步，会话会连接到它。
+
+否则，安装用户级服务，安装完成就会启动，此后随登录启动：
+
+```sh
+agent-peer service install
+```
+
+用户级安装不能用 root 运行；在 macOS 上还需要图形登录会话，没有图形会话的主机改用系统级服务：以 root 或请管理员执行 `agent-peer service install --system`，做法见[运行系统级 Broker]({{< relref "guides/system-broker.md" >}})。另一种做法是在 Claude Code 之外的终端里运行 Broker，并保持运行：
+
+```sh
+agent-peer broker
+```
+
+在会话里启动的 Broker 会以退出码 6 退出。没有 Broker 在运行时，工具调用返回错误，说明该怎么做，具体提示分三种情形。第一次查找时用户级与系统级 Broker 都找不到，或者用户级 Broker 的 socket 消失、拒绝连接（例如被强杀之后），报的是同一条：先提示本机如有系统级 Broker 请管理员启动它，再给出两种用户级启动方法。原先连在系统级 Broker 上的会话断开后，只提示联系管理员。用户级 socket 还在应答，但握手或调用失败时，报告 Broker 不可用，并在后台重试，不给出启动方法。启动 Broker 之后，会话不必重新连接 MCP 服务。系统级与用户级两种服务形态以及卸载方法见[把 Broker 安装为服务]({{< relref "guides/run-as-service.md" >}})。
 
 ## 在同一台主机上互发消息
 
@@ -56,7 +72,7 @@ claude mcp get peer
 
 ## 在两台主机之间互发消息
 
-两台主机中至少有一台能连到另一台上的 17443 端口。配对之前，两个 Broker 都按默认配置运行。
+两台主机中至少有一台能连到另一台上的 17443 端口。配对之前，确认两台主机上的 Broker 都在运行，且都用默认配置。
 
 1. 在能被对方连到的那台主机上，让模型调用 `create_pairing_key`，并在权限确认中批准。
 2. 结果给出一个一次性配对密钥、它的失效时间，以及本机 Broker 的地址。密钥和地址分开显示，地址不属于密钥。把两者经 agent-peer 之外的途径交给另一台主机上的用户。

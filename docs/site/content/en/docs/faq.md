@@ -21,7 +21,11 @@ No. Brokers connect directly, messages are not relayed, and there is no central 
 
 ## Do I have to start a Broker by hand?
 
-No. The first session that enables the tools starts a user Broker for your account in the background. To start it at login, install it as a service. See [Run the Broker as a service]({{< relref "guides/run-as-service.md" >}}).
+A session never starts a Broker. If the host already has a system Broker you can use, install nothing; the session connects to it. Otherwise, start one yourself: install a user-level service with `agent-peer service install`, which starts it immediately and starts it at login from then on, or run `agent-peer broker` in a terminal outside Claude Code. A Broker started inside a session exits with code 6. See [Run the Broker as a service]({{< relref "guides/run-as-service.md" >}}).
+
+## What happens when no Broker is running?
+
+Tool calls return an error that says what to do, and the guidance depends on the case. A first lookup that finds neither a user Broker nor a system Broker, and a user Broker whose socket has disappeared or refuses connections, as after a hard kill, get the same message: it says to ask the administrator to start a system Broker if the host has one, then gives the two user-level methods. A session that was registered on the system Broker and loses it is told only to contact the administrator. A user Broker whose socket still answers but whose handshake or a call fails is reported as unavailable, with a note that the MCP server keeps retrying in the background and no instruction to start a Broker. Starting the Broker does not require reconnecting the MCP server. See [Command line]({{< relref "reference/cli.md" >}}).
 
 ## Can one account run more than one Broker?
 
@@ -61,11 +65,11 @@ An account with write permission on the Broker's configuration file can change i
 
 ## What happens if the port is already in use?
 
-The Broker fails to start and reports that the address is unavailable. It never chooses another address or port; free the port or change the listen address. See [Configuration]({{< relref "reference/configuration.md" >}}).
+The Broker fails to start and reports that the address is unavailable. It never chooses another address or port; free the port or change the listen address. See [Configuration keys]({{< relref "reference/configuration.md" >}}).
 
 ## How do I see logs and audit records?
 
-Use `agent-peer status` for agents, topics, peers, and links, and `agent-peer audit` for the audit log. A Broker started automatically by the MCP server has no run log; run `agent-peer broker` in a terminal or install it as a service to get one. See [Command line]({{< relref "reference/cli.md" >}}).
+Use `agent-peer status` for agents, topics, peers, and links, and `agent-peer audit` for the audit log. Install the Broker as a service and the service manager keeps its run log: on Linux, `journalctl --user -u agent-peer.service`, or `journalctl -u agent-peer.service` for a system-level service; on macOS, `~/Library/Logs/agent-peer/broker.log`, or `/var/log/agent-peer/broker.log` for a system-level service. A Broker run in a terminal writes its log to that terminal. See the Logs section of [Files and paths]({{< relref "reference/files.md" >}}).
 
 ## Can a headless session receive messages?
 

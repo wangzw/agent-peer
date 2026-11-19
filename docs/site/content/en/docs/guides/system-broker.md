@@ -8,9 +8,9 @@ A system Broker runs as a service with root privileges and serves agents of seve
 
 ## Install and enable it
 
-Install the binary in a root-owned directory and install the service as root. [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the commands. The system service starts at boot.
+Install the binary in a root-owned directory and install the service as root. [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the commands. The install starts the Broker immediately, and it starts at boot from then on.
 
-The system Broker takes root's account lock, so a Broker already running for root, such as one a root session started, makes the service exit and retry every 5 seconds. Exit root's sessions that have the peer tools enabled, or disable `peer` in them with `/mcp`, then stop that Broker and start the service; a session left open starts a Broker again about 250 ms after it stops. [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the full order.
+The system Broker takes root's account lock. If a user Broker is already running as root, the system-level install refuses and asks you to stop it first.
 
 The system Broker uses `/etc/agent-peer/config.yaml`, `/var/log/agent-peer/audit.log` and `/var/lib/agent-peer`. The install creates the configuration file with owner root and mode 0600 if it does not exist.
 
@@ -25,7 +25,7 @@ A session reaches the system Broker through the local socket `/run/agent-peer/br
 | `broker.local_socket_group` | empty | Group of the socket. Empty keeps the runtime directory's group. The group must exist. |
 | `broker.local_socket_mode` | `0666` | Permission bits of the socket. |
 
-To limit use to a group, set the group and a mode that gives that group access, for example `broker.local_socket_group: agent-peer` with `broker.local_socket_mode: 0660`. Accounts outside the group cannot connect; their sessions use or start their own user Broker.
+To limit use to a group, set the group and a mode that gives that group access, for example `broker.local_socket_group: agent-peer` with `broker.local_socket_mode: 0660`. Accounts outside the group cannot connect; they need to start their own user Broker, as a service or in a terminal. [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the commands.
 
 ## Which Broker a session uses
 
@@ -35,7 +35,7 @@ A session's MCP server process selects a Broker in this order:
 2. The user Broker of this account, if one is running.
 3. The system Broker, if this account may use it.
 
-If none is available, the MCP server process starts a user Broker. A host where every account should use the system Broker therefore must not have a user Broker running for those accounts.
+If none is available, tool calls return an error that says what to do; the MCP server process does not start a Broker. A first lookup that finds neither a user Broker nor a system Broker, and a user Broker whose socket has disappeared or refuses connections, as after a hard kill, get the same message: it says to ask the administrator to start a system Broker if the host has one, then gives the two user-level methods. A session that was registered on the system Broker and loses it is told only to contact the administrator, with no suggestion to start a user Broker. A user Broker whose socket still answers but whose handshake or a call fails is reported as unavailable, with a note that the MCP server keeps retrying in the background and no instruction to start a Broker. A host where every account should use the system Broker therefore needs no user Broker for those accounts; installing a user-level service on such an account moves its sessions off the system Broker.
 
 An account that may use the system Broker but has its own user Broker running registers on the user Broker. Point `AGENT_PEER_SOCKET` at the system socket to choose the system Broker for that session.
 

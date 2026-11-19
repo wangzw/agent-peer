@@ -18,7 +18,7 @@ The Broker keeps its configuration, identity, peer table, directory and audit lo
 | `/tmp/agent-peer-<uid>/broker.sock` | Local socket, mode `0600`. |
 | `/tmp/agent-peer-<uid>/broker.lock` | Account lock that allows one Broker per account. |
 
-`<uid>` is the numeric account ID. The runtime directory is mode `0700`. The identity files are created at the Broker's first start; `peers.json` and `directory.json` appear when the Broker first has something to store. When a user Broker runs as root (for example one started by a root session), the runtime directory is `/run/agent-peer` on Linux or `/var/run/agent-peer` on macOS, the same directory the system Broker uses.
+`<uid>` is the numeric account ID. The runtime directory is mode `0700`. The identity files are created at the Broker's first start; `peers.json` and `directory.json` appear when the Broker first has something to store. When a user Broker runs as root (for example one that root started in a terminal), the runtime directory is `/run/agent-peer` on Linux or `/var/run/agent-peer` on macOS, the same directory the system Broker uses.
 
 ## System-level Broker
 
@@ -53,7 +53,7 @@ The Broker writes its run log to standard error and the audit log to the audit f
 
 - A Linux service logs to the systemd journal: `journalctl --user -u agent-peer.service` for the user-level service, or `journalctl -u agent-peer.service` for the system-level service.
 - A macOS user-level service writes to `~/Library/Logs/agent-peer/broker.log`; the system-level daemon writes to `/var/log/agent-peer/broker.log`.
-- A Broker started automatically by an MCP server process has its standard output and standard error connected to `/dev/null`, so it has no run log. Run `agent-peer broker` in a terminal or install the service to get one.
+- A Broker started in a terminal writes its run log to that terminal.
 
 ## Permissions
 

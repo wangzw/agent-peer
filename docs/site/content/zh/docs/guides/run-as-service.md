@@ -4,34 +4,15 @@ linkTitle: 把 Broker 安装为服务
 weight: 4
 ---
 
-由会话启动的 Broker 在后台运行，但没有运行日志，也没有服务管理器负责启动或重新拉起它。把它安装为服务后，它会在登录或开机时启动、持续运行，并在机器重启后恢复。
+Claude Code 会话只连接 Broker，不会启动它。启动 Broker 有两种办法：安装为服务，或者在终端里运行。安装为服务后，它立刻启动，此后随登录或开机启动，持续运行，机器重启后也会恢复。
 
-## 先停掉正在运行的 Broker
+## 先停掉自己在终端启动的 Broker
 
-安装服务不会停掉会话已经拉起的 Broker。它持有账户锁，服务启动时会以“已有实例在运行”的错误退出，服务管理器随后每 5 秒重试一次。还有会话开着 peer 工具时，光停掉 Broker 也不够：MCP 进程发现 socket 不在，约 250 毫秒后就会重新拉起一个 Broker。
-
-按下面的顺序操作：
-
-1. 退出本账户所有启用 peer 工具的会话，或在 `/mcp` 里停用 peer。
-2. 停掉 Broker，并确认它已经停止。
-3. 启动服务。
-4. 重新打开会话。
-
-会话拉起的 Broker 不由 systemd 或 launchd 管理，收到 `SIGTERM` 后退出。它的进程名与 `agent-peer mcp` 的进程相同，所以要按命令行查找：
-
-```sh
-pgrep -u "$USER" -f 'agent-peer broker'
-```
-
-对列出的进程发送 `SIGTERM`：
-
-```sh
-kill -TERM <pid>
-```
-
-Broker 以状态 0 退出，并删除本机 socket。`pgrep` 不再有输出、`agent-peer status` 报告连不上时，就表示它已经停止。账户锁文件仍然保留，但锁随进程退出释放，服务此后可以启动。安装系统级服务时，与系统级服务争锁的是 root 名下的 Broker，而不是运行 `sudo` 的账户名下的 Broker：以 root 身份运行同样的命令，也就是 `sudo pgrep -u root -f 'agent-peer broker'` 和 `sudo kill -TERM <pid>`。
+如果你在这个账户下用终端运行过 `agent-peer broker`，先在那个终端里停掉它，再安装服务。安装时如果已有 Broker 正在应答，而且不是这个服务启动的，安装会被拒绝，因为这个 Broker 占着账户锁。
 
 ## 安装用户级服务
+
+主机上已经有你能使用的系统级 Broker 时，不需要安装用户级服务。
 
 用拥有会话的账户运行安装命令：
 
@@ -39,17 +20,11 @@ Broker 以状态 0 退出，并删除本机 socket。`pgrep` 不再有输出、`
 agent-peer service install
 ```
 
-命令会写入单元文件或 plist，在 Linux 上还会启用它，但不会启动 Broker。输出的最后一行是立即启动它的命令。用户级安装不能用 root 运行，因为单元属于一个账户。位于临时目录里的二进制会被拒绝安装，用户级与系统级都如此。
+命令写入单元文件或 plist，启用服务，并立即启动 Broker。它会等 Broker 应答，最多等 20 秒；Broker 没有应答时，安装失败，并给出服务日志的位置。重新安装会用新的二进制替换正在运行的 Broker。用户级安装不能用 root 运行，因为单元属于一个账户。位于临时目录里的二进制会被拒绝安装，用户级与系统级都如此。
 
-在装有 systemd 的 Linux 上，单元文件是 `~/.config/systemd/user/agent-peer.service`（或位于 `$XDG_CONFIG_HOME` 下），启动命令是：
+在装有 systemd 的 Linux 上，单元文件是 `~/.config/systemd/user/agent-peer.service`（或位于 `$XDG_CONFIG_HOME` 下）。在 macOS 上，LaunchAgent 是 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`，安装只能在图形登录会话里执行；没有图形会话的主机改用系统级服务。
 
-```sh
-systemctl --user start agent-peer.service
-```
-
-在 macOS 上，LaunchAgent 是 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`，输出的启动命令是 `launchctl bootstrap gui/<uid> <plist 的绝对路径>`，其中 `<uid>` 换成你的数字用户 ID。
-
-单元或 plist 以该账户身份运行 `agent-peer broker`。它在账户登录时启动，Broker 退出后重新拉起。在 macOS 上，随登录启动用户级 Broker 并恢复链路，尚待手工验证；见[已知限制]({{< relref "/docs/limitations" >}})。
+单元或 plist 以该账户身份运行 `agent-peer broker`。它在账户登录时启动，Broker 退出后重新启动。macOS 与 Linux 上的用户级服务都有 CI 端到端测试覆盖，包括安装、运行、登录后恢复链路和卸载。
 
 ## 安装系统级服务
 
@@ -60,19 +35,15 @@ sudo install -o root -g root -m 0755 agent-peer /usr/local/bin/agent-peer
 sudo /usr/local/bin/agent-peer service install --system
 ```
 
-安装会检查二进制以及它上面的每一层目录。
+安装会检查二进制以及它上面的每一层目录，然后立即启动 Broker。
 
-在 Linux 上，命令写入 `/etc/systemd/system/agent-peer.service` 并启用它；在 macOS 上写入 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`。系统级安装还会在不存在时创建 `/etc/agent-peer/config.yaml`，属主为 root，权限 0600。
+在 Linux 上，命令写入 `/etc/systemd/system/agent-peer.service`，启用并启动它；在 macOS 上写入并加载 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`。系统级安装还会在不存在时创建 `/etc/agent-peer/config.yaml`，属主为 root，权限 0600。
 
-Linux 上的启动命令是：
+系统级安装在 Linux 与 macOS 上都有 CI 端到端测试覆盖。
 
-```sh
-sudo systemctl start agent-peer.service
-```
+## 卸载服务
 
-macOS 上输出的命令是 `launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`。
-
-系统级安装只在 Linux 上做过端到端验证。在 macOS 上需要安装后自行检查。
+用同一个账户运行 `agent-peer service uninstall`，可以卸载用户级服务。卸载系统级服务用 `sudo /usr/local/bin/agent-peer service uninstall --system`。命令停止 Broker 并删除服务定义；配置、身份与审计日志都保留。没有安装过服务时，命令照常成功，并报告未安装，所以可以放心重复执行。
 
 ## 检查服务
 

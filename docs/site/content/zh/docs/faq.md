@@ -21,7 +21,11 @@ Claude Code v2.1.224 或更高版本。本项目依赖的行为是在 v2.1.327 �
 
 ## 需要手动启动 Broker 吗？
 
-不需要。第一个启用工具的会话会在后台为你的账户启动用户级 Broker。想在登录时启动，把它安装成服务即可。见[把 Broker 安装为服务]({{< relref "guides/run-as-service.md" >}})。
+会话不会自己启动 Broker。主机上已经有你能使用的系统级 Broker 时，什么都不用装，会话会连接到它。否则需要自己启动：用 `agent-peer service install` 把它安装为用户级服务，安装完成就会启动，此后随登录启动；另一种做法是在 Claude Code 之外的终端里运行 `agent-peer broker`。在会话里启动的 Broker 会以退出码 6 退出。见[把 Broker 安装为服务]({{< relref "guides/run-as-service.md" >}})。
+
+## 没有 Broker 在运行时会怎样？
+
+工具调用返回错误，说明该怎么做，具体提示分三种情形。第一次查找时用户级与系统级 Broker 都找不到，或者用户级 Broker 的 socket 消失、拒绝连接（例如被强杀之后），报的是同一条：先提示本机如有系统级 Broker 请管理员启动它，再给出两种用户级启动方法。原先连在系统级 Broker 上的会话断开后，只提示联系管理员。用户级 socket 还在应答，但握手或调用失败时，报告 Broker 不可用，并在后台重试，不给出启动方法。启动 Broker 之后，会话不必重新连接 MCP 服务。见[命令行]({{< relref "reference/cli.md" >}})。
 
 ## 一个账户能运行多个 Broker 吗？
 
@@ -61,11 +65,11 @@ topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会�
 
 ## 端口被占用时会怎样？
 
-Broker 启动失败，并报告该地址不可用。它不会另选地址或端口；腾出端口，或者修改监听地址。见[配置]({{< relref "reference/configuration.md" >}})。
+Broker 启动失败，并报告该地址不可用。它不会另选地址或端口；腾出端口，或者修改监听地址。见[配置键]({{< relref "reference/configuration.md" >}})。
 
 ## 怎么看运行日志和审计记录？
 
-用 `agent-peer status` 查看 Agent、topic、对端和链路，用 `agent-peer audit` 查看审计日志。由 MCP 服务自动启动的 Broker 没有运行日志；要在终端运行 `agent-peer broker`，或把它安装成服务。见[命令行]({{< relref "reference/cli.md" >}})。
+用 `agent-peer status` 查看 Agent、topic、对端和链路，用 `agent-peer audit` 查看审计日志。把 Broker 安装为服务，运行日志由服务管理器保存：Linux 上用 `journalctl --user -u agent-peer.service`，系统级服务用 `journalctl -u agent-peer.service`；macOS 上用户级服务写入 `~/Library/Logs/agent-peer/broker.log`，系统级写入 `/var/log/agent-peer/broker.log`。在终端运行 `agent-peer broker`，日志就留在那个终端里。见[文件与路径]({{< relref "reference/files.md" >}})的“日志”一节。
 
 ## 无界面会话能收到消息吗？
 

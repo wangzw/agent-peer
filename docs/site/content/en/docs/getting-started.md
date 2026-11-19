@@ -40,7 +40,23 @@ claude mcp get peer
 
 The output shows `Scope: User config`. A session started afterwards lists `peer` in `/mcp`.
 
-The first session that enables the tools starts a user Broker for your account in the background, so you do not start it by hand. To start it at login instead, see [Run the Broker as a service]({{< relref "guides/run-as-service.md" >}}).
+## Start the Broker
+
+Sessions connect to a Broker but never start one. If the host already has a system Broker you can use, skip this step; the session connects to it.
+
+Otherwise, install a user-level service; the install starts it right away, and from then on it starts at login:
+
+```sh
+agent-peer service install
+```
+
+A user-level install must not run as root, and on macOS it needs a graphical login session; on a host without one, install the system-level service with `agent-peer service install --system`, as root or through an administrator; see [Run a system Broker]({{< relref "guides/system-broker.md" >}}). Alternatively, run the Broker in a terminal outside Claude Code and leave it running:
+
+```sh
+agent-peer broker
+```
+
+A Broker started inside a session exits with code 6. When no Broker is available, tool calls return an error that says what to do, and the guidance depends on the case. A first lookup that finds neither a user Broker nor a system Broker, and a user Broker whose socket has disappeared or refuses connections, as after a hard kill, get the same message: it says to ask the administrator to start a system Broker if the host has one, then gives the two user-level methods. A session that was using the system Broker and loses it is told only to contact the administrator. A user Broker whose socket still answers but whose handshake or a call fails is reported as unavailable, with a note that the MCP server keeps retrying in the background and no instruction to start a Broker. Starting the Broker does not require reconnecting the MCP server. [Run the Broker as a service]({{< relref "guides/run-as-service.md" >}}) covers both service forms and uninstalling it.
 
 ## Send a message on one host
 
@@ -56,7 +72,7 @@ The sending session reports success once the message is written into the receivi
 
 ## Send a message between two hosts
 
-At least one host must be able to reach port 17443 on the other. Before pairing, both Brokers run with their default configuration.
+At least one host must be able to reach port 17443 on the other. Before pairing, make sure the Broker is running on both hosts, each with its default configuration.
 
 1. On the host that can be reached, ask the model to call `create_pairing_key`. Approve the call.
 2. The result gives a one-time key, its expiry time, and this Broker's addresses. The key and an address are shown separately; the addresses are not part of the key. Pass both to the other host through a channel outside agent-peer.

@@ -4,34 +4,15 @@ linkTitle: Run the Broker as a service
 weight: 4
 ---
 
-A Broker started by a session runs in the background but has no run log, and no service manager starts or restarts it. Installing it as a service starts it at login or at boot, keeps it running, and brings it back after a machine restart.
+A Claude Code session connects to a Broker but never starts one. You start a Broker either by installing it as a service or by running it in a terminal. A service starts the Broker right away, starts it at login or at boot, keeps it running, and brings it back after a machine restart.
 
-## Stop a running Broker first
+## Stop a Broker you started in a terminal
 
-Installing a service does not stop a Broker that a session already started. That Broker holds the account lock, so the service exits on start with an error that an instance is already running, and the service manager retries it every 5 seconds. A running session whose peer tools are enabled also starts a Broker again about 250 ms after one disappears, so stopping the Broker is not enough while such a session is open.
-
-Do these steps in this order:
-
-1. Exit every session of this account that has the peer tools enabled, or disable `peer` in those sessions with `/mcp`.
-2. Stop the Broker and confirm that it has stopped.
-3. Start the service.
-4. Open the sessions again.
-
-A session-started Broker is not managed by systemd or launchd, and it exits on `SIGTERM`. The process name alone also matches `agent-peer mcp`, so find it by its command line:
-
-```sh
-pgrep -u "$USER" -f 'agent-peer broker'
-```
-
-Send `SIGTERM` to the listed process:
-
-```sh
-kill -TERM <pid>
-```
-
-The Broker exits with status 0 and removes its local socket. It has stopped when `pgrep` prints nothing and `agent-peer status` reports that it cannot connect. The account lock file stays, but its lock is released when the process exits, so the service can start afterwards. For a system-level install, the Broker that contends with the service takes root's account lock, not the lock of the account that runs `sudo`; run the same commands against root, with `sudo pgrep -u root -f 'agent-peer broker'` and `sudo kill -TERM <pid>`.
+If you have run `agent-peer broker` in a terminal for this account, stop it there before installing the service. The install refuses while a Broker it did not start is answering, because that Broker holds the account lock.
 
 ## Install a user-level service
+
+If the host already has a system Broker you can use, you do not need a user-level service.
 
 Run the install command as the account that owns the sessions:
 
@@ -39,17 +20,11 @@ Run the install command as the account that owns the sessions:
 agent-peer service install
 ```
 
-The command writes the unit file or plist and, on Linux, enables it; it does not start the Broker. The last line of its output is the command that starts it now. A user-level install must not run as root, because the unit belongs to one account. The install refuses a binary inside the temporary directory; this applies to both the user-level and the system-level form.
+The command writes the unit file or plist, enables the service, and starts the Broker immediately. It waits up to 20 seconds for the Broker to answer; if it does not answer, the install fails and reports where the service logs go. Reinstalling replaces the running Broker with the new binary. A user-level install must not run as root, because the unit belongs to one account. The install refuses a binary inside the temporary directory; this applies to both the user-level and the system-level form.
 
-On Linux with systemd, the unit is `~/.config/systemd/user/agent-peer.service` (or under `$XDG_CONFIG_HOME`) and the start command is:
+On Linux with systemd, the unit is `~/.config/systemd/user/agent-peer.service` (or under `$XDG_CONFIG_HOME`). On macOS, the LaunchAgent is `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`, and the install must run in a graphical login session; a host without one uses the system-level service instead.
 
-```sh
-systemctl --user start agent-peer.service
-```
-
-On macOS, the LaunchAgent is `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`, and the printed start command is `launchctl bootstrap gui/<uid> <absolute plist path>`, with your numeric user ID in place of `<uid>`.
-
-The unit or plist runs `agent-peer broker` as that account. It starts when the account logs in and restarts the Broker if it exits. On macOS, starting a user Broker at login and restoring its links is still to be verified by hand; see [known limitations]({{< relref "/docs/limitations" >}}).
+The unit or plist runs `agent-peer broker` as that account. It starts when the account logs in and restarts the Broker if it exits. The user-level service on macOS and Linux is covered by CI end-to-end tests: installation, running, restoring links after login, and uninstallation.
 
 ## Install a system-level service
 
@@ -60,19 +35,15 @@ sudo install -o root -g root -m 0755 agent-peer /usr/local/bin/agent-peer
 sudo /usr/local/bin/agent-peer service install --system
 ```
 
-The install checks the binary and every directory above it.
+The install checks the binary and every directory above it, then starts the Broker immediately.
 
-On Linux the command writes `/etc/systemd/system/agent-peer.service` and enables it. On macOS it writes `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`. A system install also creates `/etc/agent-peer/config.yaml` if it does not exist, owned by root with mode 0600.
+On Linux the command writes `/etc/systemd/system/agent-peer.service`, enables it and starts it. On macOS it writes and loads `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`. A system install also creates `/etc/agent-peer/config.yaml` if it does not exist, owned by root with mode 0600.
 
-The start command on Linux is:
+System-level installation is covered by CI end-to-end tests on Linux and macOS.
 
-```sh
-sudo systemctl start agent-peer.service
-```
+## Uninstall a service
 
-On macOS the printed command is `launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`.
-
-System-level installation is verified end to end on Linux only. On macOS, install the launch daemon and check it by hand.
+Run `agent-peer service uninstall` as the same account to remove a user-level service. For a system-level service, run `sudo /usr/local/bin/agent-peer service uninstall --system`. The command stops the Broker and removes the service definition; configuration, identity and audit logs are kept. If no service is installed, it succeeds and reports that nothing is installed, so it can be run again safely.
 
 ## Check the service
 
