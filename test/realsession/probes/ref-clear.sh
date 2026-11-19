@@ -3,6 +3,10 @@
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+if ! rs_start_broker; then
+	exit 1
+fi
+
 # ref-clear answers roadmap lines 91 and 92 and exercises REQ-agent-messaging-006
 # and REQ-agent-messaging-033: the disambiguation ref must match the one Claude
 # Code's own session list shows, and it must survive /rename and /clear; a

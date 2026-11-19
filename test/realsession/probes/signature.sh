@@ -3,6 +3,10 @@
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+if ! rs_start_broker; then
+	exit 1
+fi
+
 # signature.sh answers roadmap.md:93 and :96. Steps 1 and 2 write frames
 # straight to a receiver's inbox socket, with no Broker in the path, to learn
 # which sender names the real receiver recognizes and which bytes the inbox

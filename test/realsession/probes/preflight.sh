@@ -3,6 +3,10 @@
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+if ! rs_start_broker; then
+	exit 1
+fi
+
 # The preflight probe checks that the runner isolation holds, that a session
 # can authenticate, and where a session record keeps the name of the sender it
 # identified. It follows the plan's "environment preflight and authentication

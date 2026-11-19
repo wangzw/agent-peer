@@ -24,6 +24,13 @@ RS_COMPOSE="$RS_REPO_ROOT/test/realsession/compose.yaml"
 # exec and status calls carry it too.
 export RS_ROOT="$R"
 
+# RS_BROKER_PID is the Broker rs_start_broker started; empty when it started
+# none. RS_BROKER_HOOKED keeps the stop hook registered once. RS_BROKER_LOG
+# overrides the evidence log path when a probe needs another file.
+RS_BROKER_PID=""
+RS_BROKER_HOOKED=0
+RS_BROKER_LOG=""
+
 # RS_CONTAINER_WAIT bounds how long a probe waits for a started process, on
 # the host or inside the peer host container, to create its control socket.
 # The bound covers a cold container start and an external process start; it is
@@ -381,6 +388,73 @@ rs_proc_vars() {
 			printf '%s absent\n' "$var"
 		fi
 	done
+}
+
+# socket_owner_pid prints the pid of the process listening on the Unix socket at
+# path. It reads the pid ss reports for that socket, so a socket left by another
+# process is not mistaken for the one the probe started.
+socket_owner_pid() {
+	local path="$1"
+	ss -xlpn 2>/dev/null | awk -v s="$path" '
+		index($0, s) {
+			if (match($0, /pid=[0-9]+/)) {
+				print substr($0, RSTART + 4, RLENGTH - 4)
+				exit
+			}
+		}'
+}
+
+# rs_start_broker starts the account's user-level Broker and waits for the
+# socket that process serves. The MCP server no longer starts a Broker, so every
+# probe that uses one calls this before it starts a session. The log goes to
+# $OUT/broker.log, and the Broker is stopped when the probe exits.
+rs_start_broker() {
+	local log="${RS_BROKER_LOG:-$OUT/broker.log}"
+	local sock deadline owner
+	sock="/tmp/agent-peer-$(id -u)/broker.sock"
+	mkdir -p "$OUT"
+	"$R/run" agent-peer broker >>"$log" 2>&1 &
+	RS_BROKER_PID=$!
+	if ((RS_BROKER_HOOKED == 0)); then
+		rs_on_exit rs_stop_broker
+		RS_BROKER_HOOKED=1
+	fi
+	deadline=$((SECONDS + 15))
+	while ((SECONDS < deadline)); do
+		if [[ -S "$sock" ]]; then
+			if ! kill -0 "$RS_BROKER_PID" 2>/dev/null; then
+				echo "rs_start_broker: the socket $sock is served by another process; the started Broker exited (see $log)" >&2
+				return 1
+			fi
+			owner="$(socket_owner_pid "$sock" || true)"
+			if [[ "$owner" == "$RS_BROKER_PID" ]]; then
+				rs_obs "Broker ready at $sock (pid $RS_BROKER_PID)"
+				return 0
+			fi
+			# The socket is stale or served by another process; wait for the
+			# started Broker to bind it.
+			sleep 0.2
+			continue
+		fi
+		if ! kill -0 "$RS_BROKER_PID" 2>/dev/null; then
+			wait "$RS_BROKER_PID" 2>/dev/null || true
+			RS_BROKER_PID=""
+			echo "rs_start_broker: the Broker exited before its socket appeared (see $log)" >&2
+			return 1
+		fi
+		sleep 0.2
+	done
+	echo "rs_start_broker: the Broker socket $sock did not appear within 15s (see $log)" >&2
+	return 1
+}
+
+# rs_stop_broker stops the Broker rs_start_broker started, if any.
+rs_stop_broker() {
+	if [[ -n "${RS_BROKER_PID:-}" ]]; then
+		kill "$RS_BROKER_PID" 2>/dev/null || true
+		wait "$RS_BROKER_PID" 2>/dev/null || true
+		RS_BROKER_PID=""
+	fi
 }
 
 # rs_hosta_up starts the peer host container and records its address.

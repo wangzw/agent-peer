@@ -3,6 +3,10 @@
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+if ! rs_start_broker; then
+	exit 1
+fi
+
 # permissions.sh answers whether Claude Code asks the user before reading the
 # Broker configuration and before changing it, and whether generating a pairing
 # key is governed by the same write permission as set_config.

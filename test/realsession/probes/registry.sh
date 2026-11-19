@@ -3,6 +3,10 @@
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+if ! rs_start_broker; then
+	exit 1
+fi
+
 # registry.sh probes whether the Broker follows the Claude Code session
 # registry reliably on Linux, and whether a renamed session is listed under its
 # new name with its previous name.
@@ -138,9 +142,8 @@ reg_call_error() {
 	printf '%s\n' "$reply"
 }
 
-# reg_broker_pid prints the pid of the Broker the MCP servers launched. It runs
-# as "<exe> broker --ready-fd=3" (internal/mcpserver/launcher.go); the launcher
-# that starts it is a short-lived "<exe> internal broker-launcher".
+# reg_broker_pid prints the pid of the Broker rs_start_broker started. It runs
+# as "<exe> broker" with its standard error in $OUT/broker.log.
 reg_broker_pid() {
 	local proc exe second
 	for proc in /proc/[0-9]*; do

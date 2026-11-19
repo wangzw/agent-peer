@@ -3,6 +3,10 @@
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+if ! rs_start_broker; then
+	exit 1
+fi
+
 # inbound.sh answers roadmap lines 84, 85 and 86. The receiver's permission
 # mode is the variable under test: an ordinary receiver delivers an undeclared
 # sender's message directly, while a receiver started with
@@ -11,8 +15,7 @@ source "$(dirname "$0")/lib.sh"
 # bottom-bar mode text, and compares their outcomes. The bypass session is the
 # subject of this probe, not a way to skip approvals; the permissions probe
 # still never starts one.
-# It also gathers evidence for REQ-agent-messaging-015, 016, 021 and 024 and
-# for REQ-broker-config-012.
+# It also gathers evidence for REQ-agent-messaging-015, 016, 021 and 024.
 
 PROMPT='When a cross-session message arrives, reply with the single word ok and do nothing else. Do not call any tool unless the user explicitly asks.'
 
@@ -258,11 +261,23 @@ usage_total() {
 		sed -n 's/^total //p' | tail -n 1
 }
 
-# find_broker_pid prints the pid of the user-level Broker. The Broker runs as
-# "<exe> broker --ready-fd=3"; the intermediate launcher's argv carries
-# "internal broker-launcher" and does not match.
+# find_broker_pid prints the pid of the user-level Broker rs_start_broker
+# started. It runs as "<exe> broker"; the executable and argv[1] are matched
+# instead of a command-line substring, so another Broker's arguments cannot
+# make the choice ambiguous.
 find_broker_pid() {
-	pgrep -f -- "$R/bin/agent-peer broker" | head -n 1
+	local proc exe second
+	for proc in /proc/[0-9]*; do
+		exe="$(readlink "$proc/exe" 2>/dev/null)" || continue
+		[[ "$exe" == "$R/bin/agent-peer" ]] || continue
+		[[ -r "$proc/cmdline" ]] || continue
+		second="$(tr '\0' '\n' <"$proc/cmdline" | sed -n '2p')"
+		if [[ "$second" == broker ]]; then
+			printf '%s\n' "${proc#/proc/}"
+			return 0
+		fi
+	done
+	return 1
 }
 
 # write_broker_chain records the Broker and each ancestor up to pid 1.
@@ -336,7 +351,12 @@ write_inbound_policy() {
 
 rs_tmux_start
 
-# --- step 1: Broker process relation (REQ-broker-config-012) ----------------
+# --- step 1: Broker process relation (REQ-agent-messaging-024) --------------
+#
+# The Broker is started by rs_start_broker before any session exists, so it is
+# not a descendant of a session. The environment and parent chain recorded here
+# show that relation, which is what makes the receiver's inbound control apply
+# to messages the Broker writes.
 
 if ! "$R/run" rsprobe env check --root "$R" >"$OUT/env-check.txt" 2>&1; then
 	rs_obs "rsprobe env check failed; another Broker may hold the account lock"
@@ -375,9 +395,9 @@ write_broker_chain "$broker_pid"
 rs_proc_vars "$broker_pid" CLAUDE_CODE_MESSAGING_SOCKET >"$OUT/broker-env.txt"
 if grep -qi 'claude' "$OUT/broker-chain.txt"; then
 	rs_obs "step 1: a claude process appears on the Broker's parent chain"
-else
-	rs_obs "step 1: the Broker's parent chain contains no claude process"
+	exit 1
 fi
+rs_obs "step 1: the Broker's parent chain contains no claude process"
 case "$(<"$OUT/broker-env.txt")" in
 'CLAUDE_CODE_MESSAGING_SOCKET=')
 	rs_obs "step 1: the Broker environment has an empty CLAUDE_CODE_MESSAGING_SOCKET"
@@ -387,6 +407,7 @@ case "$(<"$OUT/broker-env.txt")" in
 	;;
 *)
 	rs_obs "step 1: the Broker environment carries a CLAUDE_CODE_MESSAGING_SOCKET"
+	exit 1
 	;;
 esac
 

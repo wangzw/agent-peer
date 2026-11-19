@@ -3,6 +3,10 @@
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+if ! rs_start_broker; then
+	exit 1
+fi
+
 # This probe checks REQ-agent-messaging-035: a subagent acts as its parent
 # session's Agent. It also checks whether an inline MCP server declared in a
 # subagent definition starts a second process that inherits the parent's inbox

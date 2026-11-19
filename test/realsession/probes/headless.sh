@@ -3,6 +3,10 @@
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+if ! rs_start_broker; then
+	exit 1
+fi
+
 # This probe answers REQ-agent-messaging-036 and confirms that a headless
 # session which skips permission prompts receives no messages. Claude Code
 # 2.1.311 rejects stream-json input and output unless --verbose is given, so

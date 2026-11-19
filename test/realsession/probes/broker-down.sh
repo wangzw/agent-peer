@@ -3,19 +3,22 @@
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
-# broker-down answers REQ-agent-messaging-038. It stops the account Broker,
-# holds its listen address with an unrelated process, then starts a session and
-# calls list_agents: the MCP service must stay connected, the first call must
-# report the unavailable listen address, and the same call must succeed after
-# the address is released, all without reconnecting the MCP service.
+# broker-down answers REQ-agent-messaging-038. It holds the account Broker's
+# listen address and starts the Broker from a terminal to observe the start
+# failure. It then starts a session and calls list_agents: the MCP service must
+# stay connected, and the call must report that no Broker is available together
+# with the ways to start one. After the address is released the user starts the
+# Broker by hand; the same call must succeed without reconnecting the MCP
+# service.
 
 PORT=27443
 RUNTIME_DIR="/tmp/agent-peer-$(id -u)"
 BROKER_SOCKET="$RUNTIME_DIR/broker.sock"
 BROKER_LOCK="$RUNTIME_DIR/broker.lock"
 PROMPT='Call mcp__peer__list_agents and show the raw result.'
-ERROR_MARKER='listen address is unavailable'
+ERROR_MARKER='no Broker is available'
 SUCCESS_MARKER='down@hostB'
+TERMINAL_ERROR_MARKER='is unavailable'
 
 occupier_pid=""
 cleanup() {
@@ -27,8 +30,7 @@ cleanup() {
 rs_on_exit cleanup
 
 # broker_pids prints the pids whose executable is R/bin/agent-peer and whose
-# first argument is "broker". The intermediate broker-launcher process has the
-# same executable but "internal" as its first argument and is skipped.
+# first argument is "broker".
 broker_pids() {
 	local dir pid exe arg1
 	for dir in /proc/[0-9]*; do
@@ -113,10 +115,6 @@ no_lock_holder() {
 	[[ -z "$(lock_holders)" ]]
 }
 
-broker_socket_present() {
-	[[ -S "$BROKER_SOCKET" ]]
-}
-
 # wait_for_record polls the session records until a line contains the marker.
 # The marker is not copied anywhere here; evidence is taken with rs_excerpt.
 wait_for_record() {
@@ -156,7 +154,7 @@ if ! wait_for 10 no_lock_holder; then
 fi
 rs_obs "account lock released"
 
-# Step 2: hold 127.0.0.1:$PORT so a newly launched Broker cannot bind it.
+# Step 2: hold 127.0.0.1:$PORT so a Broker cannot bind it.
 "$R/run" python3 -c '
 import socket
 
@@ -180,8 +178,23 @@ until grep -q '^occupying$' "$OUT/occupier.log" 2>/dev/null; do
 done
 rs_obs "port $PORT is held by pid $occupier_pid"
 
-# Step 3: start the interactive session. The MCP server it spawns finds no
-# Broker socket and keeps trying to launch one against the occupied address.
+# Step 3: a terminal start must fail on the held address, before any session
+# exists. The config names 127.0.0.1:27443.
+terminal_rc=0
+"$R/run" agent-peer broker >"$OUT/terminal-start.stdout" 2>"$OUT/terminal-start.stderr" || terminal_rc=$?
+printf '%s\n' "$terminal_rc" >"$OUT/terminal-start.exit"
+if ((terminal_rc != 4)); then
+	rs_obs "the terminal Broker start exited $terminal_rc, want 4"
+	exit 1
+fi
+if ! grep -qF -- "$TERMINAL_ERROR_MARKER" "$OUT/terminal-start.stderr"; then
+	rs_obs "the terminal Broker start did not say the listen address is unavailable"
+	exit 1
+fi
+rs_obs "the terminal Broker start failed with exit 4 and named the unavailable address"
+
+# Step 4: start the interactive session. The MCP server it spawns finds no
+# Broker and must not start one.
 rs_tmux_start
 rs_window down claude --model haiku -n down --permission-mode default --allowedTools mcp__peer__list_agents
 
@@ -206,17 +219,26 @@ if ! rs_wait_ready down 60; then
 fi
 rs_obs_mode down
 
-# Step 4: capture the MCP view, where peer must show as available although the
-# Broker cannot start. Claude Code 2.1.311's /mcp list marks an available
-# server as "✔ peer   N tools" and does not print "connected". The snapshot is
-# the evidence; the pane only paces the probe.
+# The MCP server must not have started a Broker in place of the one that could
+# not bind its address.
+if [[ -n "$(broker_pids)" ]]; then
+	rs_obs "a Broker process is running after the session started: $(broker_pids | tr '\n' ' ')"
+	exit 1
+fi
+rs_obs "no Broker process is running after the session started"
+
+# Capture the MCP view: peer must show as available even though no Broker is
+# running. Claude Code 2.1.311's /mcp list marks an available server as
+# "✔ peer   N tools" and does not print "connected".
 sleep 2
 rs_keys down '/mcp'
 rs_keys down Enter
 if rs_wait_pane_literal down '✔ peer' 20; then
-	rs_obs "the /mcp view lists peer as available (2.1.311's list form, ✔ peer) before recovery (see mcp-before.txt)"
+	rs_obs "the /mcp view lists peer as available (2.1.311's list form, ✔ peer) before a Broker exists (see mcp-before.txt)"
 else
 	rs_obs "the /mcp view did not list ✔ peer within 20s (see mcp-before.txt)"
+	rs_snap down mcp-before.txt
+	exit 1
 fi
 rs_snap down mcp-before.txt
 rs_keys down Escape
@@ -233,16 +255,24 @@ if [[ -z "${mcp_before// /}" ]]; then
 fi
 rs_obs "MCP service process before recovery: $mcp_before"
 
-# Step 5: the first call must return the unavailable listen address.
+# Step 5: the first call must report that no Broker is available and name the
+# ways to start one.
 rs_send_prompt down "$PROMPT" 'Call mcp__peer__list_agents' 60
-rs_obs "submitted the first list_agents prompt while the address was held"
+rs_obs "submitted the first list_agents prompt while no Broker was running"
 if ! wait_for_record "$ERROR_MARKER" 120; then
-	rs_obs "the first list_agents result did not name the unavailable listen address"
+	rs_obs "the first list_agents result did not report that no Broker is available"
 	rs_snap down timeout-down-first.txt
 	exit 1
 fi
 rs_excerpt "$ERROR_MARKER" list-agents-error.jsonl
-rs_obs "the first list_agents result names the unavailable listen address"
+for want in 'agent-peer service install' 'agent-peer broker'; do
+	if ! grep -qF -- "$want" "$OUT/list-agents-error.jsonl"; then
+		rs_obs "the first list_agents result does not name $want"
+		rs_snap down timeout-down-first-startup-advice.txt
+		exit 1
+	fi
+done
+rs_obs "the first list_agents result reports that no Broker is available and names both startup methods"
 
 # The first prompt must be a real model turn, not a pane echo. Wait for the
 # turn to end (pacing only) and freeze the usage baseline before the second
@@ -254,19 +284,19 @@ rs_require_model_turn "$PROMPT" 1
 usage_after_first="$(usage_total)"
 rs_obs "usage total after the first prompt: $usage_after_first"
 
-# Step 6: release the address. No reconnection is done in Claude Code; the MCP
-# service must retry and launch the Broker by itself within its 30 s cap.
+# Step 6: release the address and start the Broker by hand. No reconnection is
+# done in Claude Code.
 kill "$occupier_pid" 2>/dev/null || true
 wait "$occupier_pid" 2>/dev/null || true
 occupier_pid=""
-rs_obs "released port $PORT; waiting for the MCP service to retry"
+rs_obs "released port $PORT; starting the Broker by hand"
 
-if ! wait_for 45 broker_socket_present; then
-	rs_obs "the Broker socket did not reappear within 45s"
-	rs_snap down timeout-down-socket.txt
+if ! rs_start_broker; then
+	rs_obs "the hand-started Broker did not become ready"
+	rs_snap down timeout-down-broker.txt
 	exit 1
 fi
-rs_obs "the Broker socket reappeared at $BROKER_SOCKET"
+rs_obs "the hand-started Broker is ready at $BROKER_SOCKET"
 
 registered=0
 deadline=$((SECONDS + 30))
@@ -279,11 +309,11 @@ while ((SECONDS < deadline)); do
 	sleep 0.5
 done
 if ((registered != 1)); then
-	rs_obs "the Broker did not list session down within 30s of the socket reappearing"
+	rs_obs "the Broker did not list session down within 30s of it starting"
 	rs_snap down timeout-down-register.txt
 	exit 1
 fi
-rs_obs "the Broker lists session down after the background retry"
+rs_obs "the Broker lists session down after it started"
 
 broker_pids >"$OUT/broker-pids.txt" 2>&1 || true
 while IFS= read -r pid; do
@@ -304,9 +334,8 @@ rs_excerpt "$SUCCESS_MARKER" list-agents-recovered.jsonl
 rs_obs "the second list_agents result lists session down"
 
 # Step 8: capture the MCP view again. It must still list peer as available
-# without any manual reconnection. Claude Code 2.1.311 marks an available
-# server as "✔ peer   N tools" rather than printing "connected". The turn is
-# waited out first so the slash command is not typed into a running turn.
+# without any manual reconnection. The turn is waited out first so the slash
+# command is not typed into a running turn.
 if ! rs_wait_turn_idle down 120; then
 	rs_obs "the second list_agents turn did not end within 120s before the /mcp view"
 fi
@@ -316,6 +345,8 @@ if rs_wait_pane_literal down '✔ peer' 20; then
 	rs_obs "the /mcp view still lists peer as available (2.1.311's list form, ✔ peer) after recovery (see mcp-after.txt)"
 else
 	rs_obs "the /mcp view did not list ✔ peer after recovery (see mcp-after.txt)"
+	rs_snap down mcp-after.txt
+	exit 1
 fi
 rs_snap down mcp-after.txt
 rs_keys down Escape

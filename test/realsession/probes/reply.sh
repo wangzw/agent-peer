@@ -3,6 +3,10 @@
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+if ! rs_start_broker; then
+	exit 1
+fi
+
 # reply.sh asks whether a real session, once the peer MCP server is installed
 # and documented, answers an Agent address with mcp__peer__send_message. A
 # simulated Agent on the peer host sends the same three messages to a sonnet

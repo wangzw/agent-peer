@@ -3,6 +3,10 @@
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+if ! rs_start_broker; then
+	exit 1
+fi
+
 # Probe mcp-toggle answers roadmap.md:94 and accepts REQ-agent-messaging-034.
 #
 # Step 1 disables and enables a stub MCP server that records its signals and
