@@ -23,6 +23,7 @@ RUN apt-get update \
         libnss-extrausers \
         acl \
         sudo \
+        curl \
  && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 2001 agentpeer-users \
