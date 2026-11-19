@@ -38,8 +38,24 @@ type bootEvidence struct {
 	Logs string
 	// SystemState is systemctl is-system-running (without --wait).
 	SystemState string
-	// Journal is the tail of journalctl -b.
+	// Jobs is systemctl list-jobs: the pending jobs that keep the system in
+	// the initializing state.
+	Jobs string
+	// Activating lists the units that are still activating, which a waiting
+	// job does not show.
+	Activating string
+	// ProcessState is process 1's kernel wait channel and status. An idle
+	// ep_poll with pending jobs differs from a process blocked in a syscall.
+	ProcessState string
+	// Processes is docker top, which shows what process 1 and the helpers are
+	// doing while systemd has not settled.
+	Processes string
+	// Journal is the tail of journalctl -b, including the host kernel messages
+	// the container's journald forwards from /dev/kmsg.
 	Journal string
+	// JournalSystemd is the tail of journalctl -b restricted to process 1, the
+	// container's own systemd.
+	JournalSystemd string
 	// HostMemory is the first lines of /proc/meminfo.
 	HostMemory string
 	// HostPids is the host pids accounting.
@@ -80,8 +96,13 @@ func formatBootEvidence(e bootEvidence) string {
 	}
 
 	writeEvidenceSection(&b, "docker logs", e.Logs)
+	writeEvidenceSection(&b, "docker top", e.Processes)
 	writeEvidenceSection(&b, "systemctl is-system-running", e.SystemState)
+	writeEvidenceSection(&b, "systemctl list-jobs", e.Jobs)
+	writeEvidenceSection(&b, "activating units", e.Activating)
+	writeEvidenceSection(&b, "process 1 wchan/status", e.ProcessState)
 	writeEvidenceSection(&b, "journalctl -b", e.Journal)
+	writeEvidenceSection(&b, "journalctl -b _PID=1", e.JournalSystemd)
 	writeEvidenceSection(&b, "host memory", e.HostMemory)
 	writeEvidenceSection(&b, "host pids", e.HostPids)
 	writeEvidenceSection(&b, "running containers", e.Containers)
@@ -102,6 +123,19 @@ func writeEvidenceSection(b *strings.Builder, name, text string) {
 		b.WriteString("\n    ")
 		b.WriteString(line)
 	}
+}
+
+// headLines keeps the first n lines of s.
+func headLines(s string, n int) string {
+	s = strings.TrimRight(s, "\n")
+	if s == "" || n <= 0 {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) > n {
+		lines = lines[:n]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // tailLines keeps the last n lines of s.

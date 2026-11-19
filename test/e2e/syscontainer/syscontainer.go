@@ -302,7 +302,14 @@ func (c *container) command(args ...string) *exec.Cmd {
 // waitSystemd waits until the container's systemd reports running or degraded.
 // systemctl --wait blocks until the state settles, so the shared polling
 // primitive only separates runs after an unexpected answer.
+//
+// A container that does not boot is recreated once, inside the same bound, when
+// its process 1 has exited or after systemdBootRebuildDelay; bootretry.go
+// explains the observed failure and why one rebuild is enough.
 func (c *container) waitSystemd() {
+	start := time.Now()
+	rebuilds := 0
+
 	// Eventually fails the test from this goroutine, and Goexit runs the
 	// deferred calls, so the container is still there when the evidence is
 	// collected.
@@ -312,26 +319,52 @@ func (c *container) waitSystemd() {
 		}
 	}()
 	harness.Eventually(c.t, systemdReadyBound, "systemd to finish booting", func() (bool, string) {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, "docker",
-			"compose", "-p", c.project, "-f", c.composeFile, "exec", "-T", "systemd",
-			"systemctl", "is-system-running", "--wait")
-		cmd.Env = c.env
-		out, err := cmd.CombinedOutput()
-
-		state := strings.TrimSpace(string(out))
-		if state == "running" || state == "degraded" {
-			return true, state
+		result := c.systemdState()
+		if result.ready {
+			return true, result.state
 		}
-		if err != nil {
-			return false, fmt.Sprintf("%v: %s", err, state)
+		if shouldRebuildSystemd(systemdBootPoll{NotRunning: result.notRunning}, time.Since(start), rebuilds) {
+			rebuilds++
+			c.t.Logf("syscontainer: %s: systemd did not become ready (%s); recreating the container (%d of %d)",
+				c.project, result.state, rebuilds, systemdBootRebuilds)
+			// Keep the evidence of the failed boot before the container is
+			// replaced.
+			c.logBootEvidence()
+			c.recreateSystemd()
 		}
-		return false, fmt.Sprintf("state %q", state)
+		return false, result.state
 	})
 }
 
-// down tears the project down and removes the network. It is idempotent.
+// systemdState runs one readiness probe through interpretSystemdState.
+func (c *container) systemdState() systemdStateResult {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker",
+		"compose", "-p", c.project, "-f", c.composeFile, "exec", "-T", "systemd",
+		"systemctl", "is-system-running", "--wait")
+	cmd.Env = c.env
+	out, err := cmd.CombinedOutput()
+	return interpretSystemdState(string(out), err)
+}
+
+// recreateSystemd rebuilds the container in place, keeping the project's
+// network. A failure is reported rather than fatal, so the wait continues and
+// the final state still explains the outcome.
+func (c *container) recreateSystemd() {
+	out, err := c.command("compose", "-p", c.project, "-f", c.composeFile,
+		"up", "-d", "--force-recreate", "systemd").CombinedOutput()
+	if err != nil {
+		c.t.Logf("syscontainer: recreating the systemd container in %s: %v\n%s",
+			c.project, err, strings.TrimSpace(string(out)))
+	}
+}
+
+// down tears the project down and removes the network. It is idempotent. The
+// one-second stop timeout force-kills a container whose process 1 does not exit
+// on the image's stop signal, so a container torn down here can end with exit
+// code 137; the residue cleanup only force-removes containers whose owner
+// process is already gone.
 func (c *container) down() {
 	cmd := c.command("compose", "-p", c.project, "-f", c.composeFile, "down", "-v", "--remove-orphans", "--timeout", "1")
 	if out, err := cmd.CombinedOutput(); err != nil {

@@ -20,13 +20,18 @@ func TestFormatBootEvidence(t *testing.T) {
 	}
 
 	got := formatBootEvidence(bootEvidence{
-		State:       `{"Status":"exited","Running":false,"OOMKilled":true,"ExitCode":137,"Error":"","StartedAt":"2026-11-19T01:00:00Z","FinishedAt":"2026-11-19T01:00:05Z"}`,
-		Logs:        logs.String(),
-		SystemState: "offline",
-		Journal:     journal.String(),
-		HostMemory:  "MemTotal:       527843948 kB\nMemFree:        415000000 kB\nMemAvailable:   490000000 kB",
-		HostPids:    "/sys/fs/cgroup/pids.current: 812",
-		Containers:  "9 running (docker ps -q)",
+		State:          `{"Status":"exited","Running":false,"OOMKilled":true,"ExitCode":137,"Error":"","StartedAt":"2026-11-19T01:00:00Z","FinishedAt":"2026-11-19T01:00:05Z"}`,
+		Logs:           logs.String(),
+		Processes:      "PID                 USER                TIME                COMMAND\n1 root 0:00 /sbin/init",
+		SystemState:    "offline",
+		Jobs:           "JOB UNIT TYPE STATE\n42 getty@tty1.service start running",
+		Activating:     "dbus.service loaded activating start",
+		ProcessState:   "ep_poll\nState:\tS (sleeping)\nThreads:\t1",
+		Journal:        journal.String(),
+		HostMemory:     "MemTotal:       527843948 kB\nMemFree:        415000000 kB\nMemAvailable:   490000000 kB",
+		HostPids:       "/sys/fs/cgroup/pids.current: 812",
+		Containers:     "9 running (docker ps -q)",
+		JournalSystemd: "systemd[1]: Startup finished in 1s.",
 	})
 
 	for _, want := range []string{
@@ -36,7 +41,12 @@ func TestFormatBootEvidence(t *testing.T) {
 		"ExitCode=137",
 		"docker log line 99",
 		"journal line 99",
+		"1 root 0:00 /sbin/init",
 		"offline",
+		"42 getty@tty1.service start running",
+		"dbus.service loaded activating start",
+		"ep_poll",
+		"systemd[1]: Startup finished in 1s.",
 		"MemAvailable:   490000000 kB",
 		"/sys/fs/cgroup/pids.current: 812",
 		"9 running (docker ps -q)",
@@ -66,6 +76,28 @@ func TestFormatBootEvidenceRawState(t *testing.T) {
 	got := formatBootEvidence(bootEvidence{State: raw})
 	if !strings.Contains(got, raw) {
 		t.Errorf("formatBootEvidence output does not carry the raw State text:\n%s", got)
+	}
+}
+
+// TestHeadLines checks the head bound the host reads use.
+func TestHeadLines(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		n    int
+		want string
+	}{
+		{"shorter than bound", "a\nb", 3, "a\nb"},
+		{"exactly the bound", "a\nb\nc", 3, "a\nb\nc"},
+		{"longer than bound", "a\nb\nc\nd", 2, "a\nb"},
+		{"trailing newline", "a\nb\n", 2, "a\nb"},
+		{"empty", "", 2, ""},
+		{"no lines requested", "a\n", 0, ""},
+	}
+	for _, tc := range cases {
+		if got := headLines(tc.in, tc.n); got != tc.want {
+			t.Errorf("%s: headLines(%q, %d) = %q, want %q", tc.name, tc.in, tc.n, got, tc.want)
+		}
 	}
 }
 

@@ -37,10 +37,17 @@ func (c *container) bootEvidence() string {
 	} else {
 		e.State = c.docker("inspect", "--format", "{{json .State}}", id)
 		e.Logs = c.docker("logs", "--tail", strconv.Itoa(evidenceTailLines), id)
+		e.Processes = c.docker("top", id)
 		// Without --wait is-system-running reports the current state instead
 		// of blocking, so a container that is still booting shows it.
 		e.SystemState = c.docker("exec", id, "systemctl", "is-system-running")
+		e.Jobs = c.docker("exec", id, "systemctl", "list-jobs", "--no-pager")
+		e.Activating = c.docker("exec", id, "systemctl", "list-units", "--all",
+			"--state=activating,activating-done", "--no-pager")
+		e.ProcessState = c.docker("exec", id, "sh", "-c",
+			"cat /proc/1/wchan; echo; grep -E '^(State|Threads)' /proc/1/status")
 		e.Journal = c.docker("exec", id, "journalctl", "-b", "--no-pager", "-n", "200")
+		e.JournalSystemd = c.docker("exec", id, "journalctl", "-b", "--no-pager", "-n", "200", "_PID=1")
 	}
 
 	e.HostMemory = readHostMemory()
@@ -79,18 +86,24 @@ func readHostMemory() string {
 	if err != nil {
 		return err.Error()
 	}
-	return tailLines(strings.TrimSpace(string(data)), 3)
+	return headLines(strings.TrimSpace(string(data)), 3)
 }
 
 // readHostPids reports the host pids accounting that a container kill for a
-// process limit would show against.
+// process limit would show against. The root cgroup has no pids files of its
+// own on a systemd host, so the system slice and the kernel limit are read as
+// well.
 func readHostPids() string {
 	var b strings.Builder
 	for _, path := range []string{
+		"/proc/sys/kernel/pid_max",
+		"/proc/loadavg",
 		"/sys/fs/cgroup/pids.current",
 		"/sys/fs/cgroup/pids.max",
 		"/sys/fs/cgroup/pids.events",
-		"/proc/sys/kernel/pid_max",
+		"/sys/fs/cgroup/system.slice/pids.current",
+		"/sys/fs/cgroup/system.slice/pids.max",
+		"/sys/fs/cgroup/system.slice/pids.events",
 	} {
 		data, err := os.ReadFile(path)
 		if err != nil {
