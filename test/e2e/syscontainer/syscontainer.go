@@ -72,6 +72,42 @@ var testBinary string
 // testBinaryPath is the path the container sees.
 const testBinaryPath = "/opt/agent-peer-test"
 
+// ArtifactPath returns the path inside the container of a file staged with
+// StageArtifact.
+func ArtifactPath(rel string) string {
+	return filepath.Join(testBinaryPath, rel)
+}
+
+// StageArtifact writes data to rel under the directory mounted into the
+// container at testBinaryPath and returns the path the container sees. It lets
+// a host-side test give the inner test a file from the repository, such as the
+// install script the release archive carries. The mount is read-only inside
+// the container, so the file must be staged before Run starts it.
+func StageArtifact(t *testing.T, rel string, data []byte, mode os.FileMode) string {
+	t.Helper()
+
+	if InContainer() {
+		t.Fatalf("syscontainer: StageArtifact runs on the host")
+	}
+	if testBinary == "" {
+		t.Fatalf("syscontainer: Main was not called, so there is no mount to stage %s in", rel)
+	}
+	if !filepath.IsLocal(rel) {
+		t.Fatalf("syscontainer: staged path %q leaves the mount", rel)
+	}
+	dst := filepath.Join(filepath.Dir(testBinary), rel)
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		t.Fatalf("syscontainer: creating the staged directory for %s: %v", rel, err)
+	}
+	if err := os.WriteFile(dst, data, mode); err != nil {
+		t.Fatalf("syscontainer: staging %s: %v", rel, err)
+	}
+	if err := os.Chmod(dst, mode); err != nil {
+		t.Fatalf("syscontainer: setting the mode of staged %s: %v", rel, err)
+	}
+	return ArtifactPath(rel)
+}
+
 // Main is called from a package's TestMain. On the host it builds the calling
 // package's test binary once for linux, runs the tests, and removes the
 // binary's directory. Inside the container it just runs the tests.

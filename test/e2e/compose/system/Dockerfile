@@ -22,6 +22,7 @@ RUN apt-get update \
         libpam-systemd \
         libnss-extrausers \
         acl \
+        sudo \
  && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 2001 agentpeer-users \
@@ -32,21 +33,28 @@ RUN groupadd --gid 2001 agentpeer-users \
 # or /etc/group. A static Go binary that reads those files directly cannot see
 # them; the account database tests require the Broker to resolve them through
 # NSS. dirshare is a supplementary group of diruser, never its primary group,
-# so only an initgroups lookup can grant access through it.
+# so only an initgroups lookup can grant access through it. The shadow entry
+# has a locked password; it exists because starting diruser's user manager goes
+# through PAM, which cannot set up the session without one.
 RUN mkdir -p /var/lib/extrausers \
  && printf 'diruser:x:2100:2100:Directory Services User:/home/diruser:/bin/sh\n' \
         > /var/lib/extrausers/passwd \
  && printf 'dirgroup:x:2100:\ndirshare:x:2101:diruser\n' > /var/lib/extrausers/group \
+ && printf 'diruser:*:19000:0:99999:7:::\n' > /var/lib/extrausers/shadow \
+ && chgrp shadow /var/lib/extrausers/shadow \
  && chmod 0644 /var/lib/extrausers/passwd /var/lib/extrausers/group \
+ && chmod 0640 /var/lib/extrausers/shadow \
  && mkdir -p /home/diruser \
  && chown 2100:2100 /home/diruser \
  && chmod 0755 /home/diruser \
  && sed -i -E \
         -e 's/^(passwd:[[:space:]]*).*/\1files extrausers/' \
         -e 's/^(group:[[:space:]]*).*/\1files extrausers/' \
+        -e 's/^(shadow:[[:space:]]*).*/\1files extrausers/' \
         /etc/nsswitch.conf \
  && grep -Eq '^passwd:[[:space:]]+files[[:space:]]+extrausers' /etc/nsswitch.conf \
- && grep -Eq '^group:[[:space:]]+files[[:space:]]+extrausers' /etc/nsswitch.conf
+ && grep -Eq '^group:[[:space:]]+files[[:space:]]+extrausers' /etc/nsswitch.conf \
+ && grep -Eq '^shadow:[[:space:]]+files[[:space:]]+extrausers' /etc/nsswitch.conf
 
 STOPSIGNAL SIGRTMIN+3
 ENTRYPOINT []
