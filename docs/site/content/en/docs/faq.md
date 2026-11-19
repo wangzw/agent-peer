@@ -9,11 +9,11 @@ There is no formal release yet. Build the binary from source as described in the
 
 ## Which platforms are supported?
 
-macOS and Linux, on amd64 and arm64. Native Windows is not supported. See [known limitations]({{< relref "limitations.md" >}}).
+macOS and Linux, on amd64 and arm64. Native Windows is not supported. See [design choices and caveats]({{< relref "limitations.md" >}}).
 
 ## Which Claude Code version do I need?
 
-Claude Code v2.1.224 or later. The behavior this project relies on was observed on v2.1.327, and there is no compatibility promise for other versions. See the [quick start]({{< relref "getting-started.md" >}}).
+Claude Code v2.1.224 or later. Each Claude Code behavior described on this site is an observation made on the version noted with it, and there is no compatibility promise for other versions. See the [quick start]({{< relref "getting-started.md" >}}).
 
 ## Is there a central server?
 
@@ -49,7 +49,7 @@ Yes. Links use TLS 1.3 with self-signed certificates, and a Broker's identity is
 
 ## Can I send files or session context?
 
-No. Messages carry plain text only; files, session history, and context are not transferred. See [known limitations]({{< relref "limitations.md" >}}).
+No. Messages carry plain text only; files, session history, and context are not transferred. See [design choices and caveats]({{< relref "limitations.md" >}}).
 
 ## Does a successful send mean the other agent read the message?
 
@@ -57,7 +57,7 @@ No. Success means the message was written to the target session's inbox socket, 
 
 ## Why did my second identical message disappear?
 
-An analysis of the v2.1.327 program says the receiving Claude Code drops a message that repeats the previous one from the same sender within 30 seconds; this has not been confirmed by experiment. The rules belong to Claude Code and may change. See the [security model]({{< relref "security.md" >}}) and [known limitations]({{< relref "limitations.md" >}}).
+Experiments on Claude Code v2.1.311 confirmed that the receiving Claude Code drops a message that repeats the previous one from the same sender within 30 seconds. The rules belong to Claude Code and may change. See the [security model]({{< relref "security.md" >}}) and [design choices and caveats]({{< relref "limitations.md" >}}).
 
 ## Who can change the Broker's configuration?
 
@@ -73,4 +73,4 @@ Use `agent-peer status` for agents, topics, peers, and links, and `agent-peer au
 
 ## Can a headless session receive messages?
 
-This has not yet been verified in a real session. Whether a headless session receives messages depends on its inbound controls; see [known limitations]({{< relref "limitations.md" >}}) for the open questions about inbound controls and skip-permission mode.
+A headless session that also skips permission prompts cannot. The message is held first and then dropped because the sender declares no permission category, while the sending side has already returned success. See [design choices and caveats]({{< relref "limitations.md" >}}) for the caveats that apply.

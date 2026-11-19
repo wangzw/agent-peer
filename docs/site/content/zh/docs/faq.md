@@ -9,11 +9,11 @@ weight: 8
 
 ## 支持哪些平台？
 
-macOS 与 Linux，支持 amd64 与 arm64。不支持原生 Windows。见[已知限制]({{< relref "limitations.md" >}})。
+macOS 与 Linux，支持 amd64 与 arm64。不支持原生 Windows。见[设计取舍与注意事项]({{< relref "limitations.md" >}})。
 
 ## 需要哪个版本的 Claude Code？
 
-Claude Code v2.1.224 或更高版本。本项目依赖的行为是在 v2.1.327 上观测的，不承诺兼容其他版本。见[快速开始]({{< relref "getting-started.md" >}})。
+Claude Code v2.1.224 或更高版本。本站描述的每项 Claude Code 行为，都是在各自标注的版本上观测到的，不承诺兼容其他版本。见[快速开始]({{< relref "getting-started.md" >}})。
 
 ## 有中心服务器吗？
 
@@ -49,7 +49,7 @@ topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会�
 
 ## 能发送文件或会话上下文吗？
 
-不能。消息只传纯文本，文件、会话历史与上下文都不传。见[已知限制]({{< relref "limitations.md" >}})。
+不能。消息只传纯文本，文件、会话历史与上下文都不传。见[设计取舍与注意事项]({{< relref "limitations.md" >}})。
 
 ## 发送成功就代表对方读到了吗？
 
@@ -57,7 +57,7 @@ topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会�
 
 ## 为什么重复发送的同一条消息不见了？
 
-对 v2.1.327 程序的分析显示，接收端的 Claude Code 会丢弃同一发送方在 30 秒内发来的、与上一条内容完全相同的消息，这一点尚未经实验确认。这些规则属于 Claude Code，可能改动。见[安全模型]({{< relref "security.md" >}})与[已知限制]({{< relref "limitations.md" >}})。
+在 Claude Code v2.1.311 上的实验确认，接收端的 Claude Code 会丢弃同一发送方在 30 秒内发来的、与上一条内容完全相同的消息。这些规则属于 Claude Code，可能改动。见[安全模型]({{< relref "security.md" >}})与[设计取舍与注意事项]({{< relref "limitations.md" >}})。
 
 ## 谁能修改 Broker 的配置？
 
@@ -73,4 +73,4 @@ Broker 启动失败，并报告该地址不可用。它不会另选地址或端�
 
 ## 无界面会话能收到消息吗？
 
-这一点尚未在真实会话中验证。无界面会话能否收到消息取决于它的入站控制；入站控制与跳过权限确认模式的未决问题见[已知限制]({{< relref "limitations.md" >}})。
+以无界面方式运行且跳过权限确认的会话不能。接收方的 Claude Code 先把消息暂扣，随后因发送方没有声明权限类别而丢弃，而发送方那边已经返回成功。适用的注意事项见[设计取舍与注意事项]({{< relref "limitations.md" >}})。

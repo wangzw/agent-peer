@@ -36,6 +36,6 @@ Sessions on the same host can also use the tools to message each other. The path
 
 agent-peer runs on macOS and Linux, on amd64 and arm64. Native Windows is not supported.
 
-Claude Code v2.1.224 or later is required. The Claude Code behavior this project relies on was observed on v2.1.327; there is no compatibility promise for other versions.
+Claude Code v2.1.224 or later is required. Every Claude Code behavior this site describes is noted with the version it was observed on, and there is no compatibility promise for other versions. See [design choices and caveats]({{< relref "limitations.md" >}}).
 
 To learn the vocabulary, continue with [Concepts]({{< relref "/docs/concepts" >}}). To set up a host, see the [Guides]({{< relref "/docs/guides" >}}); the [Reference]({{< relref "/docs/reference" >}}) lists tools, commands and configuration keys.

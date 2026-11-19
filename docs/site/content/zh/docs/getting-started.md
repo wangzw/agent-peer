@@ -8,7 +8,7 @@ agent-peer 让运行在不同主机上的 Claude Code 会话互相连接。会�
 
 ## 开始之前
 
-agent-peer 运行在 macOS 与 Linux 上，支持 amd64 和 arm64；不支持原生 Windows。需要 Claude Code v2.1.224 或更高版本。本项目依赖的 Claude Code 行为是在 v2.1.327 上观测的，不承诺兼容其他版本。详见[简介]({{< relref "/docs" >}})。
+agent-peer 运行在 macOS 与 Linux 上，支持 amd64 和 arm64；不支持原生 Windows。需要 Claude Code v2.1.224 或更高版本。本站提到的 Claude Code 行为都注明了观测所用的版本，对其他版本不承诺兼容。见[设计取舍与注意事项]({{< relref "limitations.md" >}})与[简介]({{< relref "/docs" >}})。
 
 ## 安装
 

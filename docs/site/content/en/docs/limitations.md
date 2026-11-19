@@ -1,54 +1,34 @@
 ---
-title: Known limitations
+title: Design choices and caveats
 weight: 7
 ---
 
-agent-peer does what the rest of this site describes, and stops where this page says. The list is long on purpose: knowing the boundary is part of using the system safely.
+agent-peer does what the rest of this site describes. This page explains the design choices behind how it works and the caveats that follow from them.
 
-## Messages
+## Design choices
 
-- Messages carry plain text only. Files, session history, and context are not transferred.
-- Messages are not cached, persisted, or redelivered. If a host cannot be reached, sending returns an error, and whether to send again is the sending agent's decision.
-- A successful send means the message was written to the target session's inbox socket. It does not mean the target model read or processed it, and no later notification says what happened.
-- When a delivery request went out and no definite answer came back, the call reports that the outcome is unknown instead of reporting success or failure.
-- Rate limiting, duplicate suppression, and the queue limit for pending messages are rules of the receiving Claude Code. See the [security model]({{< relref "security.md" >}}) for how they work and why agent-peer leaves them there.
+- Messages carry plain text only. Files, session history and context are not part of the protocol, so each delivered message is a piece of text the receiving side can read and judge on its own. See the [security model]({{< relref "security.md" >}}) for how a message from another host is treated.
+- Messages are not cached, persisted or redelivered. A send either writes into the target session's inbox socket and reports success, returns not sent after a bounded wait, or reports that the outcome is unknown because a request went out but no definite answer came back. There is no store to replay, expire or reconcile, and the sending agent decides whether to try again when a send fails or its outcome is unknown. See [Links]({{< relref "concepts/links.md" >}}).
+- Brokers connect directly. There is no relay and no central registry, so no third party holds the list of hosts or sees the traffic; the requirement that follows is that at least one of the two hosts can reach the other. See [Links]({{< relref "concepts/links.md" >}}) and [Pairing]({{< relref "concepts/pairing.md" >}}).
+- agent-peer does not interoperate with external A2A agents. Broker-to-Broker messages reuse the A2A Message body as their wire format, but A2A tasks, streaming and callbacks are outside the design: a message from another agent is simply another message.
+- agent-peer runs on macOS and Linux, on amd64 and arm64. Native Windows is not supported because inbox connections there require an authentication line that agent-peer does not write. See the [security model]({{< relref "security.md" >}}).
+- An account runs at most one Broker. A second start with another listen address fails, so an account's agents, topics and configuration have one owner and one place to look. Accounts and groups come from the system's account database: on Linux the Broker queries it through `getent`, which follows the NSS configuration, and falls back to the local files with a warning when `getent` is missing, fails or returns output it cannot validate. See [Broker]({{< relref "concepts/broker.md" >}}).
+- The inbox socket message format and the session registry have no public compatibility promise. agent-peer reads what Claude Code provides, and a Claude Code upgrade can change how registration or delivery works; agent-peer follows the version it was built against. See [Agents]({{< relref "concepts/agents.md" >}}).
+- Rate limiting, duplicate suppression and the pending-message queue are rules of the receiving Claude Code, not of agent-peer. agent-peer does not rate-limit sending, count hops or detect loops; the receiving Claude Code identifies the sender, applies its token bucket, drops a repeat and holds the queue. Experiments on Claude Code v2.1.311 confirmed sender identification by the writing process, the token bucket values and duplicate suppression; the [security model]({{< relref "security.md" >}}) gives the full rules, and Claude Code can change them.
+- The macOS binaries are not signed or notarized. If a browser downloaded the archive, clear the quarantine attribute before running the binary:
 
-## Connections
+  ```sh
+  xattr -d com.apple.quarantine agent-peer
+  ```
+- The operating-system account is the isolation boundary. Any process under the same account can register any of that account's sessions as an agent and act as it; between accounts, a user Broker rejects calls from other accounts, and a system Broker accepts a registration only for an inbox socket owned by the calling account. See the [security model]({{< relref "security.md" >}}).
 
-- Brokers connect directly. Messages are not relayed through a third Broker, and there is no central registry. When neither of two hosts can reach the other, for example when both are behind NAT, they cannot communicate.
-- The default listen port is 17443. If the configured listen address cannot be bound, the Broker fails to start; it never selects another address or port.
-- There is no interoperability with external A2A agents.
+## Caveats
 
-## Platform and accounts
+- A session that runs headless and also skips permission prompts cannot receive messages from agent-peer. The message is held first and then dropped because the sender declares no permission category, while the sending side has already returned success. See the [security model]({{< relref "security.md" >}}) for what an undeclared sender means.
+- Some sessions cannot become agents: sessions that do not bind an inbox socket, sessions for which Claude Code keeps no session registry record (including interactive sessions started from another session's command line), and sessions whose name is unusable. See [Agents]({{< relref "concepts/agents.md" >}}).
+- When the receiving session runs in a mode that skips permission prompts and has no inbound policy set, each message from agent-peer needs individual approval before it enters the session. See the [security model]({{< relref "security.md" >}}).
+- What this site says about Claude Code behavior is an observation made on the version noted with it; there is no compatibility promise for other versions. One observation is worth spelling out, and one question remains open:
+  - A message that arrives while a session is working on a turn is dequeued when the turn ends. Whether it was dropped or merged into the current turn cannot be told apart. This was observed on v2.1.311.
+  - Whether the session list follows a rename on macOS has not yet been verified.
 
-- agent-peer runs on macOS and Linux, on amd64 and arm64. Native Windows is not supported.
-- At most one Broker runs per account.
-- The macOS binaries are not signed or notarized. If a browser downloaded the archive, clear the quarantine attribute before running the binary.
-- Linux release binaries are built with `CGO_ENABLED=0` and read accounts only from `/etc/passwd` and `/etc/group`. A system Broker cannot spawn helper processes for accounts supplied by a directory service such as LDAP or SSSD, and cannot use their group membership to decide configuration file permissions. When it cannot determine such an account's home directory, it uses `HOME`.
-
-## Sessions and operation
-
-- The inbox socket message format and the session registry have no public compatibility promise. A Claude Code upgrade may break registration or delivery.
-- Some sessions cannot become agents: sessions that do not bind an inbox socket, sessions for which Claude Code keeps no session registry record (including interactive sessions started from another session's command line), and sessions whose name is unusable.
-- If the MCP server process crashes, an interactive session does not restart it. A handshake that takes longer than 30 seconds or a failed start marks the service as failed, and the user has to reconnect it in `/mcp`.
-- The operating-system account is the isolation boundary. Any process running under the same account can register any of that account's sessions as an agent and act as it.
-
-## Not yet verified in a real session
-
-The following behaviors have not been confirmed in a real Claude Code session running through agent-peer. Do not rely on them until they are confirmed.
-
-- A session registers itself automatically, and a rename, a cleared conversation, or disabling and re-enabling the MCP server is reflected as described.
-- The disambiguator in an agent address matches the identifier Claude Code shows for the session, and stays the same after a rename or a cleared conversation.
-- The agent list shows each session's status as recorded in the session registry.
-- A delivered message wakes an idle session without user input.
-- When a busy session reads a delivered message.
-- Whether a session that runs in a mode which skips permission prompts and has no inbound policy holds incoming messages for approval, and whether a headless session in that state can receive them.
-- The receiving session sees the sender's agent address, a reply to that address reaches the sender, and long names or names with special characters are handled through a disambiguator and truncation.
-- The target session's inbound controls decide whether a message is accepted, held, or rejected.
-- Subagents call the tools as the main session, and headless or IDE-hosted sessions register like interactive ones.
-- Claude Code's permission settings can authorize reading configuration, changing configuration, and creating a pairing key separately.
-- After the tools are explained, the model replies to an agent address with `send_message` instead of another tool.
-- How often a session goes unregistered because its inbox is bound after its MCP server process starts.
-- Whether a sub-session inherits its parent's inbox socket variable, which would register it under the parent's agent.
-- The session registry's file change notifications on macOS and Linux, including whether a rename shows up in the list.
-- How the receiving Claude Code applies rate limiting and duplicate suppression when messages are written through one Broker process.
+  Subagents call the tools as the main session (v2.1.327). Headless sessions were verified in a real session (v2.1.311) and register like interactive ones; sessions running in an IDE or another host use the same registration mechanism, and there is no separate experiment for them.

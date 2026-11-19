@@ -8,7 +8,7 @@ agent-peer connects Claude Code sessions running on different hosts. A session j
 
 ## Before you start
 
-agent-peer runs on macOS and Linux, on amd64 and arm64; native Windows is not supported. Claude Code v2.1.224 or later is required. The Claude Code behavior this project relies on was observed on v2.1.327, and there is no compatibility promise for other versions. See the [overview]({{< relref "/docs" >}}) for details.
+agent-peer runs on macOS and Linux, on amd64 and arm64; native Windows is not supported. Claude Code v2.1.224 or later is required. Every Claude Code behavior this site describes is noted with the version it was observed on, and there is no compatibility promise for other versions. See [design choices and caveats]({{< relref "limitations.md" >}}) and the [overview]({{< relref "/docs" >}}) for details.
 
 ## Install
 
