@@ -349,9 +349,10 @@ func (a *Agent) call(sessionID, tool string, args map[string]any, timeout time.D
 	}
 }
 
-// Tools lists the tool names of a session's main MCP server process.
-func (a *Agent) Tools(sessionID string) ([]string, error) {
-	var tools []string
+// Tools lists the tools of a session's main MCP server process, with their
+// annotations.
+func (a *Agent) Tools(sessionID string) ([]ToolInfo, error) {
+	var tools []ToolInfo
 	err := Guard(func() { tools = a.tools(sessionID) })
 	if err != nil {
 		return nil, err
@@ -360,7 +361,7 @@ func (a *Agent) Tools(sessionID string) ([]string, error) {
 }
 
 // tools implements Tools inside Guard.
-func (a *Agent) tools(sessionID string) []string {
+func (a *Agent) tools(sessionID string) []ToolInfo {
 	s := a.session(sessionID)
 	ctx, cancel := context.WithTimeout(context.Background(), agentCallTimeout)
 	defer cancel()

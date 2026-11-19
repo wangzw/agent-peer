@@ -192,7 +192,7 @@ func (b *startupBackend) callErr(tool string, args map[string]any) (Result, erro
 	return Result{}, nil
 }
 
-func (b *startupBackend) tools(t testing.TB) []string { return nil }
+func (b *startupBackend) tools(t testing.TB) []node.ToolInfo { return nil }
 
 func (b *startupBackend) stopMCP(t testing.TB, sig syscall.Signal) int { return 0 }
 

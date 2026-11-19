@@ -316,7 +316,7 @@ func (s *remoteSession) callErr(tool string, args map[string]any) (Result, error
 	return result, nil
 }
 
-func (s *remoteSession) tools(tb testing.TB) []string {
+func (s *remoteSession) tools(tb testing.TB) []node.ToolInfo {
 	tb.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
 	defer cancel()

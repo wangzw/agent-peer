@@ -178,8 +178,12 @@ func TestSessionCallResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listing tools: %v", err)
 	}
-	if want := []string{"echo_env", "fail"}; !slices.Equal(tools, want) {
-		t.Errorf("tools = %v, want %v", tools, want)
+	names := make([]string, len(tools))
+	for i, tool := range tools {
+		names[i] = tool.Name
+	}
+	if want := []string{"echo_env", "fail"}; !slices.Equal(names, want) {
+		t.Errorf("tools = %v, want %v", names, want)
 	}
 }
 

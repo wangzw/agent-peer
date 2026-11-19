@@ -77,6 +77,26 @@ type SessionSpec struct {
 	StartMCP bool
 }
 
+// ToolInfo describes one tool as tools/list reports it.
+type ToolInfo struct {
+	Name string `json:"name"`
+	// Annotations is the annotations block tools/list returned, or nil when the
+	// server sent none. A nil block carries no hints, so ReadOnly reports false.
+	Annotations *ToolAnnotations `json:"annotations,omitempty"`
+}
+
+// ToolAnnotations carries the tool annotations this harness reads. The product
+// sets only readOnlyHint; the spec's other hints are left at their defaults.
+type ToolAnnotations struct {
+	ReadOnlyHint bool `json:"readOnlyHint"`
+}
+
+// ReadOnly reports whether the tool is annotated read-only. A tool without an
+// annotations block is not read-only.
+func (t ToolInfo) ReadOnly() bool {
+	return t.Annotations != nil && t.Annotations.ReadOnlyHint
+}
+
 // ToolResult is the outcome of one MCP tool call. A tool that reports an error
 // inside its result sets IsError but still returns a nil error; err is reserved
 // for protocol and transport failures.
@@ -177,8 +197,9 @@ func (s *Session) MCPPID() int {
 	return s.proc.pid
 }
 
-// Tools lists the tool names exposed by the current MCP server process.
-func (s *Session) Tools(ctx context.Context) ([]string, error) {
+// Tools lists the tools exposed by the current MCP server process, with the
+// annotations tools/list returned for each.
+func (s *Session) Tools(ctx context.Context) ([]ToolInfo, error) {
 	proc, err := s.currentProc()
 	if err != nil {
 		return nil, err
@@ -187,11 +208,15 @@ func (s *Session) Tools(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("node: listing tools: %w", err)
 	}
-	names := make([]string, 0, len(result.Tools))
+	tools := make([]ToolInfo, 0, len(result.Tools))
 	for _, tool := range result.Tools {
-		names = append(names, tool.Name)
+		info := ToolInfo{Name: tool.Name}
+		if tool.Annotations != nil {
+			info.Annotations = &ToolAnnotations{ReadOnlyHint: tool.Annotations.ReadOnlyHint}
+		}
+		tools = append(tools, info)
 	}
-	return names, nil
+	return tools, nil
 }
 
 // Call invokes a tool on the current MCP server process.

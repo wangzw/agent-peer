@@ -19,6 +19,7 @@ import (
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
 	"github.com/wangzw/agent-peer/internal/mcpserver"
 	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/agent-peer/test/e2e/node"
 )
 
 // The bounds below follow the project rule: a wait that no product timer
@@ -43,6 +44,70 @@ const (
 	ctStaticKeyTwo = "static-key-00002"
 	ctStaticKeyThr = "static-key-00003"
 )
+
+// TestConfigToolAnnotations covers REQ-broker-config-004. A real agent-peer
+// MCP session lists its tools and the read-only hint must be set on exactly the
+// tools with no side effects. A tool that sends a message, changes Broker
+// state, or writes the configuration file must not carry the hint. A missing
+// annotations block, or a readOnlyHint of false, both count as not read-only.
+func TestConfigToolAnnotations(t *testing.T) {
+	host := harness.NewLocalHost(t, harness.LocalOptions{Name: "config-annotations"})
+	s := host.StartSession(t, harness.SessionSpec{Name: "annotations", StartMCP: true})
+	defer s.End(t)
+
+	expected := map[string]bool{
+		"list_agents":        true,
+		"send_message":       false,
+		"list_topics":        true,
+		"join_topic":         false,
+		"leave_topic":        false,
+		"list_brokers":       true,
+		"connect_broker":     false,
+		"disconnect_broker":  false,
+		"create_pairing_key": false,
+		"get_config":         true,
+		"set_config":         false,
+	}
+
+	tools := s.Tools(t)
+	if len(tools) != len(expected) {
+		t.Fatalf("the MCP server exposes %d tools %v, want %d", len(tools), toolNames(tools), len(expected))
+	}
+	seen := make(map[string]bool, len(tools))
+	for _, tool := range tools {
+		// A tool without an annotations block is not read-only; the log records
+		// which shape the real session returned.
+		shape := "no annotations block"
+		if tool.Annotations != nil {
+			shape = fmt.Sprintf("readOnlyHint = %v", tool.Annotations.ReadOnlyHint)
+		}
+		t.Logf("tools/list: %s: %s", tool.Name, shape)
+
+		wantReadOnly, known := expected[tool.Name]
+		if !known {
+			t.Errorf("unexpected tool %q", tool.Name)
+			continue
+		}
+		seen[tool.Name] = true
+		if got := tool.ReadOnly(); got != wantReadOnly {
+			t.Errorf("%s: %s, want readOnlyHint %v", tool.Name, shape, wantReadOnly)
+		}
+	}
+	for name := range expected {
+		if !seen[name] {
+			t.Errorf("the MCP server does not expose %q", name)
+		}
+	}
+}
+
+// toolNames returns the names of tools in listing order.
+func toolNames(tools []node.ToolInfo) []string {
+	names := make([]string, len(tools))
+	for i, tool := range tools {
+		names[i] = tool.Name
+	}
+	return names
+}
 
 // TestConfigTools covers the single-host configuration requirements: reading
 // the running configuration, changing it through the tools, the audit records

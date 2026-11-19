@@ -3,7 +3,11 @@
 // one POST endpoint per operation and JSON requests and answers.
 package ctl
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/wangzw/agent-peer/test/e2e/node"
+)
 
 // Envelope is the answer of every control request. A product failure, such as
 // a tool error or a Broker that did not start, is part of Result; Error is
@@ -62,9 +66,10 @@ type SessionCallResult struct {
 	ElapsedMS  int64           `json:"elapsed_ms"`
 }
 
-// SessionToolsResult lists the tool names of a session's MCP server process.
+// SessionToolsResult lists the tools of a session's MCP server process, with
+// the annotations tools/list returned for each.
 type SessionToolsResult struct {
-	Tools []string `json:"tools"`
+	Tools []node.ToolInfo `json:"tools"`
 }
 
 // SessionFramesRequest asks for the frames a session recorded. A zero WaitN

@@ -364,16 +364,16 @@ func (s *localSession) callErr(tool string, args map[string]any) (Result, error)
 	return Result{ToolResult: result}, nil
 }
 
-func (s *localSession) tools(t testing.TB) []string {
+func (s *localSession) tools(t testing.TB) []node.ToolInfo {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
 	defer cancel()
-	names, err := s.session.Tools(ctx)
+	tools, err := s.session.Tools(ctx)
 	if err != nil {
 		t.Fatalf("harness: session %s: listing tools: %v", s.name, err)
 		return nil
 	}
-	return names
+	return tools
 }
 
 func (s *localSession) stopMCP(t testing.TB, sig syscall.Signal) int {

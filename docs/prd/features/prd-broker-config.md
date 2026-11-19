@@ -61,7 +61,7 @@ Broker 有两种部署形态。生产部署时由管理员把它作为系统服�
 
 - **验收**：检查全部工具的声明，列出 Agent、列出 topic、列出 Broker、读取配置带只读标记；加入与退出 topic、发送消息、生成配对密钥、发起配对、解除配对、修改配置不带只读标记。
 - **状态**：已实现
-- **端到端测试**：未实现
+- **端到端测试**：`test/e2e/config_tools_test.go` 的 `TestConfigToolAnnotations`
 
 ### REQ-broker-config-005
 

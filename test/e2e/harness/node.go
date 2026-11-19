@@ -305,7 +305,7 @@ func (n *Node) Workspace(t testing.TB, kind, origin, projectYAML string) string 
 type sessionBackend interface {
 	call(t testing.TB, tool string, args map[string]any) Result
 	callErr(tool string, args map[string]any) (Result, error)
-	tools(t testing.TB) []string
+	tools(t testing.TB) []node.ToolInfo
 	stopMCP(t testing.TB, sig syscall.Signal) int
 	restartMCP(t testing.TB)
 	startExtraMCP(t testing.TB)
@@ -338,8 +338,9 @@ func (s *Session) CallErr(tool string, args map[string]any) (Result, error) {
 	return s.impl.callErr(tool, args)
 }
 
-// Tools lists the tool names of the session's current MCP server process.
-func (s *Session) Tools(t testing.TB) []string {
+// Tools lists the tools of the session's current MCP server process, with the
+// annotations tools/list returned for each.
+func (s *Session) Tools(t testing.TB) []node.ToolInfo {
 	t.Helper()
 	return s.impl.tools(t)
 }
