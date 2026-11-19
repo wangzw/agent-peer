@@ -64,8 +64,8 @@ func TestREQBrokerConfig017_ReloadKeepsInvalidAlias(t *testing.T) {
 // broker.listen also replaces the effective listen address. Reload used to
 // write the adopted value into the same map it compared against, so the
 // comparison saw no change, the effective address stayed at the old port, and
-// the advertised list and default alias kept the old port even though Get
-// returned the new value.
+// the advertised list kept the old port even though Get returned the new
+// value. The default alias does not depend on the listener, so it stays put.
 func TestConfigReloadListenUpdatesEffectiveAddress(t *testing.T) {
 	c, path := newWatchCore(t, "broker:\n  listen: 127.0.0.1:7777\n", false, nil)
 
@@ -88,8 +88,8 @@ func TestConfigReloadListenUpdatesEffectiveAddress(t *testing.T) {
 	if port != 8888 {
 		t.Fatalf("effective listen port = %d after reload, want 8888", port)
 	}
-	if alias != "hostA-8888" {
-		t.Fatalf("default alias = %q after reload, want hostA-8888", alias)
+	if alias != "hostA.tester" {
+		t.Fatalf("default alias = %q after reload, want the unchanged hostA.tester", alias)
 	}
 	if got := advertisedAddrs(t, c); len(got) != 1 || got[0] != "127.0.0.1:8888" {
 		t.Fatalf("advertised = %v after reload, want [127.0.0.1:8888]", got)

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -75,6 +76,7 @@ type core struct {
 	now          func() time.Time
 	newTicker    func(time.Duration) ticker
 	hostname     func() (string, error)
+	accountName  func() (string, error)
 	homeDir      func() (string, error)
 	euid         func() int
 	routesSrc    addressSource
@@ -97,22 +99,33 @@ func accountHomeDir() (string, error) {
 // homeDirSource is the seam the agentpeer_testenv build replaces; production code never replaces it.
 var homeDirSource = accountHomeDir
 
+// runningAccountName looks up the name of the account the Broker runs as, the
+// same account database the audit log takes its account names from.
+func runningAccountName() (string, error) {
+	u, err := accountdb.LookupUID(uint32(os.Geteuid()))
+	if err != nil {
+		return "", err
+	}
+	return u.Name, nil
+}
+
 func newCore() *core {
 	hostname := os.Hostname
 	return &core{
-		values:     make(map[string]Value),
-		validators: make(map[string][]func(old, new Value) error),
-		subs:       make(map[string][]func(old, new Value)),
-		now:        time.Now,
-		newTicker:  newRealTicker,
-		hostname:   hostname,
-		homeDir:    homeDirSource,
-		euid:       os.Geteuid,
-		routesSrc:  platformAddressSource{},
-		writeFile:  writeConfigFile,
-		readFile:   os.ReadFile,
-		statFile:   os.Stat,
-		logger:     defaultLogger(),
+		values:      make(map[string]Value),
+		validators:  make(map[string][]func(old, new Value) error),
+		subs:        make(map[string][]func(old, new Value)),
+		now:         time.Now,
+		newTicker:   newRealTicker,
+		hostname:    hostname,
+		accountName: runningAccountName,
+		homeDir:     homeDirSource,
+		euid:        os.Geteuid,
+		routesSrc:   platformAddressSource{},
+		writeFile:   writeConfigFile,
+		readFile:    os.ReadFile,
+		statFile:    os.Stat,
+		logger:      defaultLogger(),
 	}
 }
 
@@ -129,6 +142,32 @@ func sanitizeHostnameFrom(fn func() (string, error), logger *slog.Logger) string
 		return ""
 	}
 	return sanitizeHostname(name)
+}
+
+// accountString returns the raw account name the Broker runs as. A system
+// level Broker has no account part, so it never looks one up. When the lookup
+// fails or yields no name, the numeric effective uid takes its place: it is
+// stable for the process and unique on the host. That fallback is logged at
+// warning level, since the alias then shows an id instead of a name.
+func (c *core) accountString() string {
+	if c.mode != ModeUser {
+		return ""
+	}
+	name, err := c.accountName()
+	if err == nil && name != "" {
+		return name
+	}
+	uid := strconv.Itoa(os.Geteuid())
+	c.logger.Warn("config: cannot look up the account name; using the uid instead",
+		"uid", uid, "error", err)
+	return uid
+}
+
+// defaultAliasLocked derives the default alias for the current deployment
+// mode, hostname and account. The caller must hold c.mu or be initializing the
+// core.
+func (c *core) defaultAliasLocked() string {
+	return defaultAlias(c.mode, c.hostnameString(), c.accountString())
 }
 
 // close stops every goroutine and open file. It is idempotent.

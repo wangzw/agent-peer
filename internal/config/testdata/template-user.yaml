@@ -13,7 +13,7 @@ broker:
   # advertise_extra: [203.0.113.5:17443]
   # No fixed default; this example is inactive.
   # Alias this Broker reports: 1 to 24 characters from letters, digits, '.', '-' and '_'.
-  # alias: hostA-17443
+  # alias: hostA.alice
   # The default is computed at runtime; this example is inactive.
   # Address and port to bind; an empty host listens on every local address, and an empty value means do not listen.
   listen: ":17443"

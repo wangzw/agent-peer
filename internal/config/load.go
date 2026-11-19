@@ -128,12 +128,13 @@ func (c *core) adoptValues(doc *configDocument, listenOverride string, override 
 	}
 
 	// broker.alias has no static default: with no configured value it follows
-	// the sanitized hostname and the effective listen port.
+	// the deployment mode, the hostname and the account name.
 	if !c.explicitAlias {
 		spec, _ := lookupKey("broker.alias")
 		c.values["broker.alias"] = defaultValue(spec, defaultContext{
+			mode:     c.mode,
 			hostname: c.hostnameString(),
-			listen:   c.effectiveListen,
+			account:  c.accountString(),
 		})
 	}
 	return nil
@@ -209,13 +210,13 @@ func wrapConfigError(key string, err error) error {
 }
 
 // effectiveAlias returns the configured alias when there is one, otherwise the
-// default alias for the current hostname and effective listener. The caller
-// must hold c.mu or be initializing the core.
+// default alias for the current deployment mode, hostname and account. The
+// caller must hold c.mu or be initializing the core.
 func (c *core) effectiveAlias() string {
 	if c.explicitAlias {
 		return c.values["broker.alias"].String
 	}
-	return defaultAlias(c.hostnameString(), c.effectiveListen)
+	return c.defaultAliasLocked()
 }
 
 // startBackground starts the file watcher and the periodic address check. The

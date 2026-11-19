@@ -82,6 +82,7 @@ func TestPrefixedAdvertiseRejectedAtLoad(t *testing.T) {
 	c.checkRuntime = func() (string, error) { return filepath.Join(home, "run"), nil }
 	c.homeDir = func() (string, error) { return home, nil }
 	c.hostname = func() (string, error) { return "hostA", nil }
+	c.accountName = func() (string, error) { return "tester", nil }
 	c.routesSrc = watchTestRoutes{}
 
 	dir := filepath.Join(home, ".agent-peer")

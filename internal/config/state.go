@@ -114,13 +114,13 @@ func (c *core) setLocked(actor Actor, key string, v Value) (Value, error) {
 			return Value{}, wrapInvalid(key, err.Error())
 		}
 	}
-	// Without a configured broker.alias the effective alias follows the listen
-	// address, so this change derives a new alias. The checks registered for
-	// broker.alias must see that derived value too; otherwise it could become
-	// equal to a peer's effective alias. A refusal leaves every value and the
-	// file unchanged.
+	// Without a configured broker.alias the effective alias is derived from the
+	// deployment mode, the hostname and the account, none of which a listen
+	// change touches. The derived value is compared anyway so a change that ever
+	// makes it differ still passes the broker.alias validators before the
+	// listener is committed.
 	if key == "broker.listen" && !c.explicitAlias {
-		derived := stringValue(defaultAlias(c.hostnameString(), effective))
+		derived := stringValue(c.defaultAliasLocked())
 		if !valueEqual(derived, c.values["broker.alias"]) {
 			for _, check := range c.validators["broker.alias"] {
 				if err := check(c.values["broker.alias"], derived); err != nil {
@@ -185,7 +185,7 @@ func (c *core) setLocked(actor Actor, key string, v Value) (Value, error) {
 	}
 	newAlias := c.values["broker.alias"]
 	if key == "broker.listen" && !c.explicitAlias {
-		newAlias = stringValue(defaultAlias(c.hostnameString(), effective))
+		newAlias = stringValue(c.defaultAliasLocked())
 		c.values["broker.alias"] = newAlias
 	}
 	if inGroup {
@@ -612,12 +612,12 @@ func (c *core) reloadLocked() (configBytes, error) {
 	if bad, ok := doc.invalid["broker.alias"]; ok {
 		c.logger.Error("config: keeping the current alias; the file value is invalid", "error", bad)
 	} else if !doc.present["broker.alias"] {
-		newAlias := stringValue(defaultAlias(c.hostnameString(), effective))
+		newAlias := stringValue(c.defaultAliasLocked())
 		accepted := true
 		if !valueEqual(newAlias, values["broker.alias"]) {
-			// The effective alias was derived from the reloaded listen address.
-			// Run the broker.alias checks on it before adopting it; a rejected
-			// derived alias keeps the previous value.
+			// The file removed the explicit alias, so the default alias takes
+			// over. Run the broker.alias checks on it before adopting it; a
+			// rejected derived alias keeps the previous value.
 			for _, check := range c.validators["broker.alias"] {
 				if err := check(values["broker.alias"], newAlias); err != nil {
 					c.logger.Error("config: keeping the current alias; a validator rejected the derived alias", "key", "broker.alias", "error", err)
@@ -631,10 +631,9 @@ func (c *core) reloadLocked() (configBytes, error) {
 				candidate["broker.alias"] = newAlias
 				adoptions = append(adoptions, adoption{key: "broker.alias", old: aliasOld, new: aliasNew, audit: wasExplicit})
 			} else {
-				// Keeping the old alias means the listen address group must keep
-				// its old values too: the alias is derived from the listen
-				// address, so a later Load would otherwise derive the rejected
-				// alias again, before any validator is registered.
+				// Keeping the old alias keeps the listen address group at its old
+				// values as well, so the alias decision and the listener move
+				// together.
 				for _, name := range group {
 					candidate[name] = values[name]
 				}

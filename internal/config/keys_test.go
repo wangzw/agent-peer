@@ -75,11 +75,12 @@ func TestKeyTableCompleteAndDefaults(t *testing.T) {
 		t.Errorf("key %q is missing from the table", name)
 	}
 	got := defaultValue(keyTable["broker.alias"], defaultContext{
+		mode:     ModeUser,
 		hostname: "hostA",
-		listen:   listenAddr{set: true, all: true, port: 17443},
+		account:  "alice",
 	})
-	if got.String != "hostA-17443" {
-		t.Errorf("default alias = %q, want hostA-17443", got.String)
+	if got.String != "hostA.alice" {
+		t.Errorf("default alias = %q, want hostA.alice", got.String)
 	}
 }
 

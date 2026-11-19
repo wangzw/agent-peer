@@ -41,6 +41,7 @@ func newLoadTestCore(t *testing.T, home string, routes addressSource) *core {
 	c.homeDir = func() (string, error) { return home, nil }
 	c.euid = func() int { return os.Geteuid() }
 	c.hostname = func() (string, error) { return "hostA", nil }
+	c.accountName = func() (string, error) { return "tester", nil }
 	c.now = func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
 	c.routesSrc = watchTestRoutes{}
 	if routes != nil {
@@ -76,8 +77,8 @@ func TestLoadDefaults(t *testing.T) {
 	if want := (listenAddr{set: true, all: true, port: 17443}); c.effectiveListen != want {
 		t.Errorf("effectiveListen = %+v, want %+v", c.effectiveListen, want)
 	}
-	if got := c.values["broker.alias"].String; got != "hostA-17443" {
-		t.Errorf("broker.alias = %q, want hostA-17443", got)
+	if got := c.values["broker.alias"].String; got != "hostA.tester" {
+		t.Errorf("broker.alias = %q, want hostA.tester", got)
 	}
 	want := []AdvertisedAddr{{Kind: AdvertisedKindDirect, Addr: "192.0.2.20:17443"}}
 	if !sameAddresses(c.advertised, want) {
@@ -118,8 +119,8 @@ func TestREQBrokerConfig028_DefaultAndEmptyListen(t *testing.T) {
 		if len(c.advertised) != 0 {
 			t.Fatalf("advertised = %+v, want an empty list", c.advertised)
 		}
-		if got := c.values["broker.alias"].String; got != "hostA" {
-			t.Fatalf("broker.alias = %q, want hostA", got)
+		if got := c.values["broker.alias"].String; got != "hostA.tester" {
+			t.Fatalf("broker.alias = %q, want hostA.tester", got)
 		}
 	})
 }
@@ -481,7 +482,7 @@ func TestLoadAlias(t *testing.T) {
 		}
 	})
 
-	t.Run("without a configured alias the default follows the listener", func(t *testing.T) {
+	t.Run("without a configured alias the default combines hostname and account", func(t *testing.T) {
 		home := t.TempDir()
 		c := newLoadTestCore(t, home, oneRoute(t, "192.0.2.20"))
 		if err := c.load(ModeUser, ""); err != nil {
@@ -490,8 +491,8 @@ func TestLoadAlias(t *testing.T) {
 		if c.explicitAlias {
 			t.Error("explicitAlias = true, want false")
 		}
-		if got := c.effectiveAlias(); got != "hostA-17443" {
-			t.Fatalf("effectiveAlias() = %q, want hostA-17443", got)
+		if got := c.effectiveAlias(); got != "hostA.tester" {
+			t.Fatalf("effectiveAlias() = %q, want hostA.tester", got)
 		}
 	})
 }

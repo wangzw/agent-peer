@@ -40,6 +40,7 @@ func newValueCore(t *testing.T, body, override string) (*core, string) {
 	c.checkRuntime = func() (string, error) { return filepath.Join(home, "run"), nil }
 	c.homeDir = func() (string, error) { return home, nil }
 	c.hostname = func() (string, error) { return "hostA", nil }
+	c.accountName = func() (string, error) { return "tester", nil }
 	c.now = func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
 	c.routesSrc = watchTestRoutes{}
 	dir := filepath.Join(home, ".agent-peer")

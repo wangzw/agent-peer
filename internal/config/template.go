@@ -34,7 +34,7 @@ type templateExample struct {
 }
 
 var templateExamples = map[string]templateExample{
-	"broker.alias":              {value: "hostA-17443", runtime: true},
+	"broker.alias":              {value: "hostA.alice", runtime: true},
 	"broker.advertise":          {value: "203.0.113.5:17443"},
 	"broker.advertise_extra":    {value: "[203.0.113.5:17443]"},
 	"broker.local_socket_group": {value: "agent-peer"},

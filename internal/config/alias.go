@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"strconv"
+	"strings"
 )
 
 // AliasMaxLen is the maximum length of a Broker alias in bytes. It is the one
@@ -49,28 +49,81 @@ func validAlias(s string) error {
 	return nil
 }
 
-// defaultAlias derives the alias from the hostname and the effective listen
-// address. An unset listener yields up to AliasMaxLen characters of the
-// hostname; a set listener appends "-<port>" and truncates the hostname part so
-// the result is at most AliasMaxLen characters.
-func defaultAlias(hostname string, listen listenAddr) string {
-	host := sanitizeHostname(hostname)
-	if !listen.set {
-		if host == "" {
-			return "broker"
-		}
-		return truncateRunes(host, AliasMaxLen)
-	}
-	suffix := "-" + strconv.Itoa(listen.port)
-	maxHost := AliasMaxLen - len(suffix)
-	if maxHost < 0 {
-		maxHost = 0
-	}
-	host = truncateRunes(host, maxHost)
+// fallbackAlias is the default alias when no hostname can be read.
+const fallbackAlias = "broker"
+
+// defaultAlias derives the default alias for the deployment mode, the hostname
+// and the account name. The listen address, the listen port and the advertised
+// address play no part.
+//
+// A system-level alias is the first label of the hostname. A user-level alias
+// is that label, a dot and the account name. Characters outside the alias
+// character set are replaced by '-'. An empty hostname uses fallbackAlias for
+// the hostname part, and a user-level alias still appends the account. An
+// empty account name leaves the alias at the hostname part; the caller
+// substitutes the uid when the account lookup fails.
+//
+// The result is at most AliasMaxLen characters. When it is too long, the
+// hostname part is shortened first, down to one character; the account part is
+// shortened only while the result is still too long. A shortened part never
+// ends in "." or "-".
+func defaultAlias(mode Mode, hostname, account string) string {
+	host := firstLabel(sanitizeHostname(hostname))
 	if host == "" {
-		host = "broker"
+		host = fallbackAlias
 	}
-	return host + suffix
+	if mode != ModeUser {
+		if got := truncateAliasPart(host, AliasMaxLen); got != "" {
+			return got
+		}
+		return fallbackAlias
+	}
+
+	acct := sanitizeHostname(account)
+	if acct == "" {
+		if got := truncateAliasPart(host, AliasMaxLen); got != "" {
+			return got
+		}
+		return fallbackAlias
+	}
+	if len([]rune(host))+1+len([]rune(acct)) <= AliasMaxLen {
+		return host + "." + acct
+	}
+
+	maxHost := AliasMaxLen - 1 - len([]rune(acct))
+	if maxHost < 1 {
+		maxHost = 1
+	}
+	host = truncateAliasPart(host, maxHost)
+	if host == "" {
+		host = fallbackAlias
+	}
+	maxAcct := AliasMaxLen - 1 - len([]rune(host))
+	acct = truncateAliasPart(acct, maxAcct)
+	if acct == "" {
+		return host
+	}
+	return host + "." + acct
+}
+
+// firstLabel returns the part of the hostname before the first dot.
+func firstLabel(host string) string {
+	if i := strings.IndexByte(host, '.'); i >= 0 {
+		return host[:i]
+	}
+	return host
+}
+
+// truncateAliasPart shortens s to at most max characters, then drops trailing
+// dots and dashes from the shortened result.
+func truncateAliasPart(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	if len([]rune(s)) <= max {
+		return s
+	}
+	return strings.TrimRight(truncateRunes(s, max), ".-")
 }
 
 func truncateRunes(s string, n int) string {

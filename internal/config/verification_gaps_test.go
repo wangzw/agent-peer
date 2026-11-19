@@ -59,6 +59,7 @@ func newGapCore(t *testing.T, body, override string) (*core, string, error) {
 	c.checkRuntime = func() (string, error) { return filepath.Join(home, "run"), nil }
 	c.homeDir = func() (string, error) { return home, nil }
 	c.hostname = func() (string, error) { return "hostA", nil }
+	c.accountName = func() (string, error) { return "tester", nil }
 	c.now = func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
 	c.routesSrc = gapNoRoutes{}
 	dir := filepath.Join(home, ".agent-peer")
@@ -285,7 +286,8 @@ func TestREQBrokerConfig017_ReloadKeepsTheListenGroupTogether(t *testing.T) {
 }
 
 // REQ-broker-config-017: reload adopts a legal broker.listen change, updating
-// the effective listener, the default alias and the advertised addresses.
+// the effective listener and the advertised addresses; the default alias does
+// not depend on the listener and stays the same.
 func TestREQBrokerConfig017_ReloadAdoptsLegalListen(t *testing.T) {
 	routes := &gapRoutes{}
 	routes.set(gapAddr(t, "192.0.2.10"))
@@ -307,8 +309,8 @@ func TestREQBrokerConfig017_ReloadAdoptsLegalListen(t *testing.T) {
 	if port != 17444 {
 		t.Errorf("effective listen port = %d after adopting %q, want 17444", port, stored)
 	}
-	if alias != "hostA-17444" {
-		t.Errorf("broker.alias = %q after the listen change, want hostA-17444", alias)
+	if alias != "hostA.tester" {
+		t.Errorf("broker.alias = %q after the listen change, want the unchanged hostA.tester", alias)
 	}
 	if len(advertised) != 1 || advertised[0].Addr != "192.0.2.10:17444" {
 		t.Errorf("advertised addresses = %v after the listen change, want [192.0.2.10:17444]", advertised)

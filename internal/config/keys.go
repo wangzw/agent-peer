@@ -49,8 +49,9 @@ type listenAddr struct {
 }
 
 type defaultContext struct {
+	mode     Mode
 	hostname string
-	listen   listenAddr
+	account  string
 }
 
 func stringValue(s string) Value { return Value{Kind: KindString, String: s} }
@@ -319,7 +320,7 @@ func valueKindForSpec(spec *keySpec) ValueKind {
 
 func defaultValue(spec *keySpec, ctx defaultContext) Value {
 	if spec.Dynamic {
-		return stringValue(defaultAlias(ctx.hostname, ctx.listen))
+		return stringValue(defaultAlias(ctx.mode, ctx.hostname, ctx.account))
 	}
 	return copyValue(spec.Default)
 }

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"log/slog"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -73,65 +75,105 @@ func TestREQBrokerPairing028_HostnameSanitized(t *testing.T) {
 	})
 }
 
-// REQ-broker-pairing-002: with no configured alias, the default alias is the
-// sanitized hostname plus "-<listen port>"; without a listener it is the
-// hostname alone.
+// REQ-broker-pairing-002: with no configured alias, a system-level Broker's
+// default alias is the first label of the system hostname, and a user-level
+// Broker's alias is that label, a dot and the account name. The listen
+// address, the listen port and the advertised address play no part.
 func TestREQBrokerPairing002_DefaultAlias(t *testing.T) {
-	listenAll := listenAddr{set: true, all: true, port: 17443}
-	listenSpecific := listenAddr{set: true, host: "127.0.0.1", port: 17444}
 	tests := []struct {
 		name     string
+		mode     Mode
 		hostname string
-		listen   listenAddr
+		account  string
 		want     string
 	}{
-		{"hostname and port", "hostA", listenAll, "hostA-17443"},
-		{"hostname only", "hostA", listenAddr{}, "hostA"},
-		{"specific listener uses its port", "hostA", listenSpecific, "hostA-17444"},
-		{"empty hostname with port", "", listenAll, "broker-17443"},
-		{"empty hostname without listener", "", listenAddr{}, "broker"},
-		{"illegal characters are replaced", "host name", listenAll, "host-name-17443"},
+		{"system level uses the hostname", ModeSystem, "hostA", "alice", "hostA"},
+		{"system level ignores the account", ModeSystem, "hostA", "", "hostA"},
+		{"user level appends the account", ModeUser, "hostA", "alice", "hostA.alice"},
+		{"a domain name keeps its first label", ModeSystem, "hostA.example.com", "alice", "hostA"},
+		{"a domain name keeps its first label in user mode", ModeUser, "hostA.example.com", "alice", "hostA.alice"},
+		{"the hostname case is kept", ModeUser, "HostA.example.com", "Alice", "HostA.Alice"},
+		{"illegal hostname characters are replaced", ModeSystem, "work station", "", "work-station"},
+		{"illegal account characters are replaced", ModeUser, "hostA", "ali ce", "hostA.ali-ce"},
+		{"an empty hostname falls back to broker", ModeSystem, "", "alice", "broker"},
+		{"an empty hostname in user mode keeps the account", ModeUser, "", "alice", "broker.alice"},
+		{"an empty account in user mode leaves the hostname alone", ModeUser, "hostA", "", "hostA"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := defaultAlias(tc.hostname, tc.listen); got != tc.want {
-				t.Fatalf("defaultAlias(%q, %+v) = %q, want %q", tc.hostname, tc.listen, got, tc.want)
+			if got := defaultAlias(tc.mode, tc.hostname, tc.account); got != tc.want {
+				t.Fatalf("defaultAlias(%d, %q, %q) = %q, want %q", tc.mode, tc.hostname, tc.account, got, tc.want)
 			}
 		})
 	}
 }
 
-// REQ-broker-pairing-037: the default alias is at most 24 characters. When a
-// listener is configured, the "-<port>" suffix is kept and the hostname part
-// is shortened to make room for it.
+// REQ-broker-pairing-037: the default alias is at most 24 characters. The
+// hostname part is shortened first, down to one character; the account part
+// is shortened only when the result is still too long. A shortened part never
+// ends in "." or "-".
 func TestREQBrokerPairing037_AliasTruncation(t *testing.T) {
 	longHost := strings.Repeat("a", 30)
 	tests := []struct {
 		name     string
+		mode     Mode
 		hostname string
-		listen   listenAddr
+		account  string
 		want     string
 	}{
 		{
-			name:     "without a listener the hostname is cut at 24",
+			name:     "system level cuts the hostname at 24",
+			mode:     ModeSystem,
 			hostname: longHost,
 			want:     strings.Repeat("a", 24),
 		},
 		{
-			name:     "with a listener the port suffix survives",
+			name:     "user level makes room for the account",
+			mode:     ModeUser,
 			hostname: longHost,
-			listen:   listenAddr{set: true, all: true, port: 17443},
-			want:     strings.Repeat("a", 18) + "-17443",
+			account:  "alice",
+			want:     strings.Repeat("a", 18) + ".alice",
+		},
+		{
+			name:     "the hostname keeps one character before the account is cut",
+			mode:     ModeUser,
+			hostname: longHost,
+			account:  strings.Repeat("b", 30),
+			want:     "a." + strings.Repeat("b", 22),
+		},
+		{
+			name:     "a truncated hostname drops a trailing dash",
+			mode:     ModeUser,
+			hostname: strings.Repeat("a", 17) + "-" + strings.Repeat("b", 9),
+			account:  "alice",
+			want:     strings.Repeat("a", 17) + ".alice",
+		},
+		{
+			name:     "a truncated account drops a trailing dash",
+			mode:     ModeUser,
+			hostname: "hostA",
+			account:  strings.Repeat("b", 21) + "-xyz",
+			want:     "h." + strings.Repeat("b", 21),
+		},
+		{
+			name:     "a truncated account drops a trailing dot",
+			mode:     ModeUser,
+			hostname: "hostA",
+			account:  strings.Repeat("b", 21) + ".xyz",
+			want:     "h." + strings.Repeat("b", 21),
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := defaultAlias(tc.hostname, tc.listen)
+			got := defaultAlias(tc.mode, tc.hostname, tc.account)
 			if got != tc.want {
 				t.Fatalf("defaultAlias() = %q, want %q", got, tc.want)
 			}
-			if n := len([]rune(got)); n > 24 {
-				t.Fatalf("defaultAlias() length = %d, want at most 24: %q", n, got)
+			if n := len([]rune(got)); n > AliasMaxLen {
+				t.Fatalf("defaultAlias() length = %d, want at most %d: %q", n, AliasMaxLen, got)
+			}
+			if strings.HasSuffix(got, ".") || strings.HasSuffix(got, "-") {
+				t.Fatalf("defaultAlias() = %q, want a result that does not end in . or -", got)
 			}
 		})
 	}
@@ -186,6 +228,11 @@ func TestAliasValidationNamesInvalidCharactersFirst(t *testing.T) {
 	}
 }
 
+func testAliasLogger() (*slog.Logger, *bytes.Buffer) {
+	buf := &bytes.Buffer{}
+	return slog.New(slog.NewTextHandler(buf, nil)), buf
+}
+
 func TestEffectiveAlias(t *testing.T) {
 	t.Run("configured alias wins", func(t *testing.T) {
 		c := &core{
@@ -197,24 +244,117 @@ func TestEffectiveAlias(t *testing.T) {
 		}
 	})
 
-	t.Run("no configured alias follows the listener", func(t *testing.T) {
+	t.Run("user level combines the hostname and the account regardless of the listener", func(t *testing.T) {
 		c := &core{
-			hostname:        func() (string, error) { return "hostA", nil },
-			effectiveListen: listenAddr{set: true, all: true, port: 17443},
+			mode:            ModeUser,
+			hostname:        func() (string, error) { return "hostA.example.com", nil },
+			accountName:     func() (string, error) { return "alice", nil },
+			effectiveListen: listenAddr{set: true, host: "127.0.0.1", port: 17444},
+			advertised:      []AdvertisedAddr{{Kind: AdvertisedKindDirect, Addr: "a.example:443"}},
 			values:          make(map[string]Value),
 		}
-		if got := c.effectiveAlias(); got != "hostA-17443" {
-			t.Fatalf("effectiveAlias() = %q, want hostA-17443", got)
+		if got := c.effectiveAlias(); got != "hostA.alice" {
+			t.Fatalf("effectiveAlias() = %q, want hostA.alice", got)
 		}
 	})
 
-	t.Run("no listener and no hostname falls back to broker", func(t *testing.T) {
+	t.Run("system level uses the hostname and never looks up an account", func(t *testing.T) {
 		c := &core{
-			hostname: func() (string, error) { return "", nil },
-			values:   make(map[string]Value),
+			mode:        ModeSystem,
+			hostname:    func() (string, error) { return "hostA.example.com", nil },
+			accountName: func() (string, error) { return "", errors.New("must not be called") },
+			values:      make(map[string]Value),
+			logger:      slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)),
+		}
+		if got := c.effectiveAlias(); got != "hostA" {
+			t.Fatalf("effectiveAlias() = %q, want hostA", got)
+		}
+	})
+
+	t.Run("an unavailable account falls back to the uid with a warning", func(t *testing.T) {
+		logger, buf := testAliasLogger()
+		c := &core{
+			mode:        ModeUser,
+			hostname:    func() (string, error) { return "hostA", nil },
+			accountName: func() (string, error) { return "", errors.New("account database unavailable") },
+			values:      make(map[string]Value),
+			logger:      logger,
+		}
+		want := "hostA." + strconv.Itoa(os.Geteuid())
+		if got := c.effectiveAlias(); got != want {
+			t.Fatalf("effectiveAlias() = %q, want %q", got, want)
+		}
+		logged := buf.String()
+		if !strings.Contains(logged, "level=WARN") {
+			t.Fatalf("log = %q, want a warning entry", logged)
+		}
+		if !strings.Contains(logged, "account name") || !strings.Contains(logged, strconv.Itoa(os.Geteuid())) {
+			t.Fatalf("log = %q, want it to name the account lookup failure and the substituting uid", logged)
+		}
+	})
+
+	t.Run("an empty account name falls back to the uid", func(t *testing.T) {
+		logger, buf := testAliasLogger()
+		c := &core{
+			mode:        ModeUser,
+			hostname:    func() (string, error) { return "hostA", nil },
+			accountName: func() (string, error) { return "", nil },
+			values:      make(map[string]Value),
+			logger:      logger,
+		}
+		want := "hostA." + strconv.Itoa(os.Geteuid())
+		if got := c.effectiveAlias(); got != want {
+			t.Fatalf("effectiveAlias() = %q, want %q", got, want)
+		}
+		if !strings.Contains(buf.String(), "level=WARN") {
+			t.Fatalf("log = %q, want a warning entry", buf.String())
+		}
+	})
+
+	t.Run("an empty hostname in user mode keeps the account", func(t *testing.T) {
+		c := &core{
+			mode:        ModeUser,
+			hostname:    func() (string, error) { return "", nil },
+			accountName: func() (string, error) { return "alice", nil },
+			values:      make(map[string]Value),
+		}
+		if got := c.effectiveAlias(); got != "broker.alice" {
+			t.Fatalf("effectiveAlias() = %q, want broker.alice", got)
+		}
+	})
+
+	t.Run("an empty hostname and an unavailable account use broker and the uid", func(t *testing.T) {
+		logger, buf := testAliasLogger()
+		c := &core{
+			mode:        ModeUser,
+			hostname:    func() (string, error) { return "", nil },
+			accountName: func() (string, error) { return "", errors.New("account database unavailable") },
+			values:      make(map[string]Value),
+			logger:      logger,
+		}
+		want := fallbackAlias + "." + strconv.Itoa(os.Geteuid())
+		if got := c.effectiveAlias(); got != want {
+			t.Fatalf("effectiveAlias() = %q, want %q", got, want)
+		}
+		if !strings.Contains(buf.String(), "level=WARN") {
+			t.Fatalf("log = %q, want a warning entry", buf.String())
+		}
+	})
+
+	t.Run("an unreadable hostname falls back to broker", func(t *testing.T) {
+		logger, buf := testAliasLogger()
+		c := &core{
+			mode:        ModeSystem,
+			hostname:    func() (string, error) { return "", errors.New("hostname unavailable") },
+			accountName: func() (string, error) { return "", nil },
+			values:      make(map[string]Value),
+			logger:      logger,
 		}
 		if got := c.effectiveAlias(); got != "broker" {
 			t.Fatalf("effectiveAlias() = %q, want broker", got)
+		}
+		if logged := buf.String(); !strings.Contains(logged, "hostname") {
+			t.Fatalf("log = %q, want it to name the hostname failure", logged)
 		}
 	})
 }

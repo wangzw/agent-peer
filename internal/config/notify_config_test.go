@@ -58,6 +58,7 @@ func newNCCore(t *testing.T, body string, routes addressSource) (*core, string) 
 	c.checkRuntime = func() (string, error) { return filepath.Join(home, "run"), nil }
 	c.homeDir = func() (string, error) { return home, nil }
 	c.hostname = func() (string, error) { return "hostA", nil }
+	c.accountName = func() (string, error) { return "tester", nil }
 	c.now = func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
 	c.routesSrc = ncNoRoutes{}
 	if routes != nil {
@@ -213,19 +214,27 @@ func TestConfigNotificationSetUnrelatedKeyDoesNotNotifyAdvertised(t *testing.T) 
 }
 
 // TestConfigNotificationSetListenNotifiesDefaultAlias checks that a listen
-// change moves the default alias and notifies its subscribers, while an
-// explicit alias stays put and produces no notification.
+// change leaves the default alias alone, because the alias does not depend on
+// the listener. An explicit alias stays put and produces no notification
+// either.
 func TestConfigNotificationSetListenNotifiesDefaultAlias(t *testing.T) {
-	t.Run("default alias follows the listen port", func(t *testing.T) {
+	t.Run("default alias does not follow the listen port", func(t *testing.T) {
 		c, _ := newNCCore(t, "broker:\n  listen: 127.0.0.1:7777\n", nil)
 		alias := make(chan ncKeyEvent, 4)
+		advertised := make(chan ncAdvEvent, 4)
 		ncSubscribeKey(c, "broker.alias", alias)
+		ncSubscribeAdvertised(c, advertised)
 
 		ncSet(t, c, "broker.listen", stringValue("127.0.0.1:8888"))
 
-		event := ncWaitKey(t, alias)
-		if event.old.String != "hostA-7777" || event.new.String != "hostA-8888" {
-			t.Fatalf("alias notification old/new = %q/%q, want hostA-7777/hostA-8888", event.old.String, event.new.String)
+		// The advertised notification is enqueued after the alias one in
+		// setLocked, so receiving it proves a stray alias notification would
+		// already have been delivered.
+		ncWaitAdvertised(t, advertised)
+		select {
+		case event := <-alias:
+			t.Fatalf("a listener-independent alias was notified: old=%q new=%q", event.old.String, event.new.String)
+		default:
 		}
 	})
 

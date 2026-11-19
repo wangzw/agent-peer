@@ -64,7 +64,7 @@ func TestREQBrokerConfig006_SetWritesAudit(t *testing.T) {
 	err := log.append(Event{
 		Time:    when,
 		Event:   EventConfigSet,
-		Actor:   "buildbox-17443/ana",
+		Actor:   "buildbox.ana/ana",
 		Account: "ana",
 		Key:     "broker.alias",
 		Old:     &oldValue,
@@ -88,7 +88,7 @@ func TestREQBrokerConfig006_SetWritesAudit(t *testing.T) {
 	if got.Event != EventConfigSet {
 		t.Errorf("event = %q, want %q", got.Event, EventConfigSet)
 	}
-	if got.Actor != "buildbox-17443/ana" || got.Account != "ana" {
+	if got.Actor != "buildbox.ana/ana" || got.Account != "ana" {
 		t.Errorf("actor/account = %q/%q", got.Actor, got.Account)
 	}
 	if got.Key != "broker.alias" {
@@ -203,7 +203,7 @@ func TestREQBrokerConfig007_ActorAccountPeer(t *testing.T) {
 	if err := log.append(Event{
 		Time:    when,
 		Event:   EventPairingSucceeded,
-		Actor:   "buildbox-17443/ana",
+		Actor:   "buildbox.ana/ana",
 		Account: "ana",
 		Peer:    &PeerRef{Fingerprint: fingerprint, Alias: "peer-17443"},
 	}); err != nil {
@@ -225,7 +225,7 @@ func TestREQBrokerConfig007_ActorAccountPeer(t *testing.T) {
 	if len(events) != 2 {
 		t.Fatalf("got %d events, want 2", len(events))
 	}
-	if events[0].Actor != "buildbox-17443/ana" || events[0].Account != "ana" {
+	if events[0].Actor != "buildbox.ana/ana" || events[0].Account != "ana" {
 		t.Errorf("actor/account = %q/%q", events[0].Actor, events[0].Account)
 	}
 	if events[0].Peer == nil {

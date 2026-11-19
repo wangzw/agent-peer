@@ -38,7 +38,7 @@ func TestTemplateModesParseAndLoadDefaults(t *testing.T) {
 			}
 
 			c, _ := newValueCore(t, string(body), "")
-			ctx := defaultContext{hostname: "hostA", listen: c.effectiveListen}
+			ctx := defaultContext{mode: c.mode, hostname: c.hostnameString(), account: c.accountString()}
 			for _, name := range allKeyNames() {
 				spec, _ := lookupKey(name)
 				want := defaultValue(spec, ctx)
