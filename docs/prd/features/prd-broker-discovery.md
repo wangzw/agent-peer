@@ -118,7 +118,7 @@ Agent 必须能列出本机 Broker 已知的全部 Broker，包括全部对端�
 
 - **验收**：本 Broker 有两个不公开的对端，一个由本方发起配对，另一个向本方发起配对；本 Broker 另持有一张非对端的名片。结果同时包含这三个 Broker，每一项都带有该 Broker 的对外地址列表，不知道其对外地址的，列表为空；由本方发起配对的对端标明本方是拨号方，向本方发起配对的对端标明本方是接受方。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-discovery-012 peers listed` 覆盖对端与角色；非对端名片那一半由“名片与公开 topic”单元的端到端测试补。
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-discovery-012 peers listed` 覆盖对端与角色；非对端名片那一半由 `test/e2e/discovery_test.go` 的 `TestDiscoveryCardReachesWholeNetwork` 覆盖。
 
 ### REQ-broker-discovery-013
 
@@ -134,7 +134,7 @@ Agent 必须能列出本机 Broker 已知的全部 Broker，包括全部对端�
 
 - **验收**：结果中标为对端的 Broker 与本 Broker 当前的对端完全一致；解除配对后，该 Broker 不再标为对端。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-discovery-014 peer flag` 覆盖对端；非对端一半待“名片与公开 topic”单元的端到端测试补。
+- **端到端测试**：`test/e2e/links_test.go` 的 `TestLinks/REQ-broker-discovery-014 peer flag` 覆盖对端；非对端一半由 `test/e2e/discovery_test.go` 的 `TestDiscoveryCardReachesWholeNetwork` 覆盖。
 
 ### REQ-broker-discovery-015
 
