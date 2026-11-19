@@ -105,7 +105,7 @@
 | 以实验确认停用 MCP 服务时 MCP 服务进程依次收到 SIGINT、SIGTERM，重新启用时启动新进程 | `REQ-agent-messaging-034` | M1 | 已确认（GitHub 托管的 Linux x64 runner，Claude Code v2.1.311，2026-11-19）：停用 MCP 服务时进程依次收到 SIGINT、约 100 毫秒后 SIGTERM、约 401 毫秒后被 SIGKILL；重新启用后启动新进程，注销与重新登记以相同身份完成。 |
 | 以实验确认接收方的限速与去重：经同一个 Broker 写入的消息共用一个令牌桶，容量 30，每秒补充 0.5 个；同一写入进程 30 秒内发来与上一条内容完全相同的消息时后一条被丢弃；未处理的会话间消息至多排队 50 条 | Agent 消息的假设与依赖 | M2 | 已确认（GitHub 托管的 Linux x64 runner，Claude Code v2.1.311，2026-11-19）：令牌桶容量 30、每秒补充约 0.5 个，同一写入进程 30 秒内相同内容的后一条被丢弃；未处理消息的排队上限按队列峰值深度计为 50，回合进行中入队的消息被 Claude Code remove，未成为用户记录。 |
 | 以实验确认 `CleanSignature` 去掉的不可见字符集与真实接收方一致 | `REQ-agent-messaging-022`、`REQ-agent-messaging-029`、`REQ-agent-messaging-037` | 真实会话验证 | 已确认（GitHub 托管的 Linux x64 runner，Claude Code v2.1.311，2026-11-19）：接收方去掉的字符集是本系统 `CleanSignature` 去掉的字符集的子集，本系统多删的方向安全；v2.1.311 保留而本系统删除的有中间的 U+00A0、U+E000、U+0378、U+3164 与反斜杠。`CleanSignature` 的规则依据是 v2.1.327 的程序分析。 |
-| macOS 上 LaunchAgent 在登录后启动用户级 Broker 并恢复链路，由有 macOS 的人手工验证 | `REQ-broker-config-015` | M4 | 无法验证：探查只在 GitHub 托管的 Linux x64 runner 上运行，没有可用的 macOS 主机。 |
+| macOS 上 LaunchAgent 启动用户级 Broker | `REQ-broker-config-015` | M4 | 已确认（GitHub 托管的 macOS runner，2026-11-19）：`make e2e-darwin` 的用户级用例验证安装后 Broker 立即运行、`agent-peer status` 可连，卸载后进程消失、plist 删除；`TestUserServiceRestoresLinkAfterRelogin` 以 bootout/bootstrap 模拟登录，断言出现新 pid 且对端链路恢复为已连接。 |
 
 Claude Code 每次升级后，核对 inbox 帧格式与会话注册表的字段是否仍与观测记录一致。
 

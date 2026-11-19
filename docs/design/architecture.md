@@ -135,7 +135,7 @@ MCP 服务进程由 Claude Code 作为会话的子进程启动，生命周期与
 | 进程 | 启动方式 | 数量 | 监听 |
 |---|---|---|---|
 | 系统级 Broker，`agent-peer broker --system` | 由管理员安装的系统服务启动，以 root 运行 | 每台主机至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
-| 用户级 Broker，`agent-peer broker` | MCP 服务进程找不到可用的 Broker 时拉起并使其脱离会话的进程树，或由随登录启动的用户级服务启动 | 每个账户至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
+| 用户级 Broker，`agent-peer broker` | MCP 服务进程找不到可用的 Broker 时拉起并使其脱离会话的进程树，或由用户级服务启动；服务安装后立即启动 Broker，此后随登录启动 | 每个账户至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
 | 辅助进程 | 系统级 Broker 按需派生（`agent-peer internal account-helper`），切换到被服务的账户后运行 | 每个被服务的账户一个 | 无 |
 | 权限检查进程 | 系统级 Broker 每次判定调用方对配置文件的权限时派生（`agent-peer internal access-check`），以 root 执行后只把有效身份切换到调用方账户，检查后即退出 | 按需 | 无 |
 | MCP 服务进程，`agent-peer mcp` | Claude Code 按会话的工具配置启动 | 每会话一个 | 无 |
@@ -143,7 +143,7 @@ MCP 服务进程由 Claude Code 作为会话的子进程启动，生命周期与
 
 默认配置下 `broker.listen` 是 `:17443`，Broker 在本机全部地址的 17443 端口上监听，启用了 IPv6 时包括 IPv6 地址（[ADR-listen-by-default](../adr/adr-listen-by-default.md)，`REQ-broker-config-028`）；这个端口只是默认配置中的取值，代码不为任何端口设特例。同一主机上第二个账户的 Broker 按默认配置启动时，监听地址已被占用，它启动失败并报告该地址不可用，由用户在启动参数 `--listen` 或配置中改用其他地址或端口（`REQ-broker-config-024`、`REQ-broker-config-025`）。`--listen` 只作用于本次运行，不读写配置文件，其间经工具修改监听地址的调用失败（`REQ-broker-config-029`）。其他 Broker 连接它时使用它的对外地址，默认是默认路由所在接口的地址，每个地址都配上监听端口（[ADR-advertised-address](../adr/adr-advertised-address.md)，`REQ-broker-config-030`）。
 
-各类文件的位置随形态而定，完整的路径表见 [config](modules/design-config.md)：用户级的配置、数据与审计日志在账户的 `~/.agent-peer/` 下，系统级的分别在 `/etc/agent-peer/`、`/var/lib/agent-peer/` 与 `/var/log/agent-peer/` 下；运行时目录内有本机 socket 和账户锁，账户锁是保证同一账户至多运行一个 Broker 实例的锁文件；运行时目录只取决于账户，与形态、配置内容、监听地址和环境变量无关。系统级服务在 macOS 上是 launchd 的守护进程，在 Linux 上是 systemd 的系统单元；用户级服务在 macOS 上是 launchd 的用户代理，在 Linux 上是 systemd 的用户单元。
+各类文件的位置随形态而定，完整的路径表见 [config](modules/design-config.md)：用户级的配置、数据与审计日志在账户的 `~/.agent-peer/` 下，系统级的分别在 `/etc/agent-peer/`、`/var/lib/agent-peer/` 与 `/var/log/agent-peer/` 下；运行时目录内有本机 socket 和账户锁，账户锁是保证同一账户至多运行一个 Broker 实例的锁文件；运行时目录只取决于账户，与形态、配置内容、监听地址和环境变量无关。系统级服务在 macOS 上是 launchd 的守护进程，在 Linux 上是 systemd 的系统单元；用户级服务在 macOS 上是 launchd 的用户代理，在 Linux 上是 systemd 的用户单元。两种服务都在安装时立即启动 Broker 并等待本机 socket 应答；卸载先停止服务再删除服务定义，配置、身份与审计日志保留。
 
 MCP 服务进程连接哪个 Broker 按固定的顺序确定：环境变量指定的、本账户正在运行的用户级 Broker、本账户有权连接的系统级 Broker，都没有时拉起用户级 Broker（`REQ-broker-config-026`）。MCP 服务进程不拉起系统级 Broker。
 
