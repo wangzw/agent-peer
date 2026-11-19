@@ -517,4 +517,4 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 配对与对端管理的本机调用 | 已实现 | `internal/broker/connect_rpc.go`、`internal/broker/disconnect_rpc.go`、`internal/broker/pairkey_rpc.go`、`internal/broker/listbrokers.go`、`internal/broker/peerinfo.go`；非对端的列出由名片与公开 topic 接入 |
 | 配置读写与审计的本机调用 | 已实现 | `internal/broker/configrpc.go`、`internal/broker/auditrpc.go` |
 | 终端命令 | 已实现 | `cmd/agent-peer`、`internal/mcpserver/termcmd`、`cmd/agent-peer/service_cmd.go` |
-| 更新检查与自我更新 | 未实现 | — |
+| 更新检查与自我更新 | 已实现 | `internal/broker/updatecheck.go`（`startUpdateChecks`、`checkForUpdate`、`UpdateStatus`）、`internal/broker/update/`（`Latest`、`Newer`、`Apply`）、`internal/broker/service/restart.go`（`Restart`）、`cmd/agent-peer/update_cmd.go` |
