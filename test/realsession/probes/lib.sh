@@ -644,6 +644,21 @@ rs_ready_criterion() {
 	return 1
 }
 
+# rs_accept_trust_dialog answers the workspace trust dialog shown in the pane.
+# It is separate from rs_wait_ready so the key choice can be tested without a
+# tmux server. The dialog focuses "No, exit" when the probe root resolves
+# through a symlink, which /tmp does on macOS (/private/tmp); Enter alone would
+# then end the session. The cursor moves to the trust entry only when the
+# marker sits on the refusal, so the Linux behavior is unchanged.
+rs_accept_trust_dialog() {
+	local window="$1" pane="$2"
+	if printf '%s\n' "$pane" | grep -qF -- '❯ No, exit'; then
+		rs_keys "$window" Down Enter
+	else
+		rs_keys "$window" Enter
+	fi
+}
+
 # rs_wait_ready polls a window until the TUI reaches its input composer and no
 # dialog is on screen. A trust dialog is accepted with Enter; the
 # bypass-permissions warning opens focused on "No, exit", so it is accepted
@@ -664,7 +679,7 @@ rs_wait_ready() {
 		if printf '%s\n' "$pane" | grep -qiE -- 'Quick safety check|Yes, I trust this folder|Do you trust the files|Yes, I trust'; then
 			dialogs=$((dialogs + 1))
 			printf '%s\n' "$pane" >"$OUT/dialog-$window-$dialogs.txt"
-			rs_keys "$window" Enter
+			rs_accept_trust_dialog "$window" "$pane"
 			sleep 1
 			continue
 		fi

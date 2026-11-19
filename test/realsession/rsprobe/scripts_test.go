@@ -500,6 +500,55 @@ func TestLibExportsRSRoot(t *testing.T) {
 	}
 }
 
+// TestRsAcceptTrustDialogChoosesTheFocusableEntry checks how the library
+// answers the workspace trust dialog. On macOS the probe root's /tmp resolves
+// to /private/tmp, so the trust entry written for the literal path does not
+// match and Claude Code shows the dialog with "No, exit" focused; pressing
+// Enter then ends the session instead of starting it. The helper must move to
+// the trust entry in that case and keep the plain Enter otherwise.
+func TestRsAcceptTrustDialogChoosesTheFocusableEntry(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	record := filepath.Join(root, "keys.txt")
+	stub := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + record + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(stub), 0o755); err != nil {
+		t.Fatalf("writing the tmux stub: %v", err)
+	}
+
+	// The macOS dialog focuses "No, exit"; a dialog that focuses the trust
+	// entry keeps the old single Enter.
+	refusalFocused := "Quick safety check\n ❯ No, exit\n   Yes, I trust this folder\n Enter to confirm"
+	trustFocused := "Do you trust the files in this folder?\n ❯ Yes, I trust this folder\n"
+
+	script := `source "$1"; rs_accept_trust_dialog w "$2"; rs_accept_trust_dialog w "$3"`
+	cmd := exec.Command("bash", "-c", script, "bash", lib, refusalFocused, trustFocused)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=selftest",
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("calling rs_accept_trust_dialog: %v\n%s", err, out)
+	}
+
+	data, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("reading the recorded keys: %v", err)
+	}
+	want := "-L agent-peer-rs send-keys -t w Down Enter\n-L agent-peer-rs send-keys -t w Enter\n"
+	if got := string(data); got != want {
+		t.Errorf("keys sent = %q, want %q", got, want)
+	}
+}
+
 // TestRsHostaRecvWritesArtifactSafeName checks the local receive-log name. The
 // Agent name may contain characters an artifact upload rejects, such as the
 // "<" in "a<b", and the log of such an Agent must still be uploadable without
