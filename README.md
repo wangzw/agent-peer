@@ -107,6 +107,10 @@ Start two sessions in the same project directory. Both join the same default top
 
 At least one of the two hosts must be able to reach port 17443 on the other. On the host that can be reached, ask the model to call `create_pairing_key`, and pass the key and the displayed address to the other host through a channel outside the system. On the other host, ask the model to call `connect_broker` with the `address` and the `key`. After that, sessions on both hosts that share a topic can see each other.
 
+The same pairing works from a terminal: on the host that can be reached, run `agent-peer pairing-key create`; on the other host, run `agent-peer peer connect <address> --key <key>`.
+
+On a system-level Broker, an ordinary account has no write permission on the configuration file, so a session cannot create a pairing key. Ask the administrator to run `sudo agent-peer pairing-key create` and pass the key on.
+
 ### Tools
 
 | Tool | Description |
