@@ -177,19 +177,53 @@ func AccountUID(t *testing.T, account string) uint32 {
 // with its primary uid and gid.
 func accountIDs(t *testing.T, account string) (*user.User, uint32, uint32) {
 	t.Helper()
-	u, err := user.Lookup(account)
+	u, uid, gid, err := systemAccount(account)
 	if err != nil {
 		t.Fatalf("syscontainer: looking up account %q: %v", account, err)
 	}
+	return u, uid, gid
+}
+
+// systemAccount looks account up in the account database. The test binary is
+// built without cgo as well, so os/user sees only /etc/passwd; when it misses,
+// getent reaches the other NSS sources the image configures.
+func systemAccount(account string) (*user.User, uint32, uint32, error) {
+	u, err := user.Lookup(account)
+	if err != nil {
+		u, err = getentUser(account)
+		if err != nil {
+			return nil, 0, 0, err
+		}
+	}
 	uid, err := strconv.ParseUint(u.Uid, 10, 32)
 	if err != nil {
-		t.Fatalf("syscontainer: account %q has a non-numeric uid %q", account, u.Uid)
+		return nil, 0, 0, fmt.Errorf("account %q has a non-numeric uid %q", account, u.Uid)
 	}
 	gid, err := strconv.ParseUint(u.Gid, 10, 32)
 	if err != nil {
-		t.Fatalf("syscontainer: account %q has a non-numeric gid %q", account, u.Gid)
+		return nil, 0, 0, fmt.Errorf("account %q has a non-numeric gid %q", account, u.Gid)
 	}
-	return u, uint32(uid), uint32(gid)
+	return u, uint32(uid), uint32(gid), nil
+}
+
+// getentUser reads one passwd entry through getent.
+func getentUser(account string) (*user.User, error) {
+	out, err := exec.Command("getent", "passwd", account).Output()
+	if err != nil {
+		return nil, fmt.Errorf("getent passwd %s: %w", account, err)
+	}
+	line := strings.TrimSuffix(string(out), "\n")
+	fields := strings.Split(line, ":")
+	if strings.Contains(line, "\n") || len(fields) != 7 || fields[0] != account {
+		return nil, fmt.Errorf("getent passwd %s: unexpected output %q", account, line)
+	}
+	return &user.User{
+		Username: fields[0],
+		Uid:      fields[2],
+		Gid:      fields[3],
+		Name:     fields[4],
+		HomeDir:  fields[5],
+	}, nil
 }
 
 // RunAs runs the release agent-peer binary as account ("root" is allowed) and
@@ -254,26 +288,18 @@ func Command(account string, env []string, name string, args ...string) *exec.Cm
 // lookupAccount is Command's account lookup. Command has no *testing.T, so a
 // missing account panics; every account it is used with comes from the image.
 func lookupAccount(account string) (*user.User, uint32, uint32) {
-	u, err := user.Lookup(account)
+	u, uid, gid, err := systemAccount(account)
 	if err != nil {
 		panic(fmt.Sprintf("syscontainer: looking up account %q: %v", account, err))
 	}
-	uid, err := strconv.ParseUint(u.Uid, 10, 32)
-	if err != nil {
-		panic(fmt.Sprintf("syscontainer: account %q has a non-numeric uid %q", account, u.Uid))
-	}
-	gid, err := strconv.ParseUint(u.Gid, 10, 32)
-	if err != nil {
-		panic(fmt.Sprintf("syscontainer: account %q has a non-numeric gid %q", account, u.Gid))
-	}
-	return u, uint32(uid), uint32(gid)
+	return u, uid, gid
 }
 
 // accountGroups returns the supplementary groups of u.
 func accountGroups(u *user.User) []uint32 {
 	ids, err := u.GroupIds()
 	if err != nil {
-		return nil
+		ids = getentGroupIDs(u.Username)
 	}
 	groups := make([]uint32, 0, len(ids))
 	for _, id := range ids {
@@ -284,6 +310,20 @@ func accountGroups(u *user.User) []uint32 {
 		groups = append(groups, uint32(n))
 	}
 	return groups
+}
+
+// getentGroupIDs reads an account's group list through getent, for a test
+// binary whose os/user cannot see the extrausers source.
+func getentGroupIDs(name string) []string {
+	out, err := exec.Command("getent", "initgroups", name).Output()
+	if err != nil {
+		return nil
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 || fields[0] != name {
+		return nil
+	}
+	return fields[1:]
 }
 
 // writeSystemConfig writes configYAML to the system configuration file, owned

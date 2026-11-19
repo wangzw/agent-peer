@@ -20,12 +20,33 @@ RUN apt-get update \
         dbus \
         dbus-user-session \
         libpam-systemd \
+        libnss-extrausers \
         acl \
  && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 2001 agentpeer-users \
  && groupadd --gid 2002 agentpeer-admins \
  && usermod -aG agentpeer-users peer
+
+# diruser and dirgroup exist only in the extrausers source, not in /etc/passwd
+# or /etc/group. A static Go binary that reads those files directly cannot see
+# them; the account database tests require the Broker to resolve them through
+# NSS. dirshare is a supplementary group of diruser, never its primary group,
+# so only an initgroups lookup can grant access through it.
+RUN mkdir -p /var/lib/extrausers \
+ && printf 'diruser:x:2100:2100:Directory Services User:/home/diruser:/bin/sh\n' \
+        > /var/lib/extrausers/passwd \
+ && printf 'dirgroup:x:2100:\ndirshare:x:2101:diruser\n' > /var/lib/extrausers/group \
+ && chmod 0644 /var/lib/extrausers/passwd /var/lib/extrausers/group \
+ && mkdir -p /home/diruser \
+ && chown 2100:2100 /home/diruser \
+ && chmod 0755 /home/diruser \
+ && sed -i -E \
+        -e 's/^(passwd:[[:space:]]*).*/\1files extrausers/' \
+        -e 's/^(group:[[:space:]]*).*/\1files extrausers/' \
+        /etc/nsswitch.conf \
+ && grep -Eq '^passwd:[[:space:]]+files[[:space:]]+extrausers' /etc/nsswitch.conf \
+ && grep -Eq '^group:[[:space:]]+files[[:space:]]+extrausers' /etc/nsswitch.conf
 
 STOPSIGNAL SIGRTMIN+3
 ENTRYPOINT []

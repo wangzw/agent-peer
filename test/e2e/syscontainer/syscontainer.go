@@ -131,16 +131,22 @@ func systemImage(t *testing.T) string {
 
 	base := harness.Image(t)
 	systemImageOnce.Do(func() {
-		tag := "agent-peer-e2e-system:" + shortHash(base)
+		dir, err := composeDir()
+		if err != nil {
+			t.Fatalf("syscontainer: %v", err)
+		}
+		// The tag covers the system Dockerfile as well as the base image: a
+		// change confined to the system layer must not reuse an older image.
+		dockerfile, err := os.ReadFile(filepath.Join(dir, "Dockerfile"))
+		if err != nil {
+			t.Fatalf("syscontainer: reading the system Dockerfile: %v", err)
+		}
+		tag := "agent-peer-e2e-system:" + shortHash(base+"\x00"+string(dockerfile))
 		if imageExists(tag) {
 			systemImageTag = tag
 			return
 		}
 
-		dir, err := composeDir()
-		if err != nil {
-			t.Fatalf("syscontainer: %v", err)
-		}
 		cmd := exec.Command("docker", "build",
 			"--build-arg", "BASE="+base,
 			"-t", tag,
