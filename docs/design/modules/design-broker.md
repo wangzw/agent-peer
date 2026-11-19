@@ -137,6 +137,8 @@ service Local {
 
 `service install` 写入服务定义、启用服务并立即启动 Broker，随后用本机 socket 轮询 Broker 是否应答，上限为 20 秒。上限覆盖 Broker 自身的启动时间与 launchd 默认 10 秒的节流；超时使安装失败，错误给出服务日志的位置：Linux 为 `journalctl --user -u agent-peer.service`（系统级去掉 `--user`），macOS 为 `~/Library/Logs/agent-peer/broker.log`（系统级为 `/var/log/agent-peer/broker.log`）。
 
+发布包的安装脚本把二进制放进目标目录、以它调用 `service install`、为执行安装的用户注册 MCP 服务（`REQ-broker-config-041`）；服务定义的写入、启动与重装仍只由 `service install` 负责，它可重复执行，安装脚本因此不另做判断。
+
 Linux 上，用户级单元写到 `~/.config/systemd/user/agent-peer.service`，系统级写到 `/etc/systemd/system/agent-peer.service`，随后依次执行 `systemctl --user daemon-reload`、`systemctl --user enable agent-peer.service` 与 `systemctl --user restart agent-peer.service`，系统级去掉 `--user`；`restart` 在服务未运行时启动它，重装时换上新的二进制。用户级的配置目录取 `XDG_CONFIG_HOME`，为空或不是绝对路径时取 `~/.config`。
 
 macOS 上，用户级 plist 写到 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`，系统级写到 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`，标签为 `io.github.wangzw.agent-peer`。用户级只使用 `gui/<uid>` 域；该域不存在时在写 plist 之前安装失败，错误说明用户级服务需要在图形登录会话中安装，没有图形会话的主机改用 `--system`。系统级使用 `system` 域。安装先执行 `launchctl bootout <域>/io.github.wangzw.agent-peer`，再执行 `launchctl bootstrap <域> <plist 路径>`。`launchctl` 以退出码 3 报告服务未加载，此时安装忽略该错误；其余 bootout 错误一律返回。bootstrap 失败时删除本次写入的 plist 并返回错误。实际使用的域记在安装结果中。

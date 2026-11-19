@@ -48,7 +48,35 @@ mkdir agent-peer-0.1.0
 tar -xzf agent-peer_0.1.0_linux_arm64.tar.gz -C agent-peer-0.1.0
 ```
 
-Then install the binary in one of two ways. If you only use the user-level Broker, a per-user directory such as `~/.local/bin` is enough:
+### Install script
+
+The archive contains `install.sh` at its root. Change into the directory that holds the extracted files and run it:
+
+```sh
+sh ./install.sh
+```
+
+The script installs the binary into `~/.local/bin`, installs and starts the user-level Broker as a service, and registers the MCP server with Claude Code for the account that runs it. For a system-level installation, run it as root, which installs the binary into `/usr/local/bin`, starts the system-level Broker, and registers the MCP server for the account that invoked `sudo`:
+
+```sh
+sudo sh ./install.sh --system
+```
+
+The script accepts these options:
+
+| Option | Effect |
+|---|---|
+| `--prefix <dir>` | Install the binary into `<dir>` instead of the default (`~/.local/bin` for a user-level installation, `/usr/local/bin` for a system-level one). |
+| `--no-service` | Do not install the Broker service. |
+| `--no-mcp` | Do not register the MCP server. |
+
+The script is safe to run again: it reinstalls the binary, restarts the service with it, and leaves an existing MCP registration in place. It never accesses the network; everything it installs comes from the extracted archive.
+
+### Manual installation
+
+The manual steps below install the binary only; register the MCP server and install the Broker service as described in [Register the MCP server with Claude Code](#register-the-mcp-server-with-claude-code).
+
+If you only use the user-level Broker, a per-user directory such as `~/.local/bin` is enough:
 
 ```sh
 mkdir -p ~/.local/bin
@@ -75,9 +103,20 @@ go build -trimpath -ldflags "-X main.version=0.1.0" -o agent-peer ./cmd/agent-pe
 
 Without `-ldflags`, `agent-peer --version` prints `agent-peer dev`. Installing with `go install …@version` is not supported, because `go.mod` uses a `replace` directive that points at a vendored dependency.
 
+### Uninstall
+
+Stop and remove the service, remove the MCP registration, and delete the binary:
+
+```sh
+agent-peer service uninstall
+claude mcp remove -s user peer
+```
+
+Add `--system` to `service uninstall` for a system-level service. Configuration, identity and audit logs are kept; remove them separately if they are no longer needed. Delete the installed binary as well, such as `~/.local/bin/agent-peer` or `/usr/local/bin/agent-peer`.
+
 ## Register the MCP server with Claude Code
 
-Register the MCP server once for your account so that it is available in all your projects:
+The [install script](#install-script) registers the server automatically; the steps here apply to a manual installation. Register the MCP server once for your account so that it is available in all your projects:
 
 ```sh
 claude mcp add --scope user peer -- agent-peer mcp
@@ -109,7 +148,7 @@ At least one of the two hosts must be able to reach port 17443 on the other. On 
 
 The same pairing works from a terminal: on the host that can be reached, run `agent-peer pairing-key create`; on the other host, run `agent-peer peer connect <address> --key <key>`.
 
-On a system-level Broker, an ordinary account has no write permission on the configuration file, so a session cannot create a pairing key. Ask the administrator to run `sudo agent-peer pairing-key create` and pass the key on.
+On a system-level Broker, by default, an ordinary account has no write permission on the configuration file, so a session cannot create a pairing key. Ask the administrator to run `sudo agent-peer pairing-key create` and pass the key on.
 
 ### Tools
 
