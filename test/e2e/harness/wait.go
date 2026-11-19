@@ -39,6 +39,23 @@ func Eventually(t testing.TB, bound time.Duration, what string, cond func() (ok 
 	}
 }
 
+// WaitRegistered waits until the session's MCP server has registered it with
+// its Broker. list_agents needs the Agent identity and fails with
+// not_registered until registration completes, so its success is the
+// observable registration point. get_config and list_brokers do not need the
+// identity and can succeed while the Broker is still registering, so they
+// cannot serve as this wait.
+func WaitRegistered(t testing.TB, s *Session, bound time.Duration) {
+	t.Helper()
+	Eventually(t, bound, "the session is registered", func() (bool, string) {
+		r := s.Call(t, "list_agents", nil)
+		if r.IsError {
+			return false, r.Text
+		}
+		return true, ""
+	})
+}
+
 // Consistently calls cond immediately and then every 50ms for the whole
 // window. Any failure ends the test at once with the state cond reported. The
 // window is a deliberate observation of duration, so tests that use it record

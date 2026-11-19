@@ -337,13 +337,6 @@ func discPublicConfig(t *testing.T, d *discNode) string {
 	return ""
 }
 
-// discWarmSession waits until the session can call list_topics, so a later
-// negative observation does not fail on the session's own startup.
-func discWarmSession(t *testing.T, s *harness.Session) {
-	t.Helper()
-	discCallOK(t, s, "list_topics", nil, 3*time.Second)
-}
-
 // discListTopics calls list_topics and returns the decoded answer or its error
 // text.
 func discListTopics(t *testing.T, s *harness.Session) (mcpserver.ListTopicsOut, string) {
@@ -442,7 +435,7 @@ func TestDiscoveryPrivateByDefault(t *testing.T) {
 
 	watcher := discAgent(t, c, "watcher", t.TempDir())
 	defer watcher.End(t)
-	discWarmSession(t, watcher)
+	harness.WaitRegistered(t, watcher, 3*time.Second)
 
 	window := discBound(2)
 	discAbsentConsistently(t, c, window, "C never learns A from a private Broker", []string{fpA}, a.alias, a.addr)
@@ -896,9 +889,12 @@ func TestPublicTopicRejectedOnPrivateBroker(t *testing.T) {
 
 	agent := discAgent(t, a, "worker", t.TempDir())
 	defer agent.End(t)
-	// Wait until the session is connected before provoking the error the test
-	// asserts on; the rejection itself must not be retried.
-	discCallOK(t, agent, "get_config", map[string]any{"key": "broker.public"}, 3*time.Second)
+	// Wait for registration to complete before provoking the error the test
+	// asserts on; the rejection itself must not be retried. get_config does not
+	// need the Agent identity and can succeed while the Broker is still
+	// registering, which would let the call below see not_registered instead of
+	// the rejection under test.
+	harness.WaitRegistered(t, agent, 3*time.Second)
 	r := discJoinTopic(t, agent, "infra-help", true, "ask infra")
 	if !r.IsError {
 		t.Fatalf("a public join on a private Broker succeeded: %s", r.Text)
@@ -924,7 +920,7 @@ func TestPublicTopicRejectedOnPrivateBroker(t *testing.T) {
 
 	watcher := discAgent(t, b, "watcher", t.TempDir())
 	defer watcher.End(t)
-	discWarmSession(t, watcher)
+	harness.WaitRegistered(t, watcher, 3*time.Second)
 	harness.Consistently(t, discBound(1), "B never sees the rejected declaration", func() (bool, string) {
 		topics, state := discListTopics(t, watcher)
 		if state != "" {
