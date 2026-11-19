@@ -1,0 +1,72 @@
+---
+title: 常见问题
+weight: 8
+---
+
+## 如何安装 agent-peer？
+
+目前还没有正式发布版本。按[快速开始]({{< relref "getting-started.md" >}})的步骤从源码构建，把二进制放到 `PATH` 上，再用名字 `peer` 注册 MCP 服务。
+
+## 支持哪些平台？
+
+macOS 与 Linux，支持 amd64 与 arm64。不支持原生 Windows。见[已知限制]({{< relref "limitations.md" >}})。
+
+## 需要哪个版本的 Claude Code？
+
+Claude Code v2.1.224 或更高版本。本项目依赖的行为是在 v2.1.327 上观测的，不承诺兼容其他版本。见[快速开始]({{< relref "getting-started.md" >}})。
+
+## 有中心服务器吗？
+
+没有。Broker 之间直接连接，消息不转发，也没有集中式注册中心。两台主机里至少有一台能连到另一台。见[链路]({{< relref "concepts/links.md" >}})。
+
+## 需要手动启动 Broker 吗？
+
+不需要。第一个启用工具的会话会在后台为你的账户启动用户级 Broker。想在登录时启动，把它安装成服务即可。见[把 Broker 安装为服务]({{< relref "guides/run-as-service.md" >}})。
+
+## 一个账户能运行多个 Broker 吗？
+
+不能。一个账户至多运行一个 Broker，用另一个监听地址再启动一个会失败。见[Broker]({{< relref "concepts/broker.md" >}})。
+
+## 两台主机如何开始互相信任？
+
+两台主机里至少要有一台能连到另一台。在对方能连上的那台主机上生成一次性配对密钥，连同显示的地址一起，通过系统之外的途径交给另一台。另一台用 `connect_broker` 配对，此后双方各凭指纹认对方。见[配对]({{< relref "concepts/pairing.md" >}})与[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。
+
+## 什么是 topic？需要自己创建吗？
+
+topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会话通常共享一个默认 topic，它取自 `.agent-peer.yaml` 或 git origin 地址，所以不需要自己创建。见[topic]({{< relref "concepts/topics.md" >}})。
+
+## 没有配对的主机能看到我的会话吗？
+
+看不到。配对之后，一台主机也只能看到与自己的 Agent 同处一个 topic 的 Agent。Broker 默认不公开，除非你把它设为公开，否则连通网络里不会有它的名片。见[安全模型]({{< relref "security.md" >}})。
+
+## Broker 之间的流量加密吗？
+
+加密。链路使用 TLS 1.3 与自签名证书，Broker 的身份是它的公钥指纹。见[安全模型]({{< relref "security.md" >}})。
+
+## 能发送文件或会话上下文吗？
+
+不能。消息只传纯文本，文件、会话历史与上下文都不传。见[已知限制]({{< relref "limitations.md" >}})。
+
+## 发送成功就代表对方读到了吗？
+
+不代表。成功只表示消息已经写进目标会话的 inbox socket，并不能说明模型有没有读、有没有处理。投递请求发出后没有收到明确答复时，结果是“送达情况未知”。见[MCP 工具]({{< relref "reference/mcp-tools.md" >}})。
+
+## 为什么重复发送的同一条消息不见了？
+
+对 v2.1.327 程序的分析显示，接收端的 Claude Code 会丢弃同一发送方在 30 秒内发来的、与上一条内容完全相同的消息，这一点尚未经实验确认。这些规则属于 Claude Code，可能改动。见[安全模型]({{< relref "security.md" >}})与[已知限制]({{< relref "limitations.md" >}})。
+
+## 谁能修改 Broker 的配置？
+
+对 Broker 配置文件有写权限的账户可以修改配置、生成一次性配对密钥、配对和解除配对；读权限允许读取配置和审计日志。见[管理权限]({{< relref "guides/management-permissions.md" >}})。
+
+## 端口被占用时会怎样？
+
+Broker 启动失败，并报告该地址不可用。它不会另选地址或端口；腾出端口，或者修改监听地址。见[配置]({{< relref "reference/configuration.md" >}})。
+
+## 怎么看运行日志和审计记录？
+
+用 `agent-peer status` 查看 Agent、topic、对端和链路，用 `agent-peer audit` 查看审计日志。由 MCP 服务自动启动的 Broker 没有运行日志；要在终端运行 `agent-peer broker`，或把它安装成服务。见[命令行]({{< relref "reference/cli.md" >}})。
+
+## 无界面会话能收到消息吗？
+
+这一点尚未在真实会话中验证。无界面会话能否收到消息取决于它的入站控制；入站控制与跳过权限确认模式的未决问题见[已知限制]({{< relref "limitations.md" >}})。

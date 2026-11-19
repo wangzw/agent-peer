@@ -1,0 +1,18 @@
+---
+title: 链路
+weight: 5
+---
+
+链路是两个已配对 Broker 之间的长连接。每对对端之间只有一条链路，双向传递消息。
+
+拨号方是发起配对的一方。它建立链路，并在断开后重新建立；接受方等待拨号方连入，并告诉它该用哪些对外地址。两个 Broker 配对之后，重建链路既不需要配对密钥，也不需要用户操作。
+
+## 直接连接
+
+Broker 之间直接连接，消息不经第三个 Broker 转发，也没有集中式注册中心。两台主机互相都无法连接时，例如双方都在 NAT 之后，两个 Broker 就不能通信。
+
+链路上的全部流量都加密。
+
+系统不缓存、不持久化、也不重投消息。一次发送要么写入目标会话的 inbox socket 并报告成功，要么在有限的等待后报告未发送，要么因为请求已经发出但没有收到确定答复而报告送达情况未知。是否重发由发送方 Agent 决定。
+
+链路两端的信任从何而来，见[配对]({{< relref "/docs/concepts/pairing" >}})；链路使用的地址见[Broker]({{< relref "/docs/concepts/broker" >}})；配对与协作的步骤见[两台主机配对]({{< relref "/docs/guides/pair-hosts" >}})和[在同一个 topic 里协作]({{< relref "/docs/guides/collaborate-in-topic" >}})；一次发送最多等待多久，见[配置键]({{< relref "/docs/reference/configuration" >}})。

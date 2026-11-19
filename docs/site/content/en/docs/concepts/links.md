@@ -1,0 +1,18 @@
+---
+title: Links
+weight: 5
+---
+
+A link is the long-lived connection between two paired Brokers. Each pair has exactly one link, and it carries messages in both directions.
+
+The dialer is the side that initiated pairing. It opens the link and reopens it after a disconnect; the acceptor waits for the dialer to connect and tells it which advertised addresses to use. Once two Brokers are paired, rebuilding the link needs no pairing key and no user action.
+
+## Direct connections
+
+Brokers connect directly. They do not relay messages through a third Broker, and there is no central registry. When neither of two hosts can reach the other, for example when both are behind NAT, the two Brokers cannot communicate.
+
+All traffic on a link is encrypted.
+
+Messages are not cached, persisted or redelivered. A send either reaches the target session's inbox socket and reports success, returns not sent after a bounded wait, or reports that the outcome is unknown because a delivery request went out but no definite answer came back. Whether to resend is the sending agent's decision.
+
+See [Pairing]({{< relref "/docs/concepts/pairing" >}}) for how a link's two ends come to trust each other, [Broker]({{< relref "/docs/concepts/broker" >}}) for the addresses a link uses, [Pair two hosts]({{< relref "/docs/guides/pair-hosts" >}}) and [Collaborate in a topic]({{< relref "/docs/guides/collaborate-in-topic" >}}) for the pairing and collaboration steps, and [Configuration keys]({{< relref "/docs/reference/configuration" >}}) for how long a send may wait.

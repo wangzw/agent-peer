@@ -1,0 +1,102 @@
+name: Site
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/site/**
+      - scripts/site-parity/**
+      - Makefile
+      - go.mod
+      - go.sum
+      - .github/workflows/site.yml
+  pull_request:
+    paths:
+      - docs/site/**
+      - scripts/site-parity/**
+      - Makefile
+      - go.mod
+      - go.sum
+      - .github/workflows/site.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LYCHEE_VERSION: 0.24.2
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: ubuntu-24.04
+    # A run on main shares the deployment group, so two pushes cannot build
+    # and then deploy out of order. A pull request, or a manual run on another
+    # branch, uses its own group and never occupies the pages group.
+    concurrency:
+      group: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && 'pages' || format('site-{0}', github.ref) }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: docs/site/go.mod
+          cache: true
+          cache-dependency-path: docs/site/go.sum
+      - name: Install Hugo
+        run: |
+          version="$(sed -n 's/^HUGO_VERSION[[:space:]]*[:?]=[[:space:]]*//p' Makefile)"
+          base="https://github.com/gohugoio/hugo/releases/download/v${version}"
+          curl -sSL -o /tmp/hugo_checksums.txt "${base}/hugo_${version}_checksums.txt"
+          checksum="$(grep " hugo_${version}_linux-amd64.tar.gz$" /tmp/hugo_checksums.txt | awk '{print $1}')"
+          test -n "$checksum"
+          curl -sSL -o /tmp/hugo.tar.gz "${base}/hugo_${version}_linux-amd64.tar.gz"
+          printf '%s  %s\n' "$checksum" /tmp/hugo.tar.gz | sha256sum -c -
+          tar -xzf /tmp/hugo.tar.gz -C /tmp hugo
+          sudo install -m 0755 /tmp/hugo /usr/local/bin/hugo
+          hugo version
+      - name: Install lychee
+        run: |
+          archive="lychee-x86_64-unknown-linux-gnu.tar.gz"
+          base="https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}"
+          curl -sSL -o "/tmp/${archive}" "${base}/${archive}"
+          curl -sSL -o "/tmp/${archive}.sha256" "${base}/${archive}.sha256"
+          checksum="$(awk '{print $1}' "/tmp/${archive}.sha256")"
+          printf '%s  %s\n' "$checksum" "/tmp/${archive}" | sha256sum -c -
+          tar -xzf "/tmp/${archive}" -C /tmp
+          sudo install -m 0755 /tmp/lychee-x86_64-unknown-linux-gnu/lychee /usr/local/bin/lychee
+          lychee --version
+      - name: Check the site
+        run: make site-check
+      - name: Configure Pages
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        id: pages
+        uses: actions/configure-pages@v6
+      - name: Build for deployment
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: hugo --source docs/site --gc --minify --panicOnWarning --baseURL "${{ steps.pages.outputs.base_url }}/"
+      - name: Upload the site
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/site/public
+
+  deploy:
+    name: Deploy
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

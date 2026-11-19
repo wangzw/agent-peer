@@ -5,6 +5,7 @@ A cross-host communication system for agents. A host runs a Broker either as a s
 ## Language
 
 - **Documents under `docs/` are written in Chinese.** This covers the requirements, design documents, architecture decision records, glossary, references and roadmap.
+- **The website under `docs/site/` is bilingual.** Every page exists in English under `docs/site/content/en/` and in Chinese under `docs/site/content/zh/`, and the rule above for documents under `docs/` does not apply to it. The two versions of a page say the same thing: the English page is written first and the Chinese page is its translation, with the same headings, code blocks and links. A change to one version changes the other in the same commit. Its configuration and layouts are written in English.
 - **Everything else is written in English.** This covers source code, identifiers, comments, log and error messages, MCP tool names and descriptions, tests, commit messages, `README.md`, this file, skills under `.claude/`, and configuration files.
 - When English text names a concept registered in `docs/glossary.md`, use that entry's English counterpart rather than a fresh translation.
 
@@ -23,6 +24,8 @@ A cross-host communication system for agents. A host runs a Broker either as a s
 
 `make check` runs every gate in order: `lint`, `proto-lint`, `gen-check`, `test`, `e2e` and `docs-check`. Each is also a target of its own. Run the gates that cover what a change touches before committing it, and leave them passing with no warning ignored.
 
+`make site-check` builds the website under `docs/site/` strictly and checks its internal links. It is not part of `make check`; run it when a change touches the website.
+
 ## Commit Convention
 
 Supplements the `commit-convention` skill.
@@ -33,6 +36,7 @@ Supplements the `commit-convention` skill.
 - `cmd`: `cmd/agent-peer`, the entry point and the command wiring that belongs to no module
 - `e2e`: `test/e2e/`, the end-to-end tests and their container topologies
 - `realsession`: `test/realsession/`, the probes that run real Claude Code sessions, and their workflow `.github/workflows/real-session.yml`
+- `site`: `docs/site/`, the project website, and its workflow `.github/workflows/site.yml`
 - `deps`: vendored source under `third_party/` and dependency versions
 - `architecture`: `docs/design/architecture.md`
 - `adr`: `docs/adr/`

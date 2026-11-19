@@ -10,7 +10,13 @@ GIT ?= git
 # Total timeout of the end-to-end test binary, passed to go test -timeout.
 E2E_TIMEOUT ?= 30m
 
-.PHONY: gen gen-check lint proto-lint test e2e docs-check check
+# Hugo version for the website. The site workflow reads this line, so the
+# version is written once.
+HUGO_VERSION := 0.170.1
+
+SITE_DIR ?= docs/site
+
+.PHONY: gen gen-check lint proto-lint test e2e docs-check check site site-check
 
 # Regenerate the protobuf code with buf. Generated Go code is committed next to
 # its .proto file, so this target is expected to leave the tree unchanged when
@@ -94,6 +100,40 @@ e2e:
 # missing.
 docs-check:
 	bash scripts/docs-check.sh
+
+# Preview the website locally.
+site:
+	@if ! command -v hugo >/dev/null 2>&1; then \
+		echo "site: hugo is not installed; install Hugo $(HUGO_VERSION)" >&2; \
+		exit 1; \
+	fi
+	hugo server --source $(SITE_DIR)
+
+# Check that the English and Chinese pages match, build the website strictly
+# and check the internal links of the generated pages. The link check maps the
+# /agent-peer/ prefix onto the generated tree through a temporary root; page
+# relative links still resolve against the file that contains them. The build
+# cleans the destination first, so a page that was deleted or renamed cannot
+# keep passing the link check through its stale output.
+site-check:
+	@missing=""; \
+	for tool in hugo lychee go; do \
+		command -v $$tool >/dev/null 2>&1 || missing="$$missing $$tool"; \
+	done; \
+	if [ -n "$$missing" ]; then \
+		echo "site-check: missing tools:$$missing (Hugo $(HUGO_VERSION))" >&2; \
+		exit 1; \
+	fi; \
+	have="$$(hugo version 2>/dev/null | sed -n 's/^hugo v\([^ ]*\).*/\1/p')"; \
+	case "$$have" in \
+		"$(HUGO_VERSION)"|"$(HUGO_VERSION)"-*) ;; \
+		*) echo "site-check: Hugo $(HUGO_VERSION) required, found '$$have'" >&2; exit 1 ;; \
+	esac
+	go run -p $(JOBS) ./scripts/site-parity -en $(SITE_DIR)/content/en -zh $(SITE_DIR)/content/zh
+	GOMAXPROCS=$(JOBS) hugo --source $(SITE_DIR) --cleanDestinationDir --gc --minify --panicOnWarning
+	@root="$$(mktemp -d)"; trap 'rm -rf "$$root"' EXIT; \
+		ln -s "$(CURDIR)/$(SITE_DIR)/public" "$$root/agent-peer"; \
+		lychee --offline --no-progress --max-concurrency $(JOBS) --root-dir "$$root" '$(SITE_DIR)/public/**/*.html'
 
 # Run every gate in a fixed order. Each gate is a separate recursive make so
 # the order also holds when the caller passes -j.
