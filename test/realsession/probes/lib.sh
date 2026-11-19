@@ -82,6 +82,14 @@ rs_keys() {
 	tmux -L "$TMUX_SERVER" send-keys -t "$window" "$@"
 }
 
+# rs_keys_literal sends text to a window character by character, without key
+# name lookup. A command containing spaces or shell punctuation is typed as it
+# is written, not parsed as a sequence of key names.
+rs_keys_literal() {
+	local window="$1" text="$2"
+	tmux -L "$TMUX_SERVER" send-keys -t "$window" -l -- "$text"
+}
+
 # rs_snap writes a pane capture to $OUT/$2.
 rs_snap() {
 	local window="$1" file="$2"
@@ -102,6 +110,45 @@ rs_wait_pane() {
 	done
 	pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
 	printf '%s\n' "$pane" >"$OUT/timeout-$window.txt"
+	return 1
+}
+
+# rs_wait_pane_literal polls the pane until it contains text as a literal
+# substring, and keeps the pane in $OUT/timeout-$window.txt on a timeout.
+rs_wait_pane_literal() {
+	local window="$1" text="$2" seconds="$3"
+	local deadline=$((SECONDS + seconds)) pane=""
+	while ((SECONDS < deadline)); do
+		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
+		if printf '%s\n' "$pane" | grep -qF -- "$text"; then
+			return 0
+		fi
+		sleep 0.1
+	done
+	pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
+	printf '%s\n' "$pane" >"$OUT/timeout-$window.txt"
+	return 1
+}
+
+# rs_wait_turn_idle waits until no turn has been running for one second. The
+# "esc to interrupt" hint is used instead of the readiness criteria because
+# 2.1.311 rotates the idle footer hints: "? for shortcuts" and "! for shell
+# mode" take turns, so either can be absent while the session is idle.
+rs_wait_turn_idle() {
+	local window="$1" seconds="$2"
+	local deadline=$((SECONDS + seconds)) pane="" quiet=0
+	while ((SECONDS < deadline)); do
+		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
+		if printf '%s\n' "$pane" | grep -qF -- 'esc to interrupt'; then
+			quiet=0
+		else
+			quiet=$((quiet + 1))
+			if ((quiet >= 5)); then
+				return 0
+			fi
+		fi
+		sleep 0.2
+	done
 	return 1
 }
 
