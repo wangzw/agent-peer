@@ -84,16 +84,16 @@ Agent 对配置的每次修改必须写入审计日志，记录发起修改的 A
 每次生成一次性配对密钥、配对成功、配对失败、链路建立、链路断开和解除配对必须写入审计日志，记录事件类型、相关 Broker 的指纹与别名和时间；由 Agent 发起时，还记录发起的 Agent 及其所属账户。
 
 - **验收**：依次执行生成一次性配对密钥、一次失败的配对、一次成功的配对、断开网络、恢复网络、解除配对，审计日志按顺序各新增一条对应类型的记录；其中由 Agent 发起的记录带有该 Agent 的地址和它所属的账户。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/config_tools_cluster_test.go` 的 `TestConfigToolsCluster/PairingAndLinkEventsInOrder`
 
 ### REQ-broker-config-008
 
 审计日志不得记录配对密钥的值和消息正文。
 
 - **验收**：完成一次配对和一次消息发送后，在审计日志中搜索所用的配对密钥和消息正文，都搜不到。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/config_tools_cluster_test.go` 的 `TestConfigToolsCluster/AuditHasNoSecrets`
 
 ### REQ-broker-config-009
 

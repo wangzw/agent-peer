@@ -58,10 +58,9 @@ func TestPairingKeys(t *testing.T) {
 		ops[name] = pkOperator(t, nodes[name])
 	}
 
-	a, b, cNode, d := nodes["hostA"], nodes["hostB"], nodes["hostC"], nodes["hostD"]
+	a, b, d := nodes["hostA"], nodes["hostB"], nodes["hostD"]
 	opA, opB, opC, opD := ops["hostA"], ops["hostB"], ops["hostC"], ops["hostD"]
 	addrA := pkAddr(c, "hostA")
-	usedStatic := []string{pkStatic16, pkStaticB, pkStaticReplace, pkStatic128, pkStaticRuntimeBad}
 
 	// The fingerprint of A's identity is derived independently from its
 	// certificate so that a connect result can be checked against it rather
@@ -273,47 +272,6 @@ func TestPairingKeys(t *testing.T) {
 		pkRejectReason(t, pkConnect(t, opC, addrA, pkStatic128, ""), a, rejectedAt, "hostC-17443", "key invalid")
 		pkConnect(t, opD, addrA, pkStaticReplace, "").MustOK(t)
 		pkWaitConnected(t, b, "hostA-17443", pkRelinkBound)
-	})
-
-	t.Run("REQ-broker-pairing-032 remove static key, partial", func(t *testing.T) {
-		// C must not already be a peer, or "both sides store nothing" says
-		// nothing about the rejected attempt. Unpair it first.
-		pkDisconnect(t, opA, "hostC-17443")
-		pkDisconnect(t, opC, "hostA-17443")
-
-		since := time.Now().Add(-time.Second)
-		a.WriteConfig(t, pkConfig())
-		pkWaitAuditConfigChange(t, a, "pairing.static_key", since)
-
-		pkConnect(t, opC, addrA, pkStaticReplace, "").MustCode(t, "pairing_rejected")
-
-		cFingerprint := pkIdentityFingerprint(t, cNode)
-		if bytes.Contains(pkPeersJSON(t, a), []byte(cFingerprint)) {
-			t.Fatalf("A's peers.json still contains C's fingerprint %s", cFingerprint)
-		}
-		if bytes.Contains(pkPeersJSON(t, cNode), []byte(aFingerprint)) {
-			t.Fatalf("C's peers.json still contains A's fingerprint %s", aFingerprint)
-		}
-		audit := a.ReadFile(t, filepath.Join(a.AccountHome(), ".agent-peer", "audit.log"))
-		if bytes.Contains(audit, []byte(pkStaticReplace)) {
-			t.Fatal("the audit log contains the removed static key's value")
-		}
-		pkWaitConnected(t, b, "hostA-17443", pkRelinkBound)
-	})
-
-	t.Run("REQ-broker-pairing-030 log has no secret, partial", func(t *testing.T) {
-		logs := a.Exec(t, []string{"sh", "-c",
-			"cat /ctl/broker-*.log " + shellQuote(filepath.Join(a.AccountHome(), ".agent-peer", "audit.log")) + " 2>/dev/null"}, nil)
-		if logs.ExitCode != 0 {
-			t.Fatalf("reading A's logs: exit %d: %s", logs.ExitCode, logs.Stderr)
-		}
-		for _, value := range usedStatic {
-			if strings.Contains(logs.Stdout, value) {
-				t.Fatalf("A's logs or audit file contain the static key value %q", value)
-			}
-		}
-		// The other half, reading the configuration through get_config, belongs
-		// to the configuration hot-reload and audit work item.
 	})
 
 	t.Run("REQ-broker-pairing-015 unpaired without key rejected", func(t *testing.T) {

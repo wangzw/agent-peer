@@ -261,24 +261,24 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 读取配置的结果与运行日志都不得包含预置静态密钥的取值。
 
 - **验收**：在配置文件中设置预置静态密钥，经工具读取配置，结果只说明它已设置；随后在配置文件中更换它，再凭新值完成一次配对。在读取配置的结果与运行日志中搜索新旧两个取值，都搜不到。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/config_tools_cluster_test.go` 的 `TestConfigToolsCluster/StaticKeyReadHasNoSecret`
 
 ### REQ-broker-pairing-031
 
 系统不得允许经工具设置或修改预置静态密钥。
 
 - **验收**：所属账户对配置文件有写权限的 Agent 经工具设置、修改或删除预置静态密钥，每次都返回错误，说明该项只能在配置文件中设置；配置文件的内容与生效的密钥都没有变化。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/config_tools_cluster_test.go` 的 `TestConfigToolsCluster/StaticKeyToolsDoNotChange`
 
 ### REQ-broker-pairing-032
 
 从配置文件中删除预置静态密钥后，Broker 必须在不重启的情况下（`REQ-broker-config-017`）停止接受凭该密钥的配对。
 
 - **验收**：依次检查：配置文件中设有预置静态密钥时，另一台主机凭它配对成功；从配置文件中删除该项，不重启 Broker，此后第三台主机凭同一个密钥发起配对，被拒绝，返回的原因是密钥无效，双方都没有保存对方的身份；读取配置的结果显示该项未设置；审计日志新增一条该配置项发生变化的记录，记录中没有密钥的取值；先前凭它配对成功的对端仍是对端，它与本 Broker 的链路不受影响。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/config_tools_cluster_test.go` 的 `TestConfigToolsCluster/StaticKeyRemovedRejects`
 
 ### REQ-broker-pairing-033
 
@@ -317,8 +317,8 @@ Agent 必须能让本机 Broker 解除与一个对端的配对，解除后链路
 别名与本地别名的长度不得超过 24 个字符，超过的配置必须被拒绝；默认别名超过 24 个字符时，系统必须截短其中的主机名部分。
 
 - **验收**：经工具把别名改为 25 个字符的值，调用失败，别名不变；改为 24 个字符的值，调用成功。发起配对时指定 25 个字符的本地别名，配对失败并说明本地别名过长。在系统主机名为 30 个字符的主机上以默认配置启动 Broker，对端看到的它名下 Agent 的地址以 `@`、主机名的开头部分、`-17443` 结尾，别名共 24 个字符。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：经工具改别名由 `test/e2e/config_tools_test.go` 的 `TestConfigTools/AliasTooLong` 覆盖；本地别名过长的失败由 `test/e2e/config_tools_cluster_test.go` 的 `TestConfigToolsCluster/LocalAliasTooLong` 覆盖；默认别名截短由 `test/e2e/aliases_test.go` 的 `TestLongHostnameAlias` 覆盖
 
 ## 数据需求
 
