@@ -127,6 +127,14 @@ MCP 服务进程不得启动任何 Broker。会话按 `REQ-broker-config-026` �
 - **状态**：已实现
 - **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessLocal/REQ-broker-config-038 no Broker until started`；`test/e2e/broker_process_test.go` 的 `TestBrokerProcessInContainer/REQ-broker-config-024 default address taken`、`TestBrokerProcessInContainer/REQ-agent-messaging-038 recover without reconnect`（终端启动失败、会话报错、手工启动后恢复）
 
+### REQ-broker-config-039
+
+用户必须能在本机终端执行 Broker 的每一项查询与管理操作：查看状态、读取审计日志、列出 Broker、读取配置、修改配置、生成一次性配对密钥、发起配对、解除配对。终端命令与 Agent 的对应操作遵守同一权限规则，按执行命令的账户判定，并写入同样的审计记录。
+
+- **验收**：在系统级 Broker 上，以对配置文件没有写权限的账户在会话中生成配对密钥，被拒绝；以管理员身份在终端执行生成配对密钥的命令，输出密钥、失效时间和本机对外地址，另一台主机在终端凭这些信息发起配对成功，两边在终端列出 Broker 时都显示对方已连接。同样以管理员身份在终端读取并修改一个配置项、解除这个配对，都成功，审计日志依次记录这些操作和执行它们的账户。以没有写权限的账户执行修改配置的命令，返回权限不足，并给出配置文件的路径。
+- **状态**：未实现（实现单元合入时翻转）
+- **端到端测试**：未实现（由端到端工作项填写）
+
 ### REQ-broker-config-013
 
 同一账户下至多运行一个 Broker 实例。已有实例在运行时，以任何监听地址或配置再启动一个都必须失败，并说明已有实例在运行。

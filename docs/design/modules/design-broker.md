@@ -73,9 +73,13 @@ service Local {
 
 需要 Agent 身份的调用携带登记时得到的 Agent 标识，标识无效或不属于调用方账户时返回 `not_registered`。权限不足时返回 `permission_denied`，不改变任何状态。Claude Code 对工具调用的权限确认发生在调用到达本机接口之前，与本表的判定各自独立。
 
+终端命令不自行判断权限：`GetConfig`、`SetConfig`、`CreatePairingKey`、`Connect`、`Disconnect` 由 Broker 的拦截器按执行命令的账户判定，与上表相同，终端一侧不做预判，也不开特例。`permission_denied` 时，Broker 给出的英文错误文字原样写到标准错误，其中包含配置文件的路径，进程以退出码 1 结束。
+
 四个管理调用 `SetConfig`、`Connect`、`Disconnect`、`CreatePairingKey` 携带可选的 `agent_id`，只用于填写审计记录中的 `actor` 字段；空值允许；非空而无效或不属于调用方账户时返回 `not_registered`；该字段不参与权限判定，也不作为工具参数暴露。
 
 `Connect`、`Disconnect`、`CreatePairingKey` 先解析审计发起者，`agent_id` 无效时不产生任何副作用。发起方一侧的 `pairing_key_created`、`pairing_succeeded`、`pairing_failed`、`unpaired` 由 `broker` 写入；`pairing_failed` 只在已开始拨号或握手之后的失败写入，详情为原因与请求中的地址；任何审计都不含配对密钥。接受方一侧的配对审计由 `pairing` 写入（`REQ-broker-config-007`、`REQ-broker-config-008`）。
+
+终端命令的四个写操作 `config set`、`pairing-key create`、`peer connect`、`peer disconnect` 发出的调用 `agent_id` 为空；审计记录的 `account` 是执行命令的账户，`actor` 为空。不新增审计字段。
 
 `Register` 的上行首帧带两项：MCP 服务进程环境中的 inbox socket 路径（可以为空）、环境中的 Claude Code 配置目录（可以为空）；Broker 只读取首帧，其后的上行帧被忽略。首帧的 socket 路径为空时，Broker 立即在下行流上发出 `not_registered` 及原因 `socket_path_missing`，流保持打开，这条登记不会自行完成。Broker 按“登记”一节完成登记后，在下行流上发出登记完成，带 Agent 标识、Agent 地址和 `topics.auto_join` 的当前值；10 秒内未能完成时发出 `not_registered` 及原因，流保持打开，此后条件满足时照常发出登记完成。socket 路径不是绝对路径或含 `..` 元素时按找不到记录处理，10 秒后以 `session_record_not_found` 报告。socket 文件的属主不是调用方账户时，与找不到记录、名字不可用一样等待，10 秒后以 `socket_not_owned` 报告，并随注册表的变化继续尝试。已完成的登记因名字变得不可用、记录消失或记录所载 socket 路径改变而撤销时，下行流立即发出 `not_registered` 及原因。之后下行流还用于通知地址变化：`agent_changed` 只在 Agent 的地址或曾用名变化时发出，带当前状态；本机别名变化后，每条登记流都收到带新地址的 `agent_changed`。同一个 socket 路径上的多个登记连接得到同一个 Agent 标识。
 
@@ -87,8 +91,16 @@ service Local {
 | `agent-peer mcp` | — | 作为 MCP 服务进程运行，由 Claude Code 按会话的工具配置启动，见 [mcpserver](design-mcpserver.md) |
 | `agent-peer status` | `Status` | 查看 Agent、成员关系、对端与链路（`REQ-broker-config-010`） |
 | `agent-peer audit [--limit <条数>]` | `Audit` | 以流的方式查看审计日志，`--limit` 指定取最新的多少条，为 0 表示不限条数（`REQ-broker-config-009`） |
+| `agent-peer config get [<key>]` | `GetConfig` | 读取配置：不带 `key` 时列出全部配置项，带 `key` 时只输出该项（`REQ-broker-config-039`） |
+| `agent-peer config set <key> <value>` | `SetConfig` | 修改配置项（`REQ-broker-config-039`） |
+| `agent-peer pairing-key create` | `CreatePairingKey` | 生成一次性配对密钥，输出密钥、失效时间与本机对外地址（`REQ-broker-config-039`） |
+| `agent-peer peer list` | `ListBrokers` | 列出 Broker 及其连接状态（`REQ-broker-config-039`） |
+| `agent-peer peer connect <address> --key <key> [--alias <alias>]` | `Connect` | 发起配对（`REQ-broker-config-039`） |
+| `agent-peer peer disconnect <broker>` | `Disconnect` | 解除配对（`REQ-broker-config-039`） |
 | `agent-peer service install [--system]` | — | 安装并立即启动用户级服务，或系统级服务；此后的登录或系统启动由服务管理器负责（`REQ-broker-config-015`） |
 | `agent-peer service uninstall [--system]` | — | 停止并卸载服务，保留配置、身份与审计日志 |
+
+`peer connect` 的 `<address>` 与 `connect_broker` 工具相同，写成 `address:port` 或 `hostname(address:port)`；`peer disconnect` 的 `<broker>` 与 `disconnect_broker` 工具相同，写别名或 64 位十六进制指纹。每个终端命令都支持 `-h` 与 `--help`；参数错误时打印该命令的用法，并以用法错误的退出码（2）结束。
 
 失败时进程以非零退出码结束，标准错误的最后一行是 `agent-peer <子命令>: <原因>`，原因取上游错误的原文；用法错误另附该子命令的用法。命令的结果只写标准输出，Broker 的 JSON 运行日志另行写标准错误。退出码按原因区分：
 
@@ -110,9 +122,18 @@ service Local {
 
 进程级信号由 `cmd/agent-peer` 统一处理：第一次 SIGINT 或 SIGTERM 取消运行，第二次直接终止进程。
 
-`status` 与 `audit` 连接哪个 Broker，按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的顺序前三项确定，只查找正在运行的 Broker，不启动 Broker。连上后先调用 `Hello`，本机协议版本不同时报 `version_mismatch` 并退出，说明 Broker 与本二进制各自的版本，提示用本二进制重启 Broker。单个一元调用超时 10 秒；`Audit` 的流不设总时限，靠信号取消。
+`status`、`audit` 与 `config`、`pairing-key`、`peer` 下的命令连接哪个 Broker，按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的顺序前三项确定，只查找正在运行的 Broker，不启动 Broker。找不到正在运行的 Broker 时，报错文字与 `status` 相同，说明 `agent-peer service install` 与 `agent-peer broker` 两种启动方法。连上后先调用 `Hello`，本机协议版本不同时报 `version_mismatch` 并退出，说明 Broker 与本二进制各自的版本，提示用本二进制重启 Broker。单个一元调用超时 10 秒；`Audit` 的流不设总时限，靠信号取消。
 
 `status` 的输出分 Agent 与对端两段，表格按地址或别名排序，空值写 `-`；topic 按字典序以逗号连接；指纹写完整的 64 位小写十六进制，不截短；枚举取值写去掉前缀的小写蛇形。段内没有条目时写 `Agents: none` 或 `Peers: none`。`audit` 每个事件输出一行，按到达顺序排列，依次是 RFC 3339 UTC 时间、事件名，以及 `actor`、`account`、`peer`、`key`、`old`、`new`、`count`、`detail` 中的非空字段；值为空或含空格、引号、等号时加引号。
+
+配置、配对与对端管理命令沿用 `status` 的输出约定：指纹写完整的 64 位小写十六进制，枚举写去掉前缀的小写蛇形，空值写 `-`，表格按各自的排序键排序。各命令的输出：
+
+- `config get`：每项一行，写成 `<key> = <value>`，按 `key` 排序；密钥类配置项只写 `set` 或 `unset`，不输出取值。带 `key` 时只输出该项。
+- `config set`：一行，写成 `<key>: <old> -> <new>`。
+- `pairing-key create`：依次输出 `Key: <key>`、`Expires: <RFC 3339 UTC>`、`Addresses:`，之后每个对外地址一行，缩进两格；本次运行不监听时，Broker 以 `invalid_argument` 拒绝，命令以退出码 1 结束。
+- `peer list`：表格，列为 ALIAS、FINGERPRINT、PEER（yes 或 no）、STATUS、DIRECTION、ADDRESSES（逗号连接）。按别名排序；没有任何 Broker 时输出 `Brokers: none`。
+- `peer connect`：一行 `Paired with <alias> (<fingerprint>)`；应答中的 warnings 每条一行写到标准错误，前缀 `warning: `，退出码仍为 0。
+- `peer disconnect`：一行 `Disconnected <broker>`。
 
 `service install` 写入服务定义、启用服务并立即启动 Broker，随后用本机 socket 轮询 Broker 是否应答，上限为 20 秒。上限覆盖 Broker 自身的启动时间与 launchd 默认 10 秒的节流；超时使安装失败，错误给出服务日志的位置：Linux 为 `journalctl --user -u agent-peer.service`（系统级去掉 `--user`），macOS 为 `~/Library/Logs/agent-peer/broker.log`（系统级为 `/var/log/agent-peer/broker.log`）。
 
