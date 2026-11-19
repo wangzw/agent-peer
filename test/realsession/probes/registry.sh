@@ -16,6 +16,11 @@ fi
 # Broker watches the directory with kqueue, and the probe reads the Broker's
 # open file descriptors only as a note, not as a criterion.
 #
+# On macOS /tmp is a symlink to /private/tmp and Claude Code keys its workspace
+# trust by the resolved path, so the macOS runner puts the probe root under
+# /private/tmp; otherwise every session would stop at the trust dialog before
+# registering. The probe records the reason in observations.txt.
+#
 # The pre-push check of the plan ("Status must not reread records") holds: the
 # Status handler in internal/broker/status.go reads only the in-memory table,
 # and the Reread matches under internal/broker are in delivery, send, receive,
@@ -30,6 +35,16 @@ PROMPT='When a cross-session message arrives, reply with the single word ok and 
 
 # REG_OS selects the platform-specific process and clock helpers below.
 REG_OS="$(uname -s)"
+
+# REG_REFLECT_LIMIT_MS is the criterion for a rename or an exit to appear in
+# the Broker's list: one second, from the real-session plan for
+# REQ-agent-messaging-005 and REQ-agent-messaging-010. The measured elapsed
+# value also covers the command and the 0.2-second poll granularity.
+REG_REFLECT_LIMIT_MS=1000
+
+if [[ "$REG_OS" == Darwin ]]; then
+	rs_obs "macOS: /tmp is a symlink to /private/tmp; the probe root is $R, and Claude Code keys workspace trust by the resolved path"
+fi
 
 printf 'op\tsubject\tattempt\telapsed_ms\tdetail\n' >"$OUT/timings.tsv"
 
@@ -92,9 +107,13 @@ reg_timing() {
 
 # reg_measure_present polls until name is listed and records the elapsed
 # milliseconds plus the previous-name field. The first poll runs immediately,
-# as the plan requires for the rename measurement.
+# as the plan requires for the rename measurement. It returns 0 when the
+# criterion holds, 1 when name never appeared, 2 when it was listed without the
+# previous name WANT_PREV, and 3 when it took longer than the limit. A non-empty
+# WANT_PREV is checked only after name is found, so the evidence still carries
+# the observed previous name.
 reg_measure_present() {
-	local name="$1" op="$2" attempt="$3" seconds="$4" start="$5"
+	local name="$1" op="$2" attempt="$3" seconds="$4" start="$5" want_prev="${6:-}"
 	local deadline table line now elapsed prev
 	deadline=$((SECONDS + seconds))
 	while :; do
@@ -106,11 +125,21 @@ reg_measure_present() {
 			prev="$(printf '%s\n' "$line" | sed -n 's/.* prev=\(.*\)$/\1/p')"
 			printf '%s\n' "$table" >"$OUT/status-$op-$attempt.txt"
 			reg_timing "$op" "$name" "$attempt" "$elapsed" "prev=$prev"
+			if [[ -n "$want_prev" && "$prev" != "$want_prev" ]]; then
+				rs_obs "criterion failed: $op $name attempt $attempt was listed with prev=\"$prev\", want \"$want_prev\""
+				return 2
+			fi
+			if ((elapsed > REG_REFLECT_LIMIT_MS)); then
+				rs_obs "criterion failed: $op $name attempt $attempt took ${elapsed}ms, over the ${REG_REFLECT_LIMIT_MS}ms limit"
+				return 3
+			fi
+			rs_obs "$op $name attempt $attempt reflected in ${elapsed}ms (prev=$prev)"
 			return 0
 		fi
 		if ((SECONDS >= deadline)); then
 			printf '%s\n' "$table" >"$OUT/status-$op-$attempt.txt"
 			reg_timing "$op" "$name" "$attempt" "timeout" "not listed within ${seconds}s"
+			rs_obs "criterion failed: $op $name attempt $attempt was not listed within ${seconds}s"
 			return 1
 		fi
 		sleep 0.2
@@ -118,7 +147,9 @@ reg_measure_present() {
 }
 
 # reg_measure_gone polls until name is no longer listed. A table that does not
-# parse (for example while the Broker restarts) is not taken as removal.
+# parse (for example while the Broker restarts) is not taken as removal. It
+# returns 0 when the removal met the limit, 1 when name was still listed at the
+# deadline, and 2 when the removal took longer than the limit.
 reg_measure_gone() {
 	local name="$1" op="$2" attempt="$3" seconds="$4" start="$5"
 	local deadline table line now elapsed
@@ -132,16 +163,37 @@ reg_measure_gone() {
 				elapsed=$((now - start))
 				printf '%s\n' "$table" >"$OUT/status-$op-$attempt.txt"
 				reg_timing "$op" "$name" "$attempt" "$elapsed" "removed"
+				if ((elapsed > REG_REFLECT_LIMIT_MS)); then
+					rs_obs "criterion failed: $op $name attempt $attempt took ${elapsed}ms, over the ${REG_REFLECT_LIMIT_MS}ms limit"
+					return 2
+				fi
+				rs_obs "$op $name attempt $attempt reflected in ${elapsed}ms (removed)"
 				return 0
 			fi
 		fi
 		if ((SECONDS >= deadline)); then
 			printf '%s\n' "$table" >"$OUT/status-$op-$attempt.txt"
 			reg_timing "$op" "$name" "$attempt" "timeout" "still listed after ${seconds}s"
+			rs_obs "criterion failed: $op $name attempt $attempt was still listed after ${seconds}s"
 			return 1
 		fi
 		sleep 0.2
 	done
+}
+
+# reg_require_present and reg_require_gone turn a criterion result into the
+# probe's exit status: any non-zero measurement result fails the probe after
+# the measurement has written its observation and timing row.
+reg_require_present() {
+	local rc=0
+	reg_measure_present "$@" || rc=$?
+	((rc == 0)) || exit 1
+}
+
+reg_require_gone() {
+	local rc=0
+	reg_measure_gone "$@" || rc=$?
+	((rc == 0)) || exit 1
 }
 
 # reg_call_error invokes a tool whose refusal is the observation. rs_call from
@@ -215,11 +267,7 @@ rs_obs "reg-a, reg-b and reg-c registered"
 # new name and reject the old address.
 start="$(reg_now_ms)"
 rs_keys reg-a '/rename reg-a2' Enter
-if reg_measure_present reg-a2 rename 1 5 "$start"; then
-	rs_obs "rename reg-a -> reg-a2 reflected"
-else
-	rs_obs "rename reg-a -> reg-a2 was not reflected within 5s"
-fi
+reg_require_present reg-a2 rename 1 5 "$start" reg-a
 
 rs_agent reg-obs
 list_reply="$(rs_call reg-obs list_agents '{}')"
@@ -232,7 +280,8 @@ stale_reply="$(reg_call_error reg-obs send_message '{"to":"reg-a@hostB","message
 if [[ "$stale_reply" == *'"ok":false'* && "$stale_reply" == *reg-a2* ]]; then
 	rs_obs "send_message to reg-a@hostB refused and named reg-a2"
 else
-	rs_obs "send_message to reg-a@hostB answered: $stale_reply"
+	rs_obs "criterion failed: send_message to reg-a@hostB answered: $stale_reply"
+	exit 1
 fi
 
 # Step 5: reg-b runs a sleeping Bash command; record idle -> busy -> idle.
@@ -288,33 +337,27 @@ if ! rs_pane_idle invalid 30; then
 fi
 start="$(reg_now_ms)"
 rs_keys invalid '/rename ab' Enter
-if reg_measure_present ab rename-invalid 1 5 "$start"; then
-	rs_obs "rename a@b -> ab reflected"
-else
-	rs_obs "rename a@b -> ab was not reflected within 5s"
-fi
+# The a@b session is not listed before the rename, so there is no previous
+# name to require; the limit still applies.
+reg_require_present ab rename-invalid 1 5 "$start"
 
 # Step 7: end reg-c and measure when Status drops it.
 start="$(reg_now_ms)"
 rs_keys reg-c '/exit' Enter
-if reg_measure_gone reg-c exit 1 5 "$start"; then
-	rs_obs "exit of reg-c reflected"
-else
-	rs_obs "exit of reg-c was not reflected within 5s"
-fi
+reg_require_gone reg-c exit 1 5 "$start"
 
 # Step 8: repeat the rename and exit measurements nine more times.
 for attempt in 2 3 4 5 6 7 8 9 10; do
 	if ((attempt % 2 == 0)); then
 		new_name=reg-a
+		want_prev=reg-a2
 	else
 		new_name=reg-a2
+		want_prev=reg-a
 	fi
 	start="$(reg_now_ms)"
 	rs_keys reg-a "/rename $new_name" Enter
-	if ! reg_measure_present "$new_name" rename "$attempt" 5 "$start"; then
-		rs_obs "rename attempt $attempt to $new_name was not reflected within 5s"
-	fi
+	reg_require_present "$new_name" rename "$attempt" 5 "$start" "$want_prev"
 
 	exit_name="reg-exit-$attempt"
 	rs_window "$exit_name" claude --model haiku -n "$exit_name" --permission-mode default --append-system-prompt "$PROMPT" --debug-file "$R/debug/$exit_name.debug"
@@ -330,9 +373,7 @@ for attempt in 2 3 4 5 6 7 8 9 10; do
 	rs_obs_mode "$exit_name"
 	start="$(reg_now_ms)"
 	rs_keys "$exit_name" '/exit' Enter
-	if ! reg_measure_gone "$exit_name" exit "$attempt" 5 "$start"; then
-		rs_obs "exit attempt $attempt ($exit_name) was not reflected within 5s"
-	fi
+	reg_require_gone "$exit_name" exit "$attempt" 5 "$start"
 done
 
 # Record the inotify capacity and how many instances the Broker holds. macOS
@@ -385,6 +426,19 @@ watch_rc=0
 wait "$WATCH_PID" || watch_rc=$?
 watch_summary="$(sed -n '1p' "$OUT/watch-summary.txt")"
 printf 'watch_rc=%s\n%s\n' "$watch_rc" "$watch_summary" >"$OUT/watch-result.txt"
+misses="$(printf '%s\n' "$watch_summary" | sed -n 's/.*misses=\([0-9][0-9]*\).*/\1/p')"
+if [[ ! "$misses" =~ ^[0-9]+$ ]]; then
+	rs_obs "criterion failed: the watch summary has no misses count: $watch_summary"
+	exit 1
+fi
+if ((misses != 0)); then
+	rs_obs "criterion failed: the watch reported misses=$misses, want 0 ($watch_summary)"
+	exit 1
+fi
+if ((watch_rc != 0)); then
+	rs_obs "criterion failed: the watch exited with rc=$watch_rc, want 0 ($watch_summary)"
+	exit 1
+fi
 rs_obs "watch exited with rc=$watch_rc: $watch_summary"
 
 # The status prompt is the first model prompt the probe types; a run that never
