@@ -81,6 +81,13 @@ func WriteStatus(w io.Writer, resp *localpb.StatusResponse) error {
 		}
 	}
 
+	if available := resp.GetAvailableVersion(); available != "" {
+		if _, err := fmt.Fprintf(w, "Update: %s available (current %s); run agent-peer update\n",
+			available, resp.GetCurrentVersion()); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

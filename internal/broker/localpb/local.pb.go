@@ -2608,11 +2608,15 @@ func (*StatusRequest) Descriptor() ([]byte, []int) {
 }
 
 type StatusResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Agents        []*AgentStatusEntry    `protobuf:"bytes,1,rep,name=agents,proto3" json:"agents,omitempty"`
-	Peers         []*BrokerInfo          `protobuf:"bytes,2,rep,name=peers,proto3" json:"peers,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Agents []*AgentStatusEntry    `protobuf:"bytes,1,rep,name=agents,proto3" json:"agents,omitempty"`
+	Peers  []*BrokerInfo          `protobuf:"bytes,2,rep,name=peers,proto3" json:"peers,omitempty"`
+	// available_version is the newer release the periodic check found, or empty
+	// when there is none. current_version is the version this Broker runs.
+	AvailableVersion string `protobuf:"bytes,3,opt,name=available_version,json=availableVersion,proto3" json:"available_version,omitempty"`
+	CurrentVersion   string `protobuf:"bytes,4,opt,name=current_version,json=currentVersion,proto3" json:"current_version,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *StatusResponse) Reset() {
@@ -2659,6 +2663,117 @@ func (x *StatusResponse) GetPeers() []*BrokerInfo {
 	return nil
 }
 
+func (x *StatusResponse) GetAvailableVersion() string {
+	if x != nil {
+		return x.AvailableVersion
+	}
+	return ""
+}
+
+func (x *StatusResponse) GetCurrentVersion() string {
+	if x != nil {
+		return x.CurrentVersion
+	}
+	return ""
+}
+
+type UpdateStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateStatusRequest) Reset() {
+	*x = UpdateStatusRequest{}
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateStatusRequest) ProtoMessage() {}
+
+func (x *UpdateStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateStatusRequest.ProtoReflect.Descriptor instead.
+func (*UpdateStatusRequest) Descriptor() ([]byte, []int) {
+	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{38}
+}
+
+type UpdateStatusResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	CurrentVersion string                 `protobuf:"bytes,1,opt,name=current_version,json=currentVersion,proto3" json:"current_version,omitempty"`
+	// available_version is empty when the Broker knows of no newer release.
+	AvailableVersion string `protobuf:"bytes,2,opt,name=available_version,json=availableVersion,proto3" json:"available_version,omitempty"`
+	ReleaseUrl       string `protobuf:"bytes,3,opt,name=release_url,json=releaseUrl,proto3" json:"release_url,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *UpdateStatusResponse) Reset() {
+	*x = UpdateStatusResponse{}
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateStatusResponse) ProtoMessage() {}
+
+func (x *UpdateStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateStatusResponse.ProtoReflect.Descriptor instead.
+func (*UpdateStatusResponse) Descriptor() ([]byte, []int) {
+	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *UpdateStatusResponse) GetCurrentVersion() string {
+	if x != nil {
+		return x.CurrentVersion
+	}
+	return ""
+}
+
+func (x *UpdateStatusResponse) GetAvailableVersion() string {
+	if x != nil {
+		return x.AvailableVersion
+	}
+	return ""
+}
+
+func (x *UpdateStatusResponse) GetReleaseUrl() string {
+	if x != nil {
+		return x.ReleaseUrl
+	}
+	return ""
+}
+
 type AgentStatusEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AgentId       string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
@@ -2673,7 +2788,7 @@ type AgentStatusEntry struct {
 
 func (x *AgentStatusEntry) Reset() {
 	*x = AgentStatusEntry{}
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[38]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2685,7 +2800,7 @@ func (x *AgentStatusEntry) String() string {
 func (*AgentStatusEntry) ProtoMessage() {}
 
 func (x *AgentStatusEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[38]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2698,7 +2813,7 @@ func (x *AgentStatusEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentStatusEntry.ProtoReflect.Descriptor instead.
 func (*AgentStatusEntry) Descriptor() ([]byte, []int) {
-	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{38}
+	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *AgentStatusEntry) GetAgentId() string {
@@ -2755,7 +2870,7 @@ type AuditRequest struct {
 
 func (x *AuditRequest) Reset() {
 	*x = AuditRequest{}
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[39]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2767,7 +2882,7 @@ func (x *AuditRequest) String() string {
 func (*AuditRequest) ProtoMessage() {}
 
 func (x *AuditRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[39]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2780,7 +2895,7 @@ func (x *AuditRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditRequest.ProtoReflect.Descriptor instead.
 func (*AuditRequest) Descriptor() ([]byte, []int) {
-	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{39}
+	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *AuditRequest) GetSince() *timestamppb.Timestamp {
@@ -2815,7 +2930,7 @@ type AuditEvent struct {
 
 func (x *AuditEvent) Reset() {
 	*x = AuditEvent{}
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[40]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2827,7 +2942,7 @@ func (x *AuditEvent) String() string {
 func (*AuditEvent) ProtoMessage() {}
 
 func (x *AuditEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[40]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2840,7 +2955,7 @@ func (x *AuditEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditEvent.ProtoReflect.Descriptor instead.
 func (*AuditEvent) Descriptor() ([]byte, []int) {
-	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{40}
+	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *AuditEvent) GetTime() *timestamppb.Timestamp {
@@ -2923,7 +3038,7 @@ type PeerRef struct {
 
 func (x *PeerRef) Reset() {
 	*x = PeerRef{}
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[41]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2935,7 +3050,7 @@ func (x *PeerRef) String() string {
 func (*PeerRef) ProtoMessage() {}
 
 func (x *PeerRef) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[41]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2948,7 +3063,7 @@ func (x *PeerRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerRef.ProtoReflect.Descriptor instead.
 func (*PeerRef) Descriptor() ([]byte, []int) {
-	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{41}
+	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *PeerRef) GetFingerprint() []byte {
@@ -2976,7 +3091,7 @@ type ErrorDetail struct {
 
 func (x *ErrorDetail) Reset() {
 	*x = ErrorDetail{}
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[42]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2988,7 +3103,7 @@ func (x *ErrorDetail) String() string {
 func (*ErrorDetail) ProtoMessage() {}
 
 func (x *ErrorDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[42]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3001,7 +3116,7 @@ func (x *ErrorDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorDetail.ProtoReflect.Descriptor instead.
 func (*ErrorDetail) Descriptor() ([]byte, []int) {
-	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{42}
+	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ErrorDetail) GetCode() ErrorCode {
@@ -3035,7 +3150,7 @@ type AdvertisedAddress struct {
 
 func (x *AdvertisedAddress) Reset() {
 	*x = AdvertisedAddress{}
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[43]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3047,7 +3162,7 @@ func (x *AdvertisedAddress) String() string {
 func (*AdvertisedAddress) ProtoMessage() {}
 
 func (x *AdvertisedAddress) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_broker_localpb_local_proto_msgTypes[43]
+	mi := &file_internal_broker_localpb_local_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3060,7 +3175,7 @@ func (x *AdvertisedAddress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdvertisedAddress.ProtoReflect.Descriptor instead.
 func (*AdvertisedAddress) Descriptor() ([]byte, []int) {
-	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{43}
+	return file_internal_broker_localpb_local_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *AdvertisedAddress) GetKind() string {
@@ -3212,10 +3327,18 @@ const file_internal_broker_localpb_local_proto_rawDesc = "" +
 	"\x11SetConfigResponse\x12A\n" +
 	"\told_value\x18\x01 \x01(\v2$.internal.broker.localpb.ConfigValueR\boldValue\x12A\n" +
 	"\tnew_value\x18\x02 \x01(\v2$.internal.broker.localpb.ConfigValueR\bnewValue\"\x0f\n" +
-	"\rStatusRequest\"\x8e\x01\n" +
+	"\rStatusRequest\"\xe4\x01\n" +
 	"\x0eStatusResponse\x12A\n" +
 	"\x06agents\x18\x01 \x03(\v2).internal.broker.localpb.AgentStatusEntryR\x06agents\x129\n" +
-	"\x05peers\x18\x02 \x03(\v2#.internal.broker.localpb.BrokerInfoR\x05peers\"\xdc\x01\n" +
+	"\x05peers\x18\x02 \x03(\v2#.internal.broker.localpb.BrokerInfoR\x05peers\x12+\n" +
+	"\x11available_version\x18\x03 \x01(\tR\x10availableVersion\x12'\n" +
+	"\x0fcurrent_version\x18\x04 \x01(\tR\x0ecurrentVersion\"\x15\n" +
+	"\x13UpdateStatusRequest\"\x8d\x01\n" +
+	"\x14UpdateStatusResponse\x12'\n" +
+	"\x0fcurrent_version\x18\x01 \x01(\tR\x0ecurrentVersion\x12+\n" +
+	"\x11available_version\x18\x02 \x01(\tR\x10availableVersion\x12\x1f\n" +
+	"\vrelease_url\x18\x03 \x01(\tR\n" +
+	"releaseUrl\"\xdc\x01\n" +
 	"\x10AgentStatusEntry\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x18\n" +
 	"\aaccount\x18\x02 \x01(\tR\aaccount\x12\x18\n" +
@@ -3312,7 +3435,7 @@ const file_internal_broker_localpb_local_proto_rawDesc = "" +
 	"\x19ERROR_CODE_NOT_REGISTERED\x10\f\x12\x1f\n" +
 	"\x1bERROR_CODE_VERSION_MISMATCH\x10\r\x12\x1d\n" +
 	"\x19ERROR_CODE_QUOTA_EXCEEDED\x10\x0e\x12\x17\n" +
-	"\x13ERROR_CODE_INTERNAL\x10\x0f2\xd4\v\n" +
+	"\x13ERROR_CODE_INTERNAL\x10\x0f2\xc1\f\n" +
 	"\x05Local\x12V\n" +
 	"\x05Hello\x12%.internal.broker.localpb.HelloRequest\x1a&.internal.broker.localpb.HelloResponse\x12c\n" +
 	"\bRegister\x12(.internal.broker.localpb.RegisterRequest\x1a).internal.broker.localpb.RegisterResponse(\x010\x01\x12e\n" +
@@ -3331,7 +3454,8 @@ const file_internal_broker_localpb_local_proto_rawDesc = "" +
 	"\x10CreatePairingKey\x120.internal.broker.localpb.CreatePairingKeyRequest\x1a1.internal.broker.localpb.CreatePairingKeyResponse\x12b\n" +
 	"\tGetConfig\x12).internal.broker.localpb.GetConfigRequest\x1a*.internal.broker.localpb.GetConfigResponse\x12b\n" +
 	"\tSetConfig\x12).internal.broker.localpb.SetConfigRequest\x1a*.internal.broker.localpb.SetConfigResponse\x12Y\n" +
-	"\x06Status\x12&.internal.broker.localpb.StatusRequest\x1a'.internal.broker.localpb.StatusResponse\x12U\n" +
+	"\x06Status\x12&.internal.broker.localpb.StatusRequest\x1a'.internal.broker.localpb.StatusResponse\x12k\n" +
+	"\fUpdateStatus\x12,.internal.broker.localpb.UpdateStatusRequest\x1a-.internal.broker.localpb.UpdateStatusResponse\x12U\n" +
 	"\x05Audit\x12%.internal.broker.localpb.AuditRequest\x1a#.internal.broker.localpb.AuditEvent0\x01B>Z<github.com/wangzw/agent-peer/internal/broker/localpb;localpbb\x06proto3"
 
 var (
@@ -3347,7 +3471,7 @@ func file_internal_broker_localpb_local_proto_rawDescGZIP() []byte {
 }
 
 var file_internal_broker_localpb_local_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_internal_broker_localpb_local_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
+var file_internal_broker_localpb_local_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
 var file_internal_broker_localpb_local_proto_goTypes = []any{
 	(NotRegisteredReason)(0),         // 0: internal.broker.localpb.NotRegisteredReason
 	(AgentStatus)(0),                 // 1: internal.broker.localpb.AgentStatus
@@ -3395,14 +3519,16 @@ var file_internal_broker_localpb_local_proto_goTypes = []any{
 	(*SetConfigResponse)(nil),        // 43: internal.broker.localpb.SetConfigResponse
 	(*StatusRequest)(nil),            // 44: internal.broker.localpb.StatusRequest
 	(*StatusResponse)(nil),           // 45: internal.broker.localpb.StatusResponse
-	(*AgentStatusEntry)(nil),         // 46: internal.broker.localpb.AgentStatusEntry
-	(*AuditRequest)(nil),             // 47: internal.broker.localpb.AuditRequest
-	(*AuditEvent)(nil),               // 48: internal.broker.localpb.AuditEvent
-	(*PeerRef)(nil),                  // 49: internal.broker.localpb.PeerRef
-	(*ErrorDetail)(nil),              // 50: internal.broker.localpb.ErrorDetail
-	(*AdvertisedAddress)(nil),        // 51: internal.broker.localpb.AdvertisedAddress
-	(*timestamppb.Timestamp)(nil),    // 52: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),      // 53: google.protobuf.Duration
+	(*UpdateStatusRequest)(nil),      // 46: internal.broker.localpb.UpdateStatusRequest
+	(*UpdateStatusResponse)(nil),     // 47: internal.broker.localpb.UpdateStatusResponse
+	(*AgentStatusEntry)(nil),         // 48: internal.broker.localpb.AgentStatusEntry
+	(*AuditRequest)(nil),             // 49: internal.broker.localpb.AuditRequest
+	(*AuditEvent)(nil),               // 50: internal.broker.localpb.AuditEvent
+	(*PeerRef)(nil),                  // 51: internal.broker.localpb.PeerRef
+	(*ErrorDetail)(nil),              // 52: internal.broker.localpb.ErrorDetail
+	(*AdvertisedAddress)(nil),        // 53: internal.broker.localpb.AdvertisedAddress
+	(*timestamppb.Timestamp)(nil),    // 54: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),      // 55: google.protobuf.Duration
 }
 var file_internal_broker_localpb_local_proto_depIdxs = []int32{
 	12, // 0: internal.broker.localpb.RegisterResponse.registration_complete:type_name -> internal.broker.localpb.RegistrationComplete
@@ -3414,26 +3540,26 @@ var file_internal_broker_localpb_local_proto_depIdxs = []int32{
 	1,  // 6: internal.broker.localpb.AgentEntry.status:type_name -> internal.broker.localpb.AgentStatus
 	26, // 7: internal.broker.localpb.ListTopicsResponse.public_topics:type_name -> internal.broker.localpb.PublicTopic
 	29, // 8: internal.broker.localpb.ListBrokersResponse.brokers:type_name -> internal.broker.localpb.BrokerInfo
-	51, // 9: internal.broker.localpb.BrokerInfo.advertised_addresses:type_name -> internal.broker.localpb.AdvertisedAddress
+	53, // 9: internal.broker.localpb.BrokerInfo.advertised_addresses:type_name -> internal.broker.localpb.AdvertisedAddress
 	2,  // 10: internal.broker.localpb.BrokerInfo.status:type_name -> internal.broker.localpb.BrokerStatus
 	3,  // 11: internal.broker.localpb.BrokerInfo.role:type_name -> internal.broker.localpb.PeerRole
 	4,  // 12: internal.broker.localpb.BrokerInfo.link_state:type_name -> internal.broker.localpb.LinkState
 	32, // 13: internal.broker.localpb.ConnectResponse.warnings:type_name -> internal.broker.localpb.Warning
 	5,  // 14: internal.broker.localpb.Warning.kind:type_name -> internal.broker.localpb.WarningKind
-	52, // 15: internal.broker.localpb.CreatePairingKeyResponse.expires_at:type_name -> google.protobuf.Timestamp
+	54, // 15: internal.broker.localpb.CreatePairingKeyResponse.expires_at:type_name -> google.protobuf.Timestamp
 	39, // 16: internal.broker.localpb.GetConfigResponse.entries:type_name -> internal.broker.localpb.ConfigEntry
 	40, // 17: internal.broker.localpb.ConfigEntry.value:type_name -> internal.broker.localpb.ConfigValue
-	53, // 18: internal.broker.localpb.ConfigValue.duration_value:type_name -> google.protobuf.Duration
+	55, // 18: internal.broker.localpb.ConfigValue.duration_value:type_name -> google.protobuf.Duration
 	41, // 19: internal.broker.localpb.ConfigValue.string_list_value:type_name -> internal.broker.localpb.StringList
 	40, // 20: internal.broker.localpb.SetConfigResponse.old_value:type_name -> internal.broker.localpb.ConfigValue
 	40, // 21: internal.broker.localpb.SetConfigResponse.new_value:type_name -> internal.broker.localpb.ConfigValue
-	46, // 22: internal.broker.localpb.StatusResponse.agents:type_name -> internal.broker.localpb.AgentStatusEntry
+	48, // 22: internal.broker.localpb.StatusResponse.agents:type_name -> internal.broker.localpb.AgentStatusEntry
 	29, // 23: internal.broker.localpb.StatusResponse.peers:type_name -> internal.broker.localpb.BrokerInfo
 	1,  // 24: internal.broker.localpb.AgentStatusEntry.status:type_name -> internal.broker.localpb.AgentStatus
-	52, // 25: internal.broker.localpb.AuditRequest.since:type_name -> google.protobuf.Timestamp
-	52, // 26: internal.broker.localpb.AuditEvent.time:type_name -> google.protobuf.Timestamp
+	54, // 25: internal.broker.localpb.AuditRequest.since:type_name -> google.protobuf.Timestamp
+	54, // 26: internal.broker.localpb.AuditEvent.time:type_name -> google.protobuf.Timestamp
 	6,  // 27: internal.broker.localpb.AuditEvent.event:type_name -> internal.broker.localpb.AuditEventKind
-	49, // 28: internal.broker.localpb.AuditEvent.peer:type_name -> internal.broker.localpb.PeerRef
+	51, // 28: internal.broker.localpb.AuditEvent.peer:type_name -> internal.broker.localpb.PeerRef
 	40, // 29: internal.broker.localpb.AuditEvent.old_value:type_name -> internal.broker.localpb.ConfigValue
 	40, // 30: internal.broker.localpb.AuditEvent.new_value:type_name -> internal.broker.localpb.ConfigValue
 	7,  // 31: internal.broker.localpb.ErrorDetail.code:type_name -> internal.broker.localpb.ErrorCode
@@ -3451,24 +3577,26 @@ var file_internal_broker_localpb_local_proto_depIdxs = []int32{
 	37, // 43: internal.broker.localpb.Local.GetConfig:input_type -> internal.broker.localpb.GetConfigRequest
 	42, // 44: internal.broker.localpb.Local.SetConfig:input_type -> internal.broker.localpb.SetConfigRequest
 	44, // 45: internal.broker.localpb.Local.Status:input_type -> internal.broker.localpb.StatusRequest
-	47, // 46: internal.broker.localpb.Local.Audit:input_type -> internal.broker.localpb.AuditRequest
-	9,  // 47: internal.broker.localpb.Local.Hello:output_type -> internal.broker.localpb.HelloResponse
-	11, // 48: internal.broker.localpb.Local.Register:output_type -> internal.broker.localpb.RegisterResponse
-	16, // 49: internal.broker.localpb.Local.ListAgents:output_type -> internal.broker.localpb.ListAgentsResponse
-	19, // 50: internal.broker.localpb.Local.Send:output_type -> internal.broker.localpb.SendResponse
-	21, // 51: internal.broker.localpb.Local.JoinTopic:output_type -> internal.broker.localpb.JoinTopicResponse
-	23, // 52: internal.broker.localpb.Local.LeaveTopic:output_type -> internal.broker.localpb.LeaveTopicResponse
-	25, // 53: internal.broker.localpb.Local.ListTopics:output_type -> internal.broker.localpb.ListTopicsResponse
-	28, // 54: internal.broker.localpb.Local.ListBrokers:output_type -> internal.broker.localpb.ListBrokersResponse
-	31, // 55: internal.broker.localpb.Local.Connect:output_type -> internal.broker.localpb.ConnectResponse
-	34, // 56: internal.broker.localpb.Local.Disconnect:output_type -> internal.broker.localpb.DisconnectResponse
-	36, // 57: internal.broker.localpb.Local.CreatePairingKey:output_type -> internal.broker.localpb.CreatePairingKeyResponse
-	38, // 58: internal.broker.localpb.Local.GetConfig:output_type -> internal.broker.localpb.GetConfigResponse
-	43, // 59: internal.broker.localpb.Local.SetConfig:output_type -> internal.broker.localpb.SetConfigResponse
-	45, // 60: internal.broker.localpb.Local.Status:output_type -> internal.broker.localpb.StatusResponse
-	48, // 61: internal.broker.localpb.Local.Audit:output_type -> internal.broker.localpb.AuditEvent
-	47, // [47:62] is the sub-list for method output_type
-	32, // [32:47] is the sub-list for method input_type
+	46, // 46: internal.broker.localpb.Local.UpdateStatus:input_type -> internal.broker.localpb.UpdateStatusRequest
+	49, // 47: internal.broker.localpb.Local.Audit:input_type -> internal.broker.localpb.AuditRequest
+	9,  // 48: internal.broker.localpb.Local.Hello:output_type -> internal.broker.localpb.HelloResponse
+	11, // 49: internal.broker.localpb.Local.Register:output_type -> internal.broker.localpb.RegisterResponse
+	16, // 50: internal.broker.localpb.Local.ListAgents:output_type -> internal.broker.localpb.ListAgentsResponse
+	19, // 51: internal.broker.localpb.Local.Send:output_type -> internal.broker.localpb.SendResponse
+	21, // 52: internal.broker.localpb.Local.JoinTopic:output_type -> internal.broker.localpb.JoinTopicResponse
+	23, // 53: internal.broker.localpb.Local.LeaveTopic:output_type -> internal.broker.localpb.LeaveTopicResponse
+	25, // 54: internal.broker.localpb.Local.ListTopics:output_type -> internal.broker.localpb.ListTopicsResponse
+	28, // 55: internal.broker.localpb.Local.ListBrokers:output_type -> internal.broker.localpb.ListBrokersResponse
+	31, // 56: internal.broker.localpb.Local.Connect:output_type -> internal.broker.localpb.ConnectResponse
+	34, // 57: internal.broker.localpb.Local.Disconnect:output_type -> internal.broker.localpb.DisconnectResponse
+	36, // 58: internal.broker.localpb.Local.CreatePairingKey:output_type -> internal.broker.localpb.CreatePairingKeyResponse
+	38, // 59: internal.broker.localpb.Local.GetConfig:output_type -> internal.broker.localpb.GetConfigResponse
+	43, // 60: internal.broker.localpb.Local.SetConfig:output_type -> internal.broker.localpb.SetConfigResponse
+	45, // 61: internal.broker.localpb.Local.Status:output_type -> internal.broker.localpb.StatusResponse
+	47, // 62: internal.broker.localpb.Local.UpdateStatus:output_type -> internal.broker.localpb.UpdateStatusResponse
+	50, // 63: internal.broker.localpb.Local.Audit:output_type -> internal.broker.localpb.AuditEvent
+	48, // [48:64] is the sub-list for method output_type
+	32, // [32:48] is the sub-list for method input_type
 	32, // [32:32] is the sub-list for extension type_name
 	32, // [32:32] is the sub-list for extension extendee
 	0,  // [0:32] is the sub-list for field type_name
@@ -3498,7 +3626,7 @@ func file_internal_broker_localpb_local_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_broker_localpb_local_proto_rawDesc), len(file_internal_broker_localpb_local_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   44,
+			NumMessages:   46,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

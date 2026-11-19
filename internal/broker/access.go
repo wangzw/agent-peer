@@ -64,6 +64,7 @@ var methodAccess = map[string]accessRule{
 	localpb.Local_GetConfig_FullMethodName:        {need: AccessRead},
 	localpb.Local_Audit_FullMethodName:            {need: AccessRead},
 	localpb.Local_Status_FullMethodName:           {need: AccessRead, filterOnDeny: true},
+	localpb.Local_UpdateStatus_FullMethodName:     {need: AccessNone},
 	localpb.Local_SetConfig_FullMethodName:        {need: AccessWrite},
 	localpb.Local_CreatePairingKey_FullMethodName: {need: AccessWrite},
 	localpb.Local_Connect_FullMethodName:          {need: AccessWrite},

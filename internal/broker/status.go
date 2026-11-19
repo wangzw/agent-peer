@@ -49,5 +49,18 @@ func (b *Broker) Status(ctx context.Context, req *localpb.StatusRequest) (*local
 		}
 		agents = kept
 	}
-	return &localpb.StatusResponse{Agents: agents, Peers: peers}, nil
+
+	// The available version comes from the periodic check. It is empty for a
+	// non-release build, which never checks.
+	current := b.deps.Version
+	available, _ := b.availableUpdate()
+	if !isReleaseVersion(current) {
+		available = ""
+	}
+	return &localpb.StatusResponse{
+		Agents:           agents,
+		Peers:            peers,
+		AvailableVersion: available,
+		CurrentVersion:   current,
+	}, nil
 }

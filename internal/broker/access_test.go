@@ -147,6 +147,7 @@ func TestAccessRulesMatchDesign(t *testing.T) {
 		localpb.Local_GetConfig_FullMethodName:        {need: AccessRead},
 		localpb.Local_Audit_FullMethodName:            {need: AccessRead},
 		localpb.Local_Status_FullMethodName:           {need: AccessRead, filterOnDeny: true},
+		localpb.Local_UpdateStatus_FullMethodName:     {need: AccessNone},
 		localpb.Local_SetConfig_FullMethodName:        {need: AccessWrite},
 		localpb.Local_CreatePairingKey_FullMethodName: {need: AccessWrite},
 		localpb.Local_Connect_FullMethodName:          {need: AccessWrite},
@@ -179,6 +180,7 @@ func TestNoneMethodsSkipChecker(t *testing.T) {
 		localpb.Local_LeaveTopic_FullMethodName,
 		localpb.Local_ListTopics_FullMethodName,
 		localpb.Local_ListBrokers_FullMethodName,
+		localpb.Local_UpdateStatus_FullMethodName,
 	}
 	checker := &fakeAccessChecker{err: errors.New("checker must not run")}
 	handled := 0

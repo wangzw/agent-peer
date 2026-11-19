@@ -97,6 +97,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 		deps.InSession = inbox.InSession
 	}
 	deps.LocalProtocolVersion = opts.LocalProtocolVersion
+	deps.Version = opts.Version
 	cfg := deps.Config
 
 	var (
@@ -359,7 +360,14 @@ func Run(ctx context.Context, opts RunOptions) error {
 		}
 	}
 
-	// Step 13: run until cancellation, checking the lock and the local socket
+	// Step 13: start the periodic update check. A non-release build never
+	// checks, so the initial delay is not even armed. The check reads the
+	// configuration on every period and keeps its result in memory only.
+	if isReleaseVersion(deps.Version) {
+		b.startUpdateChecks(ctx)
+	}
+
+	// Step 14: run until cancellation, checking the lock and the local socket
 	// once per tick.
 	tick := opts.checkTick
 	if tick == nil {

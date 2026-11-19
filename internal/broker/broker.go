@@ -42,6 +42,13 @@ type Broker struct {
 	// It has its own lock so a check never takes Broker.mu.
 	configDirChecks configDirCheckSet
 
+	// update state is the in-memory result of the periodic release check. It
+	// is never persisted.
+	updateMu         sync.Mutex
+	updateAvailable  string
+	updateReleaseURL string
+	updateTimer      Timer
+
 	// downstream state
 }
 

@@ -416,3 +416,30 @@ func TestFormatConfigValueKinds(t *testing.T) {
 		}
 	}
 }
+
+func TestWriteStatusShowsAvailableUpdate(t *testing.T) {
+	resp := &localpb.StatusResponse{
+		CurrentVersion:   "0.1.1",
+		AvailableVersion: "0.1.2",
+	}
+	var buf bytes.Buffer
+	if err := WriteStatus(&buf, resp); err != nil {
+		t.Fatalf("WriteStatus: %v", err)
+	}
+	want := "Agents: none\nPeers: none\n" +
+		"Update: 0.1.2 available (current 0.1.1); run agent-peer update\n"
+	if got := buf.String(); got != want {
+		t.Errorf("WriteStatus output = %q, want %q", got, want)
+	}
+}
+
+func TestWriteStatusOmitsUpdateLineWithoutAvailableVersion(t *testing.T) {
+	resp := &localpb.StatusResponse{CurrentVersion: "0.1.1"}
+	var buf bytes.Buffer
+	if err := WriteStatus(&buf, resp); err != nil {
+		t.Fatalf("WriteStatus: %v", err)
+	}
+	if got := buf.String(); strings.Contains(got, "Update:") {
+		t.Errorf("WriteStatus output = %q, want no update line", got)
+	}
+}

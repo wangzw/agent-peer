@@ -274,6 +274,13 @@ var keyTable = map[string]*keySpec{
 			return nil
 		},
 	},
+	"update.check": {
+		Name: "update.check", Kind: keyBool, Default: boolValue(true),
+	},
+	"update.check_interval": {
+		Name: "update.check_interval", Kind: keyDuration,
+		Default: durationValue(24 * time.Hour), MinDur: time.Hour,
+	},
 }
 
 func lookupKey(name string) (*keySpec, bool) {

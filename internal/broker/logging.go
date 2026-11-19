@@ -27,6 +27,10 @@ const (
 	EvRecordRereadFailed      = "session_record_reread_failed"
 	EvRegistryWatchFailed     = "session_registry_watch_failed"
 	EvLogLevelChanged         = "log_level_changed"
+	// EvUpdateCheckFailed records a failed release lookup. The check only logs
+	// at debug level: a failure must not affect other functions and is not
+	// audit-worthy.
+	EvUpdateCheckFailed = "update_check_failed"
 	// EvRemoteMemberInvalid is logged when a remote roster entry cannot be
 	// rendered into an address because its ref is unusable. The entry is
 	// skipped; the ref comes from the peer, so it must not decide whether this

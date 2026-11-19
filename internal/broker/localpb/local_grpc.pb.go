@@ -33,6 +33,7 @@ const (
 	Local_GetConfig_FullMethodName        = "/internal.broker.localpb.Local/GetConfig"
 	Local_SetConfig_FullMethodName        = "/internal.broker.localpb.Local/SetConfig"
 	Local_Status_FullMethodName           = "/internal.broker.localpb.Local/Status"
+	Local_UpdateStatus_FullMethodName     = "/internal.broker.localpb.Local/UpdateStatus"
 	Local_Audit_FullMethodName            = "/internal.broker.localpb.Local/Audit"
 )
 
@@ -54,6 +55,7 @@ type LocalClient interface {
 	GetConfig(ctx context.Context, in *GetConfigRequest, opts ...grpc.CallOption) (*GetConfigResponse, error)
 	SetConfig(ctx context.Context, in *SetConfigRequest, opts ...grpc.CallOption) (*SetConfigResponse, error)
 	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	UpdateStatus(ctx context.Context, in *UpdateStatusRequest, opts ...grpc.CallOption) (*UpdateStatusResponse, error)
 	Audit(ctx context.Context, in *AuditRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AuditEvent], error)
 }
 
@@ -208,6 +210,16 @@ func (c *localClient) Status(ctx context.Context, in *StatusRequest, opts ...grp
 	return out, nil
 }
 
+func (c *localClient) UpdateStatus(ctx context.Context, in *UpdateStatusRequest, opts ...grpc.CallOption) (*UpdateStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateStatusResponse)
+	err := c.cc.Invoke(ctx, Local_UpdateStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *localClient) Audit(ctx context.Context, in *AuditRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AuditEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &Local_ServiceDesc.Streams[1], Local_Audit_FullMethodName, cOpts...)
@@ -245,6 +257,7 @@ type LocalServer interface {
 	GetConfig(context.Context, *GetConfigRequest) (*GetConfigResponse, error)
 	SetConfig(context.Context, *SetConfigRequest) (*SetConfigResponse, error)
 	Status(context.Context, *StatusRequest) (*StatusResponse, error)
+	UpdateStatus(context.Context, *UpdateStatusRequest) (*UpdateStatusResponse, error)
 	Audit(*AuditRequest, grpc.ServerStreamingServer[AuditEvent]) error
 	mustEmbedUnimplementedLocalServer()
 }
@@ -297,6 +310,9 @@ func (UnimplementedLocalServer) SetConfig(context.Context, *SetConfigRequest) (*
 }
 func (UnimplementedLocalServer) Status(context.Context, *StatusRequest) (*StatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Status not implemented")
+}
+func (UnimplementedLocalServer) UpdateStatus(context.Context, *UpdateStatusRequest) (*UpdateStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateStatus not implemented")
 }
 func (UnimplementedLocalServer) Audit(*AuditRequest, grpc.ServerStreamingServer[AuditEvent]) error {
 	return status.Error(codes.Unimplemented, "method Audit not implemented")
@@ -563,6 +579,24 @@ func _Local_Status_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Local_UpdateStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LocalServer).UpdateStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Local_UpdateStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LocalServer).UpdateStatus(ctx, req.(*UpdateStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Local_Audit_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(AuditRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -632,6 +666,10 @@ var Local_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Status",
 			Handler:    _Local_Status_Handler,
+		},
+		{
+			MethodName: "UpdateStatus",
+			Handler:    _Local_UpdateStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -5,10 +5,12 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"net/http"
 
 	"google.golang.org/grpc"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/broker/update"
 )
 
 // ErrInvalidTopicName is returned by TopicTable.Join and Leave for a name that
@@ -122,6 +124,18 @@ type Deps struct {
 	ReadPeerCred         func(net.Conn) (Caller, error) // nil: ReadPeerCred
 	ServerOptions        []grpc.ServerOption            // appended to the gRPC server options (e.g. the access interceptor)
 	LocalProtocolVersion uint32                         // 0: localpb.ProtocolVersion; Run copies RunOptions.LocalProtocolVersion here
+
+	// Version is the version this process reports, without a leading v. It is
+	// empty in tests that do not care; UpdateStatus returns it and the
+	// periodic update check runs only when it is a formal release.
+	Version string
+	// UpdateAPI overrides the GitHub API base; empty: update.APIBase().
+	UpdateAPI string
+	// UpdateHTTPClient is the client for the update lookup; nil:
+	// http.DefaultClient.
+	UpdateHTTPClient *http.Client
+	// LatestRelease looks up the latest formal release; nil: update.Latest.
+	LatestRelease func(ctx context.Context, c *http.Client, api string) (update.Release, error)
 
 	Pairing        PairingOps    // nil: peer management RPCs return internal; ListBrokers lists only the catalog's non-peers
 	PeerLinks      PeerLinks     // nil: peer management RPCs return internal; ListBrokers lists only the catalog's non-peers

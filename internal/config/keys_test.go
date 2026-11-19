@@ -10,7 +10,7 @@ import (
 // TestKeyTableCompleteAndDefaults walks every key so a wrong type, default or
 // missing entry in the table fails a test.
 func TestKeyTableCompleteAndDefaults(t *testing.T) {
-	if got, want := len(keyTable), 29; got != want {
+	if got, want := len(keyTable), 31; got != want {
 		t.Fatalf("key table has %d keys, want %d", got, want)
 	}
 	type expectation struct {
@@ -47,6 +47,8 @@ func TestKeyTableCompleteAndDefaults(t *testing.T) {
 		"link.keepalive_interval":            {keyDuration, durationValue(15 * time.Second)},
 		"link.keepalive_timeout":             {keyDuration, durationValue(10 * time.Second)},
 		"log.level":                          {keyString, stringValue("info")},
+		"update.check":                       {keyBool, boolValue(true)},
+		"update.check_interval":              {keyDuration, durationValue(24 * time.Hour)},
 	}
 	for name, spec := range keyTable {
 		exp, ok := want[name]
@@ -125,6 +127,11 @@ func TestValidateValueBoundaries(t *testing.T) {
 		{"log.level", stringValue("info"), true},
 		{"log.level", stringValue("DEBUG"), false},
 		{"log.level", stringValue("trace"), false},
+		{"update.check", boolValue(true), true},
+		{"update.check", boolValue(false), true},
+		{"update.check_interval", durationValue(time.Hour), true},
+		{"update.check_interval", durationValue(time.Hour - time.Nanosecond), false},
+		{"update.check_interval", durationValue(0), false},
 	}
 	for _, tc := range cases {
 		spec, ok := lookupKey(tc.key)
