@@ -67,12 +67,18 @@ func TestSystemServiceStartsAndRestarts(t *testing.T) {
 			if pid == 0 || pid == before {
 				return false, fmt.Sprintf("MainPID = %d, want a new non-zero pid (was %d)", pid, before)
 			}
+			// systemd records the new MainPID when it forks the replacement,
+			// before the child execs agent-peer. Until the exec the child still
+			// carries systemd's command line, so the Broker listing can be empty
+			// while MainPID already names the new process. Wait for the pid to
+			// appear rather than scanning once after the wait.
+			procs := syscontainer.Pids("agent-peer", "broker", "--system")
+			if !hasPID(procs, pid) {
+				return false, fmt.Sprintf("MainPID = %d, but the running system Brokers are %v", pid, procs)
+			}
 			after = pid
 			return true, ""
 		})
-	if procs := syscontainer.Pids("agent-peer", "broker", "--system"); !hasPID(procs, after) {
-		t.Errorf("the new MainPID %d is not among the running system Brokers %v", after, procs)
-	}
 	t.Logf("systemd restarted the system Broker with MainPID %d", after)
 }
 
