@@ -396,13 +396,16 @@ func callStructured(t *testing.T, session *syscontainer.Session, tool string, ar
 }
 
 // closeSession closes the MCP client session so no session process survives
-// the user manager restart.
+// the user manager restart. It also closes the simulated session, which
+// releases the inbox socket, so a later session with the same account and name
+// can bind that path again.
 func closeSession(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
 
 	if err := session.MCP.Close(); err != nil {
 		t.Fatalf("closing the MCP session as %s: %v", session.Account, err)
 	}
+	session.Fake.Close()
 }
 
 // listBrokerStatuses runs the list-brokers role as peer and returns the status
