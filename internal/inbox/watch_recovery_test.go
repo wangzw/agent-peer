@@ -193,20 +193,36 @@ func TestWatch_RegistryDirectoryRemovedAndRecreated(t *testing.T) {
 	testWatchBeforeHandleEvent.Store(&beforeHandle)
 	t.Cleanup(func() { testWatchBeforeHandleEvent.Store(nil) })
 
-	// The removal event is fully handled once this closes, including the
-	// reconciliation that must reinstall the watch.
+	// The removal is fully handled once this closes, including the
+	// reconciliation that leaves a watch covering the registry directory.
+	//
+	// The directory's own removal notification is not a reliable signal: the
+	// watcher may reconcile before that notification is examined. When the
+	// record's removal is the event being handled and RemoveAll removes the
+	// directory before the reconciliation runs, the watcher moves its watch to
+	// the configuration directory and removes the watch on the registry
+	// directory. The queued removal notification then belongs to a watch the
+	// watcher has already dropped, so it is never delivered. That is a
+	// legitimate outcome: the directory is absent and the configuration watch
+	// covers its recreation. Accept it by requiring only that the directory is
+	// absent after an event has been handled; the reconciliation has then run
+	// and moved the watch to an ancestor.
 	removalHandled := make(chan struct{})
-	afterHandle := func(event fsnotify.Event) {
-		if filepath.Clean(event.Name) != aSessionsDir(dir) {
-			return
-		}
-		if event.Op&(fsnotify.Remove|fsnotify.Rename) == 0 {
-			return
-		}
+	signalHandled := func() {
 		select {
 		case <-removalHandled:
 		default:
 			close(removalHandled)
+		}
+	}
+	afterHandle := func(event fsnotify.Event) {
+		if filepath.Clean(event.Name) == aSessionsDir(dir) &&
+			event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
+			signalHandled()
+			return
+		}
+		if _, err := os.Stat(aSessionsDir(dir)); err != nil {
+			signalHandled()
 		}
 	}
 	testWatchAfterHandleEvent.Store(&afterHandle)
