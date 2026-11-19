@@ -1,14 +1,15 @@
 package broker
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
-	"os/user"
 	"strconv"
 	"syscall"
 
+	"github.com/wangzw/agent-peer/internal/accountdb"
 	"github.com/wangzw/agent-peer/internal/config"
 )
 
@@ -18,6 +19,9 @@ const (
 	evLocalSocketPermsApplied = "local_socket_perms_applied"
 	evLocalSocketPermsFailed  = "local_socket_perms_failed"
 )
+
+// lookupGroupFromDB is a seam for tests; production always uses accountdb.
+var lookupGroupFromDB = accountdb.LookupGroup
 
 // applyLocalSocketPerms sets the group and mode of the system Broker's local
 // socket. group "" means the group of runtimeDir. mode is the octal text of
@@ -35,15 +39,14 @@ func applyLocalSocketPerms(socketPath, runtimeDir, group, mode string) error {
 		}
 		gid = int(st.Gid)
 	} else {
-		g, err := user.LookupGroup(group)
+		groupGID, err := lookupGroupFromDB(group)
 		if err != nil {
-			return fmt.Errorf("broker.local_socket_group: group %q does not exist", group)
+			if errors.Is(err, accountdb.ErrNotFound) {
+				return fmt.Errorf("broker.local_socket_group: group %q does not exist", group)
+			}
+			return fmt.Errorf("broker.local_socket_group: group %q: %w", group, err)
 		}
-		n, err := strconv.ParseUint(g.Gid, 10, 32)
-		if err != nil {
-			return fmt.Errorf("broker.local_socket_group: group %q has an invalid gid %q: %w", group, g.Gid, err)
-		}
-		gid = int(n)
+		gid = int(groupGID)
 	}
 	if err := os.Lchown(socketPath, -1, gid); err != nil {
 		return fmt.Errorf("broker.local_socket_group: set the socket group to %d: %w", gid, err)
@@ -64,8 +67,11 @@ func validateSocketGroup(_, new config.Value) error {
 	if new.String == "" {
 		return nil
 	}
-	if _, err := user.LookupGroup(new.String); err != nil {
-		return fmt.Errorf("group %q does not exist", new.String)
+	if _, err := lookupGroupFromDB(new.String); err != nil {
+		if errors.Is(err, accountdb.ErrNotFound) {
+			return fmt.Errorf("group %q does not exist", new.String)
+		}
+		return fmt.Errorf("group %q: %w", new.String, err)
 	}
 	return nil
 }

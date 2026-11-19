@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/wangzw/agent-peer/internal/accountdb"
 )
 
 // Account is one entry of the account database.
@@ -24,55 +24,41 @@ type Account struct {
 // ErrNoAccount reports that the account database has no entry for the uid.
 var ErrNoAccount = errors.New("helper: no such account")
 
+// The account database lookups are variables so tests can inject a failure
+// that must not be mistaken for a missing account.
+var (
+	lookupUIDFromDB = accountdb.LookupUID
+	groupIDsFromDB  = accountdb.GroupIDs
+)
+
 // LookupAccount reads the account database afresh on every call.
 func LookupAccount(uid uint32) (Account, error) {
-	id := strconv.FormatUint(uint64(uid), 10)
-	u, err := user.LookupId(id)
+	u, err := lookupUIDFromDB(uid)
 	if err != nil {
-		var unknown user.UnknownUserIdError
-		if errors.As(err, &unknown) {
-			return Account{}, fmt.Errorf("%w: uid %s", ErrNoAccount, id)
+		if errors.Is(err, accountdb.ErrNotFound) {
+			return Account{}, fmt.Errorf("%w: uid %d", ErrNoAccount, uid)
 		}
-		return Account{}, fmt.Errorf("helper: looking up uid %s: %w", id, err)
+		return Account{}, fmt.Errorf("helper: looking up uid %d: %w", uid, err)
 	}
 
-	gid, err := parseID(u.Gid)
+	groups, err := groupIDsFromDB(u)
 	if err != nil {
-		return Account{}, fmt.Errorf("helper: account %q: primary group id %q: %w", u.Username, u.Gid, err)
-	}
-
-	groupIDs, err := u.GroupIds()
-	if err != nil {
-		return Account{}, fmt.Errorf("helper: account %q: supplementary groups: %w", u.Username, err)
-	}
-	groups := make([]uint32, 0, len(groupIDs)+1)
-	seen := make(map[uint32]struct{}, len(groupIDs)+1)
-	for _, g := range groupIDs {
-		groupUID, err := parseID(g)
-		if err != nil {
-			return Account{}, fmt.Errorf("helper: account %q: supplementary group id %q: %w", u.Username, g, err)
+		if errors.Is(err, accountdb.ErrNotFound) {
+			return Account{}, fmt.Errorf("%w: uid %d", ErrNoAccount, uid)
 		}
-		if _, ok := seen[groupUID]; ok {
-			continue
-		}
-		seen[groupUID] = struct{}{}
-		groups = append(groups, groupUID)
+		return Account{}, fmt.Errorf("helper: account %q: supplementary groups: %w", u.Name, err)
 	}
-	if _, ok := seen[gid]; !ok {
-		groups = append(groups, gid)
-	}
-	sort.Slice(groups, func(i, j int) bool { return groups[i] < groups[j] })
 
 	return Account{
-		Name:   u.Username,
-		UID:    uid,
-		GID:    gid,
+		Name:   u.Name,
+		UID:    u.UID,
+		GID:    u.GID,
 		Groups: groups,
-		Home:   u.HomeDir,
+		Home:   u.Home,
 	}, nil
 }
 
-// parseID converts a decimal group or user id from the account database.
+// parseID converts a decimal group or user id handed over in the environment.
 func parseID(s string) (uint32, error) {
 	v, err := strconv.ParseUint(s, 10, 32)
 	if err != nil {

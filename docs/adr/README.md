@@ -58,4 +58,5 @@
 
 | 决策 |
 |---|
+| [账户与组取自系统的账户数据库](adr-account-database-source.md) |
 | [复用 claude-code-socket-transport 写入 inbox socket](adr-reuse-socket-transport-library.md) |

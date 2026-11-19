@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os/user"
 	"strconv"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
+
+	"github.com/wangzw/agent-peer/internal/accountdb"
 )
 
 // Caller is the account and process on the other end of a local connection.
@@ -30,14 +33,46 @@ func ReadPeerCred(conn net.Conn) (Caller, error) {
 	return readPeerCred(u)
 }
 
+// usernameCacheTTL bounds how long a resolved caller name is reused. The name
+// is display data, and every local connection would otherwise cost one account
+// database lookup.
+const usernameCacheTTL = 5 * time.Minute
+
+// usernameCacheEntry is one cached caller name.
+type usernameCacheEntry struct {
+	name    string
+	expires time.Time
+}
+
+var (
+	// lookupUsername and usernameNow are seams for tests.
+	lookupUsername = accountdb.LookupUID
+	usernameNow    = time.Now
+
+	usernameMu    sync.Mutex
+	usernameCache = make(map[uint32]usernameCacheEntry)
+)
+
 // usernameFor returns the account name for uid, or the decimal uid when the
-// account cannot be looked up.
+// account cannot be looked up. A failed lookup is not cached.
 func usernameFor(uid uint32) string {
-	id := strconv.FormatUint(uint64(uid), 10)
-	if u, err := user.LookupId(id); err == nil && u.Username != "" {
-		return u.Username
+	now := usernameNow()
+	usernameMu.Lock()
+	entry, ok := usernameCache[uid]
+	usernameMu.Unlock()
+	if ok && now.Before(entry.expires) {
+		return entry.name
 	}
-	return id
+
+	id := strconv.FormatUint(uint64(uid), 10)
+	u, err := lookupUsername(uid)
+	if err != nil || u.Name == "" {
+		return id
+	}
+	usernameMu.Lock()
+	usernameCache[uid] = usernameCacheEntry{name: u.Name, expires: now.Add(usernameCacheTTL)}
+	usernameMu.Unlock()
+	return u.Name
 }
 
 // callerAuthInfo is the AuthInfo of one local connection.

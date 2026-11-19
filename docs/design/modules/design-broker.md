@@ -242,7 +242,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 
 系统级 Broker 接受所有账户的连接，哪些账户能使用它由本机 socket 的文件权限限定。
 
-以 `CGO_ENABLED=0` 构建时，Linux 上的账户与组只取自 `/etc/passwd` 与 `/etc/group`，经 LDAP、SSSD 等来源的账户无法派生权限检查进程，权限检查判为不允许。
+Linux 上，账户与组经 `getent` 取自系统的账户数据库，来源由 NSS 配置决定，LDAP、SSSD、extrausers 等来源的账户同样可以派生权限检查进程。查询使用绝对路径 `/usr/bin/getent` 或 `/bin/getent`，子进程环境只给 `LANG=C`，账户名或 uid 之前加 `--`，单次调用限时 5 秒。应答要求恰好一行且与请求一致；getent 报告不存在时按账户数据库中没有该账户处理，找不到 getent、超时、其他退出码或格式异常时退回 `os/user` 并记一条 Warn，此时只有本地文件来源可见（[ADR-account-database-source](../../adr/adr-account-database-source.md)）。
 
 管理员把系统级 Broker 配置文件的写权限授予某个组，即把管理操作委托给该组的账户。判定结果不缓存，文件权限与组成员关系的变更都对下一次调用生效。系统级 Broker 的配置文件在安装系统级服务时创建；文件不存在时，需要权限的调用一律返回 `permission_denied`。
 
@@ -282,7 +282,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 
 用户级 Broker 不派生辅助进程，这些操作在 Broker 进程内直接执行。
 
-以 `CGO_ENABLED=0` 构建时，Linux 上的账户与组只取自 `/etc/passwd` 与 `/etc/group`，经 LDAP、SSSD 等来源的账户无法派生辅助进程。
+账户与组同样经 `getent` 取自系统的账户数据库，组列表由 `getent initgroups` 补齐；查询失败时退回 `os/user` 并记一条 Warn，退回的条目 uid 与请求不符时不予采用，补充组查询的临时失败按检查失败上报，不当作账户不存在（[ADR-account-database-source](../../adr/adr-account-database-source.md)）。
 
 ### 发送
 

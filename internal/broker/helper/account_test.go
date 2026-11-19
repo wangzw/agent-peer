@@ -2,12 +2,49 @@ package helper
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/user"
 	"slices"
 	"strconv"
 	"testing"
+
+	"github.com/wangzw/agent-peer/internal/accountdb"
 )
+
+func TestLookupAccountTemporaryFailureIsNotMissing(t *testing.T) {
+	oldUID, oldGroups := lookupUIDFromDB, groupIDsFromDB
+	t.Cleanup(func() { lookupUIDFromDB, groupIDsFromDB = oldUID, oldGroups })
+
+	lookupUIDFromDB = func(uint32) (accountdb.User, error) {
+		return accountdb.User{Name: "alice", UID: 7, GID: 9, Home: "/home/alice"}, nil
+	}
+	groupIDsFromDB = func(accountdb.User) ([]uint32, error) {
+		return nil, errors.New("account database unavailable")
+	}
+
+	_, err := LookupAccount(7)
+	if err == nil {
+		t.Fatal("LookupAccount succeeded with a failing group lookup")
+	}
+	if errors.Is(err, ErrNoAccount) {
+		t.Errorf("LookupAccount error = %v, want a failed check, not ErrNoAccount", err)
+	}
+}
+
+func TestLookupAccountMissingUIDIsNoAccount(t *testing.T) {
+	old := lookupUIDFromDB
+	t.Cleanup(func() { lookupUIDFromDB = old })
+
+	lookupUIDFromDB = func(uid uint32) (accountdb.User, error) {
+		return accountdb.User{}, fmt.Errorf("%w: uid %d", accountdb.ErrNotFound, uid)
+	}
+
+	_, err := LookupAccount(7)
+	if !errors.Is(err, ErrNoAccount) {
+		t.Errorf("LookupAccount error = %v, want ErrNoAccount", err)
+	}
+}
 
 func TestLookupAccountCurrentUser(t *testing.T) {
 	uid := uint32(os.Getuid())

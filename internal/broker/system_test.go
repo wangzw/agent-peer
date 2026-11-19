@@ -289,6 +289,37 @@ func TestValidateSocketGroup(t *testing.T) {
 	}
 }
 
+func TestSocketGroupTransientLookupFailureIsAFailedCheck(t *testing.T) {
+	old := lookupGroupFromDB
+	t.Cleanup(func() { lookupGroupFromDB = old })
+	lookupGroupFromDB = func(string) (uint32, error) {
+		return 0, errors.New("account database unavailable")
+	}
+
+	err := validateSocketGroup(config.Value{}, config.Value{Kind: config.KindString, String: "agentpeer-users"})
+	if err == nil {
+		t.Fatal("validateSocketGroup succeeded while the account database failed")
+	}
+	if strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("validateSocketGroup error = %q, want a failed check, not a missing group", err)
+	}
+
+	path := shortSocketDir(t, "broker.sock")
+	ln, listenErr := net.Listen("unix", path)
+	if listenErr != nil {
+		t.Fatalf("listen on %s: %v", path, listenErr)
+	}
+	defer func() { _ = ln.Close() }()
+
+	permErr := applyLocalSocketPerms(path, filepath.Dir(path), "agentpeer-users", "0660")
+	if permErr == nil {
+		t.Fatal("applyLocalSocketPerms succeeded while the account database failed")
+	}
+	if strings.Contains(permErr.Error(), "does not exist") {
+		t.Errorf("applyLocalSocketPerms error = %q, want a failed check, not a missing group", permErr)
+	}
+}
+
 func TestWatchSocketPermsReappliesOnEitherKey(t *testing.T) {
 	cfg := newFakeConfig(t.TempDir())
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

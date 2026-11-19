@@ -16,8 +16,72 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
+	"github.com/wangzw/agent-peer/internal/accountdb"
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
 )
+
+// resetUsernameCache replaces the cache and its seams for one test.
+func resetUsernameCache(t *testing.T) {
+	t.Helper()
+	oldLookup, oldNow := lookupUsername, usernameNow
+	oldCache := usernameCache
+	usernameCache = make(map[uint32]usernameCacheEntry)
+	t.Cleanup(func() {
+		lookupUsername, usernameNow = oldLookup, oldNow
+		usernameCache = oldCache
+	})
+}
+
+func TestUsernameForCachesUntilTTL(t *testing.T) {
+	resetUsernameCache(t)
+
+	calls := 0
+	lookupUsername = func(uid uint32) (accountdb.User, error) {
+		calls++
+		return accountdb.User{Name: "alice", UID: uid}, nil
+	}
+	now := time.Date(2026, 11, 19, 0, 0, 0, 0, time.UTC)
+	usernameNow = func() time.Time { return now }
+
+	if got := usernameFor(7); got != "alice" {
+		t.Fatalf("usernameFor(7) = %q, want alice", got)
+	}
+	if got := usernameFor(7); got != "alice" {
+		t.Fatalf("usernameFor(7) again = %q, want alice", got)
+	}
+	if calls != 1 {
+		t.Errorf("lookup ran %d times inside the TTL, want 1", calls)
+	}
+
+	now = now.Add(usernameCacheTTL + time.Second)
+	if got := usernameFor(7); got != "alice" {
+		t.Fatalf("usernameFor(7) after the TTL = %q, want alice", got)
+	}
+	if calls != 2 {
+		t.Errorf("lookup ran %d times after the TTL, want 2", calls)
+	}
+}
+
+func TestUsernameForDoesNotCacheFailure(t *testing.T) {
+	resetUsernameCache(t)
+
+	calls := 0
+	lookupUsername = func(uint32) (accountdb.User, error) {
+		calls++
+		return accountdb.User{}, errors.New("account database unavailable")
+	}
+	usernameNow = func() time.Time { return time.Date(2026, 11, 19, 0, 0, 0, 0, time.UTC) }
+
+	if got := usernameFor(7); got != "7" {
+		t.Fatalf("usernameFor(7) = %q, want the decimal uid", got)
+	}
+	if got := usernameFor(7); got != "7" {
+		t.Fatalf("usernameFor(7) again = %q, want the decimal uid", got)
+	}
+	if calls != 2 {
+		t.Errorf("failed lookup ran %d times, want 2 (failures are not cached)", calls)
+	}
+}
 
 type helloCall struct {
 	caller Caller

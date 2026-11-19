@@ -157,7 +157,7 @@ type PathSet struct {
 | `broker.advertise` | 字符串 | 空 | 对外地址的配置，合法写法只有空、`主机`、`主机:端口`、`:端口`，见“对外地址”（[ADR-advertised-address](../../adr/adr-advertised-address.md)，`REQ-broker-config-030` 至 `REQ-broker-config-032`） |
 | `broker.advertise_extra` | 字符串列表 | 空 | 追加的对外地址，每项是 `主机` 或 `主机:端口`（`REQ-broker-config-033`） |
 | `broker.address_check_interval` | 时长 | `1m` | 重新枚举本机地址的间隔（`REQ-broker-discovery-016`） |
-| `broker.local_socket_group` | 字符串 | 空 | 系统级 Broker 本机 socket 的属组；空表示沿用运行时目录的属组，用户级忽略；组必须存在于账户数据库，运行期间修改立即生效（`REQ-broker-config-027`） |
+| `broker.local_socket_group` | 字符串 | 空 | 系统级 Broker 本机 socket 的属组；空表示沿用运行时目录的属组，用户级忽略；组必须存在于账户数据库（Linux 上经 getent 按 NSS 配置查询，见 [ADR-account-database-source](../../adr/adr-account-database-source.md)），运行期间修改立即生效（`REQ-broker-config-027`） |
 | `broker.local_socket_mode` | 字符串 | `0666` | 系统级 Broker 本机 socket 的文件权限；用户级的固定为 `0600`（`REQ-broker-config-027`） |
 | `pairing.static_key` | 字符串，密钥类 | 空 | 预置静态密钥，长度 16 至 128 个字符，有值即生效（[ADR-static-pairing-key](../../adr/adr-static-pairing-key.md)，`REQ-broker-pairing-008`、`REQ-broker-pairing-009`、`REQ-broker-pairing-029`） |
 | `pairing.max_failures` | 整数 | `5` | 一次性配对密钥作废前允许的验证失败次数 |

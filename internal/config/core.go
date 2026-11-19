@@ -4,9 +4,10 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
-	"os/user"
 	"sync"
 	"time"
+
+	"github.com/wangzw/agent-peer/internal/accountdb"
 )
 
 // ticker is the small part of time.Ticker this package uses.
@@ -87,8 +88,8 @@ type core struct {
 var defaultLogger = func() *slog.Logger { return slog.Default() }
 
 func accountHomeDir() (string, error) {
-	if u, err := user.Current(); err == nil && u.HomeDir != "" {
-		return u.HomeDir, nil
+	if u, err := accountdb.LookupUID(uint32(os.Getuid())); err == nil && u.Home != "" {
+		return u.Home, nil
 	}
 	return os.UserHomeDir()
 }
