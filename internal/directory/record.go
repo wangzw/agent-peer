@@ -132,10 +132,10 @@ func parseRecord(r *directorypb.Record) (*storedRecord, error) {
 	}, nil
 }
 
-// validCardAlias reports whether s is 1 to 24 bytes long and contains only
-// A-Z, a-z, 0-9, '.', '-' and '_'.
+// validCardAlias reports whether s is 1 to config.AliasMaxLen bytes long and
+// contains only A-Z, a-z, 0-9, '.', '-' and '_'.
 func validCardAlias(s string) bool {
-	if len(s) == 0 || len(s) > 24 {
+	if len(s) == 0 || len(s) > config.AliasMaxLen {
 		return false
 	}
 	for i := 0; i < len(s); i++ {

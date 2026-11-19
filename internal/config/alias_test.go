@@ -165,6 +165,27 @@ func TestREQBrokerPairing003_AliasValidation(t *testing.T) {
 	}
 }
 
+// An over-long alias says that it is too long, matching the wording the
+// pairing error uses for a local alias.
+func TestAliasValidationLongMessage(t *testing.T) {
+	err := validAlias(strings.Repeat("a", 25))
+	if err == nil || !strings.Contains(err.Error(), "longer than 24 characters") {
+		t.Fatalf("validAlias(25 chars) = %v, want a message saying it is longer than 24 characters", err)
+	}
+}
+
+// A multi-byte alias is refused for its characters, not for its byte length,
+// even when 13 two-byte characters are already over the limit.
+func TestAliasValidationNamesInvalidCharactersFirst(t *testing.T) {
+	err := validAlias(strings.Repeat("é", 13))
+	if err == nil || !strings.Contains(err.Error(), "is not allowed") {
+		t.Fatalf("validAlias(13 é) = %v, want a message naming the invalid character", err)
+	}
+	if strings.Contains(err.Error(), "longer than") {
+		t.Fatalf("validAlias(13 é) = %v, want the character message rather than the length message", err)
+	}
+}
+
 func TestEffectiveAlias(t *testing.T) {
 	t.Run("configured alias wins", func(t *testing.T) {
 		c := &core{

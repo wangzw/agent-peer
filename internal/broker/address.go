@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/wangzw/agent-peer/internal/config"
 	"github.com/wangzw/agent-peer/internal/inbox"
 )
 
@@ -113,12 +114,18 @@ func NameUsableDetail(raw string) (string, string, bool) {
 	return n, "", true
 }
 
-// ValidAlias reports whether alias is a valid Broker alias: 1 to 24 characters
-// drawn from [A-Za-z0-9._-].
+// ValidAlias reports whether alias is a valid Broker alias: 1 to
+// config.AliasMaxLen bytes drawn from [A-Za-z0-9._-].
 func ValidAlias(alias string) bool {
-	if len(alias) < 1 || len(alias) > 24 {
+	if len(alias) < 1 || len(alias) > config.AliasMaxLen {
 		return false
 	}
+	return aliasCharsValid(alias)
+}
+
+// aliasCharsValid reports whether alias contains only the characters an alias
+// may use, without looking at its length.
+func aliasCharsValid(alias string) bool {
 	for i := 0; i < len(alias); i++ {
 		c := alias[i]
 		switch {

@@ -3,16 +3,15 @@ package pairing
 import (
 	"fmt"
 	"strings"
+
+	"github.com/wangzw/agent-peer/internal/config"
 )
 
-// aliasMaxLen is the maximum length of a self-reported or local alias in bytes.
-const aliasMaxLen = 24
-
-// validAlias reports whether s can be used as an alias. Aliases are 1 to 24
-// bytes long and consist of ASCII letters, digits, '.', '-' and '_'. Matching is
-// case-sensitive; no normalization is applied anywhere.
+// validAlias reports whether s can be used as an alias. Aliases are 1 to
+// config.AliasMaxLen bytes long and consist of ASCII letters, digits, '.', '-'
+// and '_'. Matching is case-sensitive; no normalization is applied anywhere.
 func validAlias(s string) bool {
-	if len(s) == 0 || len(s) > aliasMaxLen {
+	if len(s) == 0 || len(s) > config.AliasMaxLen {
 		return false
 	}
 	for i := 0; i < len(s); i++ {
@@ -70,9 +69,9 @@ func assignLocalAlias(reported string, fp Fingerprint, ownAlias string, taken ma
 	// Try the self-reported base with an increasing number of fingerprint
 	// digits. A suffix of "-" plus 23 hex digits already fills the whole alias,
 	// so longer prefixes cannot fit.
-	for digits := 4; digits <= len(hex) && digits+1 <= aliasMaxLen; digits++ {
+	for digits := 4; digits <= len(hex) && digits+1 <= config.AliasMaxLen; digits++ {
 		suffix := "-" + hex[:digits]
-		candidate := truncatePart(base, aliasMaxLen-len(suffix)) + suffix
+		candidate := truncatePart(base, config.AliasMaxLen-len(suffix)) + suffix
 		if aliasAvailable(candidate, ownAlias, taken) {
 			return candidate
 		}
@@ -82,7 +81,7 @@ func assignLocalAlias(reported string, fp Fingerprint, ownAlias string, taken ma
 	// two-digit sequence number instead, making room by truncating the base.
 	for seq := 0; seq <= 99; seq++ {
 		suffix := fmt.Sprintf("-%02d", seq)
-		candidate := truncatePart(base, aliasMaxLen-len(suffix)) + suffix
+		candidate := truncatePart(base, config.AliasMaxLen-len(suffix)) + suffix
 		if aliasAvailable(candidate, ownAlias, taken) {
 			return candidate
 		}
@@ -91,7 +90,7 @@ func assignLocalAlias(reported string, fp Fingerprint, ownAlias string, taken ma
 	// A hundred collisions on one prefix is outside anything a real peer table
 	// produces. Return a value that is still valid and different from the last
 	// attempt rather than looping forever.
-	candidate := truncatePart(base, aliasMaxLen-3) + "-xx"
+	candidate := truncatePart(base, config.AliasMaxLen-3) + "-xx"
 	if aliasAvailable(candidate, ownAlias, taken) {
 		return candidate
 	}

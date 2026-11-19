@@ -3,8 +3,12 @@ package config
 import (
 	"fmt"
 	"strconv"
-	"unicode/utf8"
 )
+
+// AliasMaxLen is the maximum length of a Broker alias in bytes. It is the one
+// definition of the limit: the configuration validator, pairing and the Broker
+// all measure aliases against it.
+const AliasMaxLen = 24
 
 // sanitizeHostname replaces every character outside the alias character set
 // with '-'. A multi-byte character counts as one character and becomes one '-'.
@@ -25,9 +29,9 @@ func sanitizeHostname(name string) string {
 }
 
 func validAlias(s string) error {
-	n := utf8.RuneCountInString(s)
-	if n < 1 || n > 24 {
-		return fmt.Errorf("length must be between 1 and 24 characters, got %d", n)
+	n := len(s)
+	if n < 1 {
+		return fmt.Errorf("length must be between 1 and %d characters, got %d", AliasMaxLen, n)
 	}
 	for _, r := range s {
 		switch {
@@ -39,23 +43,26 @@ func validAlias(s string) error {
 			return fmt.Errorf("character %q is not allowed", r)
 		}
 	}
+	if n > AliasMaxLen {
+		return fmt.Errorf("length is longer than %d characters, got %d", AliasMaxLen, n)
+	}
 	return nil
 }
 
 // defaultAlias derives the alias from the hostname and the effective listen
-// address. An unset listener yields up to 24 characters of the hostname; a set
-// listener appends "-<port>" and truncates the hostname part so the result is
-// at most 24 characters.
+// address. An unset listener yields up to AliasMaxLen characters of the
+// hostname; a set listener appends "-<port>" and truncates the hostname part so
+// the result is at most AliasMaxLen characters.
 func defaultAlias(hostname string, listen listenAddr) string {
 	host := sanitizeHostname(hostname)
 	if !listen.set {
 		if host == "" {
 			return "broker"
 		}
-		return truncateRunes(host, 24)
+		return truncateRunes(host, AliasMaxLen)
 	}
 	suffix := "-" + strconv.Itoa(listen.port)
-	maxHost := 24 - len(suffix)
+	maxHost := AliasMaxLen - len(suffix)
 	if maxHost < 0 {
 		maxHost = 0
 	}

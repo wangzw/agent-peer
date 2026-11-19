@@ -66,8 +66,8 @@ func TestREQBrokerPairing037_LocalAliasMaxLengthAndCharset(t *testing.T) {
 		if !validAlias(got) {
 			t.Errorf("assignLocalAlias(%q) = %q, not a valid alias", base, got)
 		}
-		if len(got) > aliasMaxLen {
-			t.Errorf("assignLocalAlias(%q) has length %d, want <= %d", base, len(got), aliasMaxLen)
+		if len(got) > config.AliasMaxLen {
+			t.Errorf("assignLocalAlias(%q) has length %d, want <= %d", base, len(got), config.AliasMaxLen)
 		}
 	}
 }
@@ -80,8 +80,8 @@ func TestREQBrokerPairing037_LocalAliasTruncation(t *testing.T) {
 	if !strings.HasSuffix(got, wantSuffix) {
 		t.Fatalf("alias %q does not end with %q", got, wantSuffix)
 	}
-	if len(got) != aliasMaxLen {
-		t.Fatalf("alias %q has length %d, want %d", got, len(got), aliasMaxLen)
+	if len(got) != config.AliasMaxLen {
+		t.Fatalf("alias %q has length %d, want %d", got, len(got), config.AliasMaxLen)
 	}
 	if got != strings.Repeat("z", 19)+wantSuffix {
 		t.Fatalf("alias = %q, want the base truncated to 19 characters plus the suffix", got)
@@ -118,9 +118,9 @@ func TestAssignLocalAliasFallsBackToSequence(t *testing.T) {
 	fp := aliasTestFingerprint(0xab)
 	hex := fingerprintHex(fp)
 	taken := make(map[string]struct{})
-	for digits := 4; digits+1 <= aliasMaxLen; digits++ {
+	for digits := 4; digits+1 <= config.AliasMaxLen; digits++ {
 		suffix := "-" + hex[:digits]
-		taken[truncatePart("peer", aliasMaxLen-len(suffix))+suffix] = struct{}{}
+		taken[truncatePart("peer", config.AliasMaxLen-len(suffix))+suffix] = struct{}{}
 	}
 	got := assignLocalAlias("peer", fp, "", taken)
 	if got != "peer-00" {
@@ -564,9 +564,9 @@ func TestAssignLocalAliasInvalidSequenceDoesNotLoop(t *testing.T) {
 	fp := aliasTestFingerprint(0)
 	taken := make(map[string]struct{})
 	hex := fingerprintHex(fp)
-	for digits := 4; digits+1 <= aliasMaxLen; digits++ {
+	for digits := 4; digits+1 <= config.AliasMaxLen; digits++ {
 		suffix := "-" + hex[:digits]
-		taken[truncatePart("peer", aliasMaxLen-len(suffix))+suffix] = struct{}{}
+		taken[truncatePart("peer", config.AliasMaxLen-len(suffix))+suffix] = struct{}{}
 	}
 	for seq := 0; seq <= 99; seq++ {
 		taken[fmt.Sprintf("peer-%02d", seq)] = struct{}{}

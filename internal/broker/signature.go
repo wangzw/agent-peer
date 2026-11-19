@@ -3,6 +3,7 @@ package broker
 import (
 	"strings"
 
+	"github.com/wangzw/agent-peer/internal/config"
 	"github.com/wangzw/agent-peer/internal/inbox"
 )
 
@@ -43,14 +44,14 @@ func signatureFor(name, ref string, unique bool, alias string) (sig string, ok b
 // (REQ-agent-messaging-026).
 //
 // The sender knows every part of its signature except the alias the receiver
-// uses for its Broker, so every alias length from 1 to 24 is tried, with and
-// without the ref. The longest signature is chosen by comparing frame sizes
-// with a short body: JSON escaping is per character, so the body contributes
-// the same amount to every candidate.
+// uses for its Broker, so every alias length from 1 to config.AliasMaxLen is
+// tried, with and without the ref. The longest signature is chosen by comparing
+// frame sizes with a short body: JSON escaping is per character, so the body
+// contributes the same amount to every candidate.
 func MaxSendFrameSize(name, ref, text string) int {
 	best := ""
 	bestSize := -1
-	for aliasLen := 1; aliasLen <= 24; aliasLen++ {
+	for aliasLen := 1; aliasLen <= config.AliasMaxLen; aliasLen++ {
 		alias := strings.Repeat("a", aliasLen)
 		for _, unique := range []bool{true, false} {
 			sig, ok := signatureFor(name, ref, unique, alias)

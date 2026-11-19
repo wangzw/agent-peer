@@ -12,12 +12,14 @@ import (
 )
 
 // TestConnectErrorMapping covers REQ-broker-pairing-004 (a local alias must be
-// offered on conflict) and REQ-broker-pairing-011 (a refusal names its reason).
+// offered on conflict), REQ-broker-pairing-011 (a refusal names its reason) and
+// REQ-broker-pairing-037 (an over-long local alias says that it is too long).
 func TestConnectErrorMapping(t *testing.T) {
 	const address = "198.51.100.4:17443"
 
 	tests := []struct {
 		name       string
+		localAlias string // the alias the caller asked pairing to use
 		err        error
 		wantCode   localpb.ErrorCode
 		wantMsg    string   // exact message when non-empty
@@ -36,10 +38,30 @@ func TestConnectErrorMapping(t *testing.T) {
 			wantCode: localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT,
 		},
 		{
-			name:     "invalid local alias",
-			err:      pairing.ErrInvalidAlias,
-			wantCode: localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT,
-			contains: []string{"invalid local alias"},
+			name:       "invalid local alias characters",
+			localAlias: "bad alias",
+			err:        pairing.ErrInvalidAlias,
+			wantCode:   localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT,
+			contains:   []string{"invalid local alias", "use 1 to 24 letters"},
+			notContain: []string{"longer than 24 characters"},
+		},
+		{
+			name:       "local alias longer than 24 characters",
+			localAlias: strings.Repeat("a", 25),
+			err:        pairing.ErrInvalidAlias,
+			wantCode:   localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT,
+			contains:   []string{"invalid local alias: longer than 24 characters"},
+		},
+		{
+			// A multi-byte character is outside the alias character set, so the
+			// refusal names the characters even though 13 two-byte characters
+			// are also over the byte limit.
+			name:       "local alias with non-ASCII characters",
+			localAlias: strings.Repeat("é", 13),
+			err:        pairing.ErrInvalidAlias,
+			wantCode:   localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT,
+			contains:   []string{"invalid local alias", "use 1 to 24 letters"},
+			notContain: []string{"longer than 24 characters"},
 		},
 		{
 			name:     "wrapped needs local alias",
@@ -108,7 +130,7 @@ func TestConnectErrorMapping(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := connectError(address, tt.err)
+			got := connectError(address, tt.localAlias, tt.err)
 			if got == nil {
 				t.Fatalf("connectError(%v) = nil, want an *Error", tt.err)
 			}
@@ -137,7 +159,7 @@ func TestConnectErrorMapping(t *testing.T) {
 // adds when it relays the message.
 func TestConnectErrorDropsNotConnectedPrefix(t *testing.T) {
 	err := &pairing.PairingError{Reason: pairing.ReasonVerificationFailed, Detail: "verification failed"}
-	got := connectError("h(192.0.2.1:1)", err)
+	got := connectError("h(192.0.2.1:1)", "", err)
 	if got == nil {
 		t.Fatal("connectError returned nil")
 	}
@@ -156,7 +178,7 @@ func TestConnectErrorCanceledIsNil(t *testing.T) {
 		context.Canceled,
 		fmt.Errorf("dial: %w", context.Canceled),
 	} {
-		if got := connectError("h:1", err); got != nil {
+		if got := connectError("h:1", "", err); got != nil {
 			t.Errorf("connectError(%v) = %v, want nil", err, got)
 		}
 	}

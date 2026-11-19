@@ -37,7 +37,7 @@ func (b *Broker) Connect(ctx context.Context, req *localpb.ConnectRequest) (*loc
 		b.deps.Config.Audit(ev)
 	}
 	if err != nil {
-		e := connectError(address, err)
+		e := connectError(address, req.GetLocalAlias(), err)
 		code := "canceled"
 		if e != nil {
 			code = connectCodeName(e.Code)
