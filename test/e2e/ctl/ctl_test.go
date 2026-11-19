@@ -16,6 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/wangzw/agent-peer/test/e2e/ctl"
+	"github.com/wangzw/agent-peer/test/e2e/internal/pathcmp"
 	"github.com/wangzw/agent-peer/test/e2e/node"
 )
 
@@ -160,7 +161,11 @@ func TestCtlSessionRoundTrip(t *testing.T) {
 	if echo.Env["HOME"] != env.Home {
 		t.Errorf("HOME = %q, want %q", echo.Env["HOME"], env.Home)
 	}
-	if echo.Cwd != env.Home {
+	cwdMatches, err := pathcmp.SamePath(echo.Cwd, env.Home)
+	if err != nil {
+		t.Fatalf("comparing the working directory: %v", err)
+	}
+	if !cwdMatches {
 		t.Errorf("working directory = %q, want %q", echo.Cwd, env.Home)
 	}
 

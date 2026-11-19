@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/agent-peer/test/e2e/internal/pathcmp"
 )
 
 // sessionTestEnv returns a BaseEnv isolated from the test process.
@@ -105,7 +106,11 @@ func TestSessionChildEnvironmentIsExact(t *testing.T) {
 		if got := out.Env["CLAUDE_CODE_MESSAGING_SOCKET"]; got != s.Fake().SocketPath() {
 			t.Errorf("CLAUDE_CODE_MESSAGING_SOCKET = %q, want %q", got, s.Fake().SocketPath())
 		}
-		if out.Cwd != workdir {
+		cwdMatches, err := pathcmp.SamePath(out.Cwd, workdir)
+		if err != nil {
+			t.Fatalf("comparing the working directory: %v", err)
+		}
+		if !cwdMatches {
 			t.Errorf("working directory = %q, want %q", out.Cwd, workdir)
 		}
 		if got := out.Env["HOME"]; got != env.Home {
