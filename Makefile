@@ -16,7 +16,7 @@ HUGO_VERSION := 0.170.1
 
 SITE_DIR ?= docs/site
 
-.PHONY: gen gen-check lint proto-lint test e2e docs-check check site site-check
+.PHONY: gen gen-check lint proto-lint test e2e e2e-darwin docs-check check site site-check
 
 # Regenerate the protobuf code with buf. Generated Go code is committed next to
 # its .proto file, so this target is expected to leave the tree unchanged when
@@ -93,6 +93,16 @@ e2e:
 	fi; \
 	go test -tags e2e -count=1 -run '^$$' ./test/e2e/ >/dev/null 2>&1 || true; \
 	exit $$status
+
+# The macOS service end-to-end tests exercise launchd on the host, so they run
+# on macOS only and use the real launchctl and sudo. The system-level and
+# user-level tests run serially because both use the same launchd label.
+e2e-darwin:
+	@if [ "$$(go env GOOS)" != darwin ]; then \
+		echo "e2e-darwin: requires macOS (go env GOOS is $$(go env GOOS))" >&2; \
+		exit 1; \
+	fi
+	go test -v -tags e2e_darwin -timeout $(E2E_TIMEOUT) -p 1 -parallel 1 ./test/e2e/darwinservice
 
 # Document standards plus a render of every Mermaid diagram in the docs that
 # differ from origin/main. scripts/docs-check.sh owns the details, including

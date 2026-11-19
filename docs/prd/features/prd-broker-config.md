@@ -145,11 +145,11 @@ Broker 必须以结构化格式输出运行日志。
 
 ### REQ-broker-config-015
 
-用户必须能把自己账户下的用户级 Broker 安装为随该账户登录而启动的服务。
+用户必须能把自己账户下的用户级 Broker 安装为服务：安装后立即启动，此后随该账户登录而启动。
 
-- **验收**：安装后重新登录，在未启动任何会话的情况下，该账户的 Broker 进程已在运行，并已恢复与对端的链路。
+- **验收**：安装后不重新登录，该账户的 Broker 进程已在运行；重新登录后，在未启动任何会话的情况下，该账户的 Broker 进程已在运行，并已恢复与对端的链路。macOS 与 Linux 都满足。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/user_service_test.go` 的 `TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink`（只覆盖 Linux；macOS 的 LaunchAgent 由单元测试覆盖）
+- **端到端测试**：`test/e2e/system/user_service_test.go` 的 `TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink`（Linux：安装后立即运行、重新登录后启动并恢复链路）；`test/e2e/darwinservice/darwin_test.go` 的 `TestUserServiceRestoresLinkAfterRelogin`（macOS：以 bootout/bootstrap 模拟登录，断言出现新 pid 且对端链路恢复为已连接）
 
 ### REQ-broker-config-016
 

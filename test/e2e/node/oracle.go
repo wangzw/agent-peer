@@ -40,6 +40,21 @@ func (o *Oracle) ListBrokers(ctx context.Context) (*localpb.ListBrokersResponse,
 	return o.client.ListBrokers(ctx, &localpb.ListBrokersRequest{})
 }
 
+// CreatePairingKey creates a one-time pairing key on this Broker.
+func (o *Oracle) CreatePairingKey(ctx context.Context) (*localpb.CreatePairingKeyResponse, error) {
+	return o.client.CreatePairingKey(ctx, &localpb.CreatePairingKeyRequest{})
+}
+
+// Connect pairs this Broker with the Broker at address using key. localAlias
+// may be empty.
+func (o *Oracle) Connect(ctx context.Context, address, key, localAlias string) (*localpb.ConnectResponse, error) {
+	return o.client.Connect(ctx, &localpb.ConnectRequest{
+		Address:    address,
+		Key:        key,
+		LocalAlias: localAlias,
+	})
+}
+
 // Status returns the Broker's status.
 func (o *Oracle) Status(ctx context.Context) (*localpb.StatusResponse, error) {
 	return o.client.Status(ctx, &localpb.StatusRequest{})
