@@ -450,7 +450,7 @@ func envBrokerLockFree(root string) (bool, string) {
 		if !errors.Is(err, syscall.EWOULDBLOCK) {
 			return false, fmt.Sprintf("cannot test %s: %v", lockPath, err)
 		}
-		pids := envLockHolders(lockPath)
+		pids := envLockHolders(lockPath, os.Getpid())
 		if len(pids) == 0 {
 			return false, "broker.lock is held by an unknown process"
 		}
@@ -467,8 +467,10 @@ func envBrokerLockFree(root string) (bool, string) {
 	return true, ""
 }
 
-// envLockHolders finds the processes that have lockPath open.
-func envLockHolders(lockPath string) []int {
+// envLockHolders finds the processes that have lockPath open, excluding self.
+// The caller opens the lock file to test the lock, so its own descriptor would
+// otherwise make the checker look like a holder.
+func envLockHolders(lockPath string, self int) []int {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return nil
@@ -476,7 +478,7 @@ func envLockHolders(lockPath string) []int {
 	var pids []int
 	for _, entry := range entries {
 		pid, err := strconv.Atoi(entry.Name())
-		if err != nil {
+		if err != nil || pid == self {
 			continue
 		}
 		fdDir := fmt.Sprintf("/proc/%d/fd", pid)

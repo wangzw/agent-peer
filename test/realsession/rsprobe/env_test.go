@@ -332,6 +332,35 @@ func TestEnvCheckNeverPrintsToken(t *testing.T) {
 	}
 }
 
+// TestEnvLockHoldersSkipsSelf checks that the lock checker does not count its
+// own open descriptor as a holder. Env check opens the lock file to test it, so
+// without the exclusion a running Broker always looked like two holders, one of
+// them the checker.
+func TestEnvLockHoldersSkipsSelf(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "broker.lock")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatalf("open %s: %v", path, err)
+	}
+	defer func() { _ = file.Close() }()
+
+	contains := func(pids []int, want int) bool {
+		for _, pid := range pids {
+			if pid == want {
+				return true
+			}
+		}
+		return false
+	}
+
+	if pids := envLockHolders(path, 0); !contains(pids, os.Getpid()) {
+		t.Fatalf("envLockHolders = %v, want it to contain this process %d", pids, os.Getpid())
+	}
+	if pids := envLockHolders(path, os.Getpid()); contains(pids, os.Getpid()) {
+		t.Fatalf("envLockHolders = %v, want this process %d excluded", pids, os.Getpid())
+	}
+}
+
 func TestUsageCountsDistinctMessageIDs(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "cfg", "projects", "some-project")
