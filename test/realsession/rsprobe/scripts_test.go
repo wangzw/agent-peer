@@ -682,6 +682,66 @@ esac
 	}
 }
 
+// TestRsDismissTrustDialogSendsBeforeAnElapsedDeadline checks that a spent
+// budget does not turn the helper into a no-op. The helper derives its
+// deadline from bash's SECONDS, which counts wall-clock time; a zero budget
+// makes the deadline already past at the loop's first check, the condition
+// that made CI report "failed after 0" with no keys pressed. The helper must
+// still capture the pane and send one burst before it reports the timeout.
+func TestRsDismissTrustDialogSendsBeforeAnElapsedDeadline(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	record := filepath.Join(root, "keys.txt")
+	stub := `#!/bin/sh
+case "$3" in
+capture-pane)
+	printf 'Quick safety check\n ❯ No, exit\n   Yes, I trust this folder\n'
+	;;
+send-keys)
+	printf '%s\n' "$*" >> '` + record + `'
+	;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(stub), 0o755); err != nil {
+		t.Fatalf("writing the tmux stub: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-c", `source "$1"; if bursts="$(rs_dismiss_trust_dialog w 0)"; then printf 'sends=%s\n' "$bursts"; else printf 'failed after %s\n' "$bursts"; fi`, "bash", lib)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=selftest",
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("calling rs_dismiss_trust_dialog: %v\n%s", err, out)
+	}
+	got := strings.TrimSpace(string(out))
+	if !strings.HasPrefix(got, "failed after ") {
+		t.Fatalf("rs_dismiss_trust_dialog = %q, want rc=1 with an elapsed deadline", got)
+	}
+	sends, err := strconv.Atoi(strings.TrimPrefix(got, "failed after "))
+	if err != nil || sends < 1 {
+		t.Fatalf("rs_dismiss_trust_dialog = %q, want at least one burst; a spent budget must not skip the first send", got)
+	}
+
+	data, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("reading the recorded keys: %v", err)
+	}
+	if lines := len(strings.Split(strings.TrimSpace(string(data)), "\n")); lines != sends {
+		t.Errorf("recorded %d key bursts, the helper reported %d", lines, sends)
+	}
+}
+
 // TestRsDismissTrustDialogFailsWhenTheDialogNeverLeaves checks the deadline
 // path: a stub keeps the dialog on screen, so the helper must stop at the
 // limit and report failure instead of resending forever.

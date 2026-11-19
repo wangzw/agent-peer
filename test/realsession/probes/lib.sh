@@ -658,6 +658,14 @@ rs_ready_criterion() {
 # dialog it answered has left the pane.
 RS_TRUST_DIALOG_RE='Quick safety check|Yes, I trust this folder|Do you trust the files|Yes, I trust'
 
+# RS_TRUST_DIALOG_RESEND_BUDGET bounds, in seconds, how long
+# rs_dismiss_trust_dialog keeps resending when the caller passes no bound. The
+# dialog has cleared after one or two 0.5-second bursts; ten seconds leaves
+# room for a loaded runner, where a capture and the redraw can each take
+# seconds, while staying under half of the smallest readiness budget a probe
+# passes to rs_wait_ready, so a timeout there still leaves time for one retry.
+RS_TRUST_DIALOG_RESEND_BUDGET=10
+
 # rs_accept_trust_dialog sends the keys that answer the workspace trust dialog
 # shown in the pane, and returns 0. It returns 2 without pressing anything when
 # the dialog is on screen but neither known option carries the cursor: another
@@ -694,10 +702,16 @@ rs_accept_trust_dialog() {
 # not been processed. The re-capture also keeps a second Down Enter from
 # landing on the next screen if the first burst did take effect and only the
 # redraw lagged.
+#
+# The deadline is checked only after a burst has been sent. SECONDS counts
+# wall-clock time, so a clock step can put the deadline behind the helper
+# before its first iteration; checking first made it print "failed after 0"
+# without pressing a key. One attempt is always made, and the deadline bounds
+# only the resends that follow it.
 rs_dismiss_trust_dialog() {
-	local window="$1" seconds="${2:-10}" deadline pane="" sends=0 rc=0
+	local window="$1" seconds="${2:-$RS_TRUST_DIALOG_RESEND_BUDGET}" deadline pane="" sends=0 rc=0
 	deadline=$((SECONDS + seconds))
-	while ((SECONDS < deadline)); do
+	while :; do
 		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
 		if ! printf '%s\n' "$pane" | grep -qiE -- "$RS_TRUST_DIALOG_RE"; then
 			printf '%s\n' "$sends"
@@ -710,6 +724,9 @@ rs_dismiss_trust_dialog() {
 			return 2
 		fi
 		sends=$((sends + 1))
+		if ((SECONDS >= deadline)); then
+			break
+		fi
 		sleep 0.5
 	done
 	printf '%s\n' "$sends"
