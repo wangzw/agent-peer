@@ -4,7 +4,7 @@
 
 用户在会话里工作时需要查看和调整 [Broker](../../glossary.md) 的配置，不必离开会话去编辑文件。配置中有影响安全的配置项。谁能读、谁能改，应当与操作系统对配置文件的权限一致，经工具操作只是便捷途径；改了什么也要能在事后查到。
 
-Broker 有两种部署形态。生产部署时由管理员把它作为系统服务运行，一个 Broker 服务主机上的多个账户；个人使用时它以普通账户运行，只服务这个账户，并且不应要求用户操心它的启动和持续运行。同一台主机上的多个 Broker 不能互相干扰，一个账户也不应同时有两个 Broker。
+Broker 有两种部署形态。生产部署时由管理员把它作为系统服务运行，一个 Broker 服务主机上的多个账户；个人使用时它以普通账户运行，只服务这个账户；用户把它安装为服务一次之后，它随登录启动并持续运行，不需要每次手动启动。同一台主机上的多个 Broker 不能互相干扰，一个账户也不应同时有两个 Broker。
 
 ## 范围
 
@@ -26,7 +26,7 @@ Broker 有两种部署形态。生产部署时由管理员把它作为系统服�
 | 参与者 | 权限 |
 |---|---|
 | Agent | 列出 Agent、列出 topic、加入与退出 topic、发送消息不需要对配置文件的任何权限。读取配置要求所属账户对 Broker 的配置文件有读权限；修改配置、生成配对密钥、发起配对、解除配对要求有写权限。 |
-| 用户 | 经 Claude Code 的权限设置决定哪些工具调用需要确认。对自己账户下的用户级 Broker，可以直接编辑配置文件、在本机终端查看状态与审计日志、把它安装为随登录启动的服务。 |
+| 用户 | 经 Claude Code 的权限设置决定哪些工具调用需要确认。对自己账户下的用户级 Broker，可以直接编辑配置文件、在本机终端查看状态与审计日志、把它安装为服务（安装后立即启动并随登录启动），或在终端手动启动它。 |
 | 管理员 | 安装并启动系统级 Broker，以文件权限决定哪些账户可以使用它、哪些账户可以读取或修改它的配置。 |
 
 ## 功能需求
@@ -119,21 +119,21 @@ Broker 必须以结构化格式输出运行日志。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessInContainer/REQ-broker-config-011 structured log`
 
-### REQ-broker-config-012
+### REQ-broker-config-038
 
-会话尚未选定 Broker 时，MCP 服务进程按 `REQ-broker-config-026` 的顺序找不到可用的 Broker 的，系统必须自动启动一个用户级 Broker。
+MCP 服务进程不得启动任何 Broker。会话按 `REQ-broker-config-026` 的顺序找不到可用的 Broker 时，工具调用必须返回说明如何启动 Broker 的错误；Broker 随后启动的，会话不必重新连接 MCP 服务即可使用。
 
-- **验收**：在没有任何 Broker 进程的主机上启动一个启用了工具的会话，该会话的工具调用成功，主机上出现一个以该会话所属账户运行的 Broker 进程。
-- **状态**：已实现
-- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessLocal/REQ-broker-config-012 auto launch`
+- **验收**：在没有任何 Broker 进程的主机上启动一个启用了工具的会话，工具调用返回的错误说明可以安装服务或在终端启动 Broker，主机上不出现 Broker 进程；随后在终端启动该账户的 Broker，不在 Claude Code 中重新连接 MCP 服务，下一次列出 Agent 成功。
+- **状态**：未实现
+- **端到端测试**：未实现
 
 ### REQ-broker-config-013
 
 同一账户下至多运行一个 Broker 实例。已有实例在运行时，以任何监听地址或配置再启动一个都必须失败，并说明已有实例在运行。
 
-- **验收**：在没有 Broker 进程的主机上，以同一个账户同时启动五个启用了工具的会话，该账户名下只有一个 Broker 进程，五个会话都登记在它上面；随后以同一个账户指定另一个监听地址手动再启动一个 Broker，启动失败，错误说明已有实例在运行，原有的 Broker 不受影响。
-- **状态**：已实现
-- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessLocal/REQ-broker-config-013 single instance`
+- **验收**：在没有 Broker 进程的主机上，以同一个账户同时运行五次启动 Broker 的命令，该账户名下只有一个 Broker 进程持续运行，其余都以说明已有实例在运行的错误退出；随后在该账户下启动五个启用了工具的会话，它们都登记在这个 Broker 上；再以同一个账户指定另一个监听地址手动启动一个 Broker，启动失败，错误说明已有实例在运行，原有的 Broker 不受影响。
+- **状态**：未实现
+- **端到端测试**：未实现
 
 ### REQ-broker-config-014
 
@@ -219,7 +219,7 @@ Broker 必须以结构化格式输出运行日志。
 
 配置或启动参数给出的监听地址无法绑定时，Broker 必须启动失败并报告该地址不可用，不得改用其他地址或端口，也不得改为不监听。
 
-- **验收**：先让另一个进程在本机全部地址的 17443 端口上监听，再以默认配置启动 Broker：启动失败，错误指出该地址不可用，主机上没有留下这个 Broker 的进程，也没有它在其他端口上的监听。这次启动由 MCP 服务进程触发时，会话的工具调用返回同一原因的错误。
+- **验收**：先让另一个进程在本机全部地址的 17443 端口上监听，再以默认配置启动 Broker：启动失败，错误指出该地址不可用，主机上没有留下这个 Broker 的进程，也没有它在其他端口上的监听。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessInContainer/REQ-broker-config-024 default address taken`
 
@@ -243,7 +243,7 @@ Broker 必须以结构化格式输出运行日志。
 
 系统级 Broker 的管理员必须能以文件权限限定哪些账户可以使用它。
 
-- **验收**：管理员把系统级 Broker 的使用权限限定到某个组。组内账户的会话照常登记在它上面；组外账户已在自己的配置中把监听地址设为 `:17444`，它的会话不能登记在系统级 Broker 上，按 `REQ-broker-config-012` 改为启动自己的用户级 Broker。
+- **验收**：管理员把系统级 Broker 的使用权限限定到某个组。组内账户的会话照常登记在它上面；组外账户已在自己的配置中把监听地址设为 `:17444`，它的会话不能登记在系统级 Broker 上，按 `REQ-broker-config-038` 返回说明没有可用 Broker 的错误；该账户启动自己的用户级 Broker 后，会话登记在它上面。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/socket_group_test.go` 的 `TestREQBrokerConfig027_GroupRestrictsUse`、`TestSystemSocketGroupReappliedOnReload`、`TestSystemSocketGroupUnknownRejected`
 
@@ -323,9 +323,9 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 会话所登记的 Broker 进程退出后，系统必须把该会话重新登记到同一个 Broker，不得改登记到另一个 Broker。
 
-- **验收**：主机上同时运行着系统级 Broker 和账户甲的用户级 Broker，两者监听不同的端口，甲的会话登记在用户级 Broker 上；终止用户级 Broker 进程，会话的下一次列出 Agent 成功，主机上重新出现甲的用户级 Broker，会话仍登记在指纹不变的这个用户级 Broker 上，系统级 Broker 上不出现该会话的 Agent。账户乙的会话登记在系统级 Broker 上时，终止系统级 Broker 进程，在它由系统的服务管理机制重新启动之前，主机上不出现乙的用户级 Broker；重新启动之后，乙的会话重新登记在系统级 Broker 上。
-- **状态**：已实现
-- **端到端测试**：`test/e2e/system/select_reregister_test.go` 的 `TestReregisterUserBrokerReq037`、`TestReregisterSystemBrokerReq037`
+- **验收**：主机上同时运行着系统级 Broker 和账户甲的用户级 Broker，两者监听不同的端口，甲的会话登记在用户级 Broker 上；终止用户级 Broker 进程，在它重新启动之前，会话的列出 Agent 返回说明没有可用 Broker 的错误，主机上不出现别的 Broker；它由用户级的服务管理机制或用户重新启动之后，不重新连接 MCP 服务，会话的下一次列出 Agent 成功，会话仍登记在指纹不变的这个用户级 Broker 上，系统级 Broker 上不出现该会话的 Agent。账户乙的会话登记在系统级 Broker 上时，终止系统级 Broker 进程，在它由系统的服务管理机制重新启动之前，主机上不出现乙的用户级 Broker；重新启动之后，乙的会话重新登记在系统级 Broker 上。
+- **状态**：未实现
+- **端到端测试**：未实现
 
 ## 数据需求
 

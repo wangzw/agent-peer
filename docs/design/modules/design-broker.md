@@ -96,7 +96,7 @@ service Local {
 |---|---|
 | 0 | 正常结束；Broker 与 MCP 服务进程收到 SIGINT 或 SIGTERM 后正常退出也是 0 |
 | 1 | 其他失败：Broker 运行期错误（含账户锁丢失）、终端命令连不上 Broker、Broker 返回错误、版本不同 |
-| 2 | 用法错误：未知子命令、未知标志、多余的位置参数、标志取值不合法（含 `--listen` 为空或写法不合法、`--ready-fd` 不是打开的描述符、`--limit` 超出范围） |
+| 2 | 用法错误：未知子命令、未知标志、多余的位置参数、标志取值不合法（含 `--listen` 为空或写法不合法、`--limit` 超出范围） |
 | 3 | 启动失败：已有实例持有账户锁 |
 | 4 | 启动失败：监听地址不可用 |
 | 5 | 启动失败：配置不合法 |
@@ -108,9 +108,9 @@ service Local {
 
 `--listen` 的取值必须非空。要本次运行不监听，把配置中的 `broker.listen` 设为空。地址写法是否合法由 `config` 判定，不合法按用法错误退出。
 
-就绪管道以隐藏标志 `--ready-fd=<n>` 传入，只由 MCP 服务进程的中间进程使用，从终端启动时没有这个标志。进程级信号由 `cmd/agent-peer` 统一处理：第一次 SIGINT 或 SIGTERM 取消运行，第二次直接终止进程。
+进程级信号由 `cmd/agent-peer` 统一处理：第一次 SIGINT 或 SIGTERM 取消运行，第二次直接终止进程。
 
-`status` 与 `audit` 连接哪个 Broker，按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的顺序前三项确定，不拉起 Broker。连上后先调用 `Hello`，本机协议版本不同时报 `version_mismatch` 并退出，说明 Broker 与本二进制各自的版本，提示用本二进制重启 Broker。单个一元调用超时 10 秒；`Audit` 的流不设总时限，靠信号取消。
+`status` 与 `audit` 连接哪个 Broker，按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的顺序前三项确定，只查找正在运行的 Broker，不启动 Broker。连上后先调用 `Hello`，本机协议版本不同时报 `version_mismatch` 并退出，说明 Broker 与本二进制各自的版本，提示用本二进制重启 Broker。单个一元调用超时 10 秒；`Audit` 的流不设总时限，靠信号取消。
 
 `status` 的输出分 Agent 与对端两段，表格按地址或别名排序，空值写 `-`；topic 按字典序以逗号连接；指纹写完整的 64 位小写十六进制，不截短；枚举取值写去掉前缀的小写蛇形。段内没有条目时写 `Agents: none` 或 `Peers: none`。`audit` 每个事件输出一行，按到达顺序排列，依次是 RFC 3339 UTC 时间、事件名，以及 `actor`、`account`、`peer`、`key`、`old`、`new`、`count`、`detail` 中的非空字段；值为空或含空格、引号、等号时加引号。
 
@@ -231,8 +231,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 6. 绑定监听地址。这一步在全部组件启动之后执行，地址取本次运行的生效监听地址。绑定失败时报告该地址不可用并退出，不改用其他地址或端口，也不改为不监听（[ADR-listen-by-default](../../adr/adr-listen-by-default.md)，`REQ-broker-config-024`）。监听地址配置为空时跳过这一步。启动组件之后、各组件的 `AfterReady` 之前送达的 `broker.listen` 变更不立即绑定：`AfterReady` 阶段按当时的生效值与这一步绑定的地址比较，不同则补绑一次，相同则跳过。
 7. 只有持锁的进程删除残留的本机 socket 文件并绑定本机 socket：用户级的权限为 `0600`；系统级的在绑定后按配置设置属组与权限，默认为运行时目录的属组与 `0666`，管理员把它设为某个组与该组可写的权限，即把能连接它的账户限定到该组（`REQ-broker-config-027`）。绑定后关闭 Go 默认的关闭即删除行为；删除本机 socket 文件前核对它仍是本进程绑定的文件。系统级先设属组再设权限；`broker.local_socket_group` 指向不存在的组时启动失败并指出该项。这两项经配置文件或 `SetConfig` 变化时立即重新应用到 socket 文件，已建立的连接不受影响。
 
-8. 就绪管道存在时，它是启动结果的出口：以上任何一步失败，向它写入一行失败原因，关闭管道后退出；监听地址与本机 socket 都已绑定之后，写入一行 `ok` 并关闭管道。管道由 MCP 服务进程经两级 re-exec 以文件描述符 3 传下来，隐藏标志 `--ready-fd=3` 将其告知 Broker，从终端启动的进程没有它；监听地址配置为空时第 6 步不执行，`ok` 在绑定本机 socket 之后写入。
-9. 在写出 `ok` 之后启动 `link`：对本方是拨号方的对端拨号，对本方是接受方的对端等待连入（[ADR-initiator-redials](../../adr/adr-initiator-redials.md)，`REQ-broker-pairing-019`）。
+8. 启动 `link`：对本方是拨号方的对端拨号，对本方是接受方的对端等待连入（[ADR-initiator-redials](../../adr/adr-initiator-redials.md)，`REQ-broker-pairing-019`）。
 
 收到退出信号后，先关闭 `link`，再停止本机接口，按启动的逆序停止各组件，删除自己的本机 socket，关闭但不删除账户锁文件。
 
@@ -242,7 +241,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 
 同一主机上另一个账户的 Broker 已经占用了默认配置中的监听地址时，本实例在第 6 步失败，由用户在启动参数或配置中改用其他地址或端口。Agent 表为空时 Broker 不退出（`REQ-broker-config-014`）。
 
-运行日志每行一个 JSON 对象，键为 `time`（RFC 3339，UTC）、`level` 与 `event`，其余为事件字段。用户级 Broker 写到标准错误，由拉起它的一方决定标准错误指向何处。级别随 `log.level` 的修改即时变化。
+运行日志每行一个 JSON 对象，键为 `time`（RFC 3339，UTC）、`level` 与 `event`，其余为事件字段。用户级 Broker 写到标准错误；由用户级的服务管理机制启动时，标准错误由该机制收集。级别随 `log.level` 的修改即时变化。
 
 ### 调用方的识别与权限判定
 
@@ -378,7 +377,7 @@ Linux 上，账户与组经 `getent` 取自系统的账户数据库，来源由 
 | 请求发出后没有确定应答，或 `inbox` 报告不确定 | `delivery_unknown` | 链路重建后重发；`inbox` 不确定时不重试 |
 | 对端返回的任何错误 | 保留原错误码 | 否 |
 
-启动阶段的失败不经本机接口返回。从终端启动的，进程以非零的退出码结束，并在标准错误输出说明原因：`--system` 而不是 root、处在会话的进程树内、已有实例持有账户锁、配置不合法、监听地址不可用。由 MCP 服务进程拉起的，进程以非零的退出码结束，失败原因经就绪管道交回，由 MCP 服务进程转给模型。退出码的取值与标准错误的格式见命令行一节。
+启动阶段的失败不经本机接口返回。进程以非零的退出码结束，并在标准错误输出说明原因：`--system` 而不是 root、处在会话的进程树内、已有实例持有账户锁、配置不合法、监听地址不可用。用户级 Broker 由服务管理机制或用户在会话之外的终端启动，会话中的工具调用在它启动并应答本机 socket 之前返回说明没有可用 Broker 的错误。退出码的取值与标准错误的格式见命令行一节。
 
 发送对同一消息标识是幂等的，幂等只在去重表保留条目的时间内成立；接收方的 Broker 在两次请求之间重启时，同一条消息可能写入两次。返回未送达类错误之后系统不再投递（`REQ-agent-messaging-019`）；返回 `delivery_unknown` 之后同样不再投递，但消息可能已经写入。
 

@@ -6,13 +6,13 @@
 
 - 声明工具的名字、参数、只读属性和说明文字，并提供整个MCP 服务的使用说明（[ADR-config-through-tools](../../adr/adr-config-through-tools.md)，`REQ-broker-config-003` 至 `REQ-broker-config-005`）。
 - 启动后先完成与 Claude Code 的握手，握手不依赖 Broker（`REQ-agent-messaging-038`）。
-- 在后台按固定的顺序选定要连接的 Broker；没有可用的 Broker 时拉起本账户的用户级 Broker，并使它脱离会话的进程树（`REQ-broker-config-012`、`REQ-broker-config-026`）。
+- 在后台按固定的顺序选定要连接的 Broker；没有可用的 Broker 时进入 `PhaseNoBroker`，工具调用返回说明如何启动 Broker 的错误（`REQ-broker-config-026`、`REQ-broker-config-038`）。
 - 向选定的 Broker 登记，报出环境中的 inbox socket 路径与环境中的配置目录，并保持登记连接（[ADR-register-through-mcp-server-process](../../adr/adr-register-through-mcp-server-process.md)，`REQ-agent-messaging-001`、`REQ-agent-messaging-036`）。
 - Broker 不可用、登记未完成或登记失败期间不退出，工具调用返回说明原因的错误，后台持续重试连接（`REQ-agent-messaging-038`）。
 - 收到 SIGINT 或 SIGTERM 时主动关闭登记连接后退出，使停用MCP 服务的会话随即注销（`REQ-agent-messaging-034`）。
 - 登记连接断开后按退避重连原来那个 Broker 并重新登记，恢复断开前的 topic 成员关系（`REQ-broker-config-037`）。
 - 确定默认 topic 并在登记后加入（[ADR-default-topic-from-repository](../../adr/adr-default-topic-from-repository.md)，`REQ-topics-015` 至 `REQ-topics-021`）。
-- 把工具调用转给 Broker，把结果和错误转成模型可读的文字；Broker 拉起失败时把它给出的原因原样转给模型。
+- 把工具调用转给 Broker，把结果和错误转成模型可读的文字；没有可用的 Broker 时，把启动方法写进错误。
 
 ### 非职责
 
@@ -20,7 +20,7 @@
 - 不表明自己的账户。调用方的账户由 [broker](design-broker.md) 从本机 socket 另一端进程的凭据（进程凭据）得出；登记时报出的两项，即 inbox socket 路径与 Claude Code 配置目录，只用于查找会话记录。
 - 不区分调用来自主会话还是子代理。子代理与主会话共用本进程和同一条连接，以主会话的 Agent 身份行事（`REQ-agent-messaging-035`）。
 - 不判定权限。每个调用能否执行由 `broker` 按调用方账户判定，`mcpserver` 只转述结果。
-- 不拉起系统级 Broker。系统级 Broker 只由管理员安装和启动。
+- 不启动任何 Broker。系统级 Broker 只由管理员安装和启动；用户级 Broker 由用户级的服务管理机制启动，或由用户在会话之外的终端启动。
 - 不判定可见性，不保存 topic 成员关系的权威副本，由 [topic](design-topic.md) 负责；`mcpserver` 只记着本会话已加入的 topic 名及加入时的公开声明与简介，用于重新登记后恢复。
 - 不读取 Broker 的配置文件，配置由 [config](design-config.md) 保存，一律经 Broker 的本机接口读写。
 
@@ -82,7 +82,7 @@ auto_join: true                               # 设为 false 时不自动加入�
 
 ## 依赖
 
-`mcpserver` 只引用本机接口的 proto 包 `internal/broker/localpb`，不引用 `broker` 包本身，符合模块依赖图的方向。它用系统的 `git` 命令读取 `origin` 地址。两种形态下运行时目录的位置规则与 [config](design-config.md) 所列的一致，`mcpserver` 按这些规则自行算出本机 socket 的路径，不需要引用 `broker` 包。终端命令 `status` 与 `audit` 的客户端在 `internal/mcpserver/termcmd`，它们复用本模块选定 Broker 的函数 `FindBrokerWithDial`，选定时不拉起 Broker；进程级信号由 `cmd/agent-peer` 处理。
+`mcpserver` 只引用本机接口的 proto 包 `internal/broker/localpb`，不引用 `broker` 包本身，符合模块依赖图的方向。它用系统的 `git` 命令读取 `origin` 地址。两种形态下运行时目录的位置规则与 [config](design-config.md) 所列的一致，`mcpserver` 按这些规则自行算出本机 socket 的路径，不需要引用 `broker` 包。终端命令 `status` 与 `audit` 的客户端在 `internal/mcpserver/termcmd`，它们复用本模块选定 Broker 的函数 `FindBrokerWithDial`，选定时只查找正在运行的 Broker，不启动 Broker；进程级信号由 `cmd/agent-peer` 处理。
 
 ## 核心算法与流程
 
@@ -95,22 +95,20 @@ auto_join: true                               # 设为 false 时不自动加入�
 | 一 | 环境变量 `AGENT_PEER_SOCKET` 非空 | 它指定的本机 socket；连接不上即失败，不再往下找 |
 | 二 | 本账户的用户级 Broker 的本机 socket 上有进程应答 | 该 socket |
 | 三 | 系统级 Broker 的本机 socket 存在，本账户有权连接，且连接被接受 | 该 socket |
-| 四 | 以上都不成立 | 拉起本账户的用户级 Broker，然后连接它 |
+| 四 | 以上都不成立 | 不连接；进入 `PhaseNoBroker`，工具调用返回错误 |
 
-是否有可用的 Broker，以能否连上它的本机 socket 判定：socket 不存在、本账户无权连接或连接被拒绝，都算不可用。管理员用系统级 Broker 本机 socket 的文件权限限定哪些账户可以使用它（`REQ-broker-config-027`），无权连接的账户落到拉起用户级 Broker 这一项。系统级 socket 存在、本账户有权连接而连接被拒绝时，在 10 秒内按退避重试连接，期限与就绪管道相同；其间连上即选定系统级，10 秒后仍无应答视为不可用，落到拉起用户级 Broker 这一项。已选定并登记在系统级 Broker 上的会话断开后不重新选定，只按退避重连同一个 socket，不拉起用户级 Broker。本账户已有用户级 Broker 在运行时，即使主机上另有系统级 Broker，也连接用户级的那个。root 账户的用户级与系统级 socket 是同一路径，按用户级处理，不重复探测。
+是否有可用的 Broker，以能否连上它的本机 socket 判定：socket 不存在、本账户无权连接或连接被拒绝，都算不可用。管理员用系统级 Broker 本机 socket 的文件权限限定哪些账户可以使用它（`REQ-broker-config-027`），无权连接的账户落到第四步。系统级 socket 存在、本账户有权连接而连接被拒绝时，在 10 秒内按退避重试连接；其间连上即选定系统级，10 秒后仍无应答视为不可用，落到第四步。已选定并登记在系统级 Broker 上的会话断开后不重新选定，只按退避重连同一个 socket。本账户已有用户级 Broker 在运行时，即使主机上另有系统级 Broker，也连接用户级的那个。root 账户的用户级与系统级 socket 是同一路径，按用户级处理，不重复探测。
 
-连上一个 socket 之后，在发出任何数据之前，本进程读取另一端进程的凭据，取得对端进程的有效 uid 并核对。本账户的用户级 Broker 的 socket，对端 uid 必须等于本进程的有效 uid；系统级 Broker 的 socket，对端 uid 必须为 0；`AGENT_PEER_SOCKET` 指定的 socket，对端 uid 必须等于本进程的有效 uid 或 0。不符的 socket 按不可用处理，错误文字写明路径与对端 uid。用户级的 socket 不符时直接报错，不拉起用户级 Broker：拉起出的 Broker 也无法绑定这个路径。选定之后建立连接时同样核对，socket 在选定之后被别的账户接管也不会用到。
+连上一个 socket 之后，在发出任何数据之前，本进程读取另一端进程的凭据，取得对端进程的有效 uid 并核对。本账户的用户级 Broker 的 socket，对端 uid 必须等于本进程的有效 uid；系统级 Broker 的 socket，对端 uid 必须为 0；`AGENT_PEER_SOCKET` 指定的 socket，对端 uid 必须等于本进程的有效 uid 或 0。不符的 socket 按不可用处理，错误文字写明路径与对端 uid。用户级的 socket 不符时直接报错；启动另一个 Broker 也无法绑定这个路径。选定之后建立连接时同样核对，socket 在选定之后被别的账户接管也不会用到。
 
-### 拉起用户级 Broker
+### 没有可用的 Broker
 
-拉起时，MCP 服务进程先启动一个中间进程，即同一二进制文件的隐藏子命令 `agent-peer internal broker-launcher`，由它再启动真正的 `agent-peer broker`。中间进程以 `Setsid: true` 启动 Broker，不带 `--system`，Broker 因此成为新的会话组的首进程；中间进程随即退出，Broker 由 init 或 subreaper 收养，不再是会话进程的后代，满足“Broker 与它派生的进程都不是任何会话的后代进程”的约束。MCP 服务进程把就绪管道经 `ExtraFiles` 交给中间进程，中间进程以同样的方式把管道交给 Broker，管道在两级子进程中都是文件描述符 3，Broker 的命令行是 `agent-peer broker --ready-fd=3`，隐藏标志 `--ready-fd` 只出现在这一次启动的命令行上。Broker 的标准输入、标准输出与标准错误指向 `/dev/null`，工作目录设为 `/`，使 Broker 不占住项目目录；v0.1.0 不另落运行日志。MCP 服务进程回收退出后的中间进程。Broker 的环境中去掉 `CLAUDE_CODE_MESSAGING_SOCKET`，使 `inbox` 的 `InSession` 检查不把它当作会话的后代（见 [inbox](design-inbox.md)），并去掉 `CLAUDE_CODE_CHILD_SESSION` 与 `AGENT_PEER_SOCKET`。Broker 完成监听地址与本机 socket 的绑定后，向就绪管道写一行 `ok`，失败时写一行失败原因，随后关闭管道；MCP 服务进程读到 `ok` 即继续，读到失败原因就把它转给模型，读到 EOF 而没有读到任何一行按失败处理。10 秒内没有读到任何一行同样按失败处理，且不终止 Broker：它在另一个会话组里，本进程不知道它的进程号。多个 MCP 服务进程同时这样做时，只有取得账户锁的那个 Broker 留下，其余的自行退出。
-
-Broker 在启动阶段失败时，例如配置的监听地址已被同一主机上另一个账户的 Broker 占用，它把失败原因写进就绪管道后退出。MCP 服务进程把这一行原样转给模型，此后的每次工具调用都返回它，直到一次重新选定成功；后台按退避重跑完整的“选定 Broker”，包括重新拉起用户级 Broker。失败原因中写明要由用户在配置或启动参数中改用其他监听地址，MCP 服务进程不替用户更换（[ADR-listen-by-default](../../adr/adr-listen-by-default.md)，`REQ-broker-config-024`）。
+前三步都不成立时，MCP 服务进程不启动 Broker，进入 `PhaseNoBroker`，工具调用返回 `internal` 码的错误。错误文字先说明本机若有系统级 Broker，应请管理员启动它，再给出用户级的两种启动方法：以 `agent-peer service install` 安装并启用用户级服务，或者在 Claude Code 会话之外的终端里运行 `agent-peer broker`；在会话里启动的 Broker 在检查到自己在会话的进程树内时以退出码 6 失败。后台按连接退避重新执行完整的“选定 Broker”，不设单独的退避。用户改用其他监听地址并重新启动 Broker 后，下一次选定即可成功（`REQ-broker-config-024`、`REQ-broker-config-038`）。
 
 ### 启动与登记
 
 1. 启动后立即响应 Claude Code 的 MCP 握手，声明全部工具。握手不等待 Broker：Claude Code 在握手超过 30 秒未完成时把 MCP 服务标为失败，要用户手动重新连接（`REQ-agent-messaging-038`）。
-2. 在后台按“选定 Broker”连接 Broker，必要时拉起用户级 Broker，调用 `Hello` 比较本机协议版本。不兼容时不再登记，之后的每次工具调用都返回提示重启 Broker 的 `version_mismatch` 错误（`REQ-broker-config-016`）。连接不设空闲超时，不兼容后也不轮询 Broker，而是等这条连接离开 READY，即 Broker 退出或重启，再按重连规则连回并重新调用 `Hello`，兼容后开始登记。给模型的文字按选定的种类给出做法：用户级 Broker 提示以同一个 agent-peer 版本重启本账户的 Broker，系统级 Broker 提示请管理员以同一个版本重启系统服务，`AGENT_PEER_SOCKET` 指定的 Broker 提示以同一个版本重启该路径上的 Broker；这些情形都说明本会话会自行重连。
+2. 在后台按“选定 Broker”连接 Broker，调用 `Hello` 比较本机协议版本。不兼容时不再登记，之后的每次工具调用都返回提示重启 Broker 的 `version_mismatch` 错误（`REQ-broker-config-016`）。连接不设空闲超时，不兼容后也不轮询 Broker，而是等这条连接离开 READY，即 Broker 退出或重启，再按重连规则连回并重新调用 `Hello`，兼容后开始登记。给模型的文字按选定的种类给出做法：用户级 Broker 提示以同一个 agent-peer 版本重启本账户的 Broker，并给出启动方法，即用 `agent-peer service install` 安装为用户级服务，或在会话之外的终端运行 `agent-peer broker`；系统级 Broker 提示请管理员以同一个版本重启系统服务；`AGENT_PEER_SOCKET` 指定的 Broker 提示以同一个版本重启该路径上的 Broker；这些情形都说明本会话会自行重连。
 3. 打开 `Register` 流，上行首帧带两项：环境变量 `CLAUDE_CODE_MESSAGING_SOCKET` 的值，可以为空；环境变量 `CLAUDE_CONFIG_DIR` 的值，可以为空。本进程不读会话注册表，记录的查找、等待与核对由 Broker 完成，见 [broker](design-broker.md)。
 4. 收到下行流发出的登记完成后，计算默认 topic 并逐个调用加入。下行流发出 `not_registered` 时记下原因，流保持打开，等待 Broker 此后发出登记完成。
 
@@ -122,7 +120,7 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 
 ### 重新登记
 
-`Register` 流断开后，`mcpserver` 按退避重连原来那个 Broker 并重新登记，不等下一次工具调用，也不改连其他 Broker（`REQ-broker-config-037`）。原来是用户级 Broker 的，连不上时按“拉起用户级 Broker”重新拉起它；原来是系统级 Broker 的，一直退避重连它的本机 socket，等待系统的服务管理机制把它重新启动，不拉起用户级 Broker，也不从“选定 Broker”重新开始。`AGENT_PEER_SOCKET` 指定的 Broker 断开后同样只按退避重连同一 socket，不拉起。登记首帧的两个环境变量只在进程启动时读取一次，此后每次重新登记使用同一对值。连接退避首次等待 250ms，此后每次翻倍，封顶 5 秒；只有收到登记完成才复位，`Hello` 成功不复位。拉起失败后的退避从 1 秒起每次翻倍，封顶 30 秒。用户级 Broker 重新拉起失败时先再探测一次原 socket，另一个 MCP 服务进程可能已经把它拉起，探测成功即连接。
+`Register` 流断开后，`mcpserver` 按退避重连原来那个 Broker 并重新登记，不等下一次工具调用，也不改连其他 Broker（`REQ-broker-config-037`）。用户级 Broker 与系统级 Broker 都只按退避重连原来的本机 socket，不启动 Broker：用户级等待用户级的服务管理机制或用户把它重新启动，系统级等待系统的服务管理机制把它重新启动，都不从“选定 Broker”重新开始。`AGENT_PEER_SOCKET` 指定的 Broker 断开后同样只按退避重连同一 socket。重连失败时，用户级 Broker 的 socket 不存在或拒绝连接的，说明没有 Broker 在监听，工具调用返回与首次找不到相同的文字；Broker 被强杀而没有删除 socket 文件时同样如此。会话原本登记在系统级 Broker 上的，只说明系统级 Broker 不可用并请用户联系管理员，不提用户级启动方法。用户级 socket 有应答而握手或调用失败的，只说该 Broker 不可用并在后台重试（`REQ-broker-config-037`、`REQ-broker-config-038`）。登记首帧的两个环境变量只在进程启动时读取一次，此后每次重新登记使用同一对值。连接退避首次等待 250ms，此后每次翻倍，封顶 5 秒；只有收到登记完成才复位，`Hello` 成功不复位。
 
 重新登记以同一个 socket 路径进行，得到的 Agent 标识不变；消歧标识按当时本 Broker 上的 Agent 集合重新计算，集合未变时其他 Agent 手里的地址继续有效。登记完成后按原来的公开声明与简介重新加入本进程记着的全部 topic；Broker 撤销登记后再次发出登记完成时同样如此。默认 topic 只在本进程第一次收到登记完成时确定一次，结果先记入记忆再逐个加入，加入途中断开时下次仍能恢复。Broker 已改为不公开的，公开声明失败，该 topic 仍以不公开方式加入。带错误详情而被拒绝的不公开 topic 从记忆中删除，没有错误详情的错误（连接中断）保留，等下一次登记完成再试。本进程退出后，它记着的 topic 随之丢失：MCP 服务被停用后重新启用，新的进程只重新加入默认 topic。
 
@@ -156,12 +154,12 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 
 Broker 返回的错误码转成一句以结果开头的文字，随后附上错误码和可采取的做法，例如名字有歧义时列出候选地址，附上消歧标识，目标是曾用名时给出现在的地址，权限不足时指出所缺的权限。Broker 不可达或登记未完成时，工具调用立即返回说明原因的错误，不在 MCP 服务进程内排队。
 
-错误文字的固定格式是 `开头短语: 说明 (code: <错误码名>)`，开头短语与说明之间是 `: `；涉及远端 Broker 时再接 ` (reported by Broker <64 位小写十六进制指纹>)`，有附加提示时提示接在最后。开头短语由错误码与调用它的工具确定，不取自 Broker 给出的说明：错误码为 `delivery_unknown` 时一律为 `Delivery unknown`，其余按工具取默认值，`send_message` 为 `Not sent`，`connect_broker` 为 `Not connected`，其他工具为 `<工具名> failed`。Broker 的说明若已以 `Not sent: `、`Delivery unknown: ` 或 `Not connected: ` 之一开头，先去掉这个开头短语，再按上述规则加上正确的短语。未连接、正在连接与拉起失败这些本机状态产生的错误用 `internal` 码，登记未完成用 `not_registered`，版本不兼容用 `version_mismatch`。登记未完成的说明优先取 Broker 事件里的 `detail`，它点名具体原因；`detail` 为空时按原因枚举使用固定句子，因此本进程连接不发送 `detail` 的旧 Broker 时，文字与之前一致。`send_message` 的请求发出后连接中断，按结果未知处理，开头为 `Delivery unknown`，说明消息可能已送达、重发可能使对方收到两份；`connect_broker` 的同情形以 `Not connected` 开头，说明配对可能已完成，可查看 `list_brokers`。
+错误文字的固定格式是 `开头短语: 说明 (code: <错误码名>)`，开头短语与说明之间是 `: `；涉及远端 Broker 时再接 ` (reported by Broker <64 位小写十六进制指纹>)`，有附加提示时提示接在最后。开头短语由错误码与调用它的工具确定，不取自 Broker 给出的说明：错误码为 `delivery_unknown` 时一律为 `Delivery unknown`，其余按工具取默认值，`send_message` 为 `Not sent`，`connect_broker` 为 `Not connected`，其他工具为 `<工具名> failed`。Broker 的说明若已以 `Not sent: `、`Delivery unknown: ` 或 `Not connected: ` 之一开头，先去掉这个开头短语，再按上述规则加上正确的短语。未连接、正在连接与没有可用 Broker 这些本机状态产生的错误用 `internal` 码，登记未完成用 `not_registered`，版本不兼容用 `version_mismatch`。登记未完成的说明优先取 Broker 事件里的 `detail`，它点名具体原因；`detail` 为空时按原因枚举使用固定句子，因此本进程连接不发送 `detail` 的旧 Broker 时，文字与之前一致。`send_message` 的请求发出后连接中断，按结果未知处理，开头为 `Delivery unknown`，说明消息可能已送达、重发可能使对方收到两份；`connect_broker` 的同情形以 `Not connected` 开头，说明配对可能已完成，可查看 `list_brokers`。
 
 | 情形 | 工具调用得到 |
 |---|---|
 | `AGENT_PEER_SOCKET` 指定的 socket 连接不上 | 错误，说明该 socket 不可用；不改连其他 Broker |
-| 拉起的用户级 Broker 在启动阶段退出 | Broker 给出的原因原样返回，例如监听地址不可用、已有实例在运行 |
+| 没有可用的 Broker | 错误；首次找不到时先请用户联系管理员启动系统级 Broker，再给出用户级两种启动方法；原本使用系统级 Broker 而断开的，只说明系统级 Broker 不可用并请用户联系管理员 |
 | 本机协议版本不兼容 | `version_mismatch`，提示重启 Broker |
 | Broker 连接不上，或正在重新连接 | 错误，说明 Broker 不可用、正在重试 |
 | `send_message` 的请求发出后连接中断 | `Delivery unknown`，说明消息可能已送达，重发可能使对方收到两份 |
@@ -177,8 +175,7 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 | 能力 | 状态 | 代码 |
 |---|---|---|
 | 工具声明与使用说明 | 已实现 | `internal/mcpserver/tools.go`（`newMCPServer`、`toolSet`）、`internal/mcpserver/instructions.go`（`instructions`） |
-| Broker 的选定 | 已实现 | `internal/mcpserver/select.go`（`selector.Select`、`selector.Find`、`FindBroker`） |
-| 拉起用户级 Broker 与失败原因的传递 | 已实现 | `internal/mcpserver/launch.go`（`execLauncher.Launch`、`brokerEnv`）、`internal/mcpserver/launcher.go`（`RunLauncher`、`LauncherArgs`） |
+| Broker 的选定 | 已实现 | `internal/mcpserver/select.go`（`selector.Find`、`FindBroker`） |
 | 握手、版本握手与会话登记 | 已实现 | `internal/mcpserver/run.go`（`Run`、`Options`）、`internal/mcpserver/conn.go`（`dialLocal`、`hello`）、`internal/mcpserver/register.go`（`runRegistration`） |
 | 信号处理 | 已实现 | `internal/mcpserver/run.go`（`Run`：上下文取消时先关闭登记流）、`cmd/agent-peer/app.go`（`newSignalContext`：`signal.NotifyContext` 处理 SIGINT 与 SIGTERM） |
 | 重新登记与成员关系恢复 | 已实现 | `internal/mcpserver/loop.go`（`runLoop`）、`internal/mcpserver/topics.go`（`topicMemory`、`restorer.onComplete`） |

@@ -135,7 +135,7 @@ MCP 服务进程由 Claude Code 作为会话的子进程启动，生命周期与
 | 进程 | 启动方式 | 数量 | 监听 |
 |---|---|---|---|
 | 系统级 Broker，`agent-peer broker --system` | 由管理员安装的系统服务启动，以 root 运行 | 每台主机至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
-| 用户级 Broker，`agent-peer broker` | MCP 服务进程找不到可用的 Broker 时拉起并使其脱离会话的进程树，或由用户级服务启动；服务安装后立即启动 Broker，此后随登录启动 | 每个账户至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
+| 用户级 Broker，`agent-peer broker` | 由用户安装为服务启动（安装后立即启动 Broker，此后随登录启动），或由用户在会话之外的终端启动 | 每个账户至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
 | 辅助进程 | 系统级 Broker 按需派生（`agent-peer internal account-helper`），切换到被服务的账户后运行 | 每个被服务的账户一个 | 无 |
 | 权限检查进程 | 系统级 Broker 每次判定调用方对配置文件的权限时派生（`agent-peer internal access-check`），以 root 执行后只把有效身份切换到调用方账户，检查后即退出 | 按需 | 无 |
 | MCP 服务进程，`agent-peer mcp` | Claude Code 按会话的工具配置启动 | 每会话一个 | 无 |
@@ -145,7 +145,7 @@ MCP 服务进程由 Claude Code 作为会话的子进程启动，生命周期与
 
 各类文件的位置随形态而定，完整的路径表见 [config](modules/design-config.md)：用户级的配置、数据与审计日志在账户的 `~/.agent-peer/` 下，系统级的分别在 `/etc/agent-peer/`、`/var/lib/agent-peer/` 与 `/var/log/agent-peer/` 下；运行时目录内有本机 socket 和账户锁，账户锁是保证同一账户至多运行一个 Broker 实例的锁文件；运行时目录只取决于账户，与形态、配置内容、监听地址和环境变量无关。系统级服务在 macOS 上是 launchd 的守护进程，在 Linux 上是 systemd 的系统单元；用户级服务在 macOS 上是 launchd 的用户代理，在 Linux 上是 systemd 的用户单元。两种服务都在安装时立即启动 Broker 并等待本机 socket 应答；卸载先停止服务再删除服务定义，配置、身份与审计日志保留。
 
-MCP 服务进程连接哪个 Broker 按固定的顺序确定：环境变量指定的、本账户正在运行的用户级 Broker、本账户有权连接的系统级 Broker，都没有时拉起用户级 Broker（`REQ-broker-config-026`）。MCP 服务进程不拉起系统级 Broker。
+MCP 服务进程连接哪个 Broker 按固定的顺序确定：环境变量指定的、本账户正在运行的用户级 Broker、本账户有权连接的系统级 Broker，都没有时不启动 Broker，工具调用返回说明没有可用 Broker 及如何启动的错误，后台按连接退避重新选定（`REQ-broker-config-026`、`REQ-broker-config-038`）。MCP 服务进程不启动任何 Broker。
 
 ## 数据流
 
@@ -252,7 +252,7 @@ Broker 内每条链路有一个读协程、一个写协程和一个按序处理�
 
 ### 失败与降级
 
-系统没有降级模式。链路断开期间，远端 Agent 从列表中消失，向它们的发送在重试或等待之后失败。Claude Code 更新导致帧格式不兼容时，全部入站投递失败，由更新 [inbox](modules/design-inbox.md) 依赖的库来恢复。Broker 进程退出后，各 MCP 服务进程的登记连接随之断开，MCP 服务进程按退避重连原来那个 Broker，退避只在登记完成后复位，连上后重新登记（`REQ-broker-config-037`），不等下一次工具调用，空闲的会话因此在 Broker 重启后仍能收到消息：原来连的是用户级 Broker 的，由 MCP 服务进程重新拉起；原来连的是系统级 Broker 的，只退避重连它，等待系统的服务管理机制重新启动，不拉起用户级 Broker，也不改连其他 Broker。配置的监听地址无法绑定时 Broker 启动失败；该 Broker 若由 MCP 服务进程拉起，此后的工具调用返回 Broker 给出的原因，直到用户改用其他地址或端口。默认路由所在接口的地址在地址转换之外连不上时，拨号持续失败，直到用户把对外地址配置为指定的地址或追加地址。接受方在链路断开之后、重新建立之前更换了地址，而拨号方又没有从名片得到新地址时，链路无法自行恢复，要重新配对；链路断开期间，接受方发出的消息只在发送的预算内等待对方连入（[ADR-initiator-redials](../adr/adr-initiator-redials.md)）。辅助进程意外退出时，系统级 Broker 有监听时立即在后台重新派生，没有监听时等下一次调用再派生，经它进行中的写入按结果未知处理。Broker 不可用或登记未完成时，MCP 服务进程不退出，工具调用返回说明原因的错误，连接在后台持续重试，会话不需要用户重新连接MCP 服务（`REQ-agent-messaging-038`）。
+系统没有降级模式。链路断开期间，远端 Agent 从列表中消失，向它们的发送在重试或等待之后失败。Claude Code 更新导致帧格式不兼容时，全部入站投递失败，由更新 [inbox](modules/design-inbox.md) 依赖的库来恢复。Broker 进程退出后，各 MCP 服务进程的登记连接随之断开，MCP 服务进程按退避重连原来那个 Broker，退避只在登记完成后复位，连上后重新登记（`REQ-broker-config-037`），不等下一次工具调用，空闲的会话因此在 Broker 重启后仍能收到消息：原来连的是用户级 Broker 的，只退避重连它的本机 socket，等待用户级的服务管理机制或用户重新启动它；原来连的是系统级 Broker 的，同样只退避重连它，等待系统的服务管理机制重新启动；两者都不改连其他 Broker。配置的监听地址无法绑定时 Broker 启动失败，工具调用返回说明没有可用 Broker 的错误，直到用户改用其他地址或端口并重新启动它。默认路由所在接口的地址在地址转换之外连不上时，拨号持续失败，直到用户把对外地址配置为指定的地址或追加地址。接受方在链路断开之后、重新建立之前更换了地址，而拨号方又没有从名片得到新地址时，链路无法自行恢复，要重新配对；链路断开期间，接受方发出的消息只在发送的预算内等待对方连入（[ADR-initiator-redials](../adr/adr-initiator-redials.md)）。辅助进程意外退出时，系统级 Broker 有监听时立即在后台重新派生，没有监听时等下一次调用再派生，经它进行中的写入按结果未知处理。Broker 不可用或登记未完成时，MCP 服务进程不退出，工具调用返回说明原因的错误，连接在后台持续重试，会话不需要用户重新连接MCP 服务（`REQ-agent-messaging-038`）。
 
 ### 可观测性
 
@@ -261,7 +261,7 @@ Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间�
 ### 安全边界
 
 - 链路上的全部内容由 TLS 1.3 加密。
-- 入站消息不带认证令牌，Claude Code 把它当作未声明权限类别的发送方处理（[REF-claude-code-cross-session-messaging](../references.md)），以跳过权限确认的模式运行的会话在未设置入站策略时把消息留待用户批准。以无界面方式运行的会话没有批准界面，这类留待批准的消息到期即被丢弃，发送方的发送已经返回成功。
+- 入站消息不带认证令牌，Claude Code 把它当作未声明权限类别的发送方处理（[REF-claude-code-cross-session-messaging](../references.md)），以跳过权限确认的模式运行的会话在未设置入站策略时把消息留待用户批准。以无界面方式运行的会话没有批准界面，这类留待批准的消息因发送方没有声明权限类别而被丢弃，发送方的发送已经返回成功。
 - Broker 与它派生的进程都不是任何会话的后代进程，写入的远端消息因此不会被当作会话自己的子进程所发而绕过入站控制（[ADR-inbox-delivery-without-auth-token](../adr/adr-inbox-delivery-without-auth-token.md)）。
 - 系统级 Broker 不以 root 的身份读取、监听账户的会话注册表，也不以 root 的身份写入 inbox socket，这些操作都由切换到该账户的辅助进程执行；inbox socket 属主的核对由 Broker 自己执行。
 - 系统级 Broker 下，同一主机上不同账户的 Agent 加入同一个 topic 后互相可见、可以互发消息，账户之间的隔离只体现在管理操作与会话归属上。
@@ -295,7 +295,7 @@ Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间�
 - 密钥类配置项的取值不经本机接口返回，也不写入运行日志与审计日志。
 - 调用方的账户只取自本机 socket 的进程凭据；调用中携带的 Agent 标识，以及登记请求所报的 socket 路径与配置目录，都不作为身份的依据。Agent 的 inbox socket 的属主是登记它的调用方账户。
 - 向会话 inbox socket 的写入总以该会话所属账户的身份进行。
-- MCP 服务进程只拉起用户级 Broker。
+- MCP 服务进程不启动任何 Broker，只连接正在运行的 Broker。
 - 远端发来的消息，署名中的别名取自接收方的对端表，不取自投递请求；本机发送的消息，署名中的别名是本机别名。
 - 只有 `inbox` 包引用 inbox 帧格式与会话注册表；`mcpserver` 从 Claude Code 的内部信息中只读取环境变量 `CLAUDE_CODE_MESSAGING_SOCKET` 与 `CLAUDE_CONFIG_DIR`，另读取本系统的 `AGENT_PEER_SOCKET`。
 - 本项目自己的每个包只引用模块依赖图中自己的箭头所指的本项目包，图中没有环；标准库、外部依赖和 `third_party` 下纳入的源码不受此限。

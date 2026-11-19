@@ -4,7 +4,7 @@
 
 agent-peer 让运行在不同主机上的 Claude Code 会话互相发现并发送文本消息。会话启用本系统的工具后登记到本机的一个 [Broker](../glossary.md)，成为 Agent。用户让两台主机上的 Broker 配对，配对后两边同在一个 topic 里的 Agent 即可互相看见、互发消息。
 
-Broker 按部署形态分为系统级与用户级。系统级 Broker 以特权身份作为系统服务运行，一台主机至多一个，服务本机多个账户下的 Agent。用户级 Broker 以普通账户运行，只服务这个账户下的 Agent，MCP 服务进程找不到可用的 Broker 时自动启动一个用户级 Broker。每个 Broker 实例有自己的身份、对端和配置，在网络中是各自独立的 Broker；同一个账户下至多运行一个实例。
+Broker 按部署形态分为系统级与用户级。系统级 Broker 以特权身份作为系统服务运行，一台主机至多一个，服务本机多个账户下的 Agent。用户级 Broker 以普通账户运行，只服务这个账户下的 Agent，通常安装为服务，随登录启动并持续运行，也可以由用户在终端手动启动；MCP 服务进程只连接 Broker，不启动任何 Broker。每个 Broker 实例有自己的身份、对端和配置，在网络中是各自独立的 Broker；同一个账户下至多运行一个实例。
 
 消息以 Claude Code 会话间消息的方式进入接收方会话（[REF-claude-code-cross-session-messaging](../references.md)）：空闲的会话收到后自行开始处理，忙碌的会话在当前工作的间隙读到。接收方会话的入站控制与权限确认照常生效。
 

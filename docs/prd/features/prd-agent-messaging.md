@@ -212,7 +212,7 @@ Agent 必须能向一个 Agent 地址发送一条纯文本消息。
 
 - **验收**：目标会话的入站策略为拒收时，消息不进入该会话；目标会话以跳过权限确认的模式运行且未设置入站策略时，消息留待用户批准。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessLocal/REQ-broker-config-012 auto launch`；`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-021 system side`
+- **端到端测试**：`test/e2e/send_local_test.go` 的 `TestLocalSend/REQ-agent-messaging-021 system side`；`test/realsession/probes/inbound.sh`（经 `.github/workflows/real-session.yml` 推送 `probe/inbound` 运行）
 
 ### REQ-agent-messaging-025
 
@@ -322,9 +322,9 @@ Agent 的名字经接收方会话对署名的清洗后与原名不同时，该 A
 
 本机 Broker 不可用或登记未完成时，工具调用必须返回说明原因的错误，会话不得因此需要用户重新连接 MCP 服务。
 
-- **验收**：让另一个进程占用默认监听地址，再启动一个启用了工具的会话：Claude Code 显示本系统的 MCP 服务已连接，工具调用返回说明监听地址不可用的错误。结束占用该地址的进程后，不在 Claude Code 中重新连接 MCP 服务，下一次列出 Agent 成功。
-- **状态**：已实现
-- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessInContainer/REQ-agent-messaging-038 recover without reconnect`
+- **验收**：让另一个进程占用默认监听地址，在终端启动该账户的 Broker，启动失败并说明监听地址不可用；再启动一个启用了工具的会话：Claude Code 显示本系统的 MCP 服务已连接，工具调用返回说明没有可用 Broker 及如何启动的错误。结束占用该地址的进程并启动 Broker 后，不在 Claude Code 中重新连接 MCP 服务，下一次列出 Agent 成功。
+- **状态**：未实现
+- **端到端测试**：未实现
 
 ## 数据需求
 
@@ -345,8 +345,7 @@ Agent 的名字经接收方会话对署名的清洗后与原名不同时，该 A
 - inbox socket 的消息格式与会话注册表都没有公开的兼容承诺，Claude Code 的版本更新可能使登记或投递失效。
 - 下列会话不能成为 Agent：没有绑定 inbox socket 的会话；Claude Code 没有为其保存会话注册表记录的会话，包括从另一个会话的命令行里启动的交互式会话；会话名不可用的会话（`REQ-agent-messaging-030`）。
 - 系统以账户为隔离的边界：同一账户下的任何进程都能把该账户的任一会话登记为 Agent，并以该 Agent 的身份调用。
-- 以无界面方式运行且跳过权限确认的会话收不到本系统的消息：接收方的 Claude Code 会暂扣未声明权限类别的发送方发来的消息，等用户批准；无界面会话没有批准界面，暂扣的消息到期即被丢弃，而发送方的发送已经返回成功。
-- Claude Code 启动 MCP 服务进程时，握手超过 30 秒未完成或进程启动失败的，交互式会话把该服务标为失败，要用户手动重新连接；该进程崩溃后，交互式会话不会自动重启它。
+- 以无界面方式运行且跳过权限确认的会话收不到本系统的消息：接收方的 Claude Code 会暂扣未声明权限类别的发送方发来的消息，等用户批准；无界面会话没有批准界面，暂扣的消息因发送方没有声明权限类别而被丢弃，而发送方的发送已经返回成功。
 - 发送限速、重复消息的丢弃和待处理消息的排队上限由接收方的 Claude Code 负责，系统不改变这些行为。规则如下，数值可由 Claude Code 调整：接收方按发送方限速与去重，写入的消息没有回复地址时以写入进程识别发送方；每个发送方的额度至多 30 条，每秒恢复 0.5 条；同一发送方在 30 秒内发来与上一条内容完全相同的消息时，后一条被丢弃；未处理的会话间消息至多排队 50 条；回合进行中入队的消息在回合结束时以 `remove` 结束，不成为用户记录，因此排队上限只能按队列深度观察。由此有下列后果：
   - 经同一个 Broker 写入同一个会话的全部消息，不论来自哪个 Agent，在接收方那里属于同一个发送方，共用一份额度。
   - 同一个 Agent 在 30 秒内向同一个会话连续发送两条内容完全相同的消息时，后一条被接收方丢弃，而发送已经返回成功。署名不同则内容不同，不同 Agent 之间不会因此互相导致消息被丢弃。

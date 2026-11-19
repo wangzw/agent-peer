@@ -119,7 +119,7 @@ type Session struct {
 
 ### 进程树的判断
 
-Claude Code 把所属会话的 inbox socket 路径放在它启动的命令与 MCP 服务进程的环境变量 `CLAUDE_CODE_MESSAGING_SOCKET` 中。`InSession` 在这个变量非空时报告本进程在某个会话的进程树内。MCP 服务进程拉起 Broker 时从 Broker 的环境中去掉这个变量，见 [mcpserver](design-mcpserver.md)。
+Claude Code 把所属会话的 inbox socket 路径放在它启动的命令与 MCP 服务进程的环境变量 `CLAUDE_CODE_MESSAGING_SOCKET` 中。`InSession` 在这个变量非空时报告本进程在某个会话的进程树内；Broker 因此不能在会话的进程树内启动，在会话里启动的 Broker 以退出码 6 失败，见 [broker](design-broker.md)。
 
 ### 写入
 

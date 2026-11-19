@@ -26,7 +26,7 @@
 
 | 里程碑 | 需求 |
 |---|---|
-| M1 | `REQ-agent-messaging-001` 至 `007`、`009` 至 `011`、`013` 至 `016`、`018`、`021` 至 `028`、`030` 至 `038`；`REQ-topics-001` 至 `004`、`006`、`008`、`015` 至 `022`；`REQ-broker-config-011` 至 `014`、`019`、`023` 至 `025`、`028` |
+| M1 | `REQ-agent-messaging-001` 至 `007`、`009` 至 `011`、`013` 至 `016`、`018`、`021` 至 `028`、`030` 至 `038`；`REQ-topics-001` 至 `004`、`006`、`008`、`015` 至 `022`；`REQ-broker-config-011`、`013`、`014`、`019`、`023` 至 `025`、`028`、`038` |
 | M2 | `REQ-broker-pairing-001` 至 `022`、`024` 至 `037`；`REQ-agent-messaging-008`、`012`、`017`、`019`、`020`、`029`；`REQ-topics-005`、`007`、`009`、`014`；`REQ-broker-discovery-012` 至 `014`；`REQ-broker-config-030` 至 `033`、`035`、`036` |
 | M3 | `REQ-broker-discovery-001` 至 `011`、`015` 至 `017`；`REQ-broker-pairing-023`；`REQ-topics-010` 至 `013`、`023` 至 `025`；`REQ-broker-config-001` 至 `010`、`017`、`021`、`022`、`029`、`034` |
 | M4 | `REQ-broker-config-015`、`016`、`018`、`020`、`026`、`027`、`037` |
@@ -63,7 +63,7 @@
 | 会话注册表位于配置目录下的 `sessions/<pid>.json`，配置目录取 `CLAUDE_CONFIG_DIR`，缺省为 `~/.claude`；每个会话进程一个文件，会话启动时写入，名字、状态、会话标识变化时就地改写而不是原子替换，进程退出时删除；同目录下另有各会话的密钥文件 | 程序分析 |
 | 会话注册表记录中的字段包括 `pid`、`name`、`status`、`messagingSocketPath`，`status` 取 `idle`、`busy`、`waiting`、`shell`；`messagingSocketPath` 在绑定 inbox 之后才有 | 记录的字段与 `idle`、`busy`、`waiting` 三个取值：实验，见“M0 的结论”；其余：程序分析 |
 | 无界面的 `claude -p` 会话与交互式会话同样登记并绑定 inbox | 实验（GitHub 托管的 Linux x64 runner，v2.1.311） |
-| 以无界面方式运行且跳过权限确认的会话对未声明权限类别的发送方暂扣消息，没有批准界面，消息到期即被丢弃 | 程序分析，并经实验确认（GitHub 托管的 Linux x64 runner，v2.1.311） |
+| 以无界面方式运行且跳过权限确认的会话对未声明权限类别的发送方暂扣消息，没有批准界面，暂扣的消息因发送方没有声明权限类别而被丢弃 | 实验（GitHub 托管的 Linux x64 runner，v2.1.311，headless 探查） |
 | `/mcp` 列表用 `✔ peer   N tools` 表示服务可用，不打印 `connected` | 实验（GitHub 托管的 Linux x64 runner，v2.1.311） |
 | 会话记录中以 `origin.name` 字段记下识别出的发送方名字；界面预览行对名字另做一次显示用清洗 | 实验（GitHub 托管的 Linux x64 runner，v2.1.311） |
 | 从另一个会话的命令行里启动的交互式会话不写会话注册表 | 程序分析 |
