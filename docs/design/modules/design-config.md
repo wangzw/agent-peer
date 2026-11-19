@@ -14,6 +14,7 @@
 - 保存密钥类配置项，即只经配置文件设置、取值不经本机接口返回的配置项，读取时不返回取值，审计与日志不记录取值，并校验预置静态密钥的长度（[ADR-static-pairing-key](../../adr/adr-static-pairing-key.md)，`REQ-broker-pairing-029` 至 `REQ-broker-pairing-031`）。
 - 提供按键读取，以及经校验的修改：校验通过后持久化、更新内存、写一条审计记录、通知订阅该键的调用方（`REQ-broker-config-001`、`REQ-broker-config-002`、`REQ-broker-config-006`）。
 - 监视配置文件，文件由其他程序改动后逐项采用合法的新值，不合法的项保留原值，并为每个采用了新值的键写一条审计记录（`REQ-broker-config-017`）。
+- 按部署形态生成配置文件模板，列出全部配置项，供服务安装时写入尚不存在的配置文件（`REQ-broker-config-040`）。
 - 追加审计记录，合并同一来源的重复拒绝事件，并提供按时间顺序读取（`REQ-broker-config-007` 至 `REQ-broker-config-009`）。
 
 ### 非职责
@@ -37,6 +38,9 @@
 func Load(mode Mode, listenOverride string) error
 func Paths() PathSet                     // 运行时目录、配置文件、数据目录、审计日志
 func AccountLock() string                // 账户锁的路径，不依赖 Load
+
+// Template 按形态生成配置文件模板：有固定默认值的键写出取值，没有固定默认值的键写成注释。
+func Template(mode Mode) []byte
 
 func Get(key string) (Value, error)
 func All() []Entry
@@ -207,7 +211,7 @@ type PathSet struct {
 
 运行时目录内有本机 socket `broker.sock` 和账户锁 `broker.lock`。运行时目录只取决于进程的账户，与形态、环境变量、配置内容和监听地址无关：root 的是 Linux 上的 `/run/agent-peer/`、macOS 上的 `/var/run/agent-peer/`，系统级 Broker 与 root 的用户级 Broker 因此争用同一把锁；其他账户的是 `/tmp/agent-peer-<uid>/`，`<uid>` 是进程的账户。同一账户的两个进程因此总是争用同一把锁，也总在同一个位置找本机 socket（`REQ-broker-config-013`）。root 的运行时目录权限 `0755`；系统级 Broker 的本机 socket 在绑定后按 `broker.local_socket_group` 与 `broker.local_socket_mode` 设置属组与权限，哪些账户能连接由它决定；用户级的 socket 固定为 `0600`；其他账户的运行时目录权限 `0700`。运行时目录的属主必须是本账户，不符时拒绝启动。以上位置规则对发布构建成立。带 `agentpeer_testenv` 构建标签的测试构建例外：`AGENT_PEER_TEST_RUNTIME_ROOT` 非空时运行时目录的根取它的值，`AGENT_PEER_TEST_HOME` 非空时账户家目录取它的值；两者为空时不生效，发布构建不含这段代码。
 
-用户级的数据目录权限 `0700`，其中的文件权限 `0600`。系统级的配置文件默认只有 root 可写；它由 `service install --system` 在不存在时以 root 为属主、`0` 为属组、`0600` 为权限创建，内容只有注释，已存在时安装不改动。管理员把它的读或写权限授予某个组，即把读取配置或管理操作委托给该组的账户。
+用户级的数据目录权限 `0700`，其中的文件权限 `0600`。系统级的配置文件默认只有 root 可写；它由 `service install --system` 在不存在时以 root 为属主、`0` 为属组、`0600` 为权限创建，内容为 `Template(ModeSystem)`，已存在时安装不改动。用户级的配置文件由 `service install` 在不存在时以本账户为属主、`0600` 为权限创建，内容为 `Template(ModeUser)`，已存在时安装不改动（`REQ-broker-config-040`）。管理员把它的读或写权限授予某个组，即把读取配置或管理操作委托给该组的账户。
 
 配置文件的结构与键名一一对应，例如 `broker.alias` 对应顶层 `broker` 下的 `alias`。文件中没有出现的键取默认值，文件不存在等同于空文件。`Set` 只改动文件中它所修改的那个键，文件里的其他内容原样保留；文件不存在时，以运行 Broker 的账户创建它，属主与权限按形态设置。
 
@@ -279,16 +283,30 @@ type PathSet struct {
 
 ## 核心算法与流程
 
+### 生成配置文件模板
+
+`Template(mode Mode) []byte` 按部署形态生成一份列出全部配置项的配置文件模板，供服务安装时写入尚不存在的配置文件（`REQ-broker-config-040`）。
+
+模板由包内的键表生成，键表是它唯一的来源，不存在手写的模板常量。键表中的每个键带一行英文说明，意思与该键在配置键表中“含义”一栏一致。
+
+段按固定顺序排列：`broker`、`pairing`、`topics`、`directory`、`send`、`link`、`log`，段内按键名排序。文件开头是说明注释：系统级沿用现有的一段关于文件权限的说明，用户级另写一段，说明该文件只供本账户使用。
+
+有固定默认值的键写成两行：上一行是 `# <说明>`，下一行是 `<leaf>: <默认值>`。取值经 YAML 编码器写出，或按同等规则加引号，使 `Load(Template(mode))` 得到的每个有效值都等于该键的默认值，例如 `broker.listen` 的 `:17443` 要加引号。默认值为空的 `broker.advertise`、`broker.advertise_extra`、`broker.local_socket_group`、`pairing.static_key` 与默认值在运行时计算的 `broker.alias` 写成注释，形式是 `# <leaf>: <写法示例>`，下一行说明“没有固定默认值”或“默认值在运行时计算”。写法示例必须能通过该键的校验。模板不把空串写成生效值：空串在某些键上有别的含义，例如 `broker.listen` 的空串表示不监听，与默认值不同。
+
+用户级模板同样列出 `broker.local_socket_group` 与 `broker.local_socket_mode`，并注明这两项只对系统级生效。
+
 ### 修改一个键
 
 `Set` 依次做下面的事，前一件失败则不做后面的：
 
 - 先按“配置文件的监视”中的同一套规则采用磁盘上尚未采纳的外部改动，并为每个采用了新值的键写 `config_file_changed` 审计记录。校验因此从磁盘上的当前值出发，去抖期内保存的外部改动不会被这次写入吞掉。
 - 检查键存在且不是密钥类配置项，值的类型与取值范围合法，与其他键的组合合法，再调用为该键注册的校验函数。修改 `broker.listen`、`broker.advertise` 或 `broker.advertise_extra` 时，以新值与另外两项的当前值核对“对外地址”中的组合规则与项数上限。
-- 读取配置文件的当前内容，只替换这个键，在原文件上就地改写：截断后写入完整内容并同步到磁盘。写回要重写整个文件，文件中的其他内容原样保留，原文件的属主、组、权限位与访问控制列表因此保持不变。文件不存在时以本账户的身份创建它。
+- 读取配置文件的当前内容，只替换这个键，在原文件上就地改写：截断后写入完整内容并同步到磁盘。写回要重写整个文件，文件中的其他内容原样保留，原文件的属主、组、权限位与访问控制列表因此保持不变。文件不存在时以本账户的身份创建它。键在文件中不存在时，按下一段的占位行规则写入。
 - 更新内存中的值。
 - 追加 `config_set` 审计记录。
 - 把这次变更放入通知队列。
+
+键在文件中不存在时，`Set` 先在键所属的段内找一行与 `^\s*#\s*<leaf>:` 匹配的占位行。找到第一处时，把这一行替换为生效的 `<leaf>: <新值>`，位置与缩进不变，它上面的说明注释保留；找不到时，按原有做法追加到段末或文件末尾。除这次替换外，文件其余内容一字不改（`REQ-broker-config-040`）。
 
 读取与写回之间不是原子的：另一个程序在这段窗口内写入的内容会被本次写回覆盖而丢失，这是就地改写接受的代价。磁盘上的配置文件为空或不存在时，写回的内容只包含本次修改的键和文件原有的注释；其他键只留在内存中，本次运行按内存值生效，重启后回到默认值。
 
@@ -379,4 +397,6 @@ type PathSet struct {
 | 配置的读取与修改 | 已实现 | `internal/config/api.go`、`internal/config/state.go`、`internal/config/file.go`（`Get`、`Set`、`setLocked`、`setKey`） |
 | 附加校验与变更通知 | 已实现 | `internal/config/api.go`、`internal/config/notify.go`（`Validate`、`ProbeListen`、`Subscribe`、`newNotifier`） |
 | 配置文件的监视 | 已实现 | `internal/config/watch.go`、`internal/config/state.go`（`startWatch`、`startWatchWithDebounce`、`reloadFromDisk`、`reloadLocked`） |
+| 配置文件模板的生成 | 已实现 | `internal/config/template.go`（`Template`、`templateExamples`、`templateSections`） |
+| 修改配置项时替换注释占位行 | 已实现 | `internal/config/file.go`（`replacePlaceholderLine`、`setKey`） |
 | 审计日志的追加、合并与读取 | 已实现 | `internal/config/audit.go`（`openAudit`、`append`、`mergeLocked`、`flushExpiredLocked`、`read`、`terminatePartialLine`） |
