@@ -426,19 +426,12 @@ func allocSystemSubnet(t *testing.T) string {
 	return subnet
 }
 
-// WaitFor polls cond every 20ms until it is true or three seconds pass. Longer
-// waits use harness.Eventually with the sum of the relevant timers plus three
-// seconds.
+// WaitFor waits up to three seconds for cond to return true, delegating the
+// polling to harness.Eventually. Longer waits use harness.Eventually with the
+// sum of the relevant timers plus three seconds.
 func WaitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		if cond() {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("syscontainer: %s did not happen within 3s", what)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	harness.Eventually(t, 3*time.Second, what, func() (bool, string) {
+		return cond(), ""
+	})
 }
