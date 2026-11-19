@@ -60,6 +60,11 @@ func (o *Oracle) Status(ctx context.Context) (*localpb.StatusResponse, error) {
 	return o.client.Status(ctx, &localpb.StatusRequest{})
 }
 
+// UpdateStatus returns the version the Broker runs and the release it knows.
+func (o *Oracle) UpdateStatus(ctx context.Context) (*localpb.UpdateStatusResponse, error) {
+	return o.client.UpdateStatus(ctx, &localpb.UpdateStatusRequest{})
+}
+
 // GetConfig returns the configuration entry for key, or every entry when key
 // is empty.
 func (o *Oracle) GetConfig(ctx context.Context, key string) (*localpb.GetConfigResponse, error) {

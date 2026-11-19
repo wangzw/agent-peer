@@ -71,3 +71,31 @@ func TestBuildBinaryCachesAndInjectsVersion(t *testing.T) {
 		t.Fatalf("cached BuildBinary returned %q, want %q", again, bin)
 	}
 }
+
+// TestBuildBinaryVersionStampsTheNamedVersion checks that a caller can build
+// the same package at several versions in one process: each version lands in
+// its own output and reports itself, while the default stays e2e.
+func TestBuildBinaryVersionStampsTheNamedVersion(t *testing.T) {
+	old := BuildBinaryVersion(t, "0.1.0", runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
+	next := BuildBinaryVersion(t, "0.1.2", runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
+	if old == next {
+		t.Fatalf("BuildBinaryVersion returned the same path %q for two versions", old)
+	}
+	for _, tc := range []struct{ path, want string }{
+		{old, "agent-peer 0.1.0"},
+		{next, "agent-peer 0.1.2"},
+	} {
+		out, err := exec.Command(tc.path, "--version").Output()
+		if err != nil {
+			t.Fatalf("running %s --version: %v", tc.path, err)
+		}
+		if got := strings.TrimSpace(string(out)); got != tc.want {
+			t.Fatalf("%s --version printed %q, want %q", tc.path, got, tc.want)
+		}
+	}
+
+	// The default build is still a non-release version.
+	if got := DefaultVersion; got != "e2e" {
+		t.Fatalf("DefaultVersion = %q, want %q", got, "e2e")
+	}
+}

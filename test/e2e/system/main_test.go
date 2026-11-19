@@ -24,6 +24,8 @@ func TestMain(m *testing.M) {
 		os.Exit(runForgeAccessCheckRole())
 	case statusClientRole:
 		os.Exit(runStatusClientRole())
+	case updateStatusClientRole:
+		os.Exit(runUpdateStatusClientRole())
 	}
 	os.Exit(syscontainer.Main(m))
 }

@@ -35,23 +35,36 @@ var (
 	modRootErr  error
 )
 
-// BuildBinary builds ./cmd/agent-peer for goos/goarch and returns the path of
-// the resulting binary. The same parameters are built only once per test
-// process.
+// DefaultVersion is the version stamped into binaries the harness builds when
+// the caller does not name one. It is not a release version, so a build that
+// checks for updates treats it as a non-release build.
+const DefaultVersion = "e2e"
+
+// BuildBinary builds ./cmd/agent-peer for goos/goarch with the default version
+// and returns the path of the resulting binary. The same parameters are built
+// only once per test process.
 func BuildBinary(tb testing.TB, goos, goarch string, tags ...string) string {
 	tb.Helper()
-	return build(tb, "./cmd/agent-peer", goos, goarch, tags)
+	return BuildBinaryVersion(tb, DefaultVersion, goos, goarch, tags...)
+}
+
+// BuildBinaryVersion is BuildBinary with an explicit version stamped into
+// main.version. Tests that exercise the release version, such as the update
+// scenario, name the version they want here.
+func BuildBinaryVersion(tb testing.TB, version, goos, goarch string, tags ...string) string {
+	tb.Helper()
+	return build(tb, "./cmd/agent-peer", version, goos, goarch, tags)
 }
 
 // BuildPackage builds pkg for goos/goarch and returns the path of the result.
 // Like BuildBinary, the same parameters are built only once per test process.
 func BuildPackage(tb testing.TB, pkg, goos, goarch string, tags ...string) string {
 	tb.Helper()
-	return build(tb, pkg, goos, goarch, tags)
+	return build(tb, pkg, DefaultVersion, goos, goarch, tags)
 }
 
-func build(tb testing.TB, pkg, goos, goarch string, tags []string) string {
-	key := strings.Join([]string{pkg, goos, goarch, strings.Join(tags, ",")}, "\x00")
+func build(tb testing.TB, pkg, version, goos, goarch string, tags []string) string {
+	key := strings.Join([]string{pkg, version, goos, goarch, strings.Join(tags, ",")}, "\x00")
 
 	buildMu.Lock()
 	entry, ok := buildCache[key]
@@ -62,7 +75,7 @@ func build(tb testing.TB, pkg, goos, goarch string, tags []string) string {
 	buildMu.Unlock()
 
 	entry.once.Do(func() {
-		entry.path, entry.err = goBuild(pkg, goos, goarch, tags)
+		entry.path, entry.err = goBuild(pkg, version, goos, goarch, tags)
 	})
 	if entry.err != nil {
 		tb.Fatalf("harness: building %s for %s/%s: %v", pkg, goos, goarch, entry.err)
@@ -70,7 +83,7 @@ func build(tb testing.TB, pkg, goos, goarch string, tags []string) string {
 	return entry.path
 }
 
-func goBuild(pkg, goos, goarch string, tags []string) (string, error) {
+func goBuild(pkg, version, goos, goarch string, tags []string) (string, error) {
 	dir, err := buildDirectory()
 	if err != nil {
 		return "", err
@@ -80,12 +93,12 @@ func goBuild(pkg, goos, goarch string, tags []string) (string, error) {
 		return "", err
 	}
 
-	out := filepath.Join(dir, outputName(pkg, goos, goarch, tags))
+	out := filepath.Join(dir, outputName(pkg, version, goos, goarch, tags))
 	if goos == "windows" && !strings.HasSuffix(out, ".exe") {
 		out += ".exe"
 	}
 
-	args := []string{"build", "-trimpath", "-ldflags", "-X main.version=e2e"}
+	args := []string{"build", "-trimpath", "-ldflags", "-X main.version=" + version}
 	if len(tags) > 0 {
 		args = append(args, "-tags", strings.Join(tags, ","))
 	}
@@ -107,12 +120,13 @@ func goBuild(pkg, goos, goarch string, tags []string) (string, error) {
 
 // outputName derives a stable file name from the build parameters so that
 // binaries never overwrite each other inside the shared build directory.
-func outputName(pkg, goos, goarch string, tags []string) string {
+func outputName(pkg, version, goos, goarch string, tags []string) string {
 	tagPart := "notags"
 	if len(tags) > 0 {
 		tagPart = strings.Join(tags, "-")
 	}
-	return fmt.Sprintf("%s-%s-%s-%s", sanitize(filepath.Base(filepath.Clean(pkg))), goos, goarch, sanitize(tagPart))
+	return fmt.Sprintf("%s-%s-%s-%s-%s",
+		sanitize(filepath.Base(filepath.Clean(pkg))), sanitize(version), goos, goarch, sanitize(tagPart))
 }
 
 // sanitize keeps the characters that are safe in a file name and replaces the

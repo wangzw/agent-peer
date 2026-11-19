@@ -78,11 +78,19 @@ func StartSystemBroker(t *testing.T, configYAML string) *Proc {
 // account's user-level socket. The process is terminated when the test ends.
 func StartUserBroker(t *testing.T, account string, args ...string) *Proc {
 	t.Helper()
+	return StartUserBrokerPath(t, agentPeerBinary, account, nil, args...)
+}
+
+// StartUserBrokerPath is StartUserBroker with an explicit executable and
+// environment. It is the entry point for a test that runs a binary built at
+// another version, such as the update scenario.
+func StartUserBrokerPath(t *testing.T, exe, account string, env []string, args ...string) *Proc {
+	t.Helper()
 	if !InContainer() {
-		t.Fatalf("syscontainer: StartUserBroker runs inside the container")
+		t.Fatalf("syscontainer: StartUserBrokerPath runs inside the container")
 	}
 	socket := UserSocketPath(t, account)
-	cmd := Command(account, nil, agentPeerBinary, append([]string{"broker"}, args...)...)
+	cmd := Command(account, env, exe, append([]string{"broker"}, args...)...)
 	return startAndWait(t, cmd, socket, "the "+account+" user Broker")
 }
 

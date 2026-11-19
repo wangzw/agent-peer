@@ -1,0 +1,404 @@
+//go:build e2e
+
+package e2e
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
+)
+
+// updateFrameBound is the project-wide bound for a local message to reach the
+// receiver's session. The same host needs no link or retry delay.
+const updateFrameBound = 3 * time.Second
+
+// TestREQUpdate001_PeriodicCheck covers REQ-update-001: a Broker running below
+// the latest release learns it within the first-check bound; with checking
+// disabled a restarted Broker sends no request for the window in which an
+// enabled check would have fired; and a failing check leaves listing Agents and
+// sending a message working.
+func TestREQUpdate001_PeriodicCheck(t *testing.T) {
+	if !syscontainer.InContainer() {
+		updateStageAssets(t)
+		syscontainer.Run(t, syscontainer.Plain)
+		return
+	}
+	updateRequireFeature(t)
+
+	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	exe := updateStagedOldBinary()
+
+	// The enabled Broker learns the release within the bound.
+	broker := updateStartPeerBroker(t, fake, true)
+	updateWaitStatusLine(t, exe, updateStatusLine(updateNewVersion, updateOldVersion))
+	broker.Stop(t)
+
+	// The disabled Broker must stay silent for the same window.
+	fake.ResetRequests()
+	broker = updateStartPeerBroker(t, fake, false)
+	harness.Consistently(t, updateFirstCheckBound, "no update request while checking is disabled", func() (bool, string) {
+		if n := fake.Requests(); n != 0 {
+			return false, fmt.Sprintf("the fake API received %d requests", n)
+		}
+		return true, ""
+	})
+	if res := updateStatus(t, exe); res.ExitCode != 0 {
+		t.Fatalf("status after the disabled-check window exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
+	broker.Stop(t)
+
+	// A check that fails leaves the rest of the Broker working.
+	fake.SetFailure(true)
+	fake.ResetRequests()
+	broker = updateStartPeerBroker(t, fake, true)
+	harness.Eventually(t, updateFirstCheckBound, "the Broker's failed update check", func() (bool, string) {
+		return fake.Requests() > 0, fmt.Sprintf("requests: %d", fake.Requests())
+	})
+
+	alpha := syscontainer.NewSession(t, "peer", "alpha")
+	beta := syscontainer.NewSession(t, "peer", "beta")
+	e2eSysWaitRegistered(t, alpha)
+	e2eSysWaitRegistered(t, beta)
+
+	const topic = "e2e/update-check-failure"
+	e2eSysJoinTopic(t, alpha, topic)
+	e2eSysJoinTopic(t, beta, topic)
+	alphaSelf := e2eSysSelfAddress(t, alpha)
+	betaSelf := e2eSysSelfAddress(t, beta)
+	e2eSysWaitVisible(t, alpha, topic, betaSelf)
+	e2eSysWaitVisible(t, beta, topic, alphaSelf)
+
+	if text, isError := alpha.Call(t, "send_message", map[string]any{"to": betaSelf, "message": "still-working"}); isError {
+		t.Fatalf("send_message after a failed update check reported an error: %s", text)
+	}
+	if frame, ok := beta.Fake.WaitFrame(updateFrameBound); !ok {
+		t.Fatalf("the message did not reach beta within %s", updateFrameBound)
+	} else if !strings.Contains(frame.Content, "still-working") {
+		t.Fatalf("beta received %q, want the message sent after the failed check", frame.Content)
+	}
+}
+
+// TestREQUpdate002_StatusShowsAvailableVersion covers REQ-update-002: with a
+// newer release the status output carries both versions and the update
+// command; with no newer release it carries no update line.
+func TestREQUpdate002_StatusShowsAvailableVersion(t *testing.T) {
+	if !syscontainer.InContainer() {
+		updateStageAssets(t)
+		syscontainer.Run(t, syscontainer.Plain)
+		return
+	}
+	updateRequireFeature(t)
+
+	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	exe := updateStagedOldBinary()
+
+	broker := updateStartPeerBroker(t, fake, true)
+	updateWaitStatusLine(t, exe, updateStatusLine(updateNewVersion, updateOldVersion))
+	broker.Stop(t)
+
+	// The release the API returns is now the running version, so a check finds
+	// nothing newer.
+	fake.SetRelease(updateLoadRelease(t, updateOldVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake.ResetRequests()
+	broker = updateStartPeerBroker(t, fake, true)
+	harness.Eventually(t, updateFirstCheckBound, "the Broker's check against an up-to-date release", func() (bool, string) {
+		return fake.Requests() > 0, fmt.Sprintf("requests: %d", fake.Requests())
+	})
+	harness.Consistently(t, updateCheckSettleWindow, "status without an update hint", func() (bool, string) {
+		res := updateStatus(t, exe)
+		if res.ExitCode != 0 {
+			return false, fmt.Sprintf("status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+		}
+		if strings.Contains(res.Stdout, "Update:") {
+			return false, res.Stdout
+		}
+		return true, ""
+	})
+}
+
+// TestREQUpdate003_SessionHintOncePerSession covers REQ-update-003: the first
+// tool call of a session carries the update hint, the next call does not, and a
+// new session gets the hint again.
+func TestREQUpdate003_SessionHintOncePerSession(t *testing.T) {
+	if !syscontainer.InContainer() {
+		updateStageAssets(t)
+		syscontainer.Run(t, syscontainer.Plain)
+		return
+	}
+	updateRequireFeature(t)
+
+	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	exe := updateStagedOldBinary()
+
+	// Wait for the Broker to learn the release before starting a session, so
+	// the first call always sees it.
+	updateStartPeerBroker(t, fake, true)
+	updateWaitStatusLine(t, exe, updateStatusLine(updateNewVersion, updateOldVersion))
+
+	hint := updateHint(updateNewVersion, updateOldVersion)
+
+	a := syscontainer.NewSession(t, "peer", "hint-a")
+	updateWaitAgentListed(t, "hint-a", exe)
+	first, isError := a.Call(t, "list_agents", nil)
+	if isError {
+		t.Fatalf("the first list_agents of session hint-a failed: %s", first)
+	}
+	if !strings.Contains(first, hint) {
+		t.Fatalf("the first tool result does not carry the update hint %q:\n%s", hint, first)
+	}
+	second, isError := a.Call(t, "list_agents", nil)
+	if isError {
+		t.Fatalf("the second list_agents of session hint-a failed: %s", second)
+	}
+	if strings.Contains(second, hint) {
+		t.Fatalf("the second tool result of session hint-a repeats the update hint:\n%s", second)
+	}
+
+	b := syscontainer.NewSession(t, "peer", "hint-b")
+	updateWaitAgentListed(t, "hint-b", exe)
+	firstB, isError := b.Call(t, "list_agents", nil)
+	if isError {
+		t.Fatalf("the first list_agents of session hint-b failed: %s", firstB)
+	}
+	if !strings.Contains(firstB, hint) {
+		t.Fatalf("the first tool result of a new session does not carry the update hint %q:\n%s", hint, firstB)
+	}
+}
+
+// TestREQUpdate004_ConfirmedUpdateRestartsUserService covers the confirmation
+// half of REQ-update-004: answering yes shows both versions, downloads and
+// verifies the package, replaces the binary, and restarts the user service on
+// the new version.
+func TestREQUpdate004_ConfirmedUpdateRestartsUserService(t *testing.T) {
+	if !syscontainer.InContainer() {
+		updateStageAssets(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+	updateRequireFeature(t)
+
+	svc := updateSetupUserService(t)
+	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	env := append(append([]string(nil), svc.userEnv...), "AGENT_PEER_TEST_UPDATE_API="+fake.URL())
+
+	beforeHash := updateFileHash(t, svc.target)
+	res := updateRunInteractive(t, "peer", env, svc.target, "y\n", "update")
+	combined := res.Stdout + res.Stderr
+	if res.ExitCode != 0 {
+		t.Fatalf("the confirmed update exited %d\nstdout:\n%s\nstderr:\n%s", res.ExitCode, res.Stdout, res.Stderr)
+	}
+	for _, want := range []string{updateOldVersion, updateNewVersion} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("the update output does not name version %s:\n%s", want, combined)
+		}
+	}
+	if fake.Downloads() == 0 {
+		t.Errorf("the update reported success without downloading the release")
+	}
+	if after := updateFileHash(t, svc.target); after == beforeHash {
+		t.Errorf("the binary at %s was not replaced", svc.target)
+	}
+	if got := updateBinaryVersion(t, svc.target); got != "agent-peer "+updateNewVersion {
+		t.Fatalf("the installed binary reports %q, want %q", got, "agent-peer "+updateNewVersion)
+	}
+
+	harness.Eventually(t, updateServiceBound, "the user Broker to report the new version", func() (bool, string) {
+		version, err := updateBrokerVersion(t, "peer")
+		if err != nil {
+			return false, fmt.Sprintf("querying the Broker's version: %v", err)
+		}
+		return version == updateNewVersion, fmt.Sprintf("the Broker reports version %q, want %q", version, updateNewVersion)
+	})
+	if state := updateServiceState(t, svc.userEnv); state != "active" {
+		t.Fatalf("the user service is %q after the update, want active", state)
+	}
+}
+
+// TestREQUpdate004_RefusedUpdateChangesNothing covers the refusal half of
+// REQ-update-004: declining the question leaves both the binary and the running
+// service untouched.
+func TestREQUpdate004_RefusedUpdateChangesNothing(t *testing.T) {
+	if !syscontainer.InContainer() {
+		updateStageAssets(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+	updateRequireFeature(t)
+
+	svc := updateSetupUserService(t)
+	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	env := append(append([]string(nil), svc.userEnv...), "AGENT_PEER_TEST_UPDATE_API="+fake.URL())
+
+	beforeHash := updateFileHash(t, svc.target)
+	res := updateRunInteractive(t, "peer", env, svc.target, "n\n", "update")
+	combined := res.Stdout + res.Stderr
+	// The command names both versions before it asks; their absence means it
+	// never reached the question.
+	for _, want := range []string{updateOldVersion, updateNewVersion} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("the update output does not name version %s:\n%s", want, combined)
+		}
+	}
+
+	if after := updateFileHash(t, svc.target); after != beforeHash {
+		t.Fatalf("the binary at %s changed after the update was refused", svc.target)
+	}
+	if pid := userServiceMainPID(t, svc.userEnv); pid != svc.beforePID {
+		t.Fatalf("the user service MainPID changed from %d to %d after the refusal", svc.beforePID, pid)
+	}
+	if state := updateServiceState(t, svc.userEnv); state != "active" {
+		t.Fatalf("the user service is %q after the refusal, want active", state)
+	}
+	if got := updateBinaryVersion(t, svc.target); got != "agent-peer "+updateOldVersion {
+		t.Fatalf("the binary reports %q after the refusal, want %q", got, "agent-peer "+updateOldVersion)
+	}
+}
+
+// TestREQUpdate004_YesSkipsPrompt covers the --yes half of REQ-update-004: the
+// command does not ask, and completes the update with standard input that is
+// not a terminal.
+func TestREQUpdate004_YesSkipsPrompt(t *testing.T) {
+	if !syscontainer.InContainer() {
+		updateStageAssets(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+	updateRequireFeature(t)
+
+	svc := updateSetupUserService(t)
+	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	env := append(append([]string(nil), svc.userEnv...), "AGENT_PEER_TEST_UPDATE_API="+fake.URL())
+
+	beforeHash := updateFileHash(t, svc.target)
+	res := runWithEnv(t, "peer", env, svc.target, "update", "--yes")
+	combined := res.Stdout + res.Stderr
+	if res.ExitCode != 0 {
+		t.Fatalf("agent-peer update --yes exited %d with non-terminal input\nstdout:\n%s\nstderr:\n%s",
+			res.ExitCode, res.Stdout, res.Stderr)
+	}
+	for _, want := range []string{updateOldVersion, updateNewVersion} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("update --yes output does not name version %s:\n%s", want, combined)
+		}
+	}
+	if after := updateFileHash(t, svc.target); after == beforeHash {
+		t.Errorf("the binary at %s was not replaced", svc.target)
+	}
+	if got := updateBinaryVersion(t, svc.target); got != "agent-peer "+updateNewVersion {
+		t.Fatalf("the installed binary reports %q, want %q", got, "agent-peer "+updateNewVersion)
+	}
+	harness.Eventually(t, updateServiceBound, "the user Broker to report the new version", func() (bool, string) {
+		version, err := updateBrokerVersion(t, "peer")
+		if err != nil {
+			return false, fmt.Sprintf("querying the Broker's version: %v", err)
+		}
+		return version == updateNewVersion, fmt.Sprintf("the Broker reports version %q, want %q", version, updateNewVersion)
+	})
+}
+
+// TestREQUpdate005_FailedUpdateKeepsBinaryAndService covers REQ-update-005:
+// a checksum mismatch, a corrupt package and a binary that reports another
+// version each fail the update, leave the binary byte-for-byte unchanged and
+// keep the service running.
+func TestREQUpdate005_FailedUpdateKeepsBinaryAndService(t *testing.T) {
+	if !syscontainer.InContainer() {
+		updateStageAssets(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+	updateRequireFeature(t)
+
+	svc := updateSetupUserService(t)
+	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+
+	cases := []struct {
+		name      string
+		archive   string
+		checksums string
+	}{
+		{"checksum mismatch", updateGoodReleaseArtifact, updateMismatchChecksumsFile},
+		{"corrupt package", updateCorruptReleaseArtifact, updateCorruptChecksumsFile},
+		{"binary reports another version", updateWrongReleaseArtifact, updateWrongChecksumsFile},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake.SetRelease(updateLoadRelease(t, updateNewVersion, tc.archive, tc.checksums))
+			env := append(append([]string(nil), svc.userEnv...), "AGENT_PEER_TEST_UPDATE_API="+fake.URL())
+
+			beforeHash := updateFileHash(t, svc.target)
+			beforePID := userServiceMainPID(t, svc.userEnv)
+
+			res := runWithEnv(t, "peer", env, svc.target, "update", "--yes")
+			if res.ExitCode == 0 {
+				t.Fatalf("the update succeeded with %s\nstdout:\n%s\nstderr:\n%s", tc.name, res.Stdout, res.Stderr)
+			}
+			if after := updateFileHash(t, svc.target); after != beforeHash {
+				t.Fatalf("the binary at %s changed after %s", svc.target, tc.name)
+			}
+			if pid := userServiceMainPID(t, svc.userEnv); pid != beforePID {
+				t.Fatalf("the user service MainPID changed from %d to %d after %s", beforePID, pid, tc.name)
+			}
+			if state := updateServiceState(t, svc.userEnv); state != "active" {
+				t.Fatalf("the user service is %q after %s, want active", state, tc.name)
+			}
+			if got := updateBinaryVersion(t, svc.target); got != "agent-peer "+updateOldVersion {
+				t.Fatalf("the binary reports %q after %s, want %q", got, tc.name, "agent-peer "+updateOldVersion)
+			}
+		})
+	}
+}
+
+// TestREQUpdate006_UpdateRequiresWritePermission covers REQ-update-006: an
+// ordinary account updating a binary in a root-owned directory fails before
+// any download and names sudo as the way to update a system-level install.
+func TestREQUpdate006_UpdateRequiresWritePermission(t *testing.T) {
+	if !syscontainer.InContainer() {
+		updateStageAssets(t)
+		syscontainer.Run(t, syscontainer.Plain)
+		return
+	}
+	updateRequireFeature(t)
+
+	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+
+	rootDir := "/opt/root-owned"
+	target := filepath.Join(rootDir, "agent-peer")
+	if err := os.MkdirAll(rootDir, 0o755); err != nil {
+		t.Fatalf("creating %s: %v", rootDir, err)
+	}
+	syscontainer.CopyReleaseArtifact(t, updateOldArtifact, target, 0o755)
+	for _, path := range []string{rootDir, target} {
+		if err := os.Chown(path, 0, 0); err != nil {
+			t.Fatalf("chown %s: %v", path, err)
+		}
+		if err := os.Chmod(path, 0o755); err != nil {
+			t.Fatalf("chmod %s: %v", path, err)
+		}
+	}
+
+	beforeHash := updateFileHash(t, target)
+	env := []string{"AGENT_PEER_TEST_UPDATE_API=" + fake.URL()}
+	res := runWithEnv(t, "peer", env, target, "update", "--yes")
+	combined := res.Stdout + res.Stderr
+	if res.ExitCode == 0 {
+		t.Fatalf("the update as peer of a root-owned binary succeeded\nstdout:\n%s\nstderr:\n%s", res.Stdout, res.Stderr)
+	}
+	if !strings.Contains(combined, "sudo") {
+		t.Fatalf("the permission error does not suggest sudo:\n%s", combined)
+	}
+	if n := fake.Requests(); n != 0 {
+		t.Fatalf("the refused update sent %d requests to the API before failing; it must fail before downloading", n)
+	}
+	if after := updateFileHash(t, target); after != beforeHash {
+		t.Fatalf("the binary at %s changed after the refused update", target)
+	}
+	if got := updateBinaryVersion(t, target); got != "agent-peer "+updateOldVersion {
+		t.Fatalf("the binary reports %q, want %q", got, "agent-peer "+updateOldVersion)
+	}
+}
