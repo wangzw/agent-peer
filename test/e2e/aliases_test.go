@@ -359,26 +359,17 @@ func alConfig(parts ...string) string {
 	return harness.ConfigYAML(append([]string{harness.FastTimers}, parts...)...)
 }
 
-// alStartBroker starts a Broker and fails when it does not come up. Exit code 3
-// means another process started one first; the helper then waits for it.
+// alStartBroker starts a Broker and fails when it does not come up.
 func alStartBroker(t *testing.T, node *harness.Node, config string) {
 	t.Helper()
 	start := node.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
-	if start.Running {
-		return
-	}
-	if start.ExitCode != 3 {
+	if !start.Running {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
-	harness.Eventually(t, adPeerBrokerReadyBound, "the Broker started by another process answers", func() (bool, string) {
-		res := node.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
-		return res.ExitCode == 0, fmt.Sprintf("agent-peer status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
-	})
 }
 
 // alRestart stops the Broker and starts it with config after ending every MCP
-// server process passed in stop, so none of them launches a Broker of its own
-// while the restart is in progress.
+// server process passed in stop.
 func alRestart(t *testing.T, c *harness.Cluster, node string, config string, stop ...*harness.Session) {
 	t.Helper()
 	for _, s := range stop {

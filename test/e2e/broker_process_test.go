@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -22,12 +21,12 @@ import (
 	"github.com/wangzw/agent-peer/test/e2e/node"
 )
 
-// Broker process timing. brokerReadyBound is the ten-second readiness pipe
-// allowance plus three seconds. brokerRecoverBound is the MCP server's longest
-// launch backoff (30s, loopLaunchBackoff) plus the same thirteen seconds.
+// Broker process timing. brokerReadyBound is the harness readiness bound plus
+// three seconds. brokerRecoverBound is the MCP server's longest connection
+// backoff (5s) plus the same margin.
 const (
 	brokerReadyBound   = 13 * time.Second
-	brokerRecoverBound = 30*time.Second + brokerReadyBound
+	brokerRecoverBound = 5*time.Second + brokerReadyBound
 
 	// brokerDefaultListen is broker.listen's default value.
 	brokerDefaultListen = ":17443"
@@ -40,57 +39,60 @@ const (
 )
 
 // TestBrokerProcessLocal covers the user-level Broker process on the test
-// host: automatic launch and readiness, the account lock that keeps a single
+// host: a session with no Broker, the account lock that keeps a single
 // instance, the --listen override, and the process exit codes and standard
 // error line.
 func TestBrokerProcessLocal(t *testing.T) {
-	t.Run("REQ-broker-config-012 auto launch", func(t *testing.T) {
-		host := harness.NewLocalHost(t, harness.LocalOptions{Name: "autolaunch"})
+	t.Run("REQ-broker-config-038 no Broker until started", func(t *testing.T) {
+		host := harness.NewLocalHost(t, harness.LocalOptions{Name: "nobroker"})
 		listen := host.FreeAddr(t)
 		host.WriteConfig(t, "broker:\n  listen: "+listen+"\n")
 
-		solo := host.StartSession(t, harness.SessionSpec{Name: "solo", StartMCP: true})
+		session := host.StartSession(t, harness.SessionSpec{Name: "solo", StartMCP: true})
 
-		harness.Eventually(t, brokerReadyBound, "the session reaches the launched Broker", func() (bool, string) {
-			r := solo.Call(t, "list_agents", nil)
+		// The MCP server process must not start a Broker of its own.
+		harness.Consistently(t, brokerAbsenceWindow, "no Broker process appears", func() (bool, string) {
+			if n := len(bpLocalProcs(t, host, "broker")); n != 0 {
+				return false, fmt.Sprintf("%d Broker processes", n)
+			}
+			return true, ""
+		})
+
+		harness.Eventually(t, brokerReadyBound, "list_agents names both ways to start a Broker", func() (bool, string) {
+			r := session.Call(t, "list_agents", nil)
+			if !r.IsError {
+				return false, "list_agents succeeded without a Broker"
+			}
+			for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+				if !strings.Contains(r.Text, want) {
+					return false, r.Text
+				}
+			}
+			return true, ""
+		})
+
+		mcpProcs := bpLocalProcs(t, host, "mcp")
+		if len(mcpProcs) != 1 {
+			t.Fatalf("the node has %d MCP server processes, want 1: %+v", len(mcpProcs), mcpProcs)
+		}
+		mcpPID := mcpProcs[0].PID
+
+		// Starting the Broker in a terminal is enough: the session registers
+		// without reconnecting the MCP server process.
+		start := host.StartBroker(t, harness.BrokerSpec{})
+		if !start.Running {
+			t.Fatalf("the explicit Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
+		}
+		harness.Eventually(t, brokerRecoverBound, "list_agents succeeds after the Broker starts", func() (bool, string) {
+			r := session.Call(t, "list_agents", nil)
 			if r.IsError {
 				return false, r.Text
 			}
 			return true, ""
 		})
-
-		procs := bpLocalProcs(t, host, "broker")
-		if len(procs) != 1 {
-			t.Fatalf("the node has %d Broker processes, want exactly 1: %+v", len(procs), procs)
-		}
-		broker := procs[0]
-		if broker.UID != os.Geteuid() {
-			t.Fatalf("the Broker runs as uid %d, want this account %d", broker.UID, os.Geteuid())
-		}
-		if broker.SID != broker.PID {
-			t.Fatalf("the Broker session id is %d, want its own pid %d", broker.SID, broker.PID)
-		}
-
-		// The launched Broker must not be a descendant of the MCP server
-		// process: ending the session would then take the Broker down too.
-		mcpProcs := bpLocalProcs(t, host, "mcp")
-		if len(mcpProcs) == 0 {
-			t.Fatal("no MCP server process belongs to the node account")
-		}
-		ancestors, err := node.Ancestors(broker.PID)
-		if err != nil {
-			t.Fatalf("reading the ancestors of the Broker: %v", err)
-		}
-		for _, mcp := range mcpProcs {
-			if bpContainsInt(ancestors, mcp.PID) {
-				t.Fatalf("the Broker is a descendant of MCP server process %d; ancestors are %v", mcp.PID, ancestors)
-			}
-		}
-
-		bin := harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
-		status := host.Exec(t, []string{bin, "status"}, nil)
-		if status.ExitCode != 0 {
-			t.Fatalf("agent-peer status exited %d: %s", status.ExitCode, strings.TrimSpace(status.Stderr))
+		after := bpLocalProcs(t, host, "mcp")
+		if len(after) != 1 || after[0].PID != mcpPID {
+			t.Fatalf("the MCP server process changed from %d to %+v; the session reconnected instead of recovering", mcpPID, after)
 		}
 	})
 
@@ -99,41 +101,48 @@ func TestBrokerProcessLocal(t *testing.T) {
 		listen := host.FreeAddr(t)
 		host.WriteConfig(t, "broker:\n  listen: "+listen+"\n")
 
-		// The five sessions start at the same time, so several MCP server
-		// processes may try to launch a Broker before the first one is ready.
-		// The goroutines must not touch testing.T; they hand their errors back
-		// and the test goroutine reports them.
-		type startResult struct {
-			session *harness.Session
-			err     error
+		// Five terminal starts race for the account lock. One keeps running and
+		// the other four exit with the already-running code.
+		bin := harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
+		out := t.TempDir()
+		host.Exec(t, []string{"sh", "-c", bpConcurrentStartScript, "sh", bin, listen, out}, nil)
+
+		codes, err := filepath.Glob(filepath.Join(out, "*.code"))
+		if err != nil {
+			t.Fatalf("listing the concurrent start results: %v", err)
 		}
-		results := make([]startResult, 5)
-		var wg sync.WaitGroup
-		for i := range results {
-			i := i
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				results[i].session, results[i].err = host.TryStartSession(harness.SessionSpec{
-					Name:     fmt.Sprintf("worker-%d", i),
-					StartMCP: true,
-				})
-			}()
+		if len(codes) != 4 {
+			t.Fatalf("%d of the five starts exited, want 4 with the winner still running: %v", len(codes), codes)
 		}
-		wg.Wait()
-		sessions := make([]*harness.Session, len(results))
-		for i, result := range results {
-			if result.err != nil {
-				t.Fatalf("session worker-%d did not start: %v", i, result.err)
+		for _, path := range codes {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("reading %s: %v", path, err)
 			}
-			sessions[i] = result.session
+			if got := strings.TrimSpace(string(data)); got != strconv.Itoa(3) {
+				t.Fatalf("%s = %q, want exit code 3", filepath.Base(path), got)
+			}
+			stderr, err := os.ReadFile(strings.TrimSuffix(path, ".code") + ".err")
+			if err != nil {
+				t.Fatalf("reading the standard error of %s: %v", path, err)
+			}
+			if !strings.Contains(string(stderr), "already running") {
+				t.Fatalf("%s: standard error = %q, want it to say already running", path, stderr)
+			}
 		}
 
-		harness.Eventually(t, brokerReadyBound, "the five sessions reach their Broker", func() (bool, string) {
+		procs := bpLocalProcs(t, host, "broker")
+		if len(procs) != 1 {
+			t.Fatalf("the node has %d Broker processes after five concurrent starts, want exactly 1: %+v", len(procs), procs)
+		}
+		winner := procs[0]
+
+		sessions := make([]*harness.Session, 5)
+		for i := range sessions {
+			sessions[i] = host.StartSession(t, harness.SessionSpec{Name: fmt.Sprintf("worker-%d", i), StartMCP: true})
+		}
+		harness.Eventually(t, brokerReadyBound, "the five sessions register on the one Broker", func() (bool, string) {
 			for i, session := range sessions {
-				if session == nil {
-					return false, fmt.Sprintf("session worker-%d did not start", i)
-				}
 				r := session.Call(t, "list_agents", nil)
 				if r.IsError {
 					return false, fmt.Sprintf("session worker-%d: %s", i, r.Text)
@@ -142,11 +151,6 @@ func TestBrokerProcessLocal(t *testing.T) {
 			return true, ""
 		})
 
-		procs := bpLocalProcs(t, host, "broker")
-		if len(procs) != 1 {
-			t.Fatalf("the node has %d Broker processes after five concurrent starts, want exactly 1: %+v", len(procs), procs)
-		}
-
 		resp, detail := host.Oracle().Status(t)
 		if detail != nil {
 			t.Fatalf("Status returned %s: %s", detail.GetCode(), detail.GetMessage())
@@ -154,18 +158,9 @@ func TestBrokerProcessLocal(t *testing.T) {
 		if got := len(resp.GetAgents()); got != 5 {
 			t.Fatalf("the Broker lists %d agents, want 5", got)
 		}
-		names := map[string]bool{}
-		for _, agent := range resp.GetAgents() {
-			names[bpAddressName(agent.GetAddress())] = true
-		}
-		for i := 0; i < 5; i++ {
-			name := fmt.Sprintf("worker-%d", i)
-			if !names[name] {
-				t.Fatalf("the Broker status does not list %s: %v", name, names)
-			}
-		}
 
-		bin := harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
+		// A second start with another listen address still fails on the account
+		// lock and leaves the first Broker untouched.
 		other := host.FreeAddr(t)
 		second := host.Exec(t, []string{bin, "broker", "--listen", other}, nil)
 		if second.ExitCode != 3 {
@@ -174,19 +169,26 @@ func TestBrokerProcessLocal(t *testing.T) {
 		if last := bpLastLine(second.Stderr); !strings.Contains(last, "already running") {
 			t.Fatalf("the second Broker's last standard error line is %q, want it to contain %q", last, "already running")
 		}
-
-		// A failed second start must neither replace the running Broker nor
-		// leave a process of its own behind.
 		harness.Consistently(t, brokerAbsenceWindow, "the failed second start leaves exactly one Broker", func() (bool, string) {
 			if n := len(bpLocalProcs(t, host, "broker")); n != 1 {
 				return false, fmt.Sprintf("%d Broker processes", n)
 			}
 			return true, ""
 		})
-
 		if hello := host.Oracle().Hello(t); hello == nil {
 			t.Fatal("the running Broker no longer answers Hello after the second start failed")
 		}
+
+		kill := host.Exec(t, []string{"kill", "-TERM", strconv.Itoa(winner.PID)}, nil)
+		if kill.ExitCode != 0 {
+			t.Fatalf("stopping the Broker %d: exit code %d: %s", winner.PID, kill.ExitCode, strings.TrimSpace(kill.Stderr))
+		}
+		harness.Eventually(t, 3*time.Second, "the Broker exits after SIGTERM", func() (bool, string) {
+			if n := len(bpLocalProcs(t, host, "broker")); n != 0 {
+				return false, fmt.Sprintf("%d Broker processes", n)
+			}
+			return true, ""
+		})
 	})
 
 	t.Run("REQ-broker-config-025 listen flag", func(t *testing.T) {
@@ -237,6 +239,28 @@ func TestBrokerProcessLocal(t *testing.T) {
 	})
 }
 
+// bpConcurrentStartScript starts five Brokers on one address, waits until four
+// have exited, and leaves the winner running. Each exit code goes to $out/i.code
+// and each standard error to $out/i.err; the process that wins never writes
+// either file while this script runs.
+const bpConcurrentStartScript = `
+bin=$1; listen=$2; out=$3
+i=1
+while [ $i -le 5 ]; do
+  ( "$bin" broker --listen "$listen" >/dev/null 2>"$out/$i.err"; echo $? >"$out/$i.code" ) </dev/null >/dev/null 2>&1 &
+  i=$((i+1))
+done
+n=0
+while [ $n -lt 100 ]; do
+  c=0
+  for f in "$out"/*.code; do [ -e "$f" ] && c=$((c+1)); done
+  [ $c -ge 4 ] && exit 0
+  n=$((n+1))
+  sleep 0.05
+done
+exit 1
+`
+
 // TestBrokerProcessInContainer covers the default listen address, the Broker's
 // unavailability while that address is taken, recovery without reconnecting
 // the MCP server process, and the structured runtime log. The subtests share
@@ -246,9 +270,10 @@ func TestBrokerProcessInContainer(t *testing.T) {
 	host := c.Node("hostA")
 
 	var (
-		session  *harness.Session
-		heldPort string
-		mcpPID   int
+		session     *harness.Session
+		heldPort    string
+		mcpPID      int
+		brokerStart harness.BrokerStart
 	)
 
 	t.Run("REQ-broker-config-024 default address taken", func(t *testing.T) {
@@ -300,13 +325,15 @@ func TestBrokerProcessInContainer(t *testing.T) {
 			t.Fatalf("the MCP server exposes %d tools, want 11: %v", len(tools), tools)
 		}
 
-		harness.Eventually(t, brokerReadyBound, "list_agents names the occupied address", func() (bool, string) {
+		harness.Eventually(t, brokerReadyBound, "list_agents names the ways to start a Broker", func() (bool, string) {
 			r := session.Call(t, "list_agents", nil)
 			if !r.IsError {
 				return false, "list_agents succeeded while every address was taken"
 			}
-			if !strings.Contains(r.Text, brokerDefaultListen) {
-				return false, r.Text
+			for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+				if !strings.Contains(r.Text, want) {
+					return false, r.Text
+				}
 			}
 			return true, ""
 		})
@@ -325,7 +352,14 @@ func TestBrokerProcessInContainer(t *testing.T) {
 
 		c.ReleasePort(t, "hostA", heldPort)
 
-		harness.Eventually(t, brokerRecoverBound, "list_agents succeeds after the port is released", func() (bool, string) {
+		// The user starts the Broker in a terminal; the session must recover
+		// without a new MCP server process.
+		brokerStart = host.StartBroker(t, harness.BrokerSpec{})
+		if !brokerStart.Running {
+			t.Fatalf("the explicit Broker did not start: exit code %d: %s", brokerStart.ExitCode, strings.TrimSpace(brokerStart.StderrLast))
+		}
+
+		harness.Eventually(t, brokerRecoverBound, "list_agents succeeds after the Broker starts", func() (bool, string) {
 			r := session.Call(t, "list_agents", nil)
 			if r.IsError {
 				return false, r.Text
@@ -348,21 +382,12 @@ func TestBrokerProcessInContainer(t *testing.T) {
 		}
 		session.End(t)
 
-		// The Broker the session launched is not the harness's current
-		// process handle (the failed explicit start above is), so signal it by
-		// its PID and wait for it to exit.
-		for _, proc := range bpContainerProcs(t, c, "hostA", "broker") {
-			kill := host.Exec(t, []string{"kill", "-TERM", strconv.Itoa(proc.PID)}, nil)
-			if kill.ExitCode != 0 {
-				t.Fatalf("signalling Broker %d: exit code %d: %s", proc.PID, kill.ExitCode, strings.TrimSpace(kill.Stderr))
-			}
+		if !brokerStart.Running {
+			t.Fatal("the previous subtest did not start the Broker")
 		}
-		harness.Eventually(t, 3*time.Second, "the launched Broker exits", func() (bool, string) {
-			if n := len(bpContainerProcs(t, c, "hostA", "broker")); n != 0 {
-				return false, fmt.Sprintf("%d Broker processes", n)
-			}
-			return true, ""
-		})
+		if code := host.StopBroker(t, syscall.SIGTERM); code != 0 {
+			t.Fatalf("the Broker exited %d on SIGTERM, want 0", code)
+		}
 
 		start := host.StartBroker(t, harness.BrokerSpec{})
 		if !start.Running {
@@ -415,7 +440,7 @@ type bpProc struct {
 // bpLocalProcs returns the processes of the local node of the given kind:
 // "broker", "mcp" or "all". A process belongs to the node when its environment
 // carries the node's AGENT_PEER_TEST_HOME, which every process the node starts
-// inherits, including a Broker launched by an MCP server process.
+// inherits, including Brokers started from a terminal.
 func bpLocalProcs(t *testing.T, host *harness.Node, kind string) []bpProc {
 	t.Helper()
 
@@ -469,16 +494,6 @@ func bpHasSubcommand(args []string, kind string) bool {
 	return len(args) >= 2 && args[1] == kind
 }
 
-// bpContainsInt reports whether values contains want.
-func bpContainsInt(values []int, want int) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
-}
-
 // bpContainsString reports whether values contains want.
 func bpContainsString(values []string, want string) bool {
 	for _, value := range values {
@@ -514,14 +529,6 @@ func bpListenLines(ss string) []string {
 		listeners = append(listeners, trimmed)
 	}
 	return listeners
-}
-
-// bpAddressName returns the name part of a name@alias address.
-func bpAddressName(address string) string {
-	if at := strings.LastIndexByte(address, '@'); at >= 0 {
-		return address[:at]
-	}
-	return address
 }
 
 // bpAlias returns the alias part of a name@alias address.

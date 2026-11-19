@@ -8,12 +8,15 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/wangzw/agent-peer/internal/mcpserver"
 	"github.com/wangzw/agent-peer/test/e2e/harness"
 	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
 )
@@ -29,12 +32,20 @@ const (
 	sgUsersGID = 2001
 	// sgOtherUID is the uid of other in the system image.
 	sgOtherUID = 2000
+	// sgNoBrokerBudget bounds the first failed selection and tool call when no
+	// Broker may serve the account; no retry timer is involved.
+	sgNoBrokerBudget = 10 * time.Second
+	// sgRegisterBudget bounds the reconnect after the user starts a Broker:
+	// mcpserver.ConnBackoffCap is the longest wait, and the margin covers the
+	// dial, Hello and registration.
+	sgRegisterBudget = mcpserver.ConnBackoffCap + 5*time.Second
 )
 
 // TestREQBrokerConfig027_GroupRestrictsUse checks that the group and mode of
 // the system Broker's local socket decide which accounts may use it. peer is
-// in agentpeer-users and other is not, so other must fall back to its own
-// user-level Broker instead of registering with the system Broker.
+// in agentpeer-users and other is not, so other's session reports that no
+// Broker is available until the user starts other's own user-level Broker; it
+// never registers with the system Broker.
 func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 	if !syscontainer.InContainer() {
 		syscontainer.Run(t, syscontainer.Plain)
@@ -48,16 +59,41 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 		return mode == 0o660 && gid == sgUsersGID
 	})
 
-	// other's MCP server falls back to a user-level Broker when the system
-	// socket refuses it; that Broker listens on the port its configuration
-	// names.
+	// other may not use the system socket and starts no Broker of its own, so
+	// its session first reports that no Broker is available. The user then
+	// starts other's user-level Broker on the port its configuration names.
 	sgWriteOtherConfig(t)
 
 	a := syscontainer.NewSession(t, "peer", "alpha")
 	sgWaitRegistered(t, a)
 
 	c := syscontainer.NewSession(t, "other", "charlie")
-	sgWaitRegistered(t, c)
+	mcpBefore := sgMCPPIDs(t, "other")
+	if len(mcpBefore) == 0 {
+		t.Fatal("other has no MCP server process after charlie started")
+	}
+	harness.Eventually(t, sgNoBrokerBudget, "other's session reports that no Broker is available", func() (bool, string) {
+		text, isError := c.Call(t, "list_agents", map[string]any{})
+		if !isError {
+			return false, "list_agents succeeded without a Broker"
+		}
+		for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+			if !strings.Contains(text, want) {
+				return false, text
+			}
+		}
+		return true, ""
+	})
+	syscontainer.StartUserBroker(t, "other")
+	harness.Eventually(t, sgRegisterBudget, "charlie registers on the Broker the user started", func() (bool, string) {
+		if _, isError := c.Call(t, "list_agents", map[string]any{}); isError {
+			return false, "list_agents still fails"
+		}
+		return true, ""
+	})
+	if got := sgMCPPIDs(t, "other"); !slices.Equal(got, mcpBefore) {
+		t.Fatalf("the MCP server processes changed from %v to %v; the session reconnected instead of recovering", mcpBefore, got)
+	}
 
 	syscontainer.WaitFor(t, "the system Broker to list peer's agent", func() bool {
 		res := syscontainer.RunAs(t, "root", nil, "status")
@@ -265,6 +301,20 @@ func sgWriteOtherConfig(t *testing.T) {
 }
 
 // sgWaitRegistered waits until the session's MCP server has registered it.
+// sgMCPPIDs returns the account's MCP server pids, sorted.
+func sgMCPPIDs(t *testing.T, account string) []int {
+	t.Helper()
+	uid := syscontainer.AccountUID(t, account)
+	var out []int
+	for _, proc := range syscontainer.Pids("agent-peer", "mcp") {
+		if proc.UID == uid {
+			out = append(out, proc.PID)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
 func sgWaitRegistered(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
 	harness.Eventually(t, 3*time.Second, "the session "+session.Account+" to register", func() (bool, string) {

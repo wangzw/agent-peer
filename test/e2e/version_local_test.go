@@ -4,23 +4,31 @@ package e2e
 
 import (
 	"encoding/json"
-	"fmt"
+	"slices"
+	"sort"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/wangzw/agent-peer/internal/mcpserver"
 	"github.com/wangzw/agent-peer/test/e2e/harness"
 	"github.com/wangzw/agent-peer/test/e2e/node"
 )
 
-// versionLocalLaunchBudget is the ten-second readiness allowance of a launched
-// Broker plus three seconds.
-const versionLocalLaunchBudget = 13 * time.Second
+const (
+	// versionLocalNoBrokerBudget bounds the first failed attempt after the
+	// Broker stops: one connection attempt and the probe that follows it.
+	versionLocalNoBrokerBudget = 3 * time.Second
+	// versionLocalRecoveryBudget bounds the reconnect after the user starts a
+	// compatible Broker. mcpserver.ConnBackoffCap is the longest wait between
+	// attempts; the margin covers the dial, Hello and registration that follow.
+	versionLocalRecoveryBudget = mcpserver.ConnBackoffCap + 5*time.Second
+)
 
 // versionLocalBrokerProcs returns the node's agent-peer broker processes. The
-// environment is the filter because a Broker launched by an MCP server process
-// inherits it too.
+// environment is the filter because every process the node starts inherits it,
+// including a Broker a test starts.
 func versionLocalBrokerProcs(n *harness.Node) ([]node.Proc, error) {
 	home := n.AccountHome()
 	return node.ListProcs(func(p node.Proc) bool {
@@ -40,6 +48,29 @@ func versionLocalMustBrokerProcs(t *testing.T, n *harness.Node) []node.Proc {
 		t.Fatalf("listing the agent-peer broker processes: %v", err)
 	}
 	return procs
+}
+
+// versionLocalMCPPIDs returns the node's MCP server pids, sorted. A pid set
+// that stays the same across recovery proves the session did not reconnect the
+// MCP service.
+func versionLocalMCPPIDs(t *testing.T, n *harness.Node) []int {
+	t.Helper()
+	home := n.AccountHome()
+	procs, err := node.ListProcs(func(p node.Proc) bool {
+		if p.Env["AGENT_PEER_TEST_HOME"] != home {
+			return false
+		}
+		return len(p.Args) >= 2 && p.Args[1] == "mcp"
+	})
+	if err != nil {
+		t.Fatalf("listing the node's MCP server processes: %v", err)
+	}
+	out := make([]int, 0, len(procs))
+	for _, p := range procs {
+		out = append(out, p.PID)
+	}
+	sort.Ints(out)
+	return out
 }
 
 // versionLocalLogRecord returns the last JSON log record whose event field is
@@ -169,8 +200,9 @@ func TestLocalVersionMismatchReq016(t *testing.T) {
 
 // TestLocalVersionMismatchRecoveryReq016 checks the other half of
 // REQ-broker-config-016: after the incompatible Broker stops, b's MCP server
-// process starts a Broker at its own version and the session recovers by
-// itself.
+// process reports that no Broker is available and starts nothing. When the
+// user starts a Broker at a version this MCP server speaks, the session
+// recovers without reconnecting the MCP server process.
 func TestLocalVersionMismatchRecoveryReq016(t *testing.T) {
 	n, st, a, b := versionLocalSetup(t)
 
@@ -179,36 +211,45 @@ func TestLocalVersionMismatchRecoveryReq016(t *testing.T) {
 		t.Fatalf("the Broker exited %d on SIGTERM, want 0", code)
 	}
 
-	var freshPID int
-	harness.Eventually(t, versionLocalLaunchBudget, "b's MCP server process starts its own Broker and recovers", func() (bool, string) {
+	mcpBefore := versionLocalMCPPIDs(t, n)
+
+	harness.Eventually(t, versionLocalNoBrokerBudget, "b reports that no Broker is available", func() (bool, string) {
+		r := b.Call(t, "list_agents", nil)
+		if !r.IsError {
+			return false, "list_agents succeeded without a Broker"
+		}
+		for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+			if !strings.Contains(r.Text, want) {
+				return false, r.Text
+			}
+		}
 		procs, err := versionLocalBrokerProcs(n)
 		if err != nil {
 			return false, err.Error()
 		}
-		procs = versionLocalWithout(procs, st.PID)
-		if len(procs) == 0 {
-			return false, "no Broker process newer than the stopped one"
+		if len(versionLocalWithout(procs, st.PID)) != 0 {
+			return false, "an MCP server process started a Broker"
 		}
-		if len(procs) > 1 {
-			return false, fmt.Sprintf("%d Broker processes are running", len(procs))
-		}
-		if got := procs[0].Env["AGENT_PEER_TEST_LOCAL_PROTOCOL_VERSION"]; got != "2" {
-			return false, fmt.Sprintf("the new Broker speaks local protocol version %q, want 2", got)
-		}
+		return true, ""
+	})
+
+	fresh := n.StartBroker(t, harness.BrokerSpec{Env: map[string]string{"AGENT_PEER_TEST_LOCAL_PROTOCOL_VERSION": "2"}})
+	if !fresh.Running {
+		t.Fatalf("the replacement Broker did not start: exit code %d: %s", fresh.ExitCode, strings.TrimSpace(fresh.StderrLast))
+	}
+
+	harness.Eventually(t, versionLocalRecoveryBudget, "b recovers after a compatible Broker starts", func() (bool, string) {
 		r := b.Call(t, "list_agents", nil)
 		if r.IsError {
 			return false, r.Text
 		}
-		freshPID = procs[0].PID
 		return true, ""
 	})
-	if freshPID == 0 {
-		t.Fatal("the recovery Broker has no PID")
-	}
-
-	b.Call(t, "list_agents", nil).MustOK(t)
 	if procs := versionLocalMustBrokerProcs(t, n); len(procs) != 1 {
 		t.Fatalf("the node runs %d agent-peer broker processes after recovery, want 1: %v", len(procs), procs)
+	}
+	if got := versionLocalMCPPIDs(t, n); !slices.Equal(got, mcpBefore) {
+		t.Fatalf("the MCP server processes changed from %v to %v; the session reconnected instead of recovering", mcpBefore, got)
 	}
 }
 

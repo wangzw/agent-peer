@@ -78,7 +78,7 @@ func TestOtherAccountRejected(t *testing.T) {
 			t.Fatalf("agent-peer status as other without a socket entered %d, want 1\nstdout: %s\nstderr: %s",
 				own.ExitCode, own.Stdout, own.Stderr)
 		}
-		if !strings.Contains(own.Stderr, "no running Broker found") {
+		if !strings.Contains(own.Stderr, "no Broker is available") {
 			t.Fatalf("agent-peer status as other did not search only its own runtime directory: %s", own.Stderr)
 		}
 	})

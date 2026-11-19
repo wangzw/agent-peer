@@ -31,10 +31,6 @@ const (
 	// readiness wait, so the process exits at once and the project-wide test
 	// wait covers it.
 	adInvalidConfigBound = 3 * time.Second
-	// adPeerBrokerReadyBound is the product's ten-second readiness allowance
-	// for a launched Broker (mcpserver.readyTimeoutDefault). This wait watches
-	// a Broker another process launched, so it uses the same allowance.
-	adPeerBrokerReadyBound = 10 * time.Second
 )
 
 // TestAdvertisedAddresses covers the dual-stack default listener, the
@@ -364,27 +360,17 @@ func adConfig(parts ...string) string {
 	return harness.ConfigYAML(append([]string{harness.FastTimers}, parts...)...)
 }
 
-// adStartBroker starts a Broker and fails when it does not come up. Exit code
-// 3 means a live MCP server process started one first; the helper then waits
-// for that Broker to answer.
+// adStartBroker starts a Broker and fails when it does not come up.
 func adStartBroker(t *testing.T, node *harness.Node, config string) {
 	t.Helper()
 	start := node.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
-	if start.Running {
-		return
-	}
-	if start.ExitCode != 3 {
+	if !start.Running {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
-	harness.Eventually(t, adPeerBrokerReadyBound, "the Broker started by another process answers", func() (bool, string) {
-		res := node.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
-		return res.ExitCode == 0, fmt.Sprintf("agent-peer status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
-	})
 }
 
 // adRestart ends the given MCP server processes, stops the Broker and starts
-// it with config. Ending them first keeps one of them from launching a Broker
-// of its own while the restart is in progress.
+// it with config.
 func adRestart(t *testing.T, node *harness.Node, config string, stop ...*harness.Session) {
 	t.Helper()
 	for _, s := range stop {

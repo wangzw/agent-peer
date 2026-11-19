@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -21,8 +20,9 @@ import (
 // lifecycleRestoreBound waits for an MCP server process to restore its topics
 // after the local Broker restarts. The process retries a lost Broker with a
 // backoff that starts at 250ms and caps at five seconds (mcpserver's
-// loopConnBackoff); one capped retry and the restore that follows fit here.
-const lifecycleRestoreBound = 5 * time.Second
+// loopConnBackoff); a capped retry and the restore that follows need more than
+// five seconds, so the bound doubles the cap.
+const lifecycleRestoreBound = 10 * time.Second
 
 // TestLocalSessionChanges covers what happens to a registered agent when its
 // session changes: a rename, a status change, a conversation clear, the MCP
@@ -377,31 +377,13 @@ func lifecycleStartBroker(t *testing.T, host *harness.Node, config, requested st
 }
 
 // lifecycleRestartBroker stops the Broker and starts it again, returning the
-// address the Broker actually uses in place of requested. A session process may
-// win the race and start its own Broker first; that Broker refuses to start
-// with exit code 3, and the helper then waits for the process the session
-// started to answer instead.
+// address the Broker actually uses in place of requested. The MCP server
+// processes never start a Broker, so the restart is the only process that can
+// answer.
 func lifecycleRestartBroker(t *testing.T, host *harness.Node, config, requested string) string {
 	t.Helper()
 	host.StopBroker(t, syscall.SIGTERM)
-	start := host.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
-	if start.Running {
-		return start.Address(requested)
-	}
-	if start.ExitCode != 3 {
-		t.Fatalf("the Broker did not restart: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
-	}
-	bin := harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
-	harness.Eventually(t, brokerReadyBound, "the Broker answers after a session process started it", func() (bool, string) {
-		result := host.Exec(t, []string{bin, "status"}, nil)
-		if result.ExitCode == 0 {
-			return true, ""
-		}
-		return false, fmt.Sprintf("agent-peer status exited %d: %s", result.ExitCode, strings.TrimSpace(result.Stderr))
-	})
-	// The session's Broker read the configuration file as written, so no retry
-	// replaced its address.
-	return start.Address(requested)
+	return lifecycleStartBroker(t, host, config, requested)
 }
 
 // lifecycleGitEnv is the environment of the git commands that create test

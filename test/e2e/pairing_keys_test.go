@@ -306,27 +306,17 @@ func pkAddr(c *harness.Cluster, node string) string {
 	return net.JoinHostPort(c.Addr(node, "net"), "17443")
 }
 
-// pkStartBroker starts a Broker and fails when it does not come up. A Broker
-// that another process (an MCP server process) started instead exits with code
-// 3 here; the helper then waits for that process to answer.
+// pkStartBroker starts a Broker and fails when it does not come up.
 func pkStartBroker(t *testing.T, node *harness.Node, config string) {
 	t.Helper()
 	start := node.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
-	if start.Running {
-		return
-	}
-	if start.ExitCode != 3 {
+	if !start.Running {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
-	harness.Eventually(t, adPeerBrokerReadyBound, "the Broker started by another process answers", func() (bool, string) {
-		res := node.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
-		return res.ExitCode == 0, fmt.Sprintf("agent-peer status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
-	})
 }
 
 // pkRestart stops the Broker and starts it with config. Every MCP server
-// process passed in stop is ended first, because such a process launches a
-// Broker of its own when the socket disappears and would race this restart.
+// process passed in stop is ended first.
 func pkRestart(t *testing.T, node *harness.Node, config string, stop ...*harness.Session) {
 	t.Helper()
 	for _, s := range stop {

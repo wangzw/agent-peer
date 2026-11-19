@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -265,32 +264,13 @@ func topicsStartBroker(t *testing.T, host *harness.Node, config, requested strin
 }
 
 // topicsRestartBroker stops the Broker and starts it with config, returning the
-// address the Broker actually uses in place of requested. A session process may
-// start its own Broker first; that Broker refuses to start with exit code 3,
-// and the helper then waits for the process the session started.
+// address the Broker actually uses in place of requested. The MCP server
+// processes never start a Broker, so the restart is the only process that can
+// answer.
 func topicsRestartBroker(t *testing.T, host *harness.Node, config, requested string) string {
 	t.Helper()
 	host.StopBroker(t, syscall.SIGTERM)
-	start := host.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
-	if start.Running {
-		return start.Address(requested)
-	}
-	if start.ExitCode != 3 {
-		t.Fatalf("the Broker did not restart: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
-	}
-	bin := harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
-	// The Broker gets the product's ten-second readiness allowance plus three
-	// seconds, the same bound harness.StartBroker applies.
-	harness.Eventually(t, brokerReadyBound, "the Broker answers after a session process started it", func() (bool, string) {
-		result := host.Exec(t, []string{bin, "status"}, nil)
-		if result.ExitCode == 0 {
-			return true, ""
-		}
-		return false, fmt.Sprintf("agent-peer status exited %d: %s", result.ExitCode, strings.TrimSpace(result.Stderr))
-	})
-	// The session's Broker read the configuration file as written, so no retry
-	// replaced its address.
-	return start.Address(requested)
+	return topicsStartBroker(t, host, config, requested)
 }
 
 // topicsGitEnv is the environment of the git commands that create test

@@ -124,16 +124,16 @@ Broker 必须以结构化格式输出运行日志。
 MCP 服务进程不得启动任何 Broker。会话按 `REQ-broker-config-026` 的顺序找不到可用的 Broker 时，工具调用必须返回说明如何启动 Broker 的错误；Broker 随后启动的，会话不必重新连接 MCP 服务即可使用。
 
 - **验收**：在没有任何 Broker 进程的主机上启动一个启用了工具的会话，工具调用返回的错误说明可以安装服务或在终端启动 Broker，主机上不出现 Broker 进程；随后在终端启动该账户的 Broker，不在 Claude Code 中重新连接 MCP 服务，下一次列出 Agent 成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessLocal/REQ-broker-config-038 no Broker until started`；`test/e2e/broker_process_test.go` 的 `TestBrokerProcessInContainer/REQ-broker-config-024 default address taken`、`TestBrokerProcessInContainer/REQ-agent-messaging-038 recover without reconnect`（终端启动失败、会话报错、手工启动后恢复）
 
 ### REQ-broker-config-013
 
 同一账户下至多运行一个 Broker 实例。已有实例在运行时，以任何监听地址或配置再启动一个都必须失败，并说明已有实例在运行。
 
 - **验收**：在没有 Broker 进程的主机上，以同一个账户同时运行五次启动 Broker 的命令，该账户名下只有一个 Broker 进程持续运行，其余都以说明已有实例在运行的错误退出；随后在该账户下启动五个启用了工具的会话，它们都登记在这个 Broker 上；再以同一个账户指定另一个监听地址手动启动一个 Broker，启动失败，错误说明已有实例在运行，原有的 Broker 不受影响。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessLocal/REQ-broker-config-013 single instance`
 
 ### REQ-broker-config-014
 
@@ -324,8 +324,8 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 会话所登记的 Broker 进程退出后，系统必须把该会话重新登记到同一个 Broker，不得改登记到另一个 Broker。
 
 - **验收**：主机上同时运行着系统级 Broker 和账户甲的用户级 Broker，两者监听不同的端口，甲的会话登记在用户级 Broker 上；终止用户级 Broker 进程，在它重新启动之前，会话的列出 Agent 返回说明没有可用 Broker 的错误，主机上不出现别的 Broker；它由用户级的服务管理机制或用户重新启动之后，不重新连接 MCP 服务，会话的下一次列出 Agent 成功，会话仍登记在指纹不变的这个用户级 Broker 上，系统级 Broker 上不出现该会话的 Agent。账户乙的会话登记在系统级 Broker 上时，终止系统级 Broker 进程，在它由系统的服务管理机制重新启动之前，主机上不出现乙的用户级 Broker；重新启动之后，乙的会话重新登记在系统级 Broker 上。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/select_reregister_test.go` 的 `TestReregisterUserBrokerReq037`、`TestReregisterSystemBrokerReq037`
 
 ## 数据需求
 

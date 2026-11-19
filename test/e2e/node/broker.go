@@ -10,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
 )
 
 const (
@@ -22,8 +24,8 @@ const (
 	// brokerProbeTimeout bounds one readiness probe. A Broker that has not
 	// created its socket yet fails the probe quickly.
 	brokerProbeTimeout = 250 * time.Millisecond
-	// defaultBrokerBound is the readiness bound used when the caller passes 0:
-	// the ten-second readiness pipe allowance plus three seconds.
+	// defaultBrokerBound is the bound used when the caller passes 0: ten
+	// seconds for the Broker to bind its socket, plus three.
 	defaultBrokerBound = 13 * time.Second
 	// brokerKillWait is how long StartBroker waits for a killed Broker to be
 	// reaped before giving up.
@@ -172,7 +174,13 @@ func brokerHello(ctx context.Context, socket string) bool {
 	}
 	defer func() { _ = oracle.Close() }()
 	_, err = oracle.Hello(probeCtx)
-	return err == nil
+	if err == nil {
+		return true
+	}
+	// A Broker that answers with a version mismatch is running; the probe
+	// speaks the package's default version, which a test Broker may not.
+	detail := ErrorDetailOf(err)
+	return detail != nil && detail.GetCode() == localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH
 }
 
 // lastBrokerStderr returns the last line of the log that starts with

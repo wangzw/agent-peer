@@ -46,10 +46,6 @@ const (
 	// test has already sent. tcpdump flushes on packet activity and no product
 	// timer governs it, so it uses the project-wide three-second bound.
 	secCaptureWriteBound = 3 * time.Second
-	// secPeerBrokerReadyBound is the product's ten-second readiness allowance
-	// for a launched Broker (mcpserver.readyTimeoutDefault). This wait watches
-	// a Broker another process launched, so it uses the same allowance.
-	secPeerBrokerReadyBound = 10 * time.Second
 )
 
 // secFingerprintPattern matches a stored peer fingerprint of the form the peer
@@ -436,21 +432,13 @@ func secWaitCaptureBytes(t *testing.T, c *harness.Cluster, node string, port, wa
 }
 
 // secStartBroker starts a Broker with config and fails when it does not come
-// up. An exit code of 3 means a live MCP server process started one first; the
-// helper then waits for that Broker to answer.
+// up.
 func secStartBroker(t *testing.T, node *harness.Node, config string) {
 	t.Helper()
 	start := node.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
-	if start.Running {
-		return
-	}
-	if start.ExitCode != 3 {
+	if !start.Running {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
-	harness.Eventually(t, secPeerBrokerReadyBound, "the Broker started by another process answers", func() (bool, string) {
-		res := node.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
-		return res.ExitCode == 0, fmt.Sprintf("agent-peer status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
-	})
 }
 
 // secConfig merges the shortened timers with the given fragments.

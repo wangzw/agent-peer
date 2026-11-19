@@ -13,12 +13,15 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/wangzw/agent-peer/internal/mcpserver"
 	"github.com/wangzw/agent-peer/test/e2e/harness"
 	"github.com/wangzw/agent-peer/test/e2e/node"
 	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
@@ -29,9 +32,17 @@ const (
 	srSystemSocket = "/run/agent-peer/broker.sock"
 	// srSystemService is the systemd unit of the system-level Broker.
 	srSystemService = "agent-peer.service"
-	// srLaunchBudget is the ten-second readiness allowance of a launched
-	// Broker plus three seconds.
-	srLaunchBudget = 13 * time.Second
+	// srNoBrokerBudget bounds the wait for the no-Broker status when the system
+	// socket is left stale: selection retries it for
+	// mcpserver.SystemRetryDeadline, and the margin covers starting the
+	// session, the first tool call and scheduling.
+	srNoBrokerBudget = mcpserver.SystemRetryDeadline + 5*time.Second
+	// srLaunchBudget bounds the reconnect when the user-level Broker is started
+	// after a selection round that probed a stale system-level socket. That
+	// round first waits mcpserver.SystemRetryDeadline; the next reconnect waits
+	// at most mcpserver.ConnBackoffCap. The margin covers the dial, Hello and
+	// registration: SystemRetryDeadline + ConnBackoffCap + 5s.
+	srLaunchBudget = mcpserver.SystemRetryDeadline + mcpserver.ConnBackoffCap + 5*time.Second
 	// srRestartBudget is systemd's RestartSec=5 plus three seconds.
 	srRestartBudget = 8 * time.Second
 	// statusClientRole is the TestMain role that reads an agent ID as the
@@ -219,6 +230,21 @@ func srBrokerProcs(t *testing.T, account string) []syscontainer.ProcInfo {
 	return out
 }
 
+// srMCPPIDs returns the account's MCP server pids, sorted. A pid set that stays
+// the same across recovery proves the session did not reconnect the service.
+func srMCPPIDs(t *testing.T, account string) []int {
+	t.Helper()
+	uid := syscontainer.AccountUID(t, account)
+	var out []int
+	for _, proc := range syscontainer.Pids("agent-peer", "mcp") {
+		if proc.UID == uid {
+			out = append(out, proc.PID)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
 // srStopSystemService stops the system Broker through systemd.
 func srStopSystemService(t *testing.T) {
 	t.Helper()
@@ -306,25 +332,50 @@ func TestSelectOrderReq026(t *testing.T) {
 	}
 
 	// 4. the system Broker stops and leaves its socket file behind; the stale
-	// socket must not be treated as a usable Broker.
+	// socket must not be treated as a usable Broker, and the MCP server process
+	// must not start a user-level Broker in its place.
 	srStopSystemService(t)
 	srLeaveStaleSocket(t)
 	s4 := syscontainer.NewSession(t, "other", "s4")
-	harness.Eventually(t, srLaunchBudget, "other's session starts a user-level Broker and registers", func() (bool, string) {
-		if procs := srBrokerProcs(t, "other"); len(procs) == 0 {
-			return false, "other has no user-level Broker process"
+	mcpBefore := srMCPPIDs(t, "other")
+	if len(mcpBefore) == 0 {
+		t.Fatal("other has no MCP server process after s4 started")
+	}
+	harness.Eventually(t, srNoBrokerBudget, "s4 reports that no Broker is available", func() (bool, string) {
+		text, isError := s4.Call(t, "list_agents", map[string]any{})
+		if !isError {
+			return false, "list_agents succeeded without a Broker"
 		}
+		for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+			if !strings.Contains(text, want) {
+				return false, text
+			}
+		}
+		if procs := srBrokerProcs(t, "other"); len(procs) != 0 {
+			return false, fmt.Sprintf("%d user-level Broker processes appeared", len(procs))
+		}
+		return true, ""
+	})
+
+	// 5. the user starts other's Broker in a terminal; the session registers
+	// without reconnecting the MCP server process.
+	syscontainer.StartUserBroker(t, "other")
+	harness.Eventually(t, srLaunchBudget, "s4 registers on the Broker the user started", func() (bool, string) {
 		if _, isError := s4.Call(t, "list_agents", map[string]any{}); isError {
 			return false, "list_agents still fails"
 		}
 		return true, ""
 	})
+	if got := srMCPPIDs(t, "other"); !slices.Equal(got, mcpBefore) {
+		t.Fatalf("the MCP server processes changed from %v to %v; the session reconnected instead of recovering", mcpBefore, got)
+	}
 }
 
 // TestReregisterUserBrokerReq037 checks the user-level half of
-// REQ-broker-config-037: after its Broker is killed, a session registers again
-// with a new Broker of the same account, with the same identity and Agent
-// address, and does not move to the system Broker.
+// REQ-broker-config-037: after its Broker is killed, the session reports that
+// no Broker is available and the MCP server process starts nothing; once the
+// user starts a Broker again, the session registers with the same identity and
+// Agent address and does not move to the system Broker.
 func TestReregisterUserBrokerReq037(t *testing.T) {
 	if !srInit(t) {
 		return
@@ -333,6 +384,10 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 
 	s1 := syscontainer.NewSession(t, "peer", "s1")
 	srWaitRegistered(t, s1, "s1")
+	mcpBefore := srMCPPIDs(t, "peer")
+	if len(mcpBefore) == 0 {
+		t.Fatal("peer has no MCP server process after s1 started")
+	}
 	status := srMustStatus(t, "peer")
 	wantAddress := srAgentAddress(status, "s1")
 	if wantAddress == "" {
@@ -345,21 +400,36 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 		t.Fatalf("killing peer's user-level Broker %d: %v", userBroker.PID, err)
 	}
 
-	harness.Eventually(t, srLaunchBudget, "peer's session registers again with a new user-level Broker", func() (bool, string) {
-		var fresh []syscontainer.ProcInfo
-		for _, proc := range srBrokerProcs(t, "peer") {
-			if proc.PID != userBroker.PID {
-				fresh = append(fresh, proc)
+	harness.Eventually(t, srLaunchBudget, "s1 reports that no Broker is available", func() (bool, string) {
+		text, isError := s1.Call(t, "list_agents", map[string]any{})
+		if !isError {
+			return false, "list_agents succeeded without a Broker"
+		}
+		for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+			if !strings.Contains(text, want) {
+				return false, text
 			}
 		}
-		if len(fresh) != 1 {
-			return false, fmt.Sprintf("%d new user-level Broker processes", len(fresh))
+		for _, proc := range srBrokerProcs(t, "peer") {
+			if proc.PID != userBroker.PID {
+				return false, fmt.Sprintf("a new user-level Broker process %d appeared", proc.PID)
+			}
 		}
+		return true, ""
+	})
+
+	// The user starts the Broker again in a terminal. The session reconnects to
+	// it without reconnecting the MCP server process.
+	syscontainer.StartUserBroker(t, "peer", "--listen", ":17444")
+	harness.Eventually(t, srLaunchBudget, "s1 registers again with the restarted user-level Broker", func() (bool, string) {
 		if _, isError := s1.Call(t, "list_agents", map[string]any{}); isError {
 			return false, "list_agents still fails"
 		}
 		return true, ""
 	})
+	if got := srMCPPIDs(t, "peer"); !slices.Equal(got, mcpBefore) {
+		t.Fatalf("the MCP server processes changed from %v to %v; the session reconnected instead of recovering", mcpBefore, got)
+	}
 
 	if got := srIdentityHash(t, "peer"); got != wantKey {
 		t.Fatalf("identity.key changed across the Broker restart: sha256 %s, want %s", got, wantKey)

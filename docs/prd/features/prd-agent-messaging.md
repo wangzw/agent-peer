@@ -323,8 +323,8 @@ Agent 的名字经接收方会话对署名的清洗后与原名不同时，该 A
 本机 Broker 不可用或登记未完成时，工具调用必须返回说明原因的错误，会话不得因此需要用户重新连接 MCP 服务。
 
 - **验收**：让另一个进程占用默认监听地址，在终端启动该账户的 Broker，启动失败并说明监听地址不可用；再启动一个启用了工具的会话：Claude Code 显示本系统的 MCP 服务已连接，工具调用返回说明没有可用 Broker 及如何启动的错误。结束占用该地址的进程并启动 Broker 后，不在 Claude Code 中重新连接 MCP 服务，下一次列出 Agent 成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessInContainer/REQ-agent-messaging-038 recover without reconnect`
 
 ## 数据需求
 

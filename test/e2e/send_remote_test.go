@@ -329,21 +329,13 @@ func srConfig(parts ...string) string {
 	return harness.ConfigYAML(append([]string{harness.FastTimers}, parts...)...)
 }
 
-// srStartBroker starts a Broker and fails when it does not come up. Exit code 3
-// means another process started one first; the helper then waits for it.
+// srStartBroker starts a Broker and fails when it does not come up.
 func srStartBroker(t *testing.T, node *harness.Node, config string) {
 	t.Helper()
 	start := node.StartBroker(t, harness.BrokerSpec{ConfigYAML: config})
-	if start.Running {
-		return
-	}
-	if start.ExitCode != 3 {
+	if !start.Running {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
-	harness.Eventually(t, adPeerBrokerReadyBound, "the Broker started by another process answers", func() (bool, string) {
-		res := node.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
-		return res.ExitCode == 0, fmt.Sprintf("agent-peer status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
-	})
 }
 
 // srOperator starts a session that never registers as an Agent.
