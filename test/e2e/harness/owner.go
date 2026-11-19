@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -120,12 +119,6 @@ func makeOwner(pidText, startText string) (owner, bool) {
 		return owner{}, false
 	}
 	return owner{pid: pid, start: start}, true
-}
-
-// parseOwnerFromPath reads the marker from a runtime root such as
-// /tmp/ape2e-1234-5678-9012.
-func parseOwnerFromPath(path string) (owner, bool) {
-	return parseOwner(filepath.Base(path))
 }
 
 // alive reports whether the process that carries this owner still runs. It is

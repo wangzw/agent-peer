@@ -77,7 +77,7 @@ func collectListening(path string, inodes map[uint64]struct{}, addrs map[string]
 	if err != nil {
 		return fmt.Errorf("node: reading %s: %w", path, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

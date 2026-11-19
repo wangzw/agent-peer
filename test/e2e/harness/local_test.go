@@ -392,33 +392,33 @@ func TestStartBrokerRetriesFreeAddrConflict(t *testing.T) {
 // quote from the plan: the three aliases, the field names of the broker and
 // exec results, and the methods scenarios call.
 func TestExportedTypeShapes(t *testing.T) {
-	var _ BrokerStart = node.StartResult{}
-	var _ SessionSpec = node.SessionSpec{}
-	var _ BaseEnv = node.BaseEnv{}
+	var _ = BrokerStart(node.StartResult{})
+	var _ = SessionSpec(node.SessionSpec{})
+	var _ = BaseEnv(node.BaseEnv{})
 
 	var _ = BrokerSpec{Args: nil, ConfigYAML: "", Env: nil, Bound: 0}
 	var _ = ExecResult{ExitCode: 0, Stdout: "", Stderr: ""}
 	var _ = BrokerStart{Running: false, PID: 0, ExitCode: 0, StderrLast: ""}
 
-	var _ func(testing.TB) *localpb.HelloResponse = (*OracleClient)(nil).Hello
-	var _ func(testing.TB) (*localpb.ListBrokersResponse, *localpb.ErrorDetail) = (*OracleClient)(nil).ListBrokers
-	var _ func(testing.TB) (*localpb.StatusResponse, *localpb.ErrorDetail) = (*OracleClient)(nil).Status
-	var _ func(testing.TB, string) (*localpb.GetConfigResponse, *localpb.ErrorDetail) = (*OracleClient)(nil).GetConfig
-	var _ func(testing.TB, time.Time, uint32) ([]*localpb.AuditEvent, *localpb.ErrorDetail) = (*OracleClient)(nil).Audit
+	var _ = (func(testing.TB) *localpb.HelloResponse)((*OracleClient)(nil).Hello)
+	var _ = (func(testing.TB) (*localpb.ListBrokersResponse, *localpb.ErrorDetail))((*OracleClient)(nil).ListBrokers)
+	var _ = (func(testing.TB) (*localpb.StatusResponse, *localpb.ErrorDetail))((*OracleClient)(nil).Status)
+	var _ = (func(testing.TB, string) (*localpb.GetConfigResponse, *localpb.ErrorDetail))((*OracleClient)(nil).GetConfig)
+	var _ = (func(testing.TB, time.Time, uint32) ([]*localpb.AuditEvent, *localpb.ErrorDetail))((*OracleClient)(nil).Audit)
 
-	var _ func(testing.TB, BrokerSpec) BrokerStart = (*Node)(nil).StartBroker
-	var _ func(testing.TB, SessionSpec) *Session = (*Node)(nil).StartSession
-	var _ func(testing.TB, []string, map[string]string) ExecResult = (*Node)(nil).Exec
-	var _ func() *OracleClient = (*Node)(nil).Oracle
-	var _ func(testing.TB) string = (*Node)(nil).FreeAddr
-	var _ func() string = (*Node)(nil).AccountHome
-	var _ func(testing.TB, string) = (*Node)(nil).WriteConfig
-	var _ func(testing.TB) []byte = (*Node)(nil).ReadConfig
-	var _ func(testing.TB, string) []byte = (*Node)(nil).ReadFile
+	var _ = (func(testing.TB, BrokerSpec) BrokerStart)((*Node)(nil).StartBroker)
+	var _ = (func(testing.TB, SessionSpec) *Session)((*Node)(nil).StartSession)
+	var _ = (func(testing.TB, []string, map[string]string) ExecResult)((*Node)(nil).Exec)
+	var _ = (func() *OracleClient)((*Node)(nil).Oracle)
+	var _ = (func(testing.TB) string)((*Node)(nil).FreeAddr)
+	var _ = (func() string)((*Node)(nil).AccountHome)
+	var _ = (func(testing.TB, string))((*Node)(nil).WriteConfig)
+	var _ = (func(testing.TB) []byte)((*Node)(nil).ReadConfig)
+	var _ = (func(testing.TB, string) []byte)((*Node)(nil).ReadFile)
 
-	var _ func(testing.TB, string, map[string]any) Result = (*Session)(nil).Call
-	var _ func(testing.TB, time.Duration) fakesession.Frame = (*Session)(nil).WaitFrame
-	var _ func(testing.TB) = (*Session)(nil).End
+	var _ = (func(testing.TB, string, map[string]any) Result)((*Session)(nil).Call)
+	var _ = (func(testing.TB, time.Duration) fakesession.Frame)((*Session)(nil).WaitFrame)
+	var _ = (func(testing.TB))((*Session)(nil).End)
 
-	var _ func(string) (struct{}, error) = Decode[struct{}]
+	var _ = (func(string) (struct{}, error))(Decode[struct{}])
 }

@@ -51,7 +51,7 @@ func TestListeningAddrs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("node: HoldPort: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	want := listener.Addr().String()
 
 	addrs, err := ListeningAddrs(os.Getpid())

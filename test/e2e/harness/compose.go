@@ -153,7 +153,7 @@ func Up(t *testing.T, topo Topology) *Cluster {
 			break
 		}
 		if attempt < upAttempts && subnetOverlap(out) {
-			c.composeCommand("down", "-v", "--remove-orphans", "--timeout", "1").CombinedOutput()
+			_, _ = c.composeCommand("down", "-v", "--remove-orphans", "--timeout", "1").CombinedOutput()
 			continue
 		}
 		t.Fatalf("harness: starting compose project %s: %v\n%s", project, err, strings.TrimSpace(string(out)))
