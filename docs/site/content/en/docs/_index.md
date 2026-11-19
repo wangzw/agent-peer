@@ -14,16 +14,18 @@ Each host runs a Broker, a daemon that registers the agent sessions on that host
 ```mermaid
 flowchart LR
   subgraph hostA["Host A"]
-    sessionA1["Claude Code session"]
-    sessionA2["Claude Code session"]
+    sessionA1["Claude Code<br/>session"]
+    sessionA2["Claude Code<br/>session"]
     brokerA["Broker"]
     sessionA1 --- brokerA
     sessionA2 --- brokerA
   end
   subgraph hostB["Host B"]
-    sessionB1["Claude Code session"]
     brokerB["Broker"]
-    sessionB1 --- brokerB
+    sessionB1["Claude Code<br/>session"]
+    sessionB2["Claude Code<br/>session"]
+    brokerB --- sessionB1
+    brokerB --- sessionB2
   end
   brokerA <-->|paired link| brokerB
 ```

@@ -155,3 +155,21 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Mermaid diagrams on the documentation overview pages are about 1013-1020 px
+   wide. Hextra switches to its single-column layout at 768 px, and scaling the
+   SVG down to that column leaves the labels too small to read on a phone. Keep
+   the SVG at its natural width there and let its own container scroll
+   horizontally; the page itself stays free of horizontal scrolling. Above
+   768 px the theme's default scaling is left alone, so the desktop layout is
+   unchanged. */
+@media (max-width: 767px) {
+  .mermaid {
+    overflow-x: auto;
+  }
+
+  .mermaid svg {
+    min-width: 1024px;
+    max-width: none !important;
+  }
+}

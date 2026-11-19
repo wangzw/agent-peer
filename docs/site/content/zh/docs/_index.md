@@ -14,16 +14,18 @@ Claude Code 自带的跨会话消息只覆盖同一台主机上的会话。agent
 ```mermaid
 flowchart LR
   subgraph hostA["主机 A"]
-    sessionA1["Claude Code 会话"]
-    sessionA2["Claude Code 会话"]
+    sessionA1["Claude Code<br/>会话"]
+    sessionA2["Claude Code<br/>会话"]
     brokerA["Broker"]
     sessionA1 --- brokerA
     sessionA2 --- brokerA
   end
   subgraph hostB["主机 B"]
-    sessionB1["Claude Code 会话"]
     brokerB["Broker"]
-    sessionB1 --- brokerB
+    sessionB1["Claude Code<br/>会话"]
+    sessionB2["Claude Code<br/>会话"]
+    brokerB --- sessionB1
+    brokerB --- sessionB2
   end
   brokerA <-->|已配对链路| brokerB
 ```
