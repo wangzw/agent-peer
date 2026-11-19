@@ -106,6 +106,13 @@ func TestKqueueCloseDoesNotCloseAReusedDescriptor(t *testing.T) {
 // if that register fails, the descriptor belongs to the surviving watch and
 // must stay open. Closing it would leave the mapping pointing at a number
 // another open file may already own.
+//
+// The failure is injected by replacing the kqueue descriptor with /dev/null,
+// which makes kevent reject the registration. The descriptor number stays
+// valid and owned, so the background readEvents goroutine still closes exactly
+// the descriptor it opened. Closing the kqueue directly instead would return
+// the number to the process, and readEvents would later close whatever file
+// had reused it.
 func TestAddWatchKeepsAnExistingDescriptorWhenReregisterFails(t *testing.T) {
 	ev := make(chan Event, 1)
 	errs := make(chan error, 1)
@@ -114,6 +121,7 @@ func TestAddWatchKeepsAnExistingDescriptorWhenReregisterFails(t *testing.T) {
 		t.Fatalf("newBackend: %v", err)
 	}
 	kq := b.(*kqueue)
+	t.Cleanup(func() { _ = kq.Close() })
 
 	watchDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(watchDir, "watched"), []byte("watched"), 0o600); err != nil {
@@ -128,13 +136,17 @@ func TestAddWatchKeepsAnExistingDescriptorWhenReregisterFails(t *testing.T) {
 	}
 	wd := info.wd
 
-	// Closing the kqueue itself makes the next kevent registration fail, which
-	// is the failure path of a re-registration on an already-watched path.
-	if err := unix.Close(kq.kq); err != nil {
-		t.Fatalf("closing the kqueue descriptor: %v", err)
+	notKqueue, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatalf("opening %s: %v", os.DevNull, err)
 	}
+	if err := unix.Dup2(int(notKqueue.Fd()), kq.kq); err != nil {
+		t.Fatalf("replacing kqueue descriptor %d with %s: %v", kq.kq, os.DevNull, err)
+	}
+	_ = notKqueue.Close()
+
 	if _, err := kq.addWatch(watchDir, 0, false); err == nil {
-		t.Fatalf("re-registering %s after closing the kqueue succeeded, want an error", watchDir)
+		t.Fatalf("re-registering %s after replacing the kqueue succeeded, want an error", watchDir)
 	}
 
 	var st syscall.Stat_t
@@ -146,9 +158,14 @@ func TestAddWatchKeepsAnExistingDescriptorWhenReregisterFails(t *testing.T) {
 		t.Fatalf("watch entry for %s = %+v (found %v), want wd %d", watchDir, info, ok, wd)
 	}
 
-	// ReadEvents is still waiting on the closed kqueue; closing the watcher
-	// stops it. The patched Close leaves the surviving watch descriptor alone.
+	// Close stops readEvents, whose deferred cleanup closes the descriptor it
+	// still holds. Drain both channels so that cleanup finishes before the
+	// test returns and t.TempDir starts opening descriptors of its own.
 	if err := kq.Close(); err != nil {
 		t.Fatalf("closing watcher: %v", err)
+	}
+	for range errs {
+	}
+	for range ev {
 	}
 }
