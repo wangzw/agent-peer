@@ -5,6 +5,7 @@ package syscontainer
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -26,9 +27,9 @@ func TestAllocSystemSubnetCrossProcess(t *testing.T) {
 	if os.Getenv(subnetChildEnv) == "1" {
 		subnet := allocSystemSubnet(t)
 		fmt.Printf("SUBNET %s\n", subnet)
-		// Stay alive while the parent reads the other child's answer, so the
-		// two reservations overlap in time.
-		time.Sleep(2 * time.Second)
+		// Hold the reservation until the parent closes stdin, so the two
+		// reservations overlap for exactly as long as the parent needs.
+		_, _ = io.Copy(io.Discard, os.Stdin)
 		return
 	}
 
@@ -39,6 +40,7 @@ func TestAllocSystemSubnetCrossProcess(t *testing.T) {
 
 	type child struct {
 		cmd     *exec.Cmd
+		stdin   io.WriteCloser
 		scanner *bufio.Scanner
 		stderr  *strings.Builder
 	}
@@ -49,12 +51,21 @@ func TestAllocSystemSubnetCrossProcess(t *testing.T) {
 		if err != nil {
 			t.Fatalf("child stdout: %v", err)
 		}
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			t.Fatalf("child stdin: %v", err)
+		}
 		var stderr strings.Builder
 		cmd.Stderr = &stderr
 		if err := cmd.Start(); err != nil {
 			t.Fatalf("starting child: %v", err)
 		}
-		return &child{cmd: cmd, scanner: bufio.NewScanner(stdout), stderr: &stderr}
+		t.Cleanup(func() {
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+		})
+		return &child{cmd: cmd, stdin: stdin, scanner: bufio.NewScanner(stdout), stderr: &stderr}
 	}
 
 	first := start()
@@ -87,6 +98,14 @@ func TestAllocSystemSubnetCrossProcess(t *testing.T) {
 	one := subnetOf(first, "first child")
 	two := subnetOf(second, "second child")
 
+	// Release the children now that both answers are read; each child exits
+	// when its stdin reaches EOF, which also runs its cleanup and frees the
+	// reservation.
+	for _, c := range []*child{first, second} {
+		if err := c.stdin.Close(); err != nil {
+			t.Errorf("closing child stdin: %v", err)
+		}
+	}
 	for _, c := range []*child{first, second} {
 		if err := c.cmd.Wait(); err != nil {
 			t.Errorf("child exit: %v; stderr:\n%s", err, c.stderr.String())

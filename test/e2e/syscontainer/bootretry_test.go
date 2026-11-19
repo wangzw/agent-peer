@@ -6,16 +6,116 @@ import (
 	"time"
 )
 
-// TestInterpretSystemdState checks the readiness decision, including the exit
-// status 1 that systemctl returns for degraded despite the system being ready.
+// TestShouldRebuildSystemd checks that only the two observed boot failures are
+// rebuilt: process 1 exited with code 255 and left docker logs empty, or the
+// wait probe timed out while the state was still initializing. Every other
+// failure is a real defect and must not be swallowed by a rebuild.
+func TestShouldRebuildSystemd(t *testing.T) {
+	cases := []struct {
+		name string
+		obs  systemdBootObservation
+		want bool
+	}{
+		{
+			name: "exit 255 with empty logs is rebuilt",
+			obs:  systemdBootObservation{exited: true, exitCode: 255, logsEmpty: true},
+			want: true,
+		},
+		{
+			name: "exit 255 with logs is not rebuilt",
+			obs:  systemdBootObservation{exited: true, exitCode: 255},
+			want: false,
+		},
+		{
+			name: "exit 1 is not rebuilt",
+			obs:  systemdBootObservation{exited: true, exitCode: 1, logsEmpty: true},
+			want: false,
+		},
+		{
+			name: "exit 137 is not rebuilt",
+			obs:  systemdBootObservation{exited: true, exitCode: 137, logsEmpty: true},
+			want: false,
+		},
+		{
+			name: "a timed-out probe with an initializing state is rebuilt",
+			obs: systemdBootObservation{
+				probeTimedOut: true,
+				state:         "initializing",
+				elapsed:       systemdBootRebuildDelay,
+			},
+			want: true,
+		},
+		{
+			name: "an initializing state before the delay is not rebuilt",
+			obs: systemdBootObservation{
+				probeTimedOut: true,
+				state:         "initializing",
+				elapsed:       systemdBootRebuildDelay - time.Second,
+			},
+			want: false,
+		},
+		{
+			name: "a maintenance state is not rebuilt",
+			obs: systemdBootObservation{
+				probeTimedOut: true,
+				state:         "maintenance",
+				elapsed:       time.Minute,
+			},
+			want: false,
+		},
+		{
+			name: "a stopping state is not rebuilt",
+			obs: systemdBootObservation{
+				probeTimedOut: true,
+				state:         "stopping",
+				elapsed:       time.Minute,
+			},
+			want: false,
+		},
+		{
+			name: "an initializing state after a probe that did not time out is not rebuilt",
+			obs: systemdBootObservation{
+				state:   "initializing",
+				elapsed: time.Minute,
+			},
+			want: false,
+		},
+		{
+			name: "an exited container is not rebuilt twice",
+			obs:  systemdBootObservation{exited: true, exitCode: 255, logsEmpty: true, rebuilds: systemdBootRebuilds},
+			want: false,
+		},
+		{
+			name: "a stalled container is not rebuilt twice",
+			obs: systemdBootObservation{
+				probeTimedOut: true,
+				state:         "initializing",
+				elapsed:       time.Minute,
+				rebuilds:      systemdBootRebuilds,
+			},
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		if got := shouldRebuildSystemd(tc.obs); got != tc.want {
+			t.Errorf("%s: shouldRebuildSystemd(%+v) = %t, want %t", tc.name, tc.obs, got, tc.want)
+		}
+	}
+}
+
+// TestInterpretSystemdState checks the probe interpretation, including the exit
+// status 1 that systemctl returns for degraded despite the system being ready,
+// and the probe timeout that the rebuild decision reads.
 func TestInterpretSystemdState(t *testing.T) {
 	cases := []struct {
 		name      string
 		output    string
 		err       error
+		timedOut  bool
 		wantState string
 		wantReady bool
-		wantGone  bool
+		wantExit  bool
+		wantTime  bool
 	}{
 		{
 			name:      "running is ready",
@@ -36,81 +136,42 @@ func TestInterpretSystemdState(t *testing.T) {
 			wantState: `state "initializing"`,
 		},
 		{
-			name:      "the killed probe leaves the error in the state",
-			err:       errors.New("signal: killed"),
-			wantState: "signal: killed: ",
+			name:      "maintenance is not a boot failure to rebuild",
+			output:    "maintenance\n",
+			wantState: `state "maintenance"`,
 		},
 		{
-			name:      "an exited container is reported as not running",
+			name:      "stopping is not a boot failure to rebuild",
+			output:    "stopping\n",
+			wantState: `state "stopping"`,
+		},
+		{
+			name:     "the probe's own timeout is reported as a timeout",
+			err:      errors.New("signal: killed"),
+			timedOut: true,
+			wantTime: true,
+		},
+		{
+			name:      "an exited container is reported as exited",
 			output:    "service \"systemd\" is not running\n",
 			err:       errors.New("exit status 1"),
 			wantState: "exit status 1: service \"systemd\" is not running",
-			wantGone:  true,
+			wantExit:  true,
 		},
 	}
 	for _, tc := range cases {
-		got := interpretSystemdState(tc.output, tc.err)
+		got := interpretSystemdState(tc.output, tc.err, tc.timedOut)
 		if got.ready != tc.wantReady {
 			t.Errorf("%s: ready = %t, want %t", tc.name, got.ready, tc.wantReady)
 		}
-		if got.notRunning != tc.wantGone {
-			t.Errorf("%s: notRunning = %t, want %t", tc.name, got.notRunning, tc.wantGone)
+		if got.exited != tc.wantExit {
+			t.Errorf("%s: exited = %t, want %t", tc.name, got.exited, tc.wantExit)
+		}
+		if got.timedOut != tc.wantTime {
+			t.Errorf("%s: timedOut = %t, want %t", tc.name, got.timedOut, tc.wantTime)
 		}
 		if got.state != tc.wantState {
 			t.Errorf("%s: state = %q, want %q", tc.name, got.state, tc.wantState)
-		}
-	}
-}
-
-// TestShouldRebuildSystemd checks the retry decision: an exited container is
-// recreated at once, a running but unready one only after the delay, and never
-// more than the named number of rebuilds.
-func TestShouldRebuildSystemd(t *testing.T) {
-	cases := []struct {
-		name     string
-		poll     systemdBootPoll
-		elapsed  time.Duration
-		rebuilds int
-		want     bool
-	}{
-		{
-			name:     "exited container is rebuilt at once",
-			poll:     systemdBootPoll{NotRunning: true},
-			rebuilds: 0,
-			want:     true,
-		},
-		{
-			name:     "a boot still in progress is left alone",
-			poll:     systemdBootPoll{},
-			elapsed:  5 * time.Second,
-			rebuilds: 0,
-			want:     false,
-		},
-		{
-			name:     "a stuck boot is rebuilt after the delay",
-			poll:     systemdBootPoll{},
-			elapsed:  systemdBootRebuildDelay,
-			rebuilds: 0,
-			want:     true,
-		},
-		{
-			name:     "an exited container is not rebuilt twice",
-			poll:     systemdBootPoll{NotRunning: true},
-			rebuilds: systemdBootRebuilds,
-			want:     false,
-		},
-		{
-			name:     "a stuck boot is not rebuilt twice",
-			poll:     systemdBootPoll{},
-			elapsed:  time.Hour,
-			rebuilds: systemdBootRebuilds,
-			want:     false,
-		},
-	}
-	for _, tc := range cases {
-		if got := shouldRebuildSystemd(tc.poll, tc.elapsed, tc.rebuilds); got != tc.want {
-			t.Errorf("%s: shouldRebuildSystemd(%+v, %s, %d) = %t, want %t",
-				tc.name, tc.poll, tc.elapsed, tc.rebuilds, got, tc.want)
 		}
 	}
 }

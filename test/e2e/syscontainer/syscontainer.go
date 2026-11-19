@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -41,8 +42,23 @@ const inContainerEnv = "AGENT_PEER_E2E_IN_CONTAINER"
 // is set only by the smoke test that checks failure propagation.
 const expectFailEnv = "AGENT_PEER_E2E_EXPECT_FAIL"
 
-// systemdReadyBound bounds the wait for systemd to finish booting.
-const systemdReadyBound = 90 * time.Second
+const (
+	// systemdReadyBound is the total budget for one systemd container to finish
+	// booting. It covers every probe, the one rebuild and the stop before it.
+	// Evidence collection after this budget is given up has its own bound and
+	// does not count here.
+	systemdReadyBound = 90 * time.Second
+
+	// systemdProbeBound bounds one is-system-running --wait probe. A healthy
+	// boot returns in under a second. A boot still in the initial transaction
+	// blocks until this bound kills the probe, and that timeout is the first
+	// moment the stall is observable, so it equals systemdBootRebuildDelay.
+	systemdProbeBound = systemdBootRebuildDelay
+
+	// systemdPollInterval separates two probes that returned without a ready
+	// state and without using the probe bound.
+	systemdPollInterval = 100 * time.Millisecond
+)
 
 // InContainer reports whether the process was started by an e2e container.
 func InContainer() bool {
@@ -299,64 +315,214 @@ func (c *container) command(args ...string) *exec.Cmd {
 	return cmd
 }
 
+// systemdRebuildLedger records every systemd container rebuild. make e2e prints
+// it after the test run, so a gate that does not pass -v still shows how often
+// and why a container was rebuilt. The path is repeated in the Makefile.
+const systemdRebuildLedger = "/tmp/ape2e-systemd-rebuilds.log"
+
 // waitSystemd waits until the container's systemd reports running or degraded.
-// systemctl --wait blocks until the state settles, so the shared polling
-// primitive only separates runs after an unexpected answer.
+// systemctl --wait blocks until the state settles, so a probe returns either a
+// settled state or, when its own bound expires, the stall.
 //
-// A container that does not boot is recreated once, inside the same bound, when
-// its process 1 has exited or after systemdBootRebuildDelay; bootretry.go
-// explains the observed failure and why one rebuild is enough.
+// A container is recreated at most once, and only for the two failure modes
+// observed under the full gate; bootretry.go names them. The whole wait,
+// including the probe, the rebuild and the stop before it, shares one
+// systemdReadyBound context. Evidence collection after that budget is given up
+// has its own bound and does not extend it.
 func (c *container) waitSystemd() {
+	ctx, cancel := context.WithTimeout(context.Background(), systemdReadyBound)
+	defer cancel()
+
 	start := time.Now()
 	rebuilds := 0
+	lastState := "no probe completed"
 
-	// Eventually fails the test from this goroutine, and Goexit runs the
-	// deferred calls, so the container is still there when the evidence is
-	// collected.
-	defer func() {
-		if c.t.Failed() {
-			c.logBootEvidence()
+	for {
+		if ctx.Err() != nil {
+			c.failSystemdBoot(lastState)
 		}
-	}()
-	harness.Eventually(c.t, systemdReadyBound, "systemd to finish booting", func() (bool, string) {
-		result := c.systemdState()
-		if result.ready {
-			return true, result.state
+
+		probe := c.probeSystemd(ctx)
+		if probe.ready {
+			return
 		}
-		if shouldRebuildSystemd(systemdBootPoll{NotRunning: result.notRunning}, time.Since(start), rebuilds) {
+		if probe.state != "" {
+			lastState = probe.state
+		}
+		if ctx.Err() != nil {
+			c.failSystemdBoot(lastState)
+		}
+
+		observation := systemdBootObservation{
+			rebuilds: rebuilds,
+			elapsed:  time.Since(start),
+		}
+		switch {
+		case probe.exited:
+			observation.exited = true
+			if code, logs, err := c.containerExit(ctx); err == nil {
+				observation.exitCode = code
+				observation.logsEmpty = strings.TrimSpace(logs) == ""
+			}
+		case probe.timedOut:
+			observation.probeTimedOut = true
+			observation.state = c.systemdCurrentState(ctx)
+			lastState = fmt.Sprintf("probe timed out after %s, state %q", systemdProbeBound, observation.state)
+		}
+
+		if shouldRebuildSystemd(observation) {
 			rebuilds++
-			c.t.Logf("syscontainer: %s: systemd did not become ready (%s); recreating the container (%d of %d)",
-				c.project, result.state, rebuilds, systemdBootRebuilds)
+			reason := rebuildReason(observation)
+			c.recordRebuild(reason)
+			c.t.Logf("syscontainer: %s: %s; recreating the container (%d of %d)",
+				c.project, reason, rebuilds, systemdBootRebuilds)
 			// Keep the evidence of the failed boot before the container is
 			// replaced.
 			c.logBootEvidence()
-			c.recreateSystemd()
+			c.recreateSystemd(ctx)
+			continue
 		}
-		return false, result.state
-	})
+		if observation.exited {
+			// A container whose process 1 is gone does not come back on its
+			// own. Any exit that is not the observed 255-with-empty-logs is a
+			// real failure, so report it now instead of waiting out the bound.
+			c.failSystemdBoot(lastState)
+		}
+
+		select {
+		case <-ctx.Done():
+		case <-time.After(systemdPollInterval):
+		}
+	}
 }
 
-// systemdState runs one readiness probe through interpretSystemdState.
-func (c *container) systemdState() systemdStateResult {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+// rebuildReason describes the observation for the rebuild ledger and the test
+// log.
+func rebuildReason(o systemdBootObservation) string {
+	if o.exited {
+		return fmt.Sprintf("process 1 exited with code %d and docker logs is empty", o.exitCode)
+	}
+	return fmt.Sprintf("is-system-running --wait timed out after %s and the state is %q", systemdProbeBound, o.state)
+}
+
+// failSystemdBoot writes the evidence and ends the test at the readiness bound.
+func (c *container) failSystemdBoot(lastState string) {
+	c.logBootEvidence()
+	c.t.Fatalf("systemd to finish booting: not within %s (last state: %s)", systemdReadyBound, lastState)
+}
+
+// probeSystemd runs one readiness probe under the shared context. The probe's
+// own bound is shorter than the readiness bound, and a probe that expires
+// while the outer context is still alive is the timeout that can precede a
+// rebuild.
+func (c *container) probeSystemd(ctx context.Context) systemdProbeResult {
+	probeCtx, cancel := context.WithTimeout(ctx, systemdProbeBound)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "docker",
+	cmd := exec.CommandContext(probeCtx, "docker",
 		"compose", "-p", c.project, "-f", c.composeFile, "exec", "-T", "systemd",
 		"systemctl", "is-system-running", "--wait")
 	cmd.Env = c.env
 	out, err := cmd.CombinedOutput()
-	return interpretSystemdState(string(out), err)
+	timedOut := probeCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil
+	return interpretSystemdState(string(out), err, timedOut)
 }
 
-// recreateSystemd rebuilds the container in place, keeping the project's
-// network. A failure is reported rather than fatal, so the wait continues and
-// the final state still explains the outcome.
-func (c *container) recreateSystemd() {
-	out, err := c.command("compose", "-p", c.project, "-f", c.composeFile,
-		"up", "-d", "--force-recreate", "systemd").CombinedOutput()
+// systemdCurrentState reads the state without --wait, which reports the current
+// text instead of blocking. It confirms that a timed-out probe was looking at a
+// system that was still initializing.
+func (c *container) systemdCurrentState(ctx context.Context) string {
+	probeCtx, cancel := context.WithTimeout(ctx, systemdProbeBound)
+	defer cancel()
+	cmd := exec.CommandContext(probeCtx, "docker",
+		"compose", "-p", c.project, "-f", c.composeFile, "exec", "-T", "systemd",
+		"systemctl", "is-system-running")
+	cmd.Env = c.env
+	out, err := cmd.CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil && text == "" {
+		return ""
+	}
+	return text
+}
+
+// containerID returns the project's systemd container id, including an exited
+// one.
+func (c *container) containerID(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "docker",
+		"compose", "-p", c.project, "-f", c.composeFile, "ps", "-aq", "systemd")
+	cmd.Env = c.env
+	out, err := cmd.CombinedOutput()
 	if err != nil {
+		return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// containerExit returns process 1's exit code and docker logs for a container
+// that compose reported as not running.
+func (c *container) containerExit(ctx context.Context) (int, string, error) {
+	id, err := c.containerID(ctx)
+	if err != nil {
+		return 0, "", err
+	}
+	if id == "" {
+		return 0, "", fmt.Errorf("no container id")
+	}
+	inspect := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.State.ExitCode}}", id)
+	inspect.Env = c.env
+	out, err := inspect.CombinedOutput()
+	if err != nil {
+		return 0, "", fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))
+	}
+	code, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0, "", fmt.Errorf("parsing the exit code %q: %w", strings.TrimSpace(string(out)), err)
+	}
+	logsCmd := exec.CommandContext(ctx, "docker", "logs", id)
+	logsCmd.Env = c.env
+	logs, err := logsCmd.CombinedOutput()
+	if err != nil {
+		return code, "", fmt.Errorf("%v: %s", err, strings.TrimSpace(string(logs)))
+	}
+	return code, string(logs), nil
+}
+
+// recreateSystemd stops the container with a one-second timeout and rebuilds it
+// in place, keeping the project's network. Both commands share the readiness
+// context. A failure is reported rather than fatal, so the wait continues and
+// the final state still explains the outcome.
+func (c *container) recreateSystemd(ctx context.Context) {
+	if id, err := c.containerID(ctx); err == nil && id != "" {
+		stop := exec.CommandContext(ctx, "docker", "stop", "--timeout", "1", id)
+		stop.Env = c.env
+		if out, err := stop.CombinedOutput(); err != nil {
+			c.t.Logf("syscontainer: stopping the systemd container in %s: %v\n%s",
+				c.project, err, strings.TrimSpace(string(out)))
+		}
+	}
+	up := exec.CommandContext(ctx, "docker",
+		"compose", "-p", c.project, "-f", c.composeFile, "up", "-d", "--force-recreate", "systemd")
+	up.Env = c.env
+	if out, err := up.CombinedOutput(); err != nil {
 		c.t.Logf("syscontainer: recreating the systemd container in %s: %v\n%s",
 			c.project, err, strings.TrimSpace(string(out)))
+	}
+}
+
+// recordRebuild appends one line to systemdRebuildLedger. The ledger is
+// appended to with O_APPEND, so concurrent suites do not lose each other's
+// lines.
+func (c *container) recordRebuild(reason string) {
+	line := fmt.Sprintf("%s %s %s\n", time.Now().UTC().Format(time.RFC3339), c.project, reason)
+	f, err := os.OpenFile(systemdRebuildLedger, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		c.t.Logf("syscontainer: recording the rebuild: %v", err)
+		return
+	}
+	_, writeErr := f.WriteString(line)
+	closeErr := f.Close()
+	if writeErr != nil || closeErr != nil {
+		c.t.Logf("syscontainer: recording the rebuild: %v; closing: %v", writeErr, closeErr)
 	}
 }
 

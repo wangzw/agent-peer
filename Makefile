@@ -70,9 +70,21 @@ test:
 # processes, images and runtime roots whose owner process is gone, and leaves a
 # live suite's resources alone. Image tags carry the owner marker, so this does
 # not remove an image a parallel suite still uses.
+#
+# A systemd container that did not boot is rebuilt at most once; the rebuild
+# appends a line to SYSTEMD_REBUILD_LEDGER (see
+# test/e2e/syscontainer/syscontainer.go), which this target prints and then
+# empties so a gate without -v still shows how often and why it happened.
+SYSTEMD_REBUILD_LEDGER ?= /tmp/ape2e-systemd-rebuilds.log
+
 e2e:
 	@go test -tags e2e -timeout $(E2E_TIMEOUT) -p $(JOBS) -parallel $(JOBS) ./test/e2e/...; \
 	status=$$?; \
+	if [ -s $(SYSTEMD_REBUILD_LEDGER) ]; then \
+		echo "e2e: systemd container rebuilds:"; \
+		cat $(SYSTEMD_REBUILD_LEDGER); \
+		: > $(SYSTEMD_REBUILD_LEDGER); \
+	fi; \
 	go test -tags e2e -count=1 -run '^$$' ./test/e2e/ >/dev/null 2>&1 || true; \
 	exit $$status
 

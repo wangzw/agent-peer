@@ -7,6 +7,7 @@ package syscontainer
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -123,6 +124,40 @@ func writeEvidenceSection(b *strings.Builder, name, text string) {
 		b.WriteString("\n    ")
 		b.WriteString(line)
 	}
+}
+
+// collectBootEvidence runs the diagnostic commands through run and formats
+// their output. run, hostMemory and hostPids are parameters so that the
+// collection can be tested with fake command results.
+func collectBootEvidence(project, composeFile string, run func(args ...string) string, hostMemory, hostPids func() string) string {
+	var e bootEvidence
+
+	id := strings.TrimSpace(run("compose", "-p", project, "-f", composeFile, "ps", "-aq", "systemd"))
+	if id == "" {
+		e.State = "docker compose ps -aq systemd returned no container"
+		e.Logs = run("compose", "-p", project, "-f", composeFile, "ps", "-a")
+	} else {
+		e.State = run("inspect", "--format", "{{json .State}}", id)
+		e.Logs = run("logs", "--tail", strconv.Itoa(evidenceTailLines), id)
+		e.Processes = run("top", id)
+		// Without --wait is-system-running reports the current state instead
+		// of blocking, so a container that is still booting shows it.
+		e.SystemState = run("exec", id, "systemctl", "is-system-running")
+		e.Jobs = run("exec", id, "systemctl", "list-jobs", "--no-pager")
+		e.Activating = run("exec", id, "systemctl", "list-units", "--all",
+			"--state=activating,activating-done", "--no-pager")
+		e.ProcessState = run("exec", id, "sh", "-c",
+			"cat /proc/1/wchan; echo; grep -E '^(State|Threads)' /proc/1/status")
+		e.Journal = run("exec", id, "journalctl", "-b", "--no-pager", "-n", "200")
+		e.JournalSystemd = run("exec", id, "journalctl", "-b", "--no-pager", "-n", "200", "_PID=1")
+	}
+
+	e.HostMemory = hostMemory()
+	e.HostPids = hostPids()
+	running := strings.Fields(run("ps", "-q"))
+	e.Containers = fmt.Sprintf("%d running (docker ps -q)", len(running))
+
+	return formatBootEvidence(e)
 }
 
 // headLines keeps the first n lines of s.

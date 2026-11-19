@@ -11,73 +11,89 @@ import (
 )
 
 const (
-	// systemdBootRebuilds bounds how many times a systemd container is
-	// recreated after it fails to finish booting. The evidence from the full
-	// gate under JOBS=32 is that a systemd container occasionally does not
-	// boot, in one of two ways: PID 1 exits with status 255 about a second
-	// after the container starts, or systemd stays in the initializing state
-	// with every job in systemctl list-jobs still waiting while PID 1 is alive
-	// and idle. Neither is an out-of-memory or pid-limit kill (OOMKilled=false,
-	// the host had more than 400 GB free and its pid usage stayed far below the
-	// limit), and a healthy boot of the same image takes under a second. A
-	// fresh container therefore recovers the same test, and one rebuild is
-	// enough; repeating it would only lengthen a failure that is not transient.
-	systemdBootRebuilds = 1
+	// systemdBootRebuildDelay is how long a container that is still
+	// initializing is left before it is rebuilt. The stall becomes observable
+	// only when the wait probe's own bound expires, so this value is also that
+	// probe's bound (systemdProbeBound in syscontainer.go); the rebuilt
+	// container keeps the rest of the readiness bound.
+	systemdBootRebuildDelay = 10 * time.Second
 
-	// systemdBootRebuildDelay is how long a running but unready systemd
-	// container is left before it is recreated. A healthy boot finishes in well
-	// under a second, and the observed stall never left the initializing state
-	// within the ninety-second bound, so fifteen seconds separates a slow boot
-	// from a stuck one with room to spare while leaving most of the bound for
-	// the rebuilt container. A container that has already exited is recreated
-	// at once instead of waiting.
-	systemdBootRebuildDelay = 15 * time.Second
+	// systemdBootRebuilds bounds how many times a systemd container is
+	// recreated after it fails to finish booting, and limits the rebuild to the
+	// two failure modes observed under the full gate: PID 1 exits with status
+	// 255 about a second after the container starts and leaves docker logs
+	// empty, or is-system-running --wait times out while the state is still
+	// initializing (systemctl list-jobs then shows every job waiting, with PID 1
+	// alive and idle). Neither is an out-of-memory or pid-limit kill
+	// (OOMKilled=false, the host had more than 400 GB free and its pid usage
+	// stayed far below the limit), and a healthy boot takes under a second, so
+	// a fresh container recovers the same test. Any other failure, such as a
+	// different exit code or another systemd state, is a real defect and fails
+	// without a rebuild.
+	systemdBootRebuilds = 1
 )
 
-// systemdBootPoll is one observation of a systemd container during boot.
-type systemdBootPoll struct {
-	// NotRunning reports that the container itself is gone, so no amount of
-	// waiting can help it.
-	NotRunning bool
+// systemdBootObservation is what the wait knows about one failed readiness
+// probe when it decides about a rebuild.
+type systemdBootObservation struct {
+	// exited reports that compose could not exec because process 1 is gone.
+	exited bool
+	// exitCode and logsEmpty describe the exited container.
+	exitCode  int
+	logsEmpty bool
+	// probeTimedOut reports that is-system-running --wait used its whole bound.
+	probeTimedOut bool
+	// state is the non-blocking is-system-running text taken after a timeout.
+	state string
+	// elapsed is the time spent since the container was started.
+	elapsed time.Duration
+	// rebuilds is the number of rebuilds already done.
+	rebuilds int
 }
 
-// systemdStateResult is one interpreted readiness probe.
-type systemdStateResult struct {
+// shouldRebuildSystemd reports whether the observation is one of the two
+// observed boot failures and a rebuild is still allowed.
+func shouldRebuildSystemd(o systemdBootObservation) bool {
+	if o.rebuilds >= systemdBootRebuilds {
+		return false
+	}
+	if o.exited {
+		return o.exitCode == 255 && o.logsEmpty
+	}
+	return o.probeTimedOut && o.state == "initializing" && o.elapsed >= systemdBootRebuildDelay
+}
+
+// systemdProbeResult is one interpreted is-system-running --wait result.
+type systemdProbeResult struct {
 	// state is the text reported to the test when the probe is not ready.
 	state string
 	// ready reports that systemd reached running or degraded.
 	ready bool
-	// notRunning reports that the container's process 1 is gone.
-	notRunning bool
+	// exited reports that compose could not exec because process 1 is gone.
+	exited bool
+	// timedOut reports that the probe used its own bound.
+	timedOut bool
 }
 
-// interpretSystemdState turns one is-system-running result into a readiness
-// decision. The text decides, not the exit code: systemctl exits 1 for degraded
-// although a degraded system is ready for the tests. An error whose output does
-// not name a settled state is reported with the error text.
-func interpretSystemdState(output string, err error) systemdStateResult {
+// interpretSystemdState turns one is-system-running result into a probe result.
+// The text decides readiness, not the exit code: systemctl exits 1 for degraded
+// although a degraded system is ready for the tests. A probe killed by its own
+// bound is a timeout, which the caller confirms and eventually reads as the
+// initializing stall; an error whose output does not name a settled state is
+// reported with the error text.
+func interpretSystemdState(output string, err error, timedOut bool) systemdProbeResult {
 	text := strings.TrimSpace(output)
 	if text == "running" || text == "degraded" {
-		return systemdStateResult{state: text, ready: true}
+		return systemdProbeResult{state: text, ready: true}
+	}
+	if timedOut {
+		return systemdProbeResult{timedOut: true}
 	}
 	if err != nil {
-		return systemdStateResult{
-			state:      fmt.Sprintf("%v: %s", err, text),
-			notRunning: strings.Contains(text, "is not running"),
+		return systemdProbeResult{
+			state:  fmt.Sprintf("%v: %s", err, text),
+			exited: strings.Contains(text, "is not running"),
 		}
 	}
-	return systemdStateResult{state: fmt.Sprintf("state %q", text)}
-}
-
-// shouldRebuildSystemd reports whether a systemd container that is not ready
-// should be recreated now. rebuilds is the number of rebuilds already done and
-// elapsed is the time spent waiting since the container was started.
-func shouldRebuildSystemd(poll systemdBootPoll, elapsed time.Duration, rebuilds int) bool {
-	if rebuilds >= systemdBootRebuilds {
-		return false
-	}
-	if poll.NotRunning {
-		return true
-	}
-	return elapsed >= systemdBootRebuildDelay
+	return systemdProbeResult{state: fmt.Sprintf("state %q", text)}
 }

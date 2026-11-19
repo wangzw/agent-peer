@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 )
 
-// evidenceCommandBound bounds one diagnostic command. A failing test must still
-// end promptly even when the daemon is slow to answer.
-const evidenceCommandBound = 10 * time.Second
+// systemdEvidenceBound bounds the whole evidence collection. It is a separate
+// budget that starts after systemdReadyBound is given up, so it does not extend
+// the readiness bound; a hung diagnostic command loses its own text and the
+// rest of the evidence is still collected.
+const systemdEvidenceBound = 10 * time.Second
 
 // logBootEvidence writes the state of the systemd container to the test log. It
 // runs while the container still exists, before the deferred teardown removes
@@ -25,47 +26,20 @@ func (c *container) logBootEvidence() {
 }
 
 // bootEvidence collects the state that explains why systemd did not become
-// ready. It never fails the test: every command's error text becomes part of
-// the evidence, so a container that is already gone still leaves a record.
+// ready. The whole collection shares systemdEvidenceBound, which starts after
+// the readiness bound is given up and does not extend it. Every command's error
+// text becomes part of the evidence, so a container that is already gone still
+// leaves a record.
 func (c *container) bootEvidence() string {
-	var e bootEvidence
-
-	id := strings.TrimSpace(c.docker("compose", "-p", c.project, "-f", c.composeFile, "ps", "-aq", "systemd"))
-	if id == "" {
-		e.State = "docker compose ps -aq systemd returned no container"
-		e.Logs = c.docker("compose", "-p", c.project, "-f", c.composeFile, "ps", "-a")
-	} else {
-		e.State = c.docker("inspect", "--format", "{{json .State}}", id)
-		e.Logs = c.docker("logs", "--tail", strconv.Itoa(evidenceTailLines), id)
-		e.Processes = c.docker("top", id)
-		// Without --wait is-system-running reports the current state instead
-		// of blocking, so a container that is still booting shows it.
-		e.SystemState = c.docker("exec", id, "systemctl", "is-system-running")
-		e.Jobs = c.docker("exec", id, "systemctl", "list-jobs", "--no-pager")
-		e.Activating = c.docker("exec", id, "systemctl", "list-units", "--all",
-			"--state=activating,activating-done", "--no-pager")
-		e.ProcessState = c.docker("exec", id, "sh", "-c",
-			"cat /proc/1/wchan; echo; grep -E '^(State|Threads)' /proc/1/status")
-		e.Journal = c.docker("exec", id, "journalctl", "-b", "--no-pager", "-n", "200")
-		e.JournalSystemd = c.docker("exec", id, "journalctl", "-b", "--no-pager", "-n", "200", "_PID=1")
-	}
-
-	e.HostMemory = readHostMemory()
-	e.HostPids = readHostPids()
-
-	running := strings.Fields(c.docker("ps", "-q"))
-	e.Containers = fmt.Sprintf("%d running (docker ps -q)", len(running))
-
-	return formatBootEvidence(e)
+	ctx, cancel := context.WithTimeout(context.Background(), systemdEvidenceBound)
+	defer cancel()
+	run := func(args ...string) string { return c.docker(ctx, args...) }
+	return collectBootEvidence(c.project, c.composeFile, run, readHostMemory, readHostPids)
 }
 
-// docker runs one docker command with the container's environment and returns
-// its combined output. The error text is part of the result: a command that
-// failed is evidence too.
-func (c *container) docker(args ...string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), evidenceCommandBound)
-	defer cancel()
-
+// docker runs one docker command under ctx and returns its combined output. The
+// error text is part of the result: a command that failed is evidence too.
+func (c *container) docker(ctx context.Context, args ...string) string {
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Env = c.env
 	out, err := cmd.CombinedOutput()

@@ -69,6 +69,91 @@ func TestFormatBootEvidence(t *testing.T) {
 	}
 }
 
+// TestCollectBootEvidence checks that the collection runs the diagnostic
+// commands and folds every result into the failure text. The docker runner is a
+// fake, so the test names the command lines it expects instead of relying on a
+// live daemon.
+func TestCollectBootEvidence(t *testing.T) {
+	const inspect = `{"Status":"exited","Running":false,"OOMKilled":false,"ExitCode":255,"Error":"","StartedAt":"2026-11-19T01:00:00Z","FinishedAt":"2026-11-19T01:00:01Z"}`
+	var commands []string
+	run := func(args ...string) string {
+		joined := strings.Join(args, " ")
+		commands = append(commands, joined)
+		switch {
+		case joined == "compose -p proj -f /compose.yaml ps -aq systemd":
+			return "abc123"
+		case strings.HasPrefix(joined, "inspect "):
+			return inspect
+		case strings.HasPrefix(joined, "logs "):
+			return "Boot has failed."
+		case strings.HasPrefix(joined, "top "):
+			return "1 root /sbin/init"
+		case strings.Contains(joined, "_PID=1"):
+			return "systemd[1]: Finished systemd-update-utmp.service"
+		case strings.Contains(joined, "journalctl"):
+			return "journal tail"
+		case strings.Contains(joined, "is-system-running"):
+			return "initializing"
+		case strings.Contains(joined, "list-jobs"):
+			return "1 sysinit.target start waiting"
+		case strings.Contains(joined, "list-units"):
+			return "dbus.service loaded activating start"
+		case strings.Contains(joined, "sh -c"):
+			return "ep_poll\nState:\tS (sleeping)"
+		case joined == "ps -q":
+			return "c1\nc2"
+		}
+		return ""
+	}
+	got := collectBootEvidence("proj", "/compose.yaml", run,
+		func() string { return "MemAvailable: 1 kB" },
+		func() string { return "/proc/sys/kernel/pid_max: 1" })
+
+	wantCommands := []string{
+		"compose -p proj -f /compose.yaml ps -aq systemd",
+		"inspect --format {{json .State}} abc123",
+		"logs --tail 40 abc123",
+		"top abc123",
+		"exec abc123 systemctl is-system-running",
+		"exec abc123 systemctl list-jobs --no-pager",
+		"exec abc123 systemctl list-units --all --state=activating,activating-done --no-pager",
+		"exec abc123 sh -c cat /proc/1/wchan; echo; grep -E '^(State|Threads)' /proc/1/status",
+		"exec abc123 journalctl -b --no-pager -n 200",
+		"exec abc123 journalctl -b --no-pager -n 200 _PID=1",
+		"ps -q",
+	}
+	for _, want := range wantCommands {
+		found := false
+		for _, command := range commands {
+			if command == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("collectBootEvidence did not run %q; ran:\n%s", want, strings.Join(commands, "\n"))
+		}
+	}
+
+	for _, want := range []string{
+		"ExitCode=255",
+		"Boot has failed.",
+		"ep_poll",
+		"initializing",
+		"1 sysinit.target start waiting",
+		"dbus.service loaded activating start",
+		"journal tail",
+		"systemd[1]: Finished systemd-update-utmp.service",
+		"MemAvailable: 1 kB",
+		"/proc/sys/kernel/pid_max: 1",
+		"2 running (docker ps -q)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("collectBootEvidence output does not contain %q:\n%s", want, got)
+		}
+	}
+}
+
 // TestFormatBootEvidenceRawState checks that a daemon error that is not JSON is
 // preserved instead of being dropped by the parse.
 func TestFormatBootEvidenceRawState(t *testing.T) {
