@@ -12,8 +12,9 @@ source "$(dirname "$0")/lib.sh"
 # probe stays within $OUT.
 
 # The permission dialog of the pinned Claude Code version offers
-# "Do you want to proceed?", "Yes, and don't ask again for ..." and
-# "No, and tell Claude what to do differently"; Escape chooses the last one.
+# "Do you want to proceed?", "Yes, and don't ask again for ..." and "3. No";
+# its footer reads "Esc to cancel · Tab to amend", and Escape cancels the
+# prompt.
 dialog_pattern='Do you want to proceed\?|Do you want to allow .*to use|Yes, and don.t ask again|No, and tell Claude'
 
 # PERM_DIALOGS counts the permission dialogs the probe denied.
