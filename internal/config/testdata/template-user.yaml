@@ -1,0 +1,81 @@
+# agent-peer user Broker configuration.
+#
+# Every key is optional; a key that is absent takes its default value.
+# This file belongs to this account only: only this account runs the Broker
+# and reads or writes the file.
+broker:
+  # Interval for re-enumerating the host's addresses.
+  address_check_interval: 1m
+  # Addresses to advertise; valid forms are empty, host, host:port and :port.
+  # advertise: 203.0.113.5:17443
+  # No fixed default; this example is inactive.
+  # Extra addresses to advertise; each item is host or host:port.
+  # advertise_extra: [203.0.113.5:17443]
+  # No fixed default; this example is inactive.
+  # Alias this Broker reports: 1 to 24 characters from letters, digits, '.', '-' and '_'.
+  # alias: hostA-17443
+  # The default is computed at runtime; this example is inactive.
+  # Address and port to bind; an empty host listens on every local address, and an empty value means do not listen.
+  listen: ":17443"
+  # Group owning the local socket; empty keeps the runtime directory's group, and user mode ignores it. This key applies to the system Broker only.
+  # local_socket_group: agent-peer
+  # No fixed default; this example is inactive.
+  # File mode of the local socket; user mode always uses 0600. This key applies to the system Broker only.
+  local_socket_mode: "0666"
+  # Whether this Broker is public.
+  public: false
+
+pairing:
+  # Pairing requests per minute that match no pairing key; successful matches of the static key are not counted.
+  max_attempts_per_minute: 10
+  # Failed verifications allowed before a one-time pairing key is invalidated.
+  max_failures: 5
+  # Static pairing key of 16 to 128 characters; a non-empty value takes effect.
+  # static_key: ""
+  # Fill in 16 to 128 random characters, for example the output of `openssl rand -hex 32`. An empty value leaves the static key unset.
+
+topics:
+  # Whether to join the default topic automatically.
+  auto_join: true
+
+directory:
+  # Maximum number of directory records in total.
+  max_records: 1000
+  # Maximum number of records accepted over one link.
+  max_records_per_link: 250
+  # Maximum public topic declarations plus unknown-kind records per publisher; cards and withdrawals are not counted.
+  max_topics_per_publisher: 16
+  # Interval for periodic reconciliation.
+  reconcile_interval: 10m
+
+send:
+  # How long deduplication table entries are kept.
+  dedupe_window: 5m
+  # Wait between inbox write retries.
+  inbox_backoff: 200ms
+  # Retries when the inbox write definitely failed.
+  inbox_retries: 2
+  # Time limit for a single inbox write.
+  inbox_timeout: 5s
+  # Wait before the first retry; it doubles each time, capped at 8 seconds.
+  link_backoff: 500ms
+  # Retries while the link is not up.
+  link_retries: 5
+  # Budget for one send call, i.e. the total time limit.
+  request_timeout: 20s
+
+link:
+  # Connection time limit for each address during dialing.
+  dial_timeout: 5s
+  # Keepalive probe interval; the gRPC client probes at least every 10 seconds.
+  keepalive_interval: 15s
+  # Response time limit for a keepalive probe.
+  keepalive_timeout: 10s
+  # Maximum backoff for re-establishing a link.
+  reconnect_max: 1m
+  # Initial backoff for re-establishing a link.
+  reconnect_min: 1s
+
+log:
+  # Runtime log level.
+  level: info

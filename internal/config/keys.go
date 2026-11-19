@@ -32,6 +32,7 @@ type keySpec struct {
 	Default  Value
 	Dynamic  bool // default is computed by defaultAlias
 	Secret   bool
+	Doc      string // one English line describing the key, for the generated template
 	MinInt   int64
 	MaxInt   int64
 	HasMax   bool
@@ -99,13 +100,16 @@ var logLevels = map[string]bool{"debug": true, "info": true, "warn": true, "erro
 var keyTable = map[string]*keySpec{
 	"broker.alias": {
 		Name: "broker.alias", Kind: keyString, Dynamic: true,
+		Doc:      "Alias this Broker reports: 1 to 24 characters from letters, digits, '.', '-' and '_'.",
 		Validate: func(v Value) error { return validAlias(v.String) },
 	},
 	"broker.public": {
 		Name: "broker.public", Kind: keyBool, Default: boolValue(false),
+		Doc: "Whether this Broker is public.",
 	},
 	"broker.listen": {
 		Name: "broker.listen", Kind: keyString, Default: stringValue(":17443"),
+		Doc: "Address and port to bind; an empty host listens on every local address, and an empty value means do not listen.",
 		Validate: func(v Value) error {
 			_, err := parseListen(v.String)
 			return err
@@ -113,6 +117,7 @@ var keyTable = map[string]*keySpec{
 	},
 	"broker.advertise": {
 		Name: "broker.advertise", Kind: keyString, Default: stringValue(""),
+		Doc: "Addresses to advertise; valid forms are empty, host, host:port and :port.",
 		Validate: func(v Value) error {
 			_, err := parseAdvertise(v.String)
 			return err
@@ -120,6 +125,7 @@ var keyTable = map[string]*keySpec{
 	},
 	"broker.advertise_extra": {
 		Name: "broker.advertise_extra", Kind: keyStringList, Default: stringListValue(nil),
+		Doc: "Extra addresses to advertise; each item is host or host:port.",
 		Validate: func(v Value) error {
 			for _, item := range v.Strings {
 				if err := validateExtraItem(item); err != nil {
@@ -131,10 +137,12 @@ var keyTable = map[string]*keySpec{
 	},
 	"broker.address_check_interval": {
 		Name: "broker.address_check_interval", Kind: keyDuration,
+		Doc:     "Interval for re-enumerating the host's addresses.",
 		Default: durationValue(time.Minute), Validate: positiveDuration(),
 	},
 	"broker.local_socket_group": {
 		Name: "broker.local_socket_group", Kind: keyString, Default: stringValue(""),
+		Doc: "Group owning the local socket; empty keeps the runtime directory's group, and user mode ignores it.",
 		Validate: func(v Value) error {
 			if v.String == "" {
 				return nil
@@ -147,6 +155,7 @@ var keyTable = map[string]*keySpec{
 	},
 	"broker.local_socket_mode": {
 		Name: "broker.local_socket_mode", Kind: keyString, Default: stringValue("0666"),
+		Doc: "File mode of the local socket; user mode always uses 0600.",
 		Validate: func(v Value) error {
 			if err := validSocketMode(v.String); err != nil {
 				return err
@@ -156,6 +165,7 @@ var keyTable = map[string]*keySpec{
 	},
 	"pairing.static_key": {
 		Name: "pairing.static_key", Kind: keySecret, Secret: true, Default: secretValue(""),
+		Doc: "Static pairing key of 16 to 128 characters; a non-empty value takes effect.",
 		Validate: func(v Value) error {
 			if v.String == "" {
 				return nil
@@ -169,74 +179,94 @@ var keyTable = map[string]*keySpec{
 	},
 	"pairing.max_failures": {
 		Name: "pairing.max_failures", Kind: keyInt, Default: intValue(5), Validate: positiveInt(),
+		Doc: "Failed verifications allowed before a one-time pairing key is invalidated.",
 	},
 	"pairing.max_attempts_per_minute": {
 		Name: "pairing.max_attempts_per_minute", Kind: keyInt, Default: intValue(10), Validate: positiveInt(),
+		Doc: "Pairing requests per minute that match no pairing key; successful matches of the static key are not counted.",
 	},
 	"topics.auto_join": {
 		Name: "topics.auto_join", Kind: keyBool, Default: boolValue(true),
+		Doc: "Whether to join the default topic automatically.",
 	},
 	"directory.reconcile_interval": {
 		Name: "directory.reconcile_interval", Kind: keyDuration,
+		Doc:     "Interval for periodic reconciliation.",
 		Default: durationValue(10 * time.Minute), Validate: positiveDuration(),
 	},
 	"directory.max_records": {
 		Name: "directory.max_records", Kind: keyInt, Default: intValue(1000), Validate: positiveInt(),
+		Doc: "Maximum number of directory records in total.",
 	},
 	"directory.max_records_per_link": {
 		Name: "directory.max_records_per_link", Kind: keyInt, Default: intValue(250), Validate: positiveInt(),
+		Doc: "Maximum number of records accepted over one link.",
 	},
 	"directory.max_topics_per_publisher": {
 		Name: "directory.max_topics_per_publisher", Kind: keyInt, Default: intValue(16), Validate: positiveInt(),
+		Doc: "Maximum public topic declarations plus unknown-kind records per publisher; cards and withdrawals are not counted.",
 	},
 	"send.link_retries": {
 		Name: "send.link_retries", Kind: keyInt, Default: intValue(5), Validate: nonNegativeInt(),
+		Doc: "Retries while the link is not up.",
 	},
 	"send.link_backoff": {
 		Name: "send.link_backoff", Kind: keyDuration,
+		Doc:     "Wait before the first retry; it doubles each time, capped at 8 seconds.",
 		Default: durationValue(500 * time.Millisecond), Validate: positiveDuration(),
 	},
 	"send.request_timeout": {
 		Name: "send.request_timeout", Kind: keyDuration,
+		Doc:     "Budget for one send call, i.e. the total time limit.",
 		Default: durationValue(20 * time.Second), Validate: positiveDuration(),
 	},
 	"send.inbox_retries": {
 		Name: "send.inbox_retries", Kind: keyInt, Default: intValue(2), Validate: nonNegativeInt(),
+		Doc: "Retries when the inbox write definitely failed.",
 	},
 	"send.inbox_backoff": {
 		Name: "send.inbox_backoff", Kind: keyDuration,
+		Doc:     "Wait between inbox write retries.",
 		Default: durationValue(200 * time.Millisecond), Validate: positiveDuration(),
 	},
 	"send.inbox_timeout": {
 		Name: "send.inbox_timeout", Kind: keyDuration,
+		Doc:     "Time limit for a single inbox write.",
 		Default: durationValue(5 * time.Second), Validate: positiveDuration(),
 	},
 	"send.dedupe_window": {
 		Name: "send.dedupe_window", Kind: keyDuration,
+		Doc:     "How long deduplication table entries are kept.",
 		Default: durationValue(5 * time.Minute), Validate: positiveDuration(),
 	},
 	"link.dial_timeout": {
 		Name: "link.dial_timeout", Kind: keyDuration,
+		Doc:     "Connection time limit for each address during dialing.",
 		Default: durationValue(5 * time.Second), Validate: positiveDuration(),
 	},
 	"link.reconnect_min": {
 		Name: "link.reconnect_min", Kind: keyDuration,
+		Doc:     "Initial backoff for re-establishing a link.",
 		Default: durationValue(time.Second), Validate: positiveDuration(),
 	},
 	"link.reconnect_max": {
 		Name: "link.reconnect_max", Kind: keyDuration,
+		Doc:     "Maximum backoff for re-establishing a link.",
 		Default: durationValue(time.Minute), Validate: positiveDuration(),
 	},
 	"link.keepalive_interval": {
 		Name: "link.keepalive_interval", Kind: keyDuration,
+		Doc:     "Keepalive probe interval; the gRPC client probes at least every 10 seconds.",
 		Default: durationValue(15 * time.Second), Validate: positiveDuration(),
 	},
 	"link.keepalive_timeout": {
 		Name: "link.keepalive_timeout", Kind: keyDuration,
+		Doc:     "Response time limit for a keepalive probe.",
 		Default: durationValue(10 * time.Second), Validate: positiveDuration(),
 	},
 	"log.level": {
 		Name: "log.level", Kind: keyString, Default: stringValue("info"),
+		Doc: "Runtime log level.",
 		Validate: func(v Value) error {
 			if !logLevels[v.String] {
 				return errors.New("must be one of debug, info, warn, error")

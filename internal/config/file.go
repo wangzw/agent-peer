@@ -28,6 +28,11 @@ type configDocument struct {
 	// value to its default.
 	empty       bool
 	headComment string
+	// raw holds the exact bytes this document was parsed from, or the bytes a
+	// placeholder replacement produced. bytes returns it verbatim, so a Set
+	// that only uncomments an inactive example line changes no other byte. A
+	// node edit clears it and bytes re-encodes the document instead.
+	raw []byte
 	// contentHash is the hash of exactly the bytes that were parsed into this
 	// document. Load copies it into core.lastFileHash, so the first reload
 	// comparison starts from the hash of the bytes these values came from.
@@ -85,6 +90,7 @@ func parseConfigFile(data []byte) (configDocument, error) {
 	if errors.Is(err, io.EOF) {
 		doc.empty = true
 		doc.headComment = leadingComment(data)
+		doc.raw = append([]byte(nil), data...)
 		return doc, nil
 	}
 	if err != nil {
@@ -101,6 +107,7 @@ func parseConfigFile(data []byte) (configDocument, error) {
 		if len(root.Content) == 0 {
 			doc.empty = true
 			doc.headComment = leadingComment(data)
+			doc.raw = append([]byte(nil), data...)
 			return doc, nil
 		}
 		root = root.Content[0]
@@ -109,6 +116,7 @@ func parseConfigFile(data []byte) (configDocument, error) {
 	if root == nil || root.Kind == 0 {
 		doc.empty = true
 		doc.headComment = leadingComment(data)
+		doc.raw = append([]byte(nil), data...)
 		return doc, nil
 	}
 	if root.Kind != yaml.MappingNode {
@@ -143,6 +151,7 @@ func parseConfigFile(data []byte) (configDocument, error) {
 		}
 		doc.values[name] = v
 	}
+	doc.raw = append([]byte(nil), data...)
 	return doc, nil
 }
 
@@ -197,6 +206,94 @@ func sectionAndLeaf(key string) (section, leaf string) {
 		return key[:i], key[i+1:]
 	}
 	return key, ""
+}
+
+// replacePlaceholderLine replaces the first line matching
+// "^\s*#\s*<leaf>:" inside section with an active "<leaf>: <value>" line. It
+// returns false when the section or such a line is absent. The replacement
+// keeps the line's indentation and every other byte of the file.
+func replacePlaceholderLine(data []byte, section, leaf string, spec *keySpec, v Value) ([]byte, bool) {
+	text, err := encodeValueText(spec, v)
+	if err != nil {
+		return nil, false
+	}
+	lines := strings.Split(string(data), "\n")
+	for i := 0; i < len(lines); i++ {
+		indent, ok := sectionHeaderIndent(lines[i], section)
+		if !ok {
+			continue
+		}
+		for j := i + 1; j < len(lines); j++ {
+			if strings.TrimSpace(lines[j]) == "" {
+				continue
+			}
+			if lineIndent(lines[j]) <= indent {
+				break // the section ended
+			}
+			at, ok := placeholderIndent(lines[j], leaf)
+			if !ok {
+				continue
+			}
+			cr := ""
+			if strings.HasSuffix(lines[j], "\r") {
+				cr = "\r"
+			}
+			lines[j] = lines[j][:at] + leaf + ": " + text + cr
+			return []byte(strings.Join(lines, "\n")), true
+		}
+	}
+	return nil, false
+}
+
+// sectionHeaderIndent reports the indentation of a "section:" header line and
+// whether line is one.
+func sectionHeaderIndent(line, section string) (int, bool) {
+	indent := lineIndent(line)
+	rest := line[indent:]
+	if !strings.HasPrefix(rest, section) {
+		return 0, false
+	}
+	after := rest[len(section):]
+	if !strings.HasPrefix(after, ":") {
+		return 0, false
+	}
+	trimmed := strings.TrimSpace(after[1:])
+	if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+		return 0, false
+	}
+	return indent, true
+}
+
+// placeholderIndent reports the indentation of a line matching
+// "^\s*#\s*<leaf>:<end or whitespace>" and whether line is one.
+func placeholderIndent(line, leaf string) (int, bool) {
+	indent := lineIndent(line)
+	rest := line[indent:]
+	if !strings.HasPrefix(rest, "#") {
+		return 0, false
+	}
+	rest = strings.TrimLeft(rest[1:], " \t")
+	if !strings.HasPrefix(rest, leaf) {
+		return 0, false
+	}
+	after := rest[len(leaf):]
+	if !strings.HasPrefix(after, ":") {
+		return 0, false
+	}
+	after = after[1:]
+	if after != "" && after[0] != ' ' && after[0] != '\t' && after[0] != '\r' {
+		return 0, false
+	}
+	return indent, true
+}
+
+// lineIndent returns the number of leading spaces and tabs in line.
+func lineIndent(line string) int {
+	i := 0
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	return i
 }
 
 func knownSections() []string {
@@ -272,6 +369,32 @@ func (d *configDocument) setKey(key string, v Value) error {
 		return fmt.Errorf("%w: %s: top level is not a mapping", ErrInvalidValue, key)
 	}
 	section, leaf := sectionAndLeaf(key)
+	// A key that exists only as an inactive example line is replaced where
+	// that line stands, so the rest of the file stays byte-identical. The
+	// result is parsed back and checked before it is adopted.
+	if d.raw != nil {
+		if _, present := findKeyNode(d.root, key); !present {
+			if replaced, ok := replacePlaceholderLine(d.raw, section, leaf, spec, v); ok {
+				if parsed, err := parseConfigFile(replaced); err == nil {
+					if got, ok := parsed.values[key]; ok && valueEqual(got, v) {
+						d.document = parsed.document
+						d.root = parsed.root
+						d.values = parsed.values
+						d.present = parsed.present
+						d.invalid = parsed.invalid
+						d.empty = parsed.empty
+						d.raw = replaced
+						d.values[key] = copyValue(v)
+						d.present[key] = true
+						delete(d.invalid, key)
+						return nil
+					}
+				}
+			}
+		}
+	}
+	// Any node edit below re-encodes the whole document.
+	d.raw = nil
 	m, ok := findSection(d.root, section)
 	if !ok {
 		sectionNode := &yaml.Node{
@@ -344,9 +467,63 @@ func boolText(b bool) string {
 	return "false"
 }
 
+// encodeValueText encodes v as the YAML text that follows "<leaf>: " in a
+// configuration file. Strings that YAML would read back as another type, such
+// as ":17443" or "0666", come back quoted, so parsing the text yields the same
+// Value. String lists are flow sequences, which both the file and SetConfig
+// accept.
+func encodeValueText(spec *keySpec, v Value) (string, error) {
+	var plain any
+	switch spec.Kind {
+	case keyBool:
+		plain = v.Bool
+	case keyInt:
+		plain = v.Int
+	case keyDuration:
+		plain = v.Duration.String()
+	case keyStringList:
+		node := encodeValueNode(spec, v)
+		node.Style = yaml.FlowStyle
+		data, err := yaml.Marshal(node)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSuffix(string(data), "\n"), nil
+	default: // keyString, keySecret
+		plain = v.String
+	}
+	data, err := yaml.Marshal(plain)
+	if err != nil {
+		return "", err
+	}
+	text := strings.TrimSuffix(string(data), "\n")
+	// A string value such as ":17443" is a legal plain YAML scalar, so the
+	// encoder leaves it unquoted. Quote it anyway: a value that starts with
+	// ':' reads like a port and should never depend on that subtlety.
+	if (spec.Kind == keyString || spec.Kind == keySecret) && strings.HasPrefix(text, ":") {
+		node := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v.String, Style: yaml.DoubleQuotedStyle}
+		data, err := yaml.Marshal(node)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSuffix(string(data), "\n"), nil
+	}
+	return text, nil
+}
+
 func (d *configDocument) bytes() ([]byte, error) {
 	if d.root == nil {
 		*d = emptyDocument()
+	}
+	if d.raw != nil {
+		out := d.raw
+		if len(out) == 0 || out[len(out)-1] != '\n' {
+			out = append(append([]byte(nil), out...), '\n')
+		}
+		if err := d.verify(out); err != nil {
+			return nil, err
+		}
+		return out, nil
 	}
 	var buf bytes.Buffer
 	if d.headComment != "" {
