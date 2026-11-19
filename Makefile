@@ -20,7 +20,7 @@ SITE_DIR ?= docs/site
 # extracts.
 RELEASE_NOTES_VERSION ?= v0.1.0
 
-.PHONY: gen gen-check lint release-notes-check proto-lint test e2e e2e-darwin docs-check check site site-check
+.PHONY: gen gen-check lint release-notes-check archive-check proto-lint test e2e e2e-darwin docs-check check site site-check
 
 # Regenerate the protobuf code with buf. Generated Go code is committed next to
 # its .proto file, so this target is expected to leave the tree unchanged when
@@ -35,8 +35,8 @@ gen:
 gen-check:
 	bash scripts/gen-check.sh
 
-# Format, static analysis, module tidiness and the module dependency-direction
-# check.
+# Format, static analysis, shell script lint, module tidiness and the module
+# dependency-direction check.
 lint:
 	@files="$$(find . -type f -name '*.go' \
 		-not -path './third_party/*' \
@@ -49,6 +49,7 @@ lint:
 			exit 1; \
 		fi; \
 	fi
+	shellcheck scripts/install.sh
 	golangci-lint run ./...
 	golangci-lint run --build-tags agentpeer_testenv ./...
 	go mod tidy -diff
@@ -62,6 +63,13 @@ lint:
 # cannot catch this regression.
 release-notes-check:
 	go run ./scripts/check-release-notes -version $(RELEASE_NOTES_VERSION)
+
+# Build a snapshot and check that every archive holds exactly the release
+# contents: the binary, install.sh, the archive README, the licenses and the
+# third-party license inventory. The test hook string is covered by the
+# goreleaser build hook, which fails the run before an archive is written.
+archive-check:
+	go run ./scripts/check-archives
 
 proto-lint:
 	buf lint

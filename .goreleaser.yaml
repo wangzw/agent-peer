@@ -30,7 +30,12 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
-      - README.md
+      - src: scripts/archive-README.md
+        dst: README.md
+      - src: scripts/install.sh
+        dst: install.sh
+        info:
+          mode: 0755
       - third_party/claude-code-socket-transport/LICENSE
       - THIRD_PARTY_LICENSES/**/*
 
