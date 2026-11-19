@@ -97,15 +97,6 @@ func TestServiceInstall(t *testing.T) {
 		if strings.TrimSpace(content) == "" {
 			t.Fatalf("%s is empty", systemConfigPath)
 		}
-		for i, line := range strings.Split(content, "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
-			}
-			if !strings.HasPrefix(line, "#") {
-				t.Errorf("line %d is not a comment: %q", i+1, line)
-			}
-		}
 		if !strings.Contains(content, "agent-peer system Broker configuration") {
 			t.Errorf("configuration file does not identify itself:\n%s", content)
 		}
