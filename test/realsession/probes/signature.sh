@@ -79,7 +79,7 @@ rs_status_runner() {
 # Broker runs as root, so its socket is the system-wide one; rsprobe's default
 # would look under /tmp instead.
 rs_status_hosta() {
-	RS_ROOT="$R" docker compose -f test/realsession/compose.yaml exec -T hosta \
+	docker compose -f "$RS_COMPOSE" exec -T hosta \
 		/usr/local/bin/rsprobe status --socket /run/agent-peer/broker.sock
 }
 

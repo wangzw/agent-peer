@@ -389,6 +389,39 @@ func TestLibResolvesComposeFromScriptLocation(t *testing.T) {
 	}
 }
 
+// TestLibExportsRSRoot checks that every docker compose call a probe makes
+// inherits RS_ROOT. The compose file requires it for its bind mounts, and
+// Compose interpolates the file for exec and status calls as well as up, so a
+// probe that sets the variable only on the first call fails at the next one.
+func TestLibExportsRSRoot(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	var env []string
+	for _, kv := range os.Environ() {
+		// Drop any ambient value so a pre-fix lib.sh cannot pass by accident.
+		if strings.HasPrefix(kv, "RS_ROOT=") {
+			continue
+		}
+		env = append(env, kv)
+	}
+	env = append(env, "R="+root, "PROBE=selftest")
+
+	// printenv is a child process, so it reports only exported variables.
+	cmd := exec.Command("bash", "-c", `source "$1"; printenv RS_ROOT`, "bash", lib)
+	cmd.Dir = root
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("sourcing lib.sh: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != root {
+		t.Errorf("exported RS_ROOT = %q, want %q", got, root)
+	}
+}
+
 // TestRsProcVarsReportsAbsence checks that rs_proc_vars distinguishes a
 // missing variable from one set to the empty string. A probe treats the two
 // differently, so the helper must not print both as NAME=. The helper reads

@@ -19,6 +19,11 @@ TMUX_SERVER=agent-peer-rs
 RS_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 RS_COMPOSE="$RS_REPO_ROOT/test/realsession/compose.yaml"
 
+# RS_ROOT is required by the compose file for its bind mounts, and Compose
+# interpolates the file for every command, not only up. Export it once so the
+# exec and status calls carry it too.
+export RS_ROOT="$R"
+
 # RS_CONTAINER_WAIT bounds how long a probe waits for a started process, on
 # the host or inside the peer host container, to create its control socket.
 # The bound covers a cold container start and an external process start; it is
@@ -380,7 +385,7 @@ rs_proc_vars() {
 
 # rs_hosta_up starts the peer host container and records its address.
 rs_hosta_up() {
-	RS_ROOT="$R" docker compose -f "$RS_COMPOSE" up -d
+	docker compose -f "$RS_COMPOSE" up -d
 	HOSTA_IP="$(docker compose -f "$RS_COMPOSE" exec -T hosta /hosta-init.sh)"
 }
 
