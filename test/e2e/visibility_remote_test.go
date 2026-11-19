@@ -462,7 +462,7 @@ func vrStartBroker(t *testing.T, node *harness.Node, config string) {
 	if start.ExitCode != 3 {
 		t.Fatalf("the Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
-	harness.Eventually(t, 10*time.Second, "the Broker started by another process answers", func() (bool, string) {
+	harness.Eventually(t, adPeerBrokerReadyBound, "the Broker started by another process answers", func() (bool, string) {
 		res := node.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
 		return res.ExitCode == 0, fmt.Sprintf("agent-peer status exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 	})

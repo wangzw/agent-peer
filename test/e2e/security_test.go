@@ -44,8 +44,8 @@ const (
 	secRelayStartBound = 3 * time.Second
 	// secCaptureWriteBound bounds the wait for tcpdump to write the bytes the
 	// test has already sent. tcpdump flushes on packet activity and no product
-	// timer governs it; five seconds leave room for the ring to drain.
-	secCaptureWriteBound = 5 * time.Second
+	// timer governs it, so it uses the project-wide three-second bound.
+	secCaptureWriteBound = 3 * time.Second
 	// secPeerBrokerReadyBound is the product's ten-second readiness allowance
 	// for a launched Broker (mcpserver.readyTimeoutDefault). This wait watches
 	// a Broker another process launched, so it uses the same allowance.

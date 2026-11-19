@@ -18,6 +18,13 @@ import (
 // configuration, and the port the topologies forward.
 const pairBrokerPort = "17443"
 
+// pairReconnectBound waits for both Brokers to relink after a cut on the
+// default timers. The cut is noticed within three seconds; the dialer's
+// backoff has then grown to at most four seconds, one dial and the accept
+// side's catch-up follow, and the project-wide three-second margin brings the
+// bound to ten seconds.
+const pairReconnectBound = 10 * time.Second
+
 // TestJourneyPairBrokers walks the "two hosts pair for the first time" journey
 // on real containers: two Brokers with the default configuration, two real MCP
 // server processes, and a NAT that lets only hostB open a connection to hostA.
@@ -318,9 +325,7 @@ func TestJourneyPairBrokers(t *testing.T) {
 		})
 
 		c.Restore(t)
-		// Default timers: the dialer's backoff during the cut, one dial and the
-		// accept side's catch-up fit in ten seconds.
-		harness.Eventually(t, 10*time.Second, "both Brokers reconnect without any tool call", func() (bool, string) {
+		harness.Eventually(t, pairReconnectBound, "both Brokers reconnect without any tool call", func() (bool, string) {
 			statusA, state := pairOracleStatus(t, hostA, "hostB-17443")
 			if state != "" {
 				return false, "hostA: " + state

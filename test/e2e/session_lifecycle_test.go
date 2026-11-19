@@ -18,6 +18,12 @@ import (
 	"github.com/wangzw/agent-peer/test/e2e/node"
 )
 
+// lifecycleRestoreBound waits for an MCP server process to restore its topics
+// after the local Broker restarts. The process retries a lost Broker with a
+// backoff that starts at 250ms and caps at five seconds (mcpserver's
+// loopConnBackoff); one capped retry and the restore that follows fit here.
+const lifecycleRestoreBound = 5 * time.Second
+
 // TestLocalSessionChanges covers what happens to a registered agent when its
 // session changes: a rename, a status change, a conversation clear, the MCP
 // server process stopping and starting, the session ending, and a Broker
@@ -251,7 +257,7 @@ func TestLocalSessionChanges(t *testing.T) {
 		lifecycleWaitAgent(t, observer, "doomed")
 
 		doomed.End(t)
-		harness.Eventually(t, 5*time.Second, "an ended session leaves the local list", func() (bool, string) {
+		harness.Eventually(t, 3*time.Second, "an ended session leaves the local list", func() (bool, string) {
 			out, state := lifecycleListAgents(t, observer, nil)
 			if state != "" {
 				return false, state
@@ -328,14 +334,14 @@ func TestLocalSessionChanges(t *testing.T) {
 
 		lifecycleRestartBroker(t, host, brokerConfig)
 
-		harness.Eventually(t, 5*time.Second, "the MCP server process restores its topics after the Broker restart", func() (bool, string) {
+		harness.Eventually(t, lifecycleRestoreBound, "the MCP server process restores its topics after the Broker restart", func() (bool, string) {
 			out, state := lifecycleListTopics(t, y)
 			if state != "" {
 				return false, state
 			}
 			return lifecycleSameSet(out.Joined, []string{"github.com/org/repo", "t1"}), fmt.Sprintf("joined topics are %v", out.Joined)
 		})
-		harness.Eventually(t, 5*time.Second, "observer sees the restored membership", func() (bool, string) {
+		harness.Eventually(t, lifecycleRestoreBound, "observer sees the restored membership", func() (bool, string) {
 			out, state := lifecycleListAgents(t, observer, nil)
 			if state != "" {
 				return false, state
@@ -382,7 +388,7 @@ func lifecycleRestartBroker(t *testing.T, host *harness.Node, config string) {
 		t.Fatalf("the Broker did not restart: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 	}
 	bin := harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
-	harness.Eventually(t, 5*time.Second, "the Broker answers after a session process started it", func() (bool, string) {
+	harness.Eventually(t, brokerReadyBound, "the Broker answers after a session process started it", func() (bool, string) {
 		result := host.Exec(t, []string{bin, "status"}, nil)
 		if result.ExitCode == 0 {
 			return true, ""
