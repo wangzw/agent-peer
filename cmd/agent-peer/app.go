@@ -18,6 +18,13 @@ Commands:
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker
   audit [--limit <n>]         read the audit log
+  config get [<key>]          show all configuration items, or one
+  config set <key> <value>    change a configuration item
+  pairing-key create          create a one-time pairing key
+  peer list                   list paired Brokers
+  peer connect <address> --key <key> [--alias <alias>]
+                              pair with another Broker
+  peer disconnect <broker>    remove a pairing
   service install [--system]  install and start the Broker as a user-level service,
                               or system-level with --system
   service uninstall [--system]

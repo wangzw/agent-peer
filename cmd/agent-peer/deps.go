@@ -81,4 +81,14 @@ type deps struct {
 	runMCP            func(ctx context.Context) error // MCP over the process's own stdin/stdout
 	runStatus         func(ctx context.Context, stdout io.Writer) error
 	runAudit          func(ctx context.Context, stdout io.Writer, limit uint32) error
+
+	// Broker configuration and pairing commands. The Broker is selected the
+	// same way status and audit select it; warn carries the warnings of a
+	// successful peer connect.
+	runConfigGet        func(ctx context.Context, key string, stdout io.Writer) error
+	runConfigSet        func(ctx context.Context, key, value string, stdout io.Writer) error
+	runPairingKeyCreate func(ctx context.Context, stdout io.Writer) error
+	runPeerList         func(ctx context.Context, stdout io.Writer) error
+	runPeerConnect      func(ctx context.Context, address, key, alias string, stdout, warn io.Writer) error
+	runPeerDisconnect   func(ctx context.Context, broker string, stdout io.Writer) error
 }

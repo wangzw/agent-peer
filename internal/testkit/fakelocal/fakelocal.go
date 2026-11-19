@@ -11,6 +11,7 @@
 package fakelocal
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"os"
@@ -20,6 +21,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
@@ -37,6 +39,21 @@ func SocketPath(t testing.TB) string {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return filepath.Join(dir, "broker.sock")
+}
+
+// Selector returns a termcmd-compatible selector for a Server at path. The
+// returned value is the unnamed function type the selector interface uses, so
+// a test package that may not import localpb can assign it directly.
+func Selector(path string) func(context.Context) (string, func() (*grpc.ClientConn, localpb.LocalClient, error), error) {
+	return func(context.Context) (string, func() (*grpc.ClientConn, localpb.LocalClient, error), error) {
+		return path, func() (*grpc.ClientConn, localpb.LocalClient, error) {
+			cc, err := grpc.NewClient("unix://"+path, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				return nil, nil, err
+			}
+			return cc, localpb.NewLocalClient(cc), nil
+		}, nil
+	}
 }
 
 // Handlers holds optional per-RPC behaviour. A nil field answers
@@ -59,6 +76,39 @@ type Handlers struct {
 }
 
 // Call is one unary request a Server received, in arrival order.
+// AdminHandlers returns handlers for the six Broker administration RPCs, each
+// answering a sample whose formatted output is distinct: config get prints an
+// entry, config set a change line, pairing-key create a key, peer list the
+// empty listing, peer connect a paired line, and peer disconnect a
+// disconnected line.
+func AdminHandlers() Handlers {
+	return Handlers{
+		GetConfig: func(context.Context, *localpb.GetConfigRequest) (*localpb.GetConfigResponse, error) {
+			return &localpb.GetConfigResponse{Entries: []*localpb.ConfigEntry{
+				{Key: "broker.alias", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_StringValue{StringValue: "hostA"}}},
+			}}, nil
+		},
+		SetConfig: func(context.Context, *localpb.SetConfigRequest) (*localpb.SetConfigResponse, error) {
+			return &localpb.SetConfigResponse{
+				OldValue: &localpb.ConfigValue{Value: &localpb.ConfigValue_StringValue{StringValue: "old"}},
+				NewValue: &localpb.ConfigValue{Value: &localpb.ConfigValue_StringValue{StringValue: "new"}},
+			}, nil
+		},
+		CreatePairingKey: func(context.Context, *localpb.CreatePairingKeyRequest) (*localpb.CreatePairingKeyResponse, error) {
+			return &localpb.CreatePairingKeyResponse{Key: "one-time-key"}, nil
+		},
+		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
+			return &localpb.ListBrokersResponse{}, nil
+		},
+		Connect: func(context.Context, *localpb.ConnectRequest) (*localpb.ConnectResponse, error) {
+			return &localpb.ConnectResponse{Alias: "hostB", Fingerprint: bytes.Repeat([]byte{0xcd}, 32)}, nil
+		},
+		Disconnect: func(context.Context, *localpb.DisconnectRequest) (*localpb.DisconnectResponse, error) {
+			return &localpb.DisconnectResponse{}, nil
+		},
+	}
+}
+
 type Call struct {
 	Method  string
 	Request proto.Message

@@ -25,6 +25,11 @@ var brokerRun = broker.Run
 // with; the returned dialer checks the peer of the Broker socket.
 var _ termcmd.Selector = mcpserver.FindBrokerWithDial
 
+// findBroker is the selector the terminal commands use. It is a variable so a
+// test can point the real dep closures at a fake Broker while exercising the
+// production wiring.
+var findBroker termcmd.Selector = mcpserver.FindBrokerWithDial
+
 // realDeps connects the command line to the real Broker and MCP server entry
 // points. It is called once by main before any subcommand runs.
 func realDeps(version string) deps {
@@ -50,10 +55,28 @@ func realDeps(version string) deps {
 			})
 		},
 		runStatus: func(ctx context.Context, stdout io.Writer) error {
-			return termcmd.RunStatus(ctx, mcpserver.FindBrokerWithDial, stdout)
+			return termcmd.RunStatus(ctx, findBroker, stdout)
 		},
 		runAudit: func(ctx context.Context, stdout io.Writer, limit uint32) error {
-			return termcmd.RunAudit(ctx, mcpserver.FindBrokerWithDial, limit, stdout)
+			return termcmd.RunAudit(ctx, findBroker, limit, stdout)
+		},
+		runConfigGet: func(ctx context.Context, key string, stdout io.Writer) error {
+			return termcmd.RunConfigGet(ctx, findBroker, key, stdout)
+		},
+		runConfigSet: func(ctx context.Context, key, value string, stdout io.Writer) error {
+			return termcmd.RunConfigSet(ctx, findBroker, key, value, stdout)
+		},
+		runPairingKeyCreate: func(ctx context.Context, stdout io.Writer) error {
+			return termcmd.RunPairingKeyCreate(ctx, findBroker, stdout)
+		},
+		runPeerList: func(ctx context.Context, stdout io.Writer) error {
+			return termcmd.RunPeerList(ctx, findBroker, stdout)
+		},
+		runPeerConnect: func(ctx context.Context, address, key, alias string, stdout, warn io.Writer) error {
+			return termcmd.RunPeerConnect(ctx, findBroker, address, key, alias, stdout, warn)
+		},
+		runPeerDisconnect: func(ctx context.Context, broker string, stdout io.Writer) error {
+			return termcmd.RunPeerDisconnect(ctx, findBroker, broker, stdout)
 		},
 	}
 }

@@ -4,12 +4,35 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
 )
 
-// termcmdStub records the calls the status and audit commands make into deps.
+// configGetCall records one runConfigGet call.
+type configGetCall struct {
+	key string
+	out io.Writer
+}
+
+// configSetCall records one runConfigSet call.
+type configSetCall struct {
+	key   string
+	value string
+	out   io.Writer
+}
+
+// peerConnectCall records one runPeerConnect call.
+type peerConnectCall struct {
+	address string
+	key     string
+	alias   string
+	out     io.Writer
+	warn    io.Writer
+}
+
+// termcmdStub records the calls the terminal commands make into deps.
 type termcmdStub struct {
 	statusCalls int
 	statusOut   io.Writer
@@ -19,6 +42,21 @@ type termcmdStub struct {
 	auditOut   io.Writer
 	auditLimit uint32
 	auditErr   error
+
+	configGetCalls      []configGetCall
+	configGetErr        error
+	configSetCalls      []configSetCall
+	configSetErr        error
+	pairingKeyCalls     []io.Writer
+	pairingKeyErr       error
+	peerListCalls       []io.Writer
+	peerListErr         error
+	peerConnectCalls    []peerConnectCall
+	peerConnectWarnings []string
+	peerConnectErr      error
+	peerDisconnectCalls []string
+	peerDisconnectOut   []io.Writer
+	peerDisconnectErr   error
 }
 
 func (s *termcmdStub) deps() deps {
@@ -33,6 +71,36 @@ func (s *termcmdStub) deps() deps {
 			s.auditOut = stdout
 			s.auditLimit = limit
 			return s.auditErr
+		},
+		runConfigGet: func(_ context.Context, key string, stdout io.Writer) error {
+			s.configGetCalls = append(s.configGetCalls, configGetCall{key: key, out: stdout})
+			return s.configGetErr
+		},
+		runConfigSet: func(_ context.Context, key, value string, stdout io.Writer) error {
+			s.configSetCalls = append(s.configSetCalls, configSetCall{key: key, value: value, out: stdout})
+			return s.configSetErr
+		},
+		runPairingKeyCreate: func(_ context.Context, stdout io.Writer) error {
+			s.pairingKeyCalls = append(s.pairingKeyCalls, stdout)
+			return s.pairingKeyErr
+		},
+		runPeerList: func(_ context.Context, stdout io.Writer) error {
+			s.peerListCalls = append(s.peerListCalls, stdout)
+			return s.peerListErr
+		},
+		runPeerConnect: func(_ context.Context, address, key, alias string, stdout, warn io.Writer) error {
+			s.peerConnectCalls = append(s.peerConnectCalls, peerConnectCall{
+				address: address, key: key, alias: alias, out: stdout, warn: warn,
+			})
+			for _, warning := range s.peerConnectWarnings {
+				_, _ = fmt.Fprintf(warn, "warning: %s\n", warning)
+			}
+			return s.peerConnectErr
+		},
+		runPeerDisconnect: func(_ context.Context, broker string, stdout io.Writer) error {
+			s.peerDisconnectCalls = append(s.peerDisconnectCalls, broker)
+			s.peerDisconnectOut = append(s.peerDisconnectOut, stdout)
+			return s.peerDisconnectErr
 		},
 	}
 }
