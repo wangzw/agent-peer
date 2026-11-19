@@ -148,8 +148,8 @@ MCP 服务进程不得启动任何 Broker。会话按 `REQ-broker-config-026` �
 发布包必须附带安装脚本，用户解压后执行一条命令即可完成安装：把二进制装到合适的位置，把 Broker 安装为服务并启动，为执行安装的用户在 Claude Code 中注册本系统的 MCP 服务。系统级安装须以管理员身份执行。重复执行安装脚本不得出错，也不得重复注册。
 
 - **验收**：在没有安装过本系统的 Linux 主机上，解压发布包，以普通账户执行安装脚本。之后在新的终端中，`agent-peer --version` 输出发布版本，该账户的用户级 Broker 正在运行，`claude mcp get peer` 显示已注册。以管理员身份用系统级参数执行安装脚本，之后系统级 Broker 正在运行，二进制位于 root 所有、组与其他人不可写的目录，执行 sudo 的账户在 Claude Code 中已注册 MCP 服务。每种方式各再执行一次，都成功，MCP 服务只注册一次。
-- **状态**：未实现
-- **端到端测试**：未实现（由端到端工作项填写）
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig041_UserInstallScript`、`TestREQBrokerConfig041_SystemInstallScript`（含幂等子用例）
 
 ### REQ-broker-config-013
 
