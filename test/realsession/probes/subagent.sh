@@ -166,23 +166,21 @@ status_all_one() {
 # launch_submain starts the interactive session that runs the subagents.
 launch_submain() {
 	rs_window sub-main claude --model haiku -n sub-main \
+		--permission-mode default \
 		--allowedTools "mcp__peer__send_message,Task,Agent" \
 		--debug-file "$R/debug/sub-main.debug"
 }
 
-# wait_prompt waits for the input prompt and accepts a first-run dialog if one appears.
+# wait_prompt waits for the input composer. The shared predicate accepts a
+# first-run dialog and requires it to be gone before the prompt counts, so a
+# bare prompt glyph behind a dialog no longer passes.
 wait_prompt() {
-	if ! rs_wait_pane sub-main '❯|Do you trust|trust the files|Yes, I trust' 90; then
+	if ! rs_wait_ready sub-main 90; then
 		rs_obs "sub-main never reached an input prompt"
 		return 1
 	fi
+	rs_obs_mode sub-main
 	rs_snap sub-main startup.txt
-	if grep -qE -- 'Do you trust|trust the files|Yes, I trust' "$OUT/startup.txt"; then
-		rs_keys sub-main Enter
-		sleep 1
-		rs_snap sub-main dialog-1.txt
-		rs_wait_pane sub-main '❯' 30
-	fi
 	return 0
 }
 

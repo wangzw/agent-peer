@@ -253,11 +253,21 @@ if ! wait_socket 'a<b' 30; then
 	rs_obs "a<b did not register within 30 seconds"
 	exit 1
 fi
+if ! rs_wait_ready ref-clear-a 45; then
+	rs_obs "the a<b session did not reach its input prompt within 45 seconds"
+	exit 1
+fi
+rs_obs_mode ref-clear-a
 if ! wait_socket rs-observer 30; then
 	rs_snap ref-clear-observer observer-not-registered.txt
 	rs_obs "rs-observer did not register within 30 seconds"
 	exit 1
 fi
+if ! rs_wait_ready ref-clear-observer 45; then
+	rs_obs "rs-observer did not reach its input prompt within 45 seconds"
+	exit 1
+fi
+rs_obs_mode ref-clear-observer
 
 # X0 is computed over every session socket and X1 comes from the Broker's own
 # table, so both agents and the simulated one must be registered before either
@@ -386,12 +396,17 @@ jq '.crossSessionInbound = "hold"' "$settings_backup" >"$WORK/settings.hold.json
 cp "$WORK/settings.hold.json" "$settings_file"
 rs_obs "added crossSessionInbound=hold to settings.json for step 6 (sha256 before $settings_before_sha)"
 
-rs_window ref-clear-clr claude --model haiku -n clr --append-system-prompt "$PROMPT" --allowedTools 'Bash(sleep:*)'
+rs_window ref-clear-clr claude --model haiku -n clr --permission-mode default --append-system-prompt "$PROMPT" --allowedTools 'Bash(sleep:*)'
 if ! wait_socket clr 30; then
 	rs_snap ref-clear-clr clr-not-registered.txt
 	rs_obs "clr did not register within 30 seconds"
 	exit 1
 fi
+if ! rs_wait_ready ref-clear-clr 45; then
+	rs_obs "clr did not reach its input prompt within 45 seconds"
+	exit 1
+fi
+rs_obs_mode ref-clear-clr
 # Background the hold-time call so the pane and the approval can be watched
 # while it runs. RS_HOLD_CALL_WAIT bounds how long its reply is awaited; the
 # timing and outcome are written to send-pending-timing.txt.

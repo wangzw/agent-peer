@@ -85,37 +85,6 @@ settings_restore() {
 }
 rs_on_exit settings_restore
 
-# wait_ready polls a window until its composer accepts input. First-run trust
-# dialogs are accepted with Enter; the bypass-permissions warning opens focused
-# on "No, exit", so it is accepted with Down then Enter.
-wait_ready() {
-	local window="$1" seconds="$2" deadline pane dialogs=0
-	deadline=$((SECONDS + seconds))
-	while ((SECONDS < deadline)); do
-		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if printf '%s\n' "$pane" | grep -qF 'Yes, I accept'; then
-			dialogs=$((dialogs + 1))
-			printf '%s\n' "$pane" >"$OUT/dialog-$window-$dialogs.txt"
-			rs_keys "$window" Down Enter
-			sleep 1
-			continue
-		fi
-		if printf '%s\n' "$pane" | grep -qE 'Quick safety check|Yes, I trust this folder'; then
-			dialogs=$((dialogs + 1))
-			printf '%s\n' "$pane" >"$OUT/dialog-$window-$dialogs.txt"
-			rs_keys "$window" Enter
-			sleep 1
-			continue
-		fi
-		if printf '%s\n' "$pane" | grep -qE 'for shortcuts'; then
-			return 0
-		fi
-		sleep 0.2
-	done
-	printf '%s\n' "$pane" >"$OUT/timeout-$window.txt"
-	return 1
-}
-
 # wait_socket waits until the named session has registered its inbox socket.
 wait_socket() {
 	local name="$1" seconds="$2"
@@ -138,22 +107,6 @@ wait_socket_gone() {
 			return 0
 		fi
 		sleep 0.2
-	done
-	return 1
-}
-
-# rs_pane_idle waits until the window is back at its input prompt. It is copied
-# from the registry probe because the shared library does not provide it.
-rs_pane_idle() {
-	local window="$1" seconds="$2" deadline pane
-	deadline=$((SECONDS + seconds))
-	while ((SECONDS < deadline)); do
-		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if printf '%s\n' "$pane" | grep -qE '❯|\? for shortcuts' &&
-			! printf '%s\n' "$pane" | grep -qF 'esc to interrupt'; then
-			return 0
-		fi
-		sleep 0.5
 	done
 	return 1
 }
@@ -391,13 +344,15 @@ if ! "$R/run" rsprobe env check --root "$R" >"$OUT/env-check.txt" 2>&1; then
 fi
 
 rs_window inb-first claude --model haiku -n inb-first \
+	--permission-mode default \
 	--append-system-prompt "$PROMPT" \
 	--allowedTools mcp__peer__list_agents \
 	--debug-file "$R/debug/inb-first.debug"
-if ! wait_ready inb-first 45; then
+if ! rs_wait_ready inb-first 45; then
 	rs_obs "inb-first did not reach its input prompt within 45 seconds"
 	exit 1
 fi
+rs_obs_mode inb-first
 if ! wait_socket inb-first 30; then
 	rs_obs "inb-first did not register an inbox socket within 30 seconds"
 	exit 1
@@ -695,23 +650,27 @@ rs_obs "backed up settings.json with sha256 $sha_before"
 # sender's own records can show later whether a notification arrived.
 write_inbound_policy hold
 rs_window inb-hold claude --model haiku -n inb-hold \
+	--permission-mode default \
 	--append-system-prompt "$PROMPT" \
 	--debug-file "$R/debug/inb-hold.debug"
-if ! wait_ready inb-hold 45; then
+if ! rs_wait_ready inb-hold 45; then
 	rs_obs "inb-hold did not reach its input prompt within 45 seconds"
 	exit 1
 fi
+rs_obs_mode inb-hold
 if ! wait_socket inb-hold 30; then
 	rs_obs "inb-hold did not register an inbox socket within 30 seconds"
 	exit 1
 fi
 rs_window inb-src claude --model haiku -n inb-src \
+	--permission-mode default \
 	--allowedTools mcp__peer__send_message \
 	--debug-file "$R/debug/inb-src.debug"
-if ! wait_ready inb-src 45; then
+if ! rs_wait_ready inb-src 45; then
 	rs_obs "inb-src did not reach its input prompt within 45 seconds"
 	exit 1
 fi
+rs_obs_mode inb-src
 if ! wait_socket inb-src 30; then
 	rs_obs "inb-src did not register an inbox socket within 30 seconds"
 	exit 1
@@ -863,12 +822,14 @@ rs_keys inb-hold '/exit' Enter
 wait_socket_gone inb-hold 15 || true
 write_inbound_policy refuse
 rs_window inb-refuse claude --model haiku -n inb-refuse \
+	--permission-mode default \
 	--append-system-prompt "$PROMPT" \
 	--debug-file "$R/debug/inb-refuse.debug"
-if ! wait_ready inb-refuse 45; then
+if ! rs_wait_ready inb-refuse 45; then
 	rs_obs "inb-refuse did not reach its input prompt within 45 seconds"
 	exit 1
 fi
+rs_obs_mode inb-refuse
 if ! wait_socket inb-refuse 30; then
 	rs_obs "inb-refuse did not register an inbox socket within 30 seconds"
 	exit 1

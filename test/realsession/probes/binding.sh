@@ -278,9 +278,10 @@ for i in {1..20}; do
 		rs_window "load-$i" stress-ng --cpu 4 --timeout 60s
 		sleep 0.5
 	fi
-	rs_window "$name" claude --model haiku -n "$name"
+	rs_window "$name" claude --model haiku -n "$name" --permission-mode default
 	root="$(pane_pid_of "$name" || true)"
 	check_session interactive "$i" "$name" "$root"
+	rs_obs_mode "$name"
 	rs_keys "$name" '/exit' Enter
 	close_window "$name"
 done

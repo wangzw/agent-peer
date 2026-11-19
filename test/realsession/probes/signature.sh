@@ -14,41 +14,23 @@ TERSE_PROMPT='When a cross-session message arrives, reply with the single word o
 REPLY_PROMPT='When a message from another agent asks you to reply, reply exactly as asked using the appropriate tool, then stop.'
 PONG_REQUEST='Please reply with the single word pong to the sender address of this message.'
 
-# rs_wait_ready waits until a session's inbox socket appears. Startup dialogs
-# are captured and accepted while waiting; env init pre-accepts the trust and
+# sig_wait_started waits until the session's composer is ready and its inbox
+# socket is registered. The frames below need the socket, and the readiness
+# hint is the only evidence that the TUI accepts input. Startup dialogs are
+# accepted by the shared predicate; env init pre-accepts the trust and
 # onboarding prompts, so this normally returns without finding one.
-rs_wait_ready() {
-	local window="$1" seconds="$2" deadline pane n=0
-	deadline=$((SECONDS + seconds))
+sig_wait_started() {
+	local window="$1" seconds="$2"
+	local deadline=$((SECONDS + seconds))
+	if ! rs_wait_ready "$window" "$seconds"; then
+		return 1
+	fi
+	rs_obs_mode "$window"
 	while ((SECONDS < deadline)); do
 		if rs_socket_of "$window" >/dev/null 2>&1; then
 			return 0
 		fi
-		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if printf '%s\n' "$pane" | grep -qiE 'trust the files|yes, i trust|enter to confirm'; then
-			n=$((n + 1))
-			printf '%s\n' "$pane" >"$OUT/dialog-$window-$n.txt"
-			rs_keys "$window" Enter
-		fi
-		sleep 0.5
-	done
-	return 1
-}
-
-# rs_pane_idle waits until the window is back at its input prompt, which keeps
-# the next cross-host send from arriving while the previous turn is running.
-# It is a best-effort pacing aid; the pane is captured around each step, so a
-# miss changes the turn count, not the evidence.
-rs_pane_idle() {
-	local window="$1" seconds="$2" deadline pane
-	deadline=$((SECONDS + seconds))
-	while ((SECONDS < deadline)); do
-		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if printf '%s\n' "$pane" | grep -qE '❯|\? for shortcuts' &&
-			! printf '%s\n' "$pane" | grep -qF 'esc to interrupt'; then
-			return 0
-		fi
-		sleep 0.5
+		sleep 0.2
 	done
 	return 1
 }
@@ -141,8 +123,8 @@ rs_tmux_start
 # its UTF-8 bytes because bash's \u escape emits the six literal characters
 # under the C locale, and 14/15 are exactly 64 and 65 code points including the
 # "@x" suffix.
-rs_window sig-rx claude --model haiku -n sig-rx --append-system-prompt "$TERSE_PROMPT"
-if ! rs_wait_ready sig-rx 60; then
+rs_window sig-rx claude --model haiku -n sig-rx --permission-mode default --append-system-prompt "$TERSE_PROMPT"
+if ! sig_wait_started sig-rx 60; then
 	rs_snap sig-rx timeout-sig-rx.txt
 	echo "signature: sig-rx did not bind an inbox socket" >&2
 	exit 1
@@ -210,9 +192,10 @@ rs_hosta_agent 'a\b'
 rs_obs "step 3: started api-worker, a<b, ab, n70 and a\\b on hosta"
 
 rs_window sig-target claude --model haiku -n sig-target \
+	--permission-mode default \
 	--allowedTools mcp__peer__send_message \
 	--append-system-prompt "$REPLY_PROMPT"
-if ! rs_wait_ready sig-target 60; then
+if ! sig_wait_started sig-target 60; then
 	rs_snap sig-target timeout-sig-target.txt
 	echo "signature: sig-target did not bind an inbox socket" >&2
 	exit 1

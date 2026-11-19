@@ -8,46 +8,24 @@ source "$(dirname "$0")/lib.sh"
 # identified. It follows the plan's "environment preflight and authentication
 # baseline" item.
 
-# The composer renders this hint once it accepts input and no dialog is up;
-# the trust dialog is the only first-run screen the prepared config can leave.
-prompt_re='for shortcuts'
-dialog_re='Quick safety check|Yes, I trust this folder'
-
-# wait_for_prompt polls the window until the input composer is ready. A trust
-# dialog drawn over the composer is captured once and accepted with Enter.
-wait_for_prompt() {
-	local window="$1" seconds="$2"
-	local deadline=$((SECONDS + seconds)) dialogs=0 pane=""
-	while ((SECONDS < deadline)); do
-		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if grep -qE -- "$dialog_re" <<<"$pane"; then
-			dialogs=$((dialogs + 1))
-			printf '%s\n' "$pane" >"$OUT/dialog-${dialogs}.txt"
-			rs_keys "$window" Enter
-			sleep 1
-			continue
-		fi
-		if grep -qE -- "$prompt_re" <<<"$pane"; then
-			return 0
-		fi
-		sleep 0.2
-	done
-	printf '%s\n' "$pane" >"$OUT/timeout-${window}.txt"
-	echo "preflight: $window did not reach the input prompt" >&2
-	return 1
-}
-
 # 1. The peer server is configured by the workflow's prepare step.
 if ! "$R/run" claude mcp list >"$OUT/mcp-list.txt"; then
 	echo "preflight: claude mcp list failed" >&2
 fi
 
-# 2. Start the calibration session with the low-call-count prompt.
+# 2. Start the calibration session with the low-call-count prompt. The
+# permission mode is pinned to default so auto mode cannot answer a prompt the
+# probe means to observe.
 rs_tmux_start
 rs_window calib claude --model haiku -n rs-calib \
+	--permission-mode default \
 	--append-system-prompt "When a cross-session message arrives, reply with the single word ok and do nothing else. Do not call any tool unless the user explicitly asks." \
 	--debug-file "$R/debug/calib.debug"
-wait_for_prompt calib 30
+if ! rs_wait_ready calib 30; then
+	echo "preflight: rs-calib did not reach the input prompt" >&2
+	exit 1
+fi
+rs_obs_mode calib
 
 # 3. Wait for the session to bind its inbox and appear in the Broker's table.
 socket=""
@@ -83,3 +61,35 @@ fi
 rs_wait_pane calib '\bok\b' 60
 rs_snap calib pane.txt
 rs_excerpt calib-body-1 calib-record.jsonl
+
+# 6. Authentication baseline: one real model call. The session must answer the
+# prompt with the agreed string, and the environment's model-call counter must
+# end above zero. A TUI that merely started proves nothing about the token, so
+# either half missing fails the probe. The prompt goes through rs_send_prompt;
+# the answer is evidence only when an assistant message in the transcript
+# carries it, and the pane is not accepted as a substitute.
+preflight_reply='rs-preflight-ok'
+if ! rs_send_prompt calib "Reply with exactly $preflight_reply and nothing else."; then
+	echo "preflight: rs-calib did not accept the reply prompt" >&2
+	exit 1
+fi
+reply_status=0
+rs_wait_reply "$preflight_reply" calib-reply-record.jsonl 120 || reply_status=$?
+rs_snap calib pane-reply.txt
+if ((reply_status != 0)); then
+	echo "preflight: rs-calib did not reply with $preflight_reply" >&2
+	exit 1
+fi
+rs_snap calib pane-reply.txt
+rs_excerpt "$preflight_reply" calib-reply-record.jsonl
+"$R/run" rsprobe env usage --root "$R" >"$OUT/usage-after-reply.txt" 2>&1 || true
+total="$(sed -n 's/^total //p' "$OUT/usage-after-reply.txt" | tail -n 1)"
+if [[ ! "$total" =~ ^[0-9]+$ ]] || ((total <= 0)); then
+	echo "preflight: model-call count is ${total:-unreadable}, want above zero" >&2
+	exit 1
+fi
+rs_obs "authentication baseline: rs-calib replied $preflight_reply and env usage total=$total"
+
+# The reply must also come from a submitted prompt: a user record has to carry
+# the marker the prompt asked about, and the usage counter has to be positive.
+rs_require_model_turn "$preflight_reply" 1

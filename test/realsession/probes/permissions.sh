@@ -32,13 +32,15 @@ EOF
 }
 
 # perm_wait_ready waits until the session appears in the registry and its
-# input box is available.
+# input box is available. Readiness itself is the shared predicate, so the
+# prompt that the permission dialog will cover is never mistaken for it.
 perm_wait_ready() {
 	local window="$1" seconds="$2"
 	local deadline=$((SECONDS + seconds))
 	while ((SECONDS < deadline)); do
 		if rs_socket_of "$window" >/dev/null 2>&1; then
-			if rs_wait_pane "$window" '\? for shortcuts' 10; then
+			if rs_wait_ready "$window" "$((deadline - SECONDS))"; then
+				rs_obs_mode "$window"
 				return 0
 			fi
 			return 1
@@ -80,7 +82,7 @@ perm_run_turn() {
 			sleep 0.3
 			continue
 		fi
-		if printf '%s\n' "$pane" | grep -qF '? for shortcuts'; then
+		if rs_ready_criterion "$pane" >/dev/null; then
 			if ((started == 1 || now - sent_at >= 30)); then
 				break
 			fi
@@ -106,7 +108,7 @@ sha256sum "$R/cfg/settings.json" >"$OUT/settings-before.sha256"
 
 # Case one: reading the configuration is allowlisted, changing it is not.
 perm_write_settings "$OUT/perm-a.settings.json" mcp__peer__get_config
-rs_window perm-a claude --model haiku -n perm-a --settings "$OUT/perm-a.settings.json"
+rs_window perm-a claude --model haiku -n perm-a --permission-mode default --settings "$OUT/perm-a.settings.json"
 perm_wait_ready perm-a 30
 rs_snap perm-a perm-a-start.txt
 perm_send perm-a 'Call mcp__peer__get_config for key broker.alias and show the result. Then call mcp__peer__set_config with key broker.alias and value hostB2.'
@@ -118,7 +120,7 @@ perm_close perm-a
 # is still not.
 before=$PERM_DIALOGS
 perm_write_settings "$OUT/perm-b.settings.json" mcp__peer__create_pairing_key
-rs_window perm-b claude --model haiku -n perm-b --settings "$OUT/perm-b.settings.json"
+rs_window perm-b claude --model haiku -n perm-b --permission-mode default --settings "$OUT/perm-b.settings.json"
 perm_wait_ready perm-b 30
 rs_snap perm-b perm-b-start.txt
 perm_send perm-b 'Call mcp__peer__create_pairing_key and show the result. Then call mcp__peer__set_config with key broker.alias and value hostB2.'

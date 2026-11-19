@@ -183,7 +183,7 @@ rs_obs "port $PORT is held by pid $occupier_pid"
 # Step 3: start the interactive session. The MCP server it spawns finds no
 # Broker socket and keeps trying to launch one against the occupied address.
 rs_tmux_start
-rs_window down claude --model haiku -n down --allowedTools mcp__peer__list_agents
+rs_window down claude --model haiku -n down --permission-mode default --allowedTools mcp__peer__list_agents
 
 socket=""
 deadline=$((SECONDS + 40))
@@ -199,6 +199,12 @@ if [[ -z "$socket" ]]; then
 	exit 1
 fi
 rs_obs "session down uses inbox socket $socket"
+if ! rs_wait_ready down 60; then
+	rs_obs "session down did not reach its input prompt within 60 seconds"
+	rs_snap down timeout-down-prompt.txt
+	exit 1
+fi
+rs_obs_mode down
 
 # Step 4: capture the MCP view, where peer must show as available although the
 # Broker cannot start. Claude Code 2.1.311's /mcp list marks an available

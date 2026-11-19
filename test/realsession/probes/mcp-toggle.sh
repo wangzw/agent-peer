@@ -115,9 +115,11 @@ mt_wait_socket() {
 }
 
 # mt_wait_prompt waits until the TUI is back at the empty input prompt, which
-# is the point at which typed keys reach the slash command line.
+# is the point at which typed keys reach the slash command line. The shared
+# readiness predicate covers every version's hint and refuses to call a dialog
+# screen ready.
 mt_wait_prompt() {
-	rs_wait_pane "$1" 'for shortcuts' "$2"
+	rs_wait_ready "$1" "$2"
 }
 
 # --- step 1: the signal sequence -------------------------------------------
@@ -126,7 +128,7 @@ jq -n --arg bin "$R/bin/rsprobe" --arg log "$OUT/sig.jsonl" \
 	'{mcpServers: {stub: {command: $bin, args: ["sigstub", "--log", $log]}}}' \
 	>"$OUT/stub.json"
 
-rs_window tog-stub claude --model haiku -n tog-stub --mcp-config "$OUT/stub.json"
+rs_window tog-stub claude --model haiku -n tog-stub --permission-mode default --mcp-config "$OUT/stub.json"
 
 if ! mt_wait_start 1 30; then
 	rs_snap tog-stub pane-stub-timeout.txt
@@ -163,6 +165,7 @@ fi
 if ! mt_wait_prompt tog-stub 30; then
 	rs_obs "step 1: the input prompt did not appear; sending /mcp anyway"
 fi
+rs_obs_mode tog-stub
 rs_snap tog-stub pane-stub-before.txt
 
 rs_keys tog-stub '/mcp disable stub' Enter
@@ -240,7 +243,7 @@ fi
 
 # --- step 2: deregistration and registration -------------------------------
 
-rs_window tog claude --model haiku -n tog --allowedTools mcp__peer__join_topic
+rs_window tog claude --model haiku -n tog --permission-mode default --allowedTools mcp__peer__join_topic
 
 if ! mt_wait_socket tog 30; then
 	rs_snap tog pane-tog-timeout.txt
@@ -252,6 +255,7 @@ rs_obs "step 2: tog registered"
 if ! mt_wait_prompt tog 30; then
 	rs_obs "step 2: the input prompt did not appear; sending the join prompt anyway"
 fi
+rs_obs_mode tog
 
 rs_keys tog 'Call mcp__peer__join_topic with name tog-manual, then reply done.' Enter
 rs_obs "step 2: asked tog to join tog-manual"

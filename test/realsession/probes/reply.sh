@@ -245,8 +245,8 @@ fi
 rs_obs "sender $SENDER_ADDRESS is visible through pairer-b"
 
 rs_tmux_start
-rs_window reply-s claude --model sonnet -n reply-s --allowedTools mcp__peer__send_message
-rs_window reply-h claude --model haiku -n reply-h --allowedTools mcp__peer__send_message
+rs_window reply-s claude --model sonnet -n reply-s --permission-mode default --allowedTools mcp__peer__send_message
+rs_window reply-h claude --model haiku -n reply-h --permission-mode default --allowedTools mcp__peer__send_message
 
 printf 'session\tturn\ttool\tto\tto_matches\treplies\tfrom\n' >"$OUT/turns.tsv"
 
@@ -258,6 +258,13 @@ for name in reply-s reply-h; do
 		exit 1
 	fi
 	rs_obs "$name registered, inbox socket $socket"
+	if ! rs_wait_ready "$name" 30; then
+		rs_snap "$name" "fail-$name-prompt.txt" || true
+		rs_obs "$name did not reach its input prompt within 30s"
+		echo "reply.sh: $name did not reach its input prompt" >&2
+		exit 1
+	fi
+	rs_obs_mode "$name"
 done
 
 "$R/run" rsprobe status >"$OUT/status-registered.txt"

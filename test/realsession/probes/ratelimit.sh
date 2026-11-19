@@ -295,10 +295,15 @@ rs_obs "broker started; its send log is $OUT/broker.log"
 
 rs_tmux_start
 rs_window rl-rx claude --model haiku -n rl-rx \
+	--permission-mode default \
 	--append-system-prompt "$LOW_CALL_PROMPT" \
 	--allowedTools "Bash(sleep:*)"
 rl_wait_socket rl-rx 30
-sleep 1
+if ! rs_wait_ready rl-rx 45; then
+	rs_obs "rl-rx did not reach its input prompt within 45s"
+	exit 1
+fi
+rs_obs_mode rl-rx
 rs_obs "receiving session rl-rx registered"
 
 rs_agent rl-s1

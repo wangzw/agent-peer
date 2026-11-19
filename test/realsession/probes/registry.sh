@@ -73,25 +73,6 @@ reg_timing() {
 	printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" >>"$OUT/timings.tsv"
 }
 
-# rs_pane_idle waits until the window is back at its input prompt. The /rename
-# after a tool call must not be typed into a turn that is still running;
-# rs_wait_pane for the error text returns before the model's reply finishes.
-# It is a best-effort pacing aid; the pane is captured around each step, so a
-# miss changes the turn's outcome, not the rename measurement itself.
-rs_pane_idle() {
-	local window="$1" seconds="$2" deadline pane
-	deadline=$((SECONDS + seconds))
-	while ((SECONDS < deadline)); do
-		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if printf '%s\n' "$pane" | grep -qE '❯|\? for shortcuts' &&
-			! printf '%s\n' "$pane" | grep -qF 'esc to interrupt'; then
-			return 0
-		fi
-		sleep 0.5
-	done
-	return 1
-}
-
 # reg_measure_present polls until name is listed and records the elapsed
 # milliseconds plus the previous-name field. The first poll runs immediately,
 # as the plan requires for the rename measurement.
@@ -183,15 +164,25 @@ rs_obs "watching $R/cfg/sessions (watch pid $WATCH_PID)"
 
 # Step 3: start three interactive sessions and wait until all are registered.
 rs_tmux_start
-rs_window reg-a claude --model haiku -n reg-a --append-system-prompt "$PROMPT" --debug-file "$R/debug/reg-a.debug"
-rs_window reg-b claude --model haiku -n reg-b --append-system-prompt "$PROMPT" --allowedTools "Bash(sleep:*)" --debug-file "$R/debug/reg-b.debug"
-rs_window reg-c claude --model haiku -n reg-c --append-system-prompt "$PROMPT" --debug-file "$R/debug/reg-c.debug"
+rs_window reg-a claude --model haiku -n reg-a --permission-mode default --append-system-prompt "$PROMPT" --debug-file "$R/debug/reg-a.debug"
+rs_window reg-b claude --model haiku -n reg-b --permission-mode default --append-system-prompt "$PROMPT" --allowedTools "Bash(sleep:*)" --debug-file "$R/debug/reg-b.debug"
+rs_window reg-c claude --model haiku -n reg-c --permission-mode default --append-system-prompt "$PROMPT" --debug-file "$R/debug/reg-c.debug"
 for name in reg-a reg-b reg-c; do
 	if ! reg_wait_present "$name" 30; then
 		rs_snap "$name" "timeout-$name.txt" || true
 		rs_obs "session $name did not register within 30s"
 		exit 1
 	fi
+done
+# Registration happens before the composer accepts keys; the rename and prompt
+# below must not be typed into a starting session.
+for name in reg-a reg-b reg-c; do
+	if ! rs_wait_ready "$name" 30; then
+		rs_snap "$name" "ready-$name-timeout.txt" || true
+		rs_obs "session $name did not reach its input prompt within 30s"
+		exit 1
+	fi
+	rs_obs_mode "$name"
 done
 reg_status >"$OUT/status-initial.txt"
 rs_obs "reg-a, reg-b and reg-c registered"
@@ -251,8 +242,11 @@ elif ((idle_seen == 0)); then
 fi
 
 # Step 6: an unusable name is not registered; renaming to a usable one is.
-rs_window invalid claude --model haiku -n 'a@b' --append-system-prompt "$PROMPT" --allowedTools mcp__peer__list_agents --debug-file "$R/debug/invalid.debug"
-sleep 15
+rs_window invalid claude --model haiku -n 'a@b' --permission-mode default --append-system-prompt "$PROMPT" --allowedTools mcp__peer__list_agents --debug-file "$R/debug/invalid.debug"
+if ! rs_wait_ready invalid 45; then
+	rs_obs "the a@b session did not reach its input prompt within 45s"
+fi
+rs_obs_mode invalid
 reg_status >"$OUT/status-invalid.txt"
 if reg_line_present ab; then
 	rs_obs "the a@b session is listed as ab before /rename"
@@ -299,12 +293,17 @@ for attempt in 2 3 4 5 6 7 8 9 10; do
 	fi
 
 	exit_name="reg-exit-$attempt"
-	rs_window "$exit_name" claude --model haiku -n "$exit_name" --append-system-prompt "$PROMPT" --debug-file "$R/debug/$exit_name.debug"
+	rs_window "$exit_name" claude --model haiku -n "$exit_name" --permission-mode default --append-system-prompt "$PROMPT" --debug-file "$R/debug/$exit_name.debug"
 	if ! reg_wait_present "$exit_name" 30; then
 		rs_snap "$exit_name" "timeout-$exit_name.txt" || true
 		rs_obs "session $exit_name did not register within 30s"
 		exit 1
 	fi
+	if ! rs_wait_ready "$exit_name" 30; then
+		rs_obs "session $exit_name did not reach its input prompt within 30s"
+		exit 1
+	fi
+	rs_obs_mode "$exit_name"
 	start="$(reg_now_ms)"
 	rs_keys "$exit_name" '/exit' Enter
 	if ! reg_measure_gone "$exit_name" exit "$attempt" 5 "$start"; then

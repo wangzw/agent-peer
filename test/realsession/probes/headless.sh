@@ -149,6 +149,9 @@ fi
 rs_obs "hl-rx received from-headless with from_name=${from_name}"
 
 # Step 2: a headless session which skips permission prompts receives nothing.
+# This is the one deliberate exception to pinning --permission-mode default:
+# skipping permission confirmation is the condition the step measures
+# (REQ-agent-messaging-036), so the mode must not be overridden.
 bypass_in="$R/ctl/hl-bypass.in"
 rm -f "$bypass_in"
 mkfifo "$bypass_in"
