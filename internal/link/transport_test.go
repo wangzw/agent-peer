@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // transportTestTimeout bounds every real-time wait in these tests. Deadlines
@@ -602,6 +604,81 @@ func TestServerOversizedFrameRejected(t *testing.T) {
 		}
 	case <-time.After(transportTestTimeout):
 		t.Fatal("server send did not return")
+	}
+}
+
+// recordingSendStream records whether a frame reached the transport.
+type recordingSendStream struct {
+	sent atomic.Bool
+}
+
+func (s *recordingSendStream) Send(*linkpb.Frame) error {
+	s.sent.Store(true)
+	return nil
+}
+
+func (s *recordingSendStream) Recv() (*linkpb.Frame, error) { return nil, io.EOF }
+
+// frameOfEncodedSize builds a frame whose marshaled form is exactly size bytes.
+func frameOfEncodedSize(t *testing.T, size int) *linkpb.Frame {
+	t.Helper()
+	payload := size
+	for i := 0; i < 8; i++ {
+		f := &linkpb.Frame{Kind: 200, Payload: make([]byte, payload)}
+		n := proto.Size(f)
+		if n == size {
+			return f
+		}
+		payload -= n - size
+	}
+	t.Fatalf("could not build a frame of exactly %d bytes", size)
+	return nil
+}
+
+// TestFrameSizeLimit pins the boundary of the transport's message limit: an
+// encoded frame of exactly the limit reaches the transport, and one byte more
+// is rejected as ResourceExhausted before the transport is touched.
+func TestFrameSizeLimit(t *testing.T) {
+	atLimit := frameOfEncodedSize(t, maxMessageSize)
+	stream := new(recordingSendStream)
+	c := newConn(stream, nil, peerIdentity{}, 8)
+	if err := c.sendDirect(context.Background(), atLimit); err != nil {
+		t.Fatalf("sendDirect at the limit: %v", err)
+	}
+	if !stream.sent.Load() {
+		t.Fatal("a frame at the limit did not reach the transport")
+	}
+
+	overLimit := frameOfEncodedSize(t, maxMessageSize+1)
+	stream = new(recordingSendStream)
+	c = newConn(stream, nil, peerIdentity{}, 8)
+	err := c.sendDirect(context.Background(), overLimit)
+	if code := status.Code(err); code != codes.ResourceExhausted {
+		t.Fatalf("oversized send error code = %v (%v), want ResourceExhausted", code, err)
+	}
+	if stream.sent.Load() {
+		t.Fatal("an oversized frame reached the transport")
+	}
+}
+
+// TestOversizedFrameRejectedWithoutTransport pins that the 4 MiB limit is
+// enforced before the frame reaches the transport, whatever state the
+// connection is in. gRPC rejects an oversized frame locally on Send, but
+// sendDirect waits for that result in a separate goroutine; when the
+// connection closes in the same window, the close branch wins and reports
+// ErrNotEstablished, whose status code is Unknown instead of
+// ResourceExhausted.
+func TestOversizedFrameRejectedWithoutTransport(t *testing.T) {
+	stream := new(recordingSendStream)
+	c := newConn(stream, nil, peerIdentity{}, 8)
+	c.closeAsync(FailConnectionLost)
+
+	err := c.sendDirect(context.Background(), &linkpb.Frame{Kind: 200, Payload: make([]byte, maxMessageSize+1)})
+	if code := status.Code(err); code != codes.ResourceExhausted {
+		t.Fatalf("oversized send error code = %v (%v), want ResourceExhausted", code, err)
+	}
+	if stream.sent.Load() {
+		t.Fatal("the oversized frame reached the transport")
 	}
 }
 

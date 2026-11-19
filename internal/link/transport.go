@@ -14,11 +14,27 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // maxMessageSize is the largest frame either side accepts or sends. It applies
-// to the gRPC message, so a frame's payload is a little smaller.
+// to the gRPC message, so a frame's payload is a little smaller. The same
+// constant is passed to grpc.MaxCallSendMsgSize and grpc.MaxSendMsgSize, and
+// checkFrameSize enforces it before a frame reaches the transport.
 const maxMessageSize = 4 << 20
+
+// checkFrameSize rejects a frame the transport would refuse. The limit applies
+// to the encoded message, so proto.Size is the matching measure: it is the
+// serialized length gRPC compares with MaxSendMsgSize, and no compressor is
+// configured on either side. The check runs before the frame reaches the
+// transport because a close that races with the transport's own Send can
+// replace ResourceExhausted with a generic closed-connection error.
+func checkFrameSize(f *linkpb.Frame) error {
+	if n := proto.Size(f); n > maxMessageSize {
+		return status.Errorf(codes.ResourceExhausted, "link: frame is %d bytes, above the %d-byte message limit", n, maxMessageSize)
+	}
+	return nil
+}
 
 // dialTLS opens a TCP connection and completes a TLS 1.3 handshake with the
 // peer's own TLS configuration. It does not check the fingerprint; the caller

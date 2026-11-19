@@ -247,6 +247,9 @@ func (c *conn) sendDirect(ctx context.Context, f *linkpb.Frame) error {
 	if c.writerOn.Load() {
 		return errors.New("link: sendDirect after writer start")
 	}
+	if err := checkFrameSize(f); err != nil {
+		return err
+	}
 
 	done := make(chan error, 1)
 	go func() { done <- c.stream.Send(f) }()
