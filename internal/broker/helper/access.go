@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -44,6 +43,20 @@ const defaultAccessCheckTimeout = 5 * time.Second
 // AccessCheckResponse to stdout and returns.
 func RunAccessCheck(stdin io.Reader, stdout io.Writer) error {
 	if err := enterAccountFromEnv(); err != nil {
+		// Report the failure in the framed response before exiting. The
+		// process's stderr is discarded by the Broker, so the response is the
+		// only path for the errno to reach the Broker log. The response is
+		// never allowed: it carries the error and the process exits with a
+		// failure.
+		resp := &helperpb.AccessCheckResponse{
+			ProtocolVersion: helperpb.ProtocolVersion,
+			Uid:             uint32(os.Geteuid()),
+			Allowed:         false,
+			Error:           err.Error(),
+		}
+		if writeErr := newMsgWriter(stdout).write(resp); writeErr != nil {
+			return fmt.Errorf("access-check: %w (reporting it: %v)", err, writeErr)
+		}
 		return fmt.Errorf("access-check: %w", err)
 	}
 
@@ -157,34 +170,19 @@ func parseIDList(value string) ([]uint32, error) {
 	return ids, nil
 }
 
-// becomeAccount makes the process check as uid by replacing its supplementary
-// groups, effective gid and effective uid, in that order. The calls require the
-// process to be root, which the Broker arranges by execing it without a
-// credential change. The real and saved uid are deliberately left alone.
+// becomeAccount makes the process check as uid. A check whose target identity
+// is already the process's effective identity needs no switch; this also
+// covers the root access check on macOS, where the account database can list
+// more groups than Darwin's NGROUPS limit. Otherwise the switch is
+// platform-specific: Linux replaces the supplementary groups, while Darwin
+// lets the kernel resolve them through memberd. The calls require the process
+// to be root, which the Broker arranges by execing it without a credential
+// change. The real and saved uid are deliberately left alone.
 func becomeAccount(uid, gid uint32, groups []uint32) error {
-	// A check whose target identity is already the process's effective
-	// identity needs no switch. This also covers the root access check on
-	// macOS, where the account database can list more groups than Darwin's
-	// NGROUPS limit and setgroups would fail with EINVAL. Root's read and write
-	// checks do not depend on its supplementary groups.
 	if uint32(os.Geteuid()) == uid && uint32(os.Getegid()) == gid {
 		return nil
 	}
-
-	intGroups := make([]int, len(groups))
-	for i, group := range groups {
-		intGroups[i] = int(group)
-	}
-	if err := syscall.Setgroups(intGroups); err != nil {
-		return fmt.Errorf("setting groups %v: %w", groups, err)
-	}
-	if err := syscall.Setegid(int(gid)); err != nil {
-		return fmt.Errorf("setting effective gid %d: %w", gid, err)
-	}
-	if err := syscall.Seteuid(int(uid)); err != nil {
-		return fmt.Errorf("setting effective uid %d: %w", uid, err)
-	}
-	return nil
+	return switchAccount(uid, gid, groups)
 }
 
 // AccessChecker decides configuration file permissions by running one
@@ -291,11 +289,17 @@ func (c *AccessChecker) Check(ctx context.Context, uid uint32, path string, need
 	if got := res.msg.GetProtocolVersion(); got != helperpb.ProtocolVersion {
 		return false, fmt.Errorf("helper: access check for uid %d: check process reported protocol version %d", uid, got)
 	}
+	// Check the reported error before the uid: a failed identity switch is
+	// reported with the process's current effective uid, and that errno must
+	// reach the Broker log instead of being replaced by a uid mismatch. An
+	// error response is never allowed, whatever its Allowed field says.
+	if msg := res.msg.GetError(); msg != "" {
+		log.Warn("access check process reported an error",
+			"event", "access_check_failed", "uid", uid, "error", msg)
+		return false, fmt.Errorf("helper: access check for uid %d: %s", uid, msg)
+	}
 	if got := res.msg.GetUid(); got != uid {
 		return false, fmt.Errorf("helper: access check for uid %d: check process ran as uid %d", uid, got)
-	}
-	if msg := res.msg.GetError(); msg != "" {
-		return false, fmt.Errorf("helper: access check for uid %d: %s", uid, msg)
 	}
 	if waitErr != nil {
 		return false, fmt.Errorf("helper: access check for uid %d: check process failed: %w", uid, waitErr)

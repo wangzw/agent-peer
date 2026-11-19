@@ -252,6 +252,8 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 - 用户级 Broker 不做判定。它的配置文件属于本账户，调用方就是本账户。
 - 系统级 Broker 每次判定时派生一个权限检查进程：子进程以 root 身份执行，进入协议循环前依次把附属组、有效组与有效 uid 切换为调用方账户此刻在账户数据库中的对应值，真实与保存的 uid 仍为 root，调用方因此既不能停止也不能读取这个进程。目标 uid 与 gid 已等于子进程的有效身份时不做切换：跳过要求有效 uid 与有效 gid 都相同，而子进程由 Broker 以 root 启动，只有检查的目标账户也是 root 时才满足，不存在以 root 的有效身份替其他账户判定的失效开放。子进程以隐藏的子命令 `agent-peer internal access-check` 运行本二进制，对配置文件做一次读或写的访问检查，返回结果后退出。检查直接调用 `faccessat2`（`AT_EACCESS`），按有效身份判定，读检查 `R_OK`，写检查 `W_OK`；文件不存在、调用方没有权限、路径中有一段不是目录等情形判为不允许。判定不根据权限位推算，检查结果因此包含了组权限和访问控制列表的作用。`faccessat2` 要求 Linux 5.8 及以上；内核返回 `ENOSYS` 或 `EPERM` 时，检查按自身失败处理，调用以 `internal` 失败，不退回按权限位推算，因为那样的回退会绕过访问控制列表。macOS 没有独立的 `faccessat2`，`faccessat(AT_EACCESS)` 由内核直接按有效身份判定，没有按权限位推算的回退。子进程的标准错误不继承 Broker，写入的内容被丢弃。检查超时 5 秒、派生失败或子进程报告的有效 uid 与调用方不符时，调用以 `internal` 失败；账户数据库中没有调用方 uid 时判为不允许。
 
+macOS 上，身份切换不经过 `setgroups`：Darwin 的 `setgroups` 与 `initgroups` 的静态组表都受 `NGROUPS`（16）限制，所属组超过 16 个的账户直接切换会得到 `EINVAL`。检查进程先 `setegid` 到账户主组，再以 Darwin 的 `initgroups` 系统调用（`bsd/kern/syscalls.master` 中的 243 号，签名为 `initgroups(u_int gidsetsize, gid_t *gidset, int gmuid)`，没有 libc stub）传入只含主组的静态表和账户 uid 作为 `gmuid`，由内核在判定组成员时经 memberd 解析其余组，最后 `seteuid` 到账户 uid。静态表因此始终不超过 `NGROUPS`，判定仍由内核按账户的完整组成员关系完成，组权限与 ACL 都包含在内。任何一步失败都按检查失败处理，不退回按权限位推算。切换失败时，检查进程把带 errno 的错误写进响应的 `Error` 字段后以失败退出；Broker 读取响应时先看 `Error`，非空就以 `internal` 失败，并用 Warn 记录这段文本，因此 errno 进入 Broker 日志，该响应也不会被判为允许。这个系统调用号是私有接口，由 macOS 的端到端测试守护。
+
 系统级 Broker 接受所有账户的连接，哪些账户能使用它由本机 socket 的文件权限限定。
 
 Linux 上，账户与组经 `getent` 取自系统的账户数据库，来源由 NSS 配置决定，LDAP、SSSD、extrausers 等来源的账户同样可以派生权限检查进程。查询使用绝对路径 `/usr/bin/getent` 或 `/bin/getent`，子进程环境只给 `LANG=C`，账户名或 uid 之前加 `--`，单次调用限时 5 秒。应答要求恰好一行且与请求一致；getent 报告不存在时按账户数据库中没有该账户处理，找不到 getent、超时、其他退出码或格式异常时退回 `os/user` 并记一条 Warn，此时只有本地文件来源可见（[ADR-account-database-source](../../adr/adr-account-database-source.md)）。
@@ -429,7 +431,7 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 本机接口与版本握手 | 已实现 | `internal/broker/broker.go`（`New`）、`internal/broker/hello.go`（`Hello`）、`internal/broker/version_reject.go`；“已拒绝”标记与后续调用的 `version_mismatch` 归版本不兼容处理 |
 | 调用方识别 | 已实现 | `internal/broker/caller.go`（`ReadPeerCred`、`CallerFrom`） |
 | 权限判定的挂接与用户级的恒允许 | 已实现 | `internal/broker/access.go`（`methodAccess`、`accessUnaryInterceptor`、`accessStreamInterceptor`、`allowAllAccess`）、`internal/broker/configassemble.go`（`configWiring`） |
-| 系统级的权限检查进程 | 已实现 | `internal/broker/helper/access.go`（`AccessChecker`、`RunAccessCheck`）、`internal/broker/system_wiring.go`（`systemChecker`） |
+| 系统级的权限检查进程 | 已实现 | `internal/broker/helper/access.go`（`AccessChecker`、`RunAccessCheck`）、`internal/broker/helper/access_darwin.go`（Darwin 的 `initgroups` 系统调用）、`internal/broker/system_wiring.go`（`systemChecker`） |
 | Agent 登记与注销 | 已实现 | `internal/broker/register.go`（`Register`）、`internal/broker/agents.go`（`lookupAgent`）、`internal/broker/localalias.go`（`localAliasChanged`） |
 | 会话变化的跟踪与曾用名 | 已实现 | `internal/broker/tracking.go`（`refreshAgent`） |
 | 账户辅助进程 | 已实现 | `internal/broker/helper/`（`Serve`、`Client`、`Pool`）、`internal/broker/system_wiring.go`（`helperPool`） |
