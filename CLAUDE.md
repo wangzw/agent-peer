@@ -18,3 +18,32 @@ A cross-host communication system for agents. A host runs a Broker either as a s
 - language: zh-CN
 
 `docs/roadmap.md` records priorities and milestones and belongs to none of the documentation trees above. ADRs are part of the design: a design change that adopts, replaces or reverses a significant decision adds or revises the record under `docs/adr` in the same change.
+
+## Checks
+
+`make check` runs every gate in order: `lint`, `proto-lint`, `gen-check`, `test`, `e2e` and `docs-check`. Each is also a target of its own. Run the gates that cover what a change touches before committing it, and leave them passing with no warning ignored.
+
+## Commit Convention
+
+Supplements the `commit-convention` skill.
+
+### Scopes
+
+- a module name, such as `broker` or `link`: the module's Go package under `internal/` and its design document `docs/design/modules/design-<module>.md`. The module table in `docs/design/README.md` defines which modules exist.
+- `cmd`: `cmd/agent-peer`, the entry point and the command wiring that belongs to no module
+- `e2e`: `test/e2e/`, the end-to-end tests and their container topologies
+- `deps`: vendored source under `third_party/` and dependency versions
+- `architecture`: `docs/design/architecture.md`
+- `adr`: `docs/adr/`
+- `prd`: `docs/prd/`
+- `glossary`: `docs/glossary.md`
+- `references`: `docs/references.md`
+- `roadmap`: `docs/roadmap.md`
+- `design`: cross-cutting changes
+- `repo`: repository-level configuration, such as `CLAUDE.md`, `.claude/`, `.github/`, `Makefile`, `scripts/`, `.golangci.yml`, the `buf` configuration and `.gitignore`
+
+Shared test support under `internal/testkit/` takes the scope of the module it simulates.
+
+### Rules
+
+- A change is breaking when it removes, renames or changes the meaning of an MCP tool name or parameter, a configuration key, the one-time pairing key format, a link frame, the local interface version, a requirement id, or a glossary term used by an interface.
