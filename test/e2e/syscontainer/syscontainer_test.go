@@ -1,7 +1,6 @@
 package syscontainer
 
 import (
-	"net/netip"
 	"regexp"
 	"strings"
 	"testing"
@@ -19,10 +18,9 @@ func TestSystemSubnetsDisjointFromRoutedAllocator(t *testing.T) {
 	if len(routed) == 0 {
 		t.Fatal("RoutedSubnetPrefixes returned no prefixes")
 	}
-	for _, cidr := range systemSubnetPrefixes() {
-		system := netip.MustParsePrefix(cidr)
-		if system.Bits() != 24 {
-			t.Fatalf("systemSubnetPrefixes returned %q; want a /24", cidr)
+	for _, system := range systemSubnetPrefixes() {
+		if system.Bits() != systemSubnetBits {
+			t.Fatalf("systemSubnetPrefixes returned %s; want a /%d", system, systemSubnetBits)
 		}
 		for _, prefix := range routed {
 			if system.Overlaps(prefix) {
