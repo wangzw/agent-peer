@@ -414,7 +414,7 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 |---|---|---|
 | 部署形态与启动参数 | 已实现 | `internal/broker/run.go`（`Run`）、`internal/broker/assemble.go`（`DefaultAssemblers`）、`internal/broker/system.go`（`applyLocalSocketPerms`、`validateSocketGroup`、`watchSocketPerms`） |
 | 账户锁、进程树检查与监听地址绑定 | 已实现 | `internal/broker/lock.go`（`AcquireAccountLock`）、`internal/broker/localsock.go`（`BindLocalSocket`）、`internal/broker/run.go`（`Run`）；监听地址由 `run.go` 经 link 装配器提供的接口绑定 |
-| 本机接口与版本握手 | 部分实现 | `internal/broker/broker.go`（`New`）、`internal/broker/hello.go`（`Hello`）；“已拒绝”标记与后续调用的 `version_mismatch` 归版本不兼容处理 |
+| 本机接口与版本握手 | 已实现 | `internal/broker/broker.go`（`New`）、`internal/broker/hello.go`（`Hello`）、`internal/broker/version_reject.go`；“已拒绝”标记与后续调用的 `version_mismatch` 归版本不兼容处理 |
 | 调用方识别 | 已实现 | `internal/broker/caller.go`（`ReadPeerCred`、`CallerFrom`） |
 | 权限判定的挂接与用户级的恒允许 | 已实现 | `internal/broker/access.go`（`methodAccess`、`accessUnaryInterceptor`、`accessStreamInterceptor`、`allowAllAccess`）、`internal/broker/configassemble.go`（`configWiring`） |
 | 系统级的权限检查进程 | 已实现 | `internal/broker/helper/access.go`（`AccessChecker`、`RunAccessCheck`）、`internal/broker/system_wiring.go`（`systemChecker`） |
@@ -430,4 +430,4 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 名录的装配：公开开关、公开 topic 适配与非对端列出 | 已实现 | `internal/broker/diradapter.go`（`directoryAdapter`、`directoryAdapter.install`）、`internal/broker/dirassemble.go`（`directoryAssembler`、`directoryComponent`）、`internal/broker/discoveryrelay.go`（`publicChanged`） |
 | 配对与对端管理的本机调用 | 已实现 | `internal/broker/connect_rpc.go`、`internal/broker/disconnect_rpc.go`、`internal/broker/pairkey_rpc.go`、`internal/broker/listbrokers.go`、`internal/broker/peerinfo.go`；非对端的列出由名片与公开 topic 接入 |
 | 配置读写与审计的本机调用 | 已实现 | `internal/broker/configrpc.go`、`internal/broker/auditrpc.go` |
-| 终端命令 | 部分实现 | `cmd/agent-peer`、`internal/mcpserver/termcmd`；`service install` 未实现，`broker --system` 由系统级 Broker 单元负责 |
+| 终端命令 | 已实现 | `cmd/agent-peer`、`internal/mcpserver/termcmd`、`cmd/agent-peer/service_cmd.go` |
