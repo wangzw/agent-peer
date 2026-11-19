@@ -65,8 +65,8 @@ func TestLinkVersionMismatchAndRecovery(t *testing.T) {
 	a := harness.NewLocalHost(t, harness.LocalOptions{Name: "a"})
 	b := harness.NewLocalHost(t, harness.LocalOptions{Name: "b"})
 	addrB := b.FreeAddr(t)
-	a.WriteConfig(t, harness.ConfigYAML(harness.FastTimers, "broker:\n  listen: "+a.FreeAddr(t)+"\n"))
-	b.WriteConfig(t, harness.ConfigYAML(harness.FastTimers, "broker:\n  listen: "+addrB+"\n"))
+	a.WriteConfig(t, harness.ConfigYAML(harness.FastTimers, "broker:\n  alias: a\n  listen: "+a.FreeAddr(t)+"\n"))
+	b.WriteConfig(t, harness.ConfigYAML(harness.FastTimers, "broker:\n  alias: b\n  listen: "+addrB+"\n"))
 	vlStartBroker(t, a, harness.BrokerSpec{})
 	addrB = vlStartBroker(t, b, harness.BrokerSpec{}).Address(addrB)
 

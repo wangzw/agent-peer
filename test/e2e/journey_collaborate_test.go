@@ -40,8 +40,8 @@ func TestJourneyCollaborateInTopic(t *testing.T) {
 	defer operatorB.End(t)
 	key := collabCreateKey(t, operatorA)
 	collabConnect(t, operatorB, key.Addresses[0], key.Key)
-	collabWaitPeer(t, hostA, "hostB-17443", localpb.PeerRole_PEER_ROLE_ACCEPTOR, 3*time.Second)
-	collabWaitPeer(t, hostB, "hostA-17443", localpb.PeerRole_PEER_ROLE_DIALER, 3*time.Second)
+	collabWaitPeer(t, hostA, "hostB.peer", localpb.PeerRole_PEER_ROLE_ACCEPTOR, 3*time.Second)
+	collabWaitPeer(t, hostB, "hostA.peer", localpb.PeerRole_PEER_ROLE_DIALER, 3*time.Second)
 
 	// Steps 1 and 2: both sessions work in a repository named by a different
 	// origin spelling; no project configuration exists.
@@ -66,8 +66,8 @@ func TestJourneyCollaborateInTopic(t *testing.T) {
 			return false, "frontend is not listed"
 		}
 		name, alias := collabSplitAddress(entry.Address)
-		if name != "frontend" || alias != "hostB-17443" {
-			return false, fmt.Sprintf("frontend's address is %q, want frontend@hostB-17443", entry.Address)
+		if name != "frontend" || alias != "hostB.peer" {
+			return false, fmt.Sprintf("frontend's address is %q, want frontend@hostB.peer", entry.Address)
 		}
 		if !collabSameSet(entry.SharedTopics, []string{collabTopic}) {
 			return false, fmt.Sprintf("shared topics are %v, want [%s]", entry.SharedTopics, collabTopic)
@@ -79,11 +79,11 @@ func TestJourneyCollaborateInTopic(t *testing.T) {
 	// address in the envelope is the one hostB uses for hostA, not the one
 	// hostA uses for itself.
 	const request = "API /v2/users changed"
-	r := api.Call(t, "send_message", map[string]any{"to": "frontend@hostB-17443", "message": request})
+	r := api.Call(t, "send_message", map[string]any{"to": "frontend@hostB.peer", "message": request})
 	r.MustOK(t)
 	frame := frontend.WaitFrame(t, 3*time.Second)
-	if frame.FromName != "api-worker@hostA-17443" {
-		t.Fatalf("the message is signed %q, want api-worker@hostA-17443", frame.FromName)
+	if frame.FromName != "api-worker@hostA.peer" {
+		t.Fatalf("the message is signed %q, want api-worker@hostA.peer", frame.FromName)
 	}
 	if frame.Auth {
 		t.Fatal("the delivered frame carries an authentication line")
@@ -97,8 +97,8 @@ func TestJourneyCollaborateInTopic(t *testing.T) {
 	r = frontend.Call(t, "send_message", map[string]any{"to": frame.FromName, "message": replyText})
 	r.MustOK(t)
 	reply := api.WaitFrame(t, 3*time.Second)
-	if reply.FromName != "frontend@hostB-17443" {
-		t.Fatalf("the reply is signed %q, want frontend@hostB-17443", reply.FromName)
+	if reply.FromName != "frontend@hostB.peer" {
+		t.Fatalf("the reply is signed %q, want frontend@hostB.peer", reply.FromName)
 	}
 	if body := collabEnvelopeBody(t, reply.Content); body != replyText {
 		t.Fatalf("the reply body is %q, want %q", body, replyText)
@@ -109,13 +109,13 @@ func TestJourneyCollaborateInTopic(t *testing.T) {
 		// returns once the frame has been written to its inbox.
 		frontend.Fake().SetBusy(true)
 		frontend.Fake().SetBusyDelay(time.Second)
-		r := api.Call(t, "send_message", map[string]any{"to": "frontend@hostB-17443", "message": "while busy"})
+		r := api.Call(t, "send_message", map[string]any{"to": "frontend@hostB.peer", "message": "while busy"})
 		r.MustOK(t)
 		if r.Elapsed < 900*time.Millisecond {
 			t.Fatalf("the send returned after %s, want the one-second busy delay to elapse first", r.Elapsed)
 		}
 		frame := frontend.WaitFrame(t, 3*time.Second)
-		if frame.FromName != "api-worker@hostA-17443" {
+		if frame.FromName != "api-worker@hostA.peer" {
 			t.Fatalf("the busy-target message is signed %q", frame.FromName)
 		}
 		if body := collabEnvelopeBody(t, frame.Content); body != "while busy" {
@@ -156,17 +156,17 @@ func TestJourneyCollaborateInTopic(t *testing.T) {
 				return false, "frontend2 is not listed"
 			}
 			name, alias := collabSplitAddress(entry.Address)
-			if name != "frontend2" || alias != "hostB-17443" {
-				return false, fmt.Sprintf("frontend2's address is %q, want frontend2@hostB-17443", entry.Address)
+			if name != "frontend2" || alias != "hostB.peer" {
+				return false, fmt.Sprintf("frontend2's address is %q, want frontend2@hostB.peer", entry.Address)
 			}
 			return true, ""
 		})
 
 		const joined = "after joining the topic"
-		r := api.Call(t, "send_message", map[string]any{"to": "frontend2@hostB-17443", "message": joined})
+		r := api.Call(t, "send_message", map[string]any{"to": "frontend2@hostB.peer", "message": joined})
 		r.MustOK(t)
 		frame := frontend2.WaitFrame(t, 3*time.Second)
-		if frame.FromName != "api-worker@hostA-17443" {
+		if frame.FromName != "api-worker@hostA.peer" {
 			t.Fatalf("the joined-topic message is signed %q", frame.FromName)
 		}
 		if body := collabEnvelopeBody(t, frame.Content); body != joined {

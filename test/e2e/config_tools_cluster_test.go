@@ -71,25 +71,25 @@ func TestConfigToolsCluster(t *testing.T) {
 
 		// A wrong key, then the right one.
 		rejectedAt := time.Now().Add(-time.Second)
-		pkRejectReason(t, pkConnect(t, a1, address, "not-the-right-key", ""), bNode, rejectedAt, "hostA-17443", "key invalid")
+		pkRejectReason(t, pkConnect(t, a1, address, "not-the-right-key", ""), bNode, rejectedAt, "hostA.peer", "key invalid")
 		pkConnect(t, a1, address, key.Key, "").MustOK(t)
-		pkWaitConnected(t, aNode, "hostB-17443", ctcReconnectBound)
-		pkWaitConnected(t, bNode, "hostA-17443", ctcReconnectBound)
+		pkWaitConnected(t, aNode, "hostB.peer", ctcReconnectBound)
+		pkWaitConnected(t, bNode, "hostA.peer", ctcReconnectBound)
 
 		// Cut the network, wait for B to notice, then restore it.
 		c.Cut(t, "hostA", "hostB")
 		harness.Eventually(t, ctcWaitBound, "the acceptor notices the cut", func() (bool, string) {
-			if ctcPeerConnected(t, bNode, "hostA-17443") {
+			if ctcPeerConnected(t, bNode, "hostA.peer") {
 				return false, "the link to A is still connected"
 			}
 			return true, ""
 		})
 		c.Restore(t)
-		pkWaitConnected(t, bNode, "hostA-17443", ctcReconnectBound)
-		pkWaitConnected(t, aNode, "hostB-17443", ctcReconnectBound)
+		pkWaitConnected(t, bNode, "hostA.peer", ctcReconnectBound)
+		pkWaitConnected(t, aNode, "hostB.peer", ctcReconnectBound)
 
 		// B's Agent unpairs A.
-		pkDisconnect(t, b1, "hostA-17443")
+		pkDisconnect(t, b1, "hostA.peer")
 
 		// B's audit holds the events in the order the actions produced them.
 		// The match is an ordered subsequence: other records may interleave.
@@ -105,7 +105,7 @@ func TestConfigToolsCluster(t *testing.T) {
 				name: "pairing_failed written by the acceptor",
 				match: func(e *localpb.AuditEvent) bool {
 					return e.GetEvent() == localpb.AuditEventKind_AUDIT_EVENT_KIND_PAIRING_FAILED &&
-						e.GetActor() == "" && e.GetPeer().GetAlias() == "hostA-17443" &&
+						e.GetActor() == "" && e.GetPeer().GetAlias() == "hostA.peer" &&
 						e.GetDetail() == "key invalid"
 				},
 			},
@@ -113,7 +113,7 @@ func TestConfigToolsCluster(t *testing.T) {
 				name: "pairing_succeeded written by the acceptor",
 				match: func(e *localpb.AuditEvent) bool {
 					return e.GetEvent() == localpb.AuditEventKind_AUDIT_EVENT_KIND_PAIRING_SUCCEEDED &&
-						e.GetActor() == "" && e.GetPeer().GetAlias() == "hostA-17443"
+						e.GetActor() == "" && e.GetPeer().GetAlias() == "hostA.peer"
 				},
 			},
 		}
@@ -122,14 +122,14 @@ func TestConfigToolsCluster(t *testing.T) {
 				name: "link_down naming A",
 				match: func(e *localpb.AuditEvent) bool {
 					return e.GetEvent() == localpb.AuditEventKind_AUDIT_EVENT_KIND_LINK_DOWN &&
-						e.GetPeer().GetAlias() == "hostA-17443"
+						e.GetPeer().GetAlias() == "hostA.peer"
 				},
 			},
 			{
 				name: "link_up naming A",
 				match: func(e *localpb.AuditEvent) bool {
 					return e.GetEvent() == localpb.AuditEventKind_AUDIT_EVENT_KIND_LINK_UP &&
-						e.GetPeer().GetAlias() == "hostA-17443"
+						e.GetPeer().GetAlias() == "hostA.peer"
 				},
 			},
 		}
@@ -139,7 +139,7 @@ func TestConfigToolsCluster(t *testing.T) {
 				match: func(e *localpb.AuditEvent) bool {
 					return e.GetEvent() == localpb.AuditEventKind_AUDIT_EVENT_KIND_UNPAIRED &&
 						e.GetActor() == bAgent && e.GetAccount() == bAccount &&
-						e.GetPeer().GetAlias() == "hostA-17443"
+						e.GetPeer().GetAlias() == "hostA.peer"
 				},
 			},
 		}
@@ -190,11 +190,11 @@ func TestConfigToolsCluster(t *testing.T) {
 		key := pkCreateKey(t, opB)
 		address := pkShownAddress(t, c, "hostB", key.Addresses)
 		pkConnect(t, a1, address, key.Key, "").MustOK(t)
-		pkWaitConnected(t, bNode, "hostA-17443", ctcReconnectBound)
-		pkWaitConnected(t, aNode, "hostB-17443", ctcReconnectBound)
+		pkWaitConnected(t, bNode, "hostA.peer", ctcReconnectBound)
+		pkWaitConnected(t, aNode, "hostB.peer", ctcReconnectBound)
 
 		body := srMark("audit-body-")
-		a1.Call(t, "send_message", map[string]any{"to": "b1@hostB-17443", "message": body}).MustOK(t)
+		a1.Call(t, "send_message", map[string]any{"to": "b1@hostB.peer", "message": body}).MustOK(t)
 		b1.WaitFrame(t, ctcWaitBound)
 
 		// Both audit files have to carry the pairing events before their
@@ -237,8 +237,8 @@ func TestConfigToolsCluster(t *testing.T) {
 		// The original peer pairs with the static key.
 		addrA := pkAddr(c, "hostA")
 		pkConnect(t, bOp, addrA, ctcStaticKeyOne, "").MustOK(t)
-		pkWaitConnected(t, aNode, "hostB-17443", ctcReconnectBound)
-		pkWaitConnected(t, bNode, "hostA-17443", ctcReconnectBound)
+		pkWaitConnected(t, aNode, "hostB.peer", ctcReconnectBound)
+		pkWaitConnected(t, bNode, "hostA.peer", ctcReconnectBound)
 
 		cFingerprint := pkIdentityFingerprint(t, cNode)
 		aFingerprint := pkIdentityFingerprint(t, aNode)
@@ -281,7 +281,7 @@ func TestConfigToolsCluster(t *testing.T) {
 		// The third host is rejected with the key-invalid reason and neither
 		// side stores the other's identity.
 		rejectedAt := time.Now().Add(-time.Second)
-		pkRejectReason(t, pkConnect(t, cOp, addrA, ctcStaticKeyOne, ""), aNode, rejectedAt, "hostC-17443", "key invalid")
+		pkRejectReason(t, pkConnect(t, cOp, addrA, ctcStaticKeyOne, ""), aNode, rejectedAt, "hostC.peer", "key invalid")
 		if bytes.Contains(pkPeersJSON(t, aNode), []byte(cFingerprint)) {
 			t.Fatalf("A's peers.json still contains C's fingerprint %s", cFingerprint)
 		}
@@ -290,8 +290,8 @@ func TestConfigToolsCluster(t *testing.T) {
 		}
 
 		// The original peer is still connected.
-		pkWaitConnected(t, aNode, "hostB-17443", ctcReconnectBound)
-		pkWaitConnected(t, bNode, "hostA-17443", ctcReconnectBound)
+		pkWaitConnected(t, aNode, "hostB.peer", ctcReconnectBound)
+		pkWaitConnected(t, bNode, "hostA.peer", ctcReconnectBound)
 
 		// B is in A's peer table throughout the window. Without this positive
 		// control an absent LINK_DOWN could also mean the peer was never there.
@@ -304,7 +304,7 @@ func TestConfigToolsCluster(t *testing.T) {
 		}
 		for _, event := range events {
 			if event.GetEvent() == localpb.AuditEventKind_AUDIT_EVENT_KIND_LINK_DOWN &&
-				event.GetPeer().GetAlias() == "hostB-17443" {
+				event.GetPeer().GetAlias() == "hostB.peer" {
 				t.Fatalf("the static key removal dropped the link to hostB: %s", event.GetDetail())
 			}
 		}
@@ -363,7 +363,7 @@ func TestConfigToolsCluster(t *testing.T) {
 		bNode.WriteConfig(t, pkConfig(pkStaticKeyYAML(ctcStaticKeyTwo)))
 		pkWaitAuditConfigChange(t, bNode, "pairing.static_key", since)
 		pkConnect(t, aOp, pkAddr(c, "hostB"), ctcStaticKeyTwo, "").MustOK(t)
-		pkWaitConnected(t, bNode, "hostA-17443", ctcReconnectBound)
+		pkWaitConnected(t, bNode, "hostA.peer", ctcReconnectBound)
 
 		if got := ctcGetConfigTool(t, bOp, "pairing.static_key"); got != "(set)" {
 			t.Fatalf("get_config pairing.static_key = %q after the replacement, want (set)", got)
@@ -432,9 +432,9 @@ func TestConfigToolsCluster(t *testing.T) {
 		// does not.
 		addrB := pkAddr(c, "hostB")
 		pkConnect(t, aOp, addrB, ctcStaticKeyOne, "").MustOK(t)
-		pkWaitConnected(t, bNode, "hostA-17443", ctcReconnectBound)
+		pkWaitConnected(t, bNode, "hostA.peer", ctcReconnectBound)
 		rejectedAt := time.Now().Add(-time.Second)
-		pkRejectReason(t, pkConnect(t, cOp, addrB, ctcStaticKeyTwo, ""), bNode, rejectedAt, "hostC-17443", "key invalid")
+		pkRejectReason(t, pkConnect(t, cOp, addrB, ctcStaticKeyTwo, ""), bNode, rejectedAt, "hostC.peer", "key invalid")
 	})
 }
 

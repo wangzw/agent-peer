@@ -64,7 +64,7 @@ func TestAdvertisedAddresses(t *testing.T) {
 		// pairing starts from a clean state.
 		key := adCreateKey(t, opA)
 		adConnect(t, opB, adShownAddress(t, key.Addresses, adAddr(c, "hostA", "net", adPort)), key.Key).MustOK(t)
-		adWaitConnected(t, bNode, "hostA-17443", adRelinkBound)
+		adWaitConnected(t, bNode, "hostA.peer", adRelinkBound)
 
 		// An empty broker.listen disables the listener. No TCP socket may
 		// remain; the Unix local socket is not affected.
@@ -83,7 +83,7 @@ func TestAdvertisedAddresses(t *testing.T) {
 		// A Broker that does not listen can still dial and pair.
 		key = adCreateKey(t, opA)
 		adConnect(t, opB, adShownAddress(t, key.Addresses, adAddr(c, "hostA", "net", adPort)), key.Key).MustOK(t)
-		adWaitConnected(t, bNode, "hostA-17443", adRelinkBound)
+		adWaitConnected(t, bNode, "hostA.peer", adRelinkBound)
 	})
 
 	t.Run("REQ-broker-config-030 default route addresses", func(t *testing.T) {
@@ -99,18 +99,18 @@ func TestAdvertisedAddresses(t *testing.T) {
 		// hostA is the dialer and observes hostB's advertised list.
 		key := adCreateKey(t, opB)
 		adConnect(t, opA, adShownAddress(t, key.Addresses, adAddr(c, "hostB", "net", adPort)), key.Key).MustOK(t)
-		adWaitConnected(t, aNode, "hostB-17443", adRelinkBound)
+		adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
 
 		// Only the default-route interface counts. hostB's second network
 		// ("virt") and its addresses must not appear.
-		adWaitPeerAddresses(t, aNode, "hostB-17443", []string{
+		adWaitPeerAddresses(t, aNode, "hostB.peer", []string{
 			adAddr(c, "hostB", "net", adPort),
 		}, adWaitBound)
 
 		// An IPv6 default route on the same interface adds its address after
 		// the IPv4 one.
 		c.AddDefaultRoute6(t, "hostB")
-		adWaitPeerAddresses(t, aNode, "hostB-17443", []string{
+		adWaitPeerAddresses(t, aNode, "hostB.peer", []string{
 			adAddr(c, "hostB", "net", adPort),
 			adAddr6(c, "hostB", "net", adPort),
 		}, adAddressBound)
@@ -120,8 +120,8 @@ func TestAdvertisedAddresses(t *testing.T) {
 		adRestart(t, bNode, adConfig("broker:\n  advertise: \":18443\"\n"), opB)
 		opB = adOperator(t, bNode)
 		defer opB.End(t)
-		adWaitConnected(t, aNode, "hostB-17443", adRelinkBound)
-		adWaitPeerAddresses(t, aNode, "hostB-17443", []string{
+		adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
+		adWaitPeerAddresses(t, aNode, "hostB.peer", []string{
 			adAddr(c, "hostB", "net", "18443"),
 			adAddr6(c, "hostB", "net", "18443"),
 		}, adAddressBound)
@@ -130,8 +130,8 @@ func TestAdvertisedAddresses(t *testing.T) {
 		adRestart(t, bNode, adConfig("broker:\n  advertise: \":18443\"\n  advertise_extra: [b.vpn.example]\n"), opB)
 		opB = adOperator(t, bNode)
 		defer opB.End(t)
-		adWaitConnected(t, aNode, "hostB-17443", adRelinkBound)
-		adWaitPeerAddresses(t, aNode, "hostB-17443", []string{
+		adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
+		adWaitPeerAddresses(t, aNode, "hostB.peer", []string{
 			adAddr(c, "hostB", "net", "18443"),
 			adAddr6(c, "hostB", "net", "18443"),
 			"b.vpn.example:18443",
@@ -154,11 +154,11 @@ func TestAdvertisedAddresses(t *testing.T) {
 
 		key := adCreateKey(t, opB)
 		adConnect(t, opA, listen, key.Key).MustOK(t)
-		adWaitConnected(t, aNode, "hostB-17443", adRelinkBound)
+		adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
 
 		// A specific listener is the whole advertised list, in its bracketed
 		// IPv6 form.
-		adWaitPeerAddresses(t, aNode, "hostB-17443", []string{listen}, adWaitBound)
+		adWaitPeerAddresses(t, aNode, "hostB.peer", []string{listen}, adWaitBound)
 
 		// Extra names follow it and take the listen port.
 		adRestart(t, bNode, adConfig(
@@ -166,8 +166,8 @@ func TestAdvertisedAddresses(t *testing.T) {
 		), opB)
 		opB = adOperator(t, bNode)
 		defer opB.End(t)
-		adWaitConnected(t, aNode, "hostB-17443", adRelinkBound)
-		adWaitPeerAddresses(t, aNode, "hostB-17443", []string{
+		adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
+		adWaitPeerAddresses(t, aNode, "hostB.peer", []string{
 			listen,
 			"b.vpn.example:" + adPort,
 		}, adAddressBound)
@@ -190,26 +190,26 @@ func TestAdvertisedAddresses(t *testing.T) {
 		realB := adAddr(c, "hostB", "net", adPort)
 		key := adCreateKey(t, opB)
 		adConnect(t, opA, adShownAddress(t, key.Addresses, realB), key.Key).MustOK(t)
-		adWaitConnected(t, aNode, "hostB-17443", adRelinkBound)
+		adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
 
 		adRestart(t, bNode, adConfig("broker:\n  advertise: b.example:443\n"), opB)
 		opB = adOperator(t, bNode)
 		defer opB.End(t)
-		adWaitConnected(t, aNode, "hostB-17443", adRelinkBound)
-		adWaitPeerAddresses(t, aNode, "hostB-17443", []string{"b.example:443"}, adAddressBound)
+		adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
+		adWaitPeerAddresses(t, aNode, "hostB.peer", []string{"b.example:443"}, adAddressBound)
 
 		// A host without a port takes the listen port.
 		adRestart(t, bNode, adConfig("broker:\n  advertise: b.example\n"), opB)
 		opB = adOperator(t, bNode)
 		defer opB.End(t)
-		adWaitConnected(t, aNode, "hostB-17443", adRelinkBound)
-		adWaitPeerAddresses(t, aNode, "hostB-17443", []string{"b.example:" + adPort}, adAddressBound)
+		adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
+		adWaitPeerAddresses(t, aNode, "hostB.peer", []string{"b.example:" + adPort}, adAddressBound)
 
 		adRestart(t, bNode, adConfig("broker:\n  advertise: b.example\n  advertise_extra: [b.vpn.example]\n"), opB)
 		opB = adOperator(t, bNode)
 		defer opB.End(t)
-		adWaitConnected(t, aNode, "hostB-17443", adRelinkBound)
-		adWaitPeerAddresses(t, aNode, "hostB-17443", []string{
+		adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
+		adWaitPeerAddresses(t, aNode, "hostB.peer", []string{
 			"b.example:" + adPort,
 			"b.vpn.example:" + adPort,
 		}, adAddressBound)
@@ -219,8 +219,8 @@ func TestAdvertisedAddresses(t *testing.T) {
 		adRestart(t, bNode, adConfig("broker:\n  advertise_extra: [b.vpn.example, 198.51.100.7:8443]\n"), opB)
 		opB = adOperator(t, bNode)
 		defer opB.End(t)
-		adWaitConnected(t, aNode, "hostB-17443", adRelinkBound)
-		adWaitPeerAddresses(t, aNode, "hostB-17443", []string{
+		adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
+		adWaitPeerAddresses(t, aNode, "hostB.peer", []string{
 			realB,
 			"b.vpn.example:" + adPort,
 			"198.51.100.7:8443",

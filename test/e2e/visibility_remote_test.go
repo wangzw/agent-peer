@@ -57,8 +57,8 @@ func TestRemoteVisibility(t *testing.T) {
 
 	key := vrCreateKey(t, opA)
 	vrConnect(t, opB, vrShownAddress(t, c, "hostA", key.Addresses), key.Key, "").MustOK(t)
-	vrWaitConnected(t, bNode, "hostA-17443", vrRelinkBound)
-	vrWaitConnected(t, aNode, "hostB-17443", vrRelinkBound)
+	vrWaitConnected(t, bNode, "hostA.peer", vrRelinkBound)
+	vrWaitConnected(t, aNode, "hostB.peer", vrRelinkBound)
 
 	a1 := vrStartSession(t, aNode, "a1", vrTopic)
 	b1 := vrStartSession(t, bNode, "b1", vrTopic)
@@ -76,8 +76,8 @@ func TestRemoteVisibility(t *testing.T) {
 				return false, "b1 is not listed"
 			}
 			name, ref, alias := vrSplitAddress(entry.Address)
-			if name != "b1" || ref != "" || alias != "hostB-17443" {
-				return false, fmt.Sprintf("b1's address is %q, want b1@hostB-17443", entry.Address)
+			if name != "b1" || ref != "" || alias != "hostB.peer" {
+				return false, fmt.Sprintf("b1's address is %q, want b1@hostB.peer", entry.Address)
 			}
 			if !vrSameSet(entry.SharedTopics, []string{vrTopic}) {
 				return false, fmt.Sprintf("shared topics are %v, want [%s]", entry.SharedTopics, vrTopic)
@@ -94,8 +94,8 @@ func TestRemoteVisibility(t *testing.T) {
 			if !ok {
 				return false, "a1 is not listed"
 			}
-			if entry.Address != "a1@hostA-17443" {
-				return false, fmt.Sprintf("a1's address is %q, want a1@hostA-17443", entry.Address)
+			if entry.Address != "a1@hostA.peer" {
+				return false, fmt.Sprintf("a1's address is %q, want a1@hostA.peer", entry.Address)
 			}
 			return true, ""
 		})
@@ -168,8 +168,8 @@ func TestRemoteVisibility(t *testing.T) {
 		harness.Eventually(t, vrRestoreBound, "the restored link makes the pair visible again", func() (bool, string) {
 			return vrSees(t, a2, "b2") && vrSees(t, b2, "a2"), "the pair is not visible"
 		})
-		vrWaitConnected(t, bNode, "hostA-17443", vrRelinkBound)
-		vrWaitConnected(t, aNode, "hostB-17443", vrRelinkBound)
+		vrWaitConnected(t, bNode, "hostA.peer", vrRelinkBound)
+		vrWaitConnected(t, aNode, "hostB.peer", vrRelinkBound)
 	})
 
 	t.Run("REQ-topics-006 no topic invisible", func(t *testing.T) {
@@ -198,7 +198,7 @@ func TestRemoteVisibility(t *testing.T) {
 		harness.Eventually(t, vrWaitBound, "a1 no longer sees b1 after leaving the topic", func() (bool, string) {
 			return !vrSees(t, a1, "b1"), "a1 still lists b1"
 		})
-		r := a1.Call(t, "send_message", map[string]any{"to": "b1@hostB-17443", "message": vrMark("invisible-")})
+		r := a1.Call(t, "send_message", map[string]any{"to": "b1@hostB.peer", "message": vrMark("invisible-")})
 		r.MustCode(t, "not_visible")
 		if !r.HasPrefix("Not sent") {
 			t.Fatalf("the not-visible error is %q, want it to start with Not sent", r.Text)
@@ -221,8 +221,8 @@ func TestRemoteVisibility(t *testing.T) {
 		if ref1 == ref2 {
 			t.Fatalf("the two api-worker sessions share the ref %q", ref1)
 		}
-		addr1 := "api-worker [" + ref1 + "]@hostB-17443"
-		addr2 := "api-worker [" + ref2 + "]@hostB-17443"
+		addr1 := "api-worker [" + ref1 + "]@hostB.peer"
+		addr2 := "api-worker [" + ref2 + "]@hostB.peer"
 
 		harness.Eventually(t, vrWaitBound, "a1 lists both api-worker addresses with refs", func() (bool, string) {
 			out, state := vrListAgents(t, a1)
@@ -245,7 +245,7 @@ func TestRemoteVisibility(t *testing.T) {
 		// request reaches neither of them: the same code the local path returns
 		// (REQ-agent-messaging-028).
 		ambiguousMark := vrMark("ambiguous-")
-		r := a1.Call(t, "send_message", map[string]any{"to": "api-worker@hostB-17443", "message": ambiguousMark})
+		r := a1.Call(t, "send_message", map[string]any{"to": "api-worker@hostB.peer", "message": ambiguousMark})
 		r.MustCode(t, "ambiguous")
 		if !r.HasPrefix("Not sent") {
 			t.Fatalf("the ambiguous error is %q, want it to start with Not sent", r.Text)
@@ -280,14 +280,14 @@ func TestRemoteVisibility(t *testing.T) {
 
 	t.Run("REQ-agent-messaging-022 signature from receiver view", func(t *testing.T) {
 		marker := vrMark("signed-")
-		a1.Call(t, "send_message", map[string]any{"to": "b1@hostB-17443", "message": marker}).MustOK(t)
+		a1.Call(t, "send_message", map[string]any{"to": "b1@hostB.peer", "message": marker}).MustOK(t)
 		frame := b1.WaitFrame(t, vrWaitBound)
-		if frame.FromName != "a1@hostA-17443" {
-			t.Fatalf("the message is signed %q, want a1@hostA-17443", frame.FromName)
+		if frame.FromName != "a1@hostA.peer" {
+			t.Fatalf("the message is signed %q, want a1@hostA.peer", frame.FromName)
 		}
 
 		// The second subproject pairs B to A with a local alias, so B shows A
-		// under that alias instead of the default hostA-17443.
+		// under that alias instead of the default hostA.peer.
 		c2 := harness.Up(t, harness.TopoNAT)
 		aNode2, bNode2 := c2.Node("hostA"), c2.Node("hostB")
 		vrStartBroker(t, aNode2, vrConfig())
@@ -303,12 +303,12 @@ func TestRemoteVisibility(t *testing.T) {
 		// B knows A under the local alias it chose; A still knows B by its
 		// advertised default alias.
 		vrWaitConnected(t, bNode2, "alpha", vrRelinkBound)
-		vrWaitConnected(t, aNode2, "hostB-17443", vrRelinkBound)
+		vrWaitConnected(t, aNode2, "hostB.peer", vrRelinkBound)
 		harness.Eventually(t, vrWaitBound, "a1 sees b1 in the second subproject", func() (bool, string) {
 			return vrSees(t, a3, "b1"), "a1 does not list b1"
 		})
 
-		a3.Call(t, "send_message", map[string]any{"to": "b1@hostB-17443", "message": marker}).MustOK(t)
+		a3.Call(t, "send_message", map[string]any{"to": "b1@hostB.peer", "message": marker}).MustOK(t)
 		frame = b3.WaitFrame(t, vrWaitBound)
 		if frame.FromName != "a1@alpha" {
 			t.Fatalf("the message is signed %q, want a1@alpha after the local alias", frame.FromName)
@@ -322,11 +322,11 @@ func TestRemoteVisibility(t *testing.T) {
 		defer duplicate.End(t)
 
 		marker := vrMark("reply-target-")
-		a1.Call(t, "send_message", map[string]any{"to": "b1@hostB-17443", "message": marker}).MustOK(t)
+		a1.Call(t, "send_message", map[string]any{"to": "b1@hostB.peer", "message": marker}).MustOK(t)
 		frame := b1.WaitFrame(t, vrWaitBound)
 		signature := frame.FromName
-		if signature != "a1@hostA-17443" {
-			t.Fatalf("the message is signed %q, want a1@hostA-17443", signature)
+		if signature != "a1@hostA.peer" {
+			t.Fatalf("the message is signed %q, want a1@hostA.peer", signature)
 		}
 
 		reply := vrMark("reply-body-")
@@ -347,11 +347,11 @@ func TestRemoteVisibility(t *testing.T) {
 		defer plain.End(t)
 
 		marker := vrMark("cleaned-")
-		cleaned.Call(t, "send_message", map[string]any{"to": "b1@hostB-17443", "message": marker}).MustOK(t)
+		cleaned.Call(t, "send_message", map[string]any{"to": "b1@hostB.peer", "message": marker}).MustOK(t)
 		frame := b1.WaitFrame(t, vrWaitBound)
 		signature := frame.FromName
-		if !strings.HasPrefix(signature, "ab [") || !strings.HasSuffix(signature, "]@hostA-17443") {
-			t.Fatalf("the cleaned name is signed %q, want ab [<ref>]@hostA-17443", signature)
+		if !strings.HasPrefix(signature, "ab [") || !strings.HasSuffix(signature, "]@hostA.peer") {
+			t.Fatalf("the cleaned name is signed %q, want ab [<ref>]@hostA.peer", signature)
 		}
 		if inbox.CleanSignature(signature) != signature {
 			t.Fatalf("the receiver would rewrite the signature %q", signature)
@@ -374,13 +374,13 @@ func TestRemoteVisibility(t *testing.T) {
 		defer long.End(t)
 
 		marker := vrMark("long-name-")
-		long.Call(t, "send_message", map[string]any{"to": "b1@hostB-17443", "message": marker}).MustOK(t)
+		long.Call(t, "send_message", map[string]any{"to": "b1@hostB.peer", "message": marker}).MustOK(t)
 		frame := b1.WaitFrame(t, vrWaitBound)
 		signature := frame.FromName
 		if got := utf8.RuneCountInString(signature); got > 64 {
 			t.Fatalf("the signature is %d runes, want at most 64: %q", got, signature)
 		}
-		if !strings.Contains(signature, " [") || !strings.HasSuffix(signature, "]@hostA-17443") {
+		if !strings.Contains(signature, " [") || !strings.HasSuffix(signature, "]@hostA.peer") {
 			t.Fatalf("the long name is signed %q, want a truncated name with a ref", signature)
 		}
 		namePart := signature[:strings.Index(signature, " [")]

@@ -110,11 +110,11 @@ func TestCardShowsConfiguredAddresses(t *testing.T) {
 	// reaches hostC two hops away once hostA is public.
 	key := adCreateKey(t, opA)
 	adConnect(t, opB, adShownAddress(t, key.Addresses, aAddr), key.Key).MustOK(t)
-	adWaitConnected(t, aNode, "hostB-"+adPort, adRelinkBound)
+	adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
 
 	key = adCreateKey(t, opB)
 	adConnect(t, opC, adShownAddress(t, key.Addresses, bAddr), key.Key).MustOK(t)
-	adWaitConnected(t, bNode, "hostC-"+adPort, adRelinkBound)
+	adWaitConnected(t, bNode, "hostC.peer", adRelinkBound)
 
 	// hostD dials hostA. Its result is the dialer's view the requirements name.
 	key = adCreateKey(t, opA)
@@ -128,7 +128,7 @@ func TestCardShowsConfiguredAddresses(t *testing.T) {
 		t.Fatal("connect_broker returned no fingerprint")
 	}
 	fpA := connected.Fingerprint
-	adWaitConnected(t, dNode, "hostA-"+adPort, adRelinkBound)
+	adWaitConnected(t, dNode, "hostA.peer", adRelinkBound)
 
 	set := func(key, value string) {
 		t.Helper()
@@ -214,11 +214,11 @@ func dadCluster(t *testing.T) (*harness.Cluster, *harness.Session, *harness.Sess
 	bAddr := adAddr(c, "hostB", "net", adPort)
 	key := adCreateKey(t, opB)
 	adConnect(t, opA, adShownAddress(t, key.Addresses, bAddr), key.Key).MustOK(t)
-	adWaitConnected(t, aNode, "hostB-"+adPort, adRelinkBound)
+	adWaitConnected(t, aNode, "hostB.peer", adRelinkBound)
 
 	key = adCreateKey(t, opB)
 	adConnect(t, opC, adShownAddress(t, key.Addresses, bAddr), key.Key).MustOK(t)
-	adWaitConnected(t, cNode, "hostB-"+adPort, adRelinkBound)
+	adWaitConnected(t, cNode, "hostB.peer", adRelinkBound)
 
 	return c, opA, opB, opC
 }

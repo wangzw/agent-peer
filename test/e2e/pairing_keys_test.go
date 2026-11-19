@@ -81,14 +81,14 @@ func TestPairingKeys(t *testing.T) {
 		r := pkConnect(t, opB, address, key.Key, "")
 		r.MustOK(t)
 		out := pkDecodeConnect(t, r)
-		if out.Alias != "hostA-17443" {
-			t.Fatalf("alias = %q, want hostA-17443", out.Alias)
+		if out.Alias != "hostA.peer" {
+			t.Fatalf("alias = %q, want hostA.peer", out.Alias)
 		}
 		if out.Fingerprint != aFingerprint {
 			t.Fatalf("fingerprint = %q, want A's identity %q", out.Fingerprint, aFingerprint)
 		}
-		pkWaitConnected(t, b, "hostA-17443", pkRelinkBound)
-		pkWaitConnected(t, a, "hostB-17443", pkRelinkBound)
+		pkWaitConnected(t, b, "hostA.peer", pkRelinkBound)
+		pkWaitConnected(t, a, "hostB.peer", pkRelinkBound)
 
 		// This subtest leaves B paired; the reuse test below re-pairs it and
 		// still expects A's only peer to be B.
@@ -104,20 +104,20 @@ func TestPairingKeys(t *testing.T) {
 		address := pkShownAddress(t, c, "hostA", key.Addresses)
 
 		pkConnect(t, opB, address, key.Key, "").MustOK(t)
-		pkWaitConnected(t, b, "hostA-17443", pkRelinkBound)
+		pkWaitConnected(t, b, "hostA.peer", pkRelinkBound)
 
 		// A one-time key used once is gone, not expired; the acceptor's audit
 		// reason tells the two causes apart.
 		since := time.Now().Add(-time.Second)
 		r := pkConnect(t, opC, address, key.Key, "")
-		pkRejectReason(t, r, a, since, "hostC-17443", "key invalid")
+		pkRejectReason(t, r, a, since, "hostC.peer", "key invalid")
 		if !r.HasPrefix("Not connected") {
 			t.Fatalf("the reuse error is %q, want it to start with Not connected", r.Text)
 		}
 
 		peers := pkPeers(t, a)
-		if len(peers) != 1 || peers[0].GetAlias() != "hostB-17443" {
-			t.Fatalf("A's peers are %v, want only hostB-17443", pkAliases(peers))
+		if len(peers) != 1 || peers[0].GetAlias() != "hostB.peer" {
+			t.Fatalf("A's peers are %v, want only hostB.peer", pkAliases(peers))
 		}
 	})
 
@@ -126,7 +126,7 @@ func TestPairingKeys(t *testing.T) {
 		for _, key := range []string{"hello-world-key-123", "wrong-key-one", "wrong-key-two", "wrong-key-three"} {
 			since := time.Now().Add(-time.Second)
 			r := pkConnect(t, opD, addrA, key, "")
-			pkRejectReason(t, r, a, since, "hostD-17443", "key invalid")
+			pkRejectReason(t, r, a, since, "hostD.peer", "key invalid")
 			if !r.HasPrefix("Not connected") {
 				t.Fatalf("a wrong key returned %q, want it to start with Not connected", r.Text)
 			}
@@ -136,7 +136,7 @@ func TestPairingKeys(t *testing.T) {
 			t.Fatalf("D has peers %v, want none", pkAliases(peers))
 		}
 		for _, peer := range pkPeers(t, a) {
-			if peer.GetAlias() == "hostD-17443" {
+			if peer.GetAlias() == "hostD.peer" {
 				t.Fatalf("A listed D after four rejected attempts")
 			}
 		}
@@ -145,7 +145,7 @@ func TestPairingKeys(t *testing.T) {
 	t.Run("REQ-broker-pairing-011 wrong key stores nothing", func(t *testing.T) {
 		since := time.Now().Add(-time.Second)
 		r := pkConnect(t, opD, addrA, "definitely-not-the-key", "")
-		pkRejectReason(t, r, a, since, "hostD-17443", "key invalid")
+		pkRejectReason(t, r, a, since, "hostD.peer", "key invalid")
 
 		aData := pkPeersJSON(t, a)
 		dData := pkPeersJSON(t, d)
@@ -157,7 +157,7 @@ func TestPairingKeys(t *testing.T) {
 			t.Fatalf("D's peers.json contains A's fingerprint %s", aFingerprint)
 		}
 		for _, peer := range pkPeers(t, a) {
-			if peer.GetAlias() == "hostD-17443" {
+			if peer.GetAlias() == "hostD.peer" {
 				t.Fatalf("A listed D after a failed pairing")
 			}
 		}
@@ -172,13 +172,13 @@ func TestPairingKeys(t *testing.T) {
 		r := pkConnect(t, opB, addrA, pkStatic16, "")
 		r.MustOK(t)
 		out := pkDecodeConnect(t, r)
-		if out.Alias != "hostA-17443" {
-			t.Fatalf("alias = %q, want hostA-17443", out.Alias)
+		if out.Alias != "hostA.peer" {
+			t.Fatalf("alias = %q, want hostA.peer", out.Alias)
 		}
 		if out.Fingerprint != aFingerprint {
 			t.Fatalf("fingerprint = %q, want A's identity %q", out.Fingerprint, aFingerprint)
 		}
-		pkWaitConnected(t, b, "hostA-17443", pkRelinkBound)
+		pkWaitConnected(t, b, "hostA.peer", pkRelinkBound)
 	})
 
 	t.Run("REQ-broker-pairing-009 static key many times", func(t *testing.T) {
@@ -269,9 +269,9 @@ func TestPairingKeys(t *testing.T) {
 		pkWaitAuditConfigChange(t, a, "pairing.static_key", since)
 
 		rejectedAt := time.Now().Add(-time.Second)
-		pkRejectReason(t, pkConnect(t, opC, addrA, pkStatic128, ""), a, rejectedAt, "hostC-17443", "key invalid")
+		pkRejectReason(t, pkConnect(t, opC, addrA, pkStatic128, ""), a, rejectedAt, "hostC.peer", "key invalid")
 		pkConnect(t, opD, addrA, pkStaticReplace, "").MustOK(t)
-		pkWaitConnected(t, b, "hostA-17443", pkRelinkBound)
+		pkWaitConnected(t, b, "hostA.peer", pkRelinkBound)
 	})
 
 	t.Run("REQ-broker-pairing-015 unpaired without key rejected", func(t *testing.T) {

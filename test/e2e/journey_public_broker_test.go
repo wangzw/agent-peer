@@ -160,9 +160,9 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 			if state != "" {
 				return false, state
 			}
-			broker, ok := pairBrokerByAlias(out, "hostA-17443")
+			broker, ok := pairBrokerByAlias(out, "hostA.peer")
 			if !ok {
-				return false, "hostA-17443 is not listed"
+				return false, "hostA.peer is not listed"
 			}
 			if broker.IsPeer {
 				return false, "A is listed as a peer before pairing"
@@ -222,7 +222,7 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 			}
 			for _, agent := range out.Agents {
 				name, alias := pairSplitAddress(agent.Address)
-				if name == "infra-agent" && alias == "hostA-17443" {
+				if name == "infra-agent" && alias == "hostA.peer" {
 					target = agent.Address
 					return true, ""
 				}
@@ -234,8 +234,8 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 		const request = "can you look at the deploy?"
 		journeyCallOK(t, scout, "send_message", map[string]any{"to": target, "message": request}, 3*time.Second)
 		frame := infra.WaitFrame(t, 3*time.Second)
-		if frame.FromName != "scout@hostC-17443" {
-			t.Fatalf("the message is signed %q, want scout@hostC-17443", frame.FromName)
+		if frame.FromName != "scout@hostC.peer" {
+			t.Fatalf("the message is signed %q, want scout@hostC.peer", frame.FromName)
 		}
 		if body := collabEnvelopeBody(t, frame.Content); body != request {
 			t.Fatalf("the delivered body is %q, want %q", body, request)
@@ -247,9 +247,9 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 			if state != "" {
 				return false, state
 			}
-			broker, ok := pairBrokerByAlias(out, "hostA-17443")
+			broker, ok := pairBrokerByAlias(out, "hostA.peer")
 			if !ok {
-				return false, "hostA-17443 is not listed"
+				return false, "hostA.peer is not listed"
 			}
 			if !broker.IsPeer || broker.Status != "connected" || broker.LocalRole != "dialer" {
 				return false, fmt.Sprintf("is_peer=%v status=%s role=%s", broker.IsPeer, broker.Status, broker.LocalRole)
@@ -258,7 +258,7 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 		})
 
 		// The reverse view: A accepted C's connection and sees its Agent.
-		journeyWaitPeer(t, infra, "hostC-"+journeyBrokerPort, "acceptor", discBound(1))
+		journeyWaitPeer(t, infra, "hostC.peer", "acceptor", discBound(1))
 		var scoutAddr string
 		harness.Eventually(t, discBound(1), "A sees scout in infra-help", func() (bool, string) {
 			out, state := pairListAgents(t, infra)
@@ -267,7 +267,7 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 			}
 			for _, agent := range out.Agents {
 				name, alias := pairSplitAddress(agent.Address)
-				if name == "scout" && alias == "hostC-"+journeyBrokerPort {
+				if name == "scout" && alias == "hostC.peer" {
 					scoutAddr = agent.Address
 					return true, ""
 				}
@@ -279,8 +279,8 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 		const reply = "yes, I am on it"
 		journeyCallOK(t, infra, "send_message", map[string]any{"to": scoutAddr, "message": reply}, 3*time.Second)
 		frame = scout.WaitFrame(t, 3*time.Second)
-		if frame.FromName != "infra-agent@hostA-"+journeyBrokerPort {
-			t.Fatalf("the reply is signed %q, want infra-agent@hostA-%s", frame.FromName, journeyBrokerPort)
+		if frame.FromName != "infra-agent@hostA.peer" {
+			t.Fatalf("the reply is signed %q, want infra-agent@hostA.peer", frame.FromName)
 		}
 		if body := collabEnvelopeBody(t, frame.Content); body != reply {
 			t.Fatalf("the reply body is %q, want %q", body, reply)
@@ -307,9 +307,9 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 			if state != "" {
 				return false, state
 			}
-			broker, ok := pairBrokerByAlias(out, "hostA-17443")
+			broker, ok := pairBrokerByAlias(out, "hostA.peer")
 			if !ok {
-				return false, "hostA-17443 is not listed"
+				return false, "hostA.peer is not listed"
 			}
 			oldFingerprint = broker.Fingerprint
 			return true, ""
@@ -362,9 +362,9 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 			if state != "" {
 				return false, state
 			}
-			broker, ok := pairBrokerByAlias(out, "hostA")
+			broker, ok := pairBrokerByAlias(out, "hostA.peer")
 			if !ok {
-				return false, "hostA is not listed"
+				return false, "hostA.peer is not listed"
 			}
 			if broker.IsPeer {
 				return false, "A is listed as a peer"
@@ -383,11 +383,11 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 		operator := pairOperator(t, hostA, journeyWorkspace(t, hostA))
 		defer operator.End(t)
 		connected := journeyConnect(t, operator, journeyNodeAddr(c, "hostC"), key.Key)
-		if connected.Alias != "hostC-17443" {
-			t.Fatalf("A paired with %q, want hostC-17443", connected.Alias)
+		if connected.Alias != "hostC.peer" {
+			t.Fatalf("A paired with %q, want hostC.peer", connected.Alias)
 		}
 
-		journeyWaitPeer(t, operator, "hostC-17443", "dialer", 3*time.Second)
-		journeyWaitPeer(t, scout, "hostA", "acceptor", 3*time.Second)
+		journeyWaitPeer(t, operator, "hostC.peer", "dialer", 3*time.Second)
+		journeyWaitPeer(t, scout, "hostA.peer", "acceptor", 3*time.Second)
 	})
 }

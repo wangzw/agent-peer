@@ -104,8 +104,8 @@ func TestJourneyPairBrokers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decoding connect_broker: %v", err)
 	}
-	if connected.Alias != "hostA-17443" {
-		t.Fatalf("connect_broker alias = %q, want hostA-17443", connected.Alias)
+	if connected.Alias != "hostA.peer" {
+		t.Fatalf("connect_broker alias = %q, want hostA.peer", connected.Alias)
 	}
 	if connected.Host != "hostA" {
 		t.Fatalf("connect_broker shown_host = %q, want hostA", connected.Host)
@@ -128,12 +128,12 @@ func TestJourneyPairBrokers(t *testing.T) {
 		if state != "" {
 			return false, "bob: " + state
 		}
-		peerOfBob, ok := pairBrokerByAlias(bobOut, "hostA-17443")
+		peerOfBob, ok := pairBrokerByAlias(bobOut, "hostA.peer")
 		if !ok {
-			return false, "bob does not list hostA-17443 yet"
+			return false, "bob does not list hostA.peer yet"
 		}
 		if !peerOfBob.IsPeer {
-			return false, "bob's entry for hostA-17443 is not a peer"
+			return false, "bob's entry for hostA.peer is not a peer"
 		}
 		if peerOfBob.Status != "connected" {
 			return false, "bob sees status " + peerOfBob.Status
@@ -150,12 +150,12 @@ func TestJourneyPairBrokers(t *testing.T) {
 		if state != "" {
 			return false, "alice: " + state
 		}
-		peerOfAlice, ok := pairBrokerByAlias(aliceOut, "hostB-17443")
+		peerOfAlice, ok := pairBrokerByAlias(aliceOut, "hostB.peer")
 		if !ok {
-			return false, "alice does not list hostB-17443 yet"
+			return false, "alice does not list hostB.peer yet"
 		}
 		if !peerOfAlice.IsPeer {
-			return false, "alice's entry for hostB-17443 is not a peer"
+			return false, "alice's entry for hostB.peer is not a peer"
 		}
 		if peerOfAlice.Status != "connected" {
 			return false, "alice sees status " + peerOfAlice.Status
@@ -174,8 +174,8 @@ func TestJourneyPairBrokers(t *testing.T) {
 	if bobView.Fingerprint != aIdentity {
 		t.Fatalf("bob lists hostA with fingerprint %q, want A's identity %q", bobView.Fingerprint, aIdentity)
 	}
-	pairCheckOraclePeer(t, hostA, "hostB-17443", localpb.PeerRole_PEER_ROLE_ACCEPTOR)
-	pairCheckOraclePeer(t, hostB, "hostA-17443", localpb.PeerRole_PEER_ROLE_DIALER)
+	pairCheckOraclePeer(t, hostA, "hostB.peer", localpb.PeerRole_PEER_ROLE_ACCEPTOR)
+	pairCheckOraclePeer(t, hostB, "hostA.peer", localpb.PeerRole_PEER_ROLE_DIALER)
 
 	t.Run("alias conflict needs local alias", func(t *testing.T) {
 		// hostB and hostC both call themselves macbook. Once hostA has paired
@@ -284,7 +284,7 @@ func TestJourneyPairBrokers(t *testing.T) {
 		// reached hostA, so the key is still usable.
 		forwarded := net.JoinHostPort(c.Addr("router", "wan"), pairBrokerPort)
 		pairConnect(t, opB, forwarded, key.Key)
-		pairWaitOraclePeer(t, hostB, "hostA-17443", localpb.PeerRole_PEER_ROLE_DIALER, 3*time.Second)
+		pairWaitOraclePeer(t, hostB, "hostA.peer", localpb.PeerRole_PEER_ROLE_DIALER, 3*time.Second)
 	})
 
 	t.Run("network outage", func(t *testing.T) {
@@ -305,16 +305,16 @@ func TestJourneyPairBrokers(t *testing.T) {
 		defer opB.End(t)
 		key := pairCreateKey(t, opA)
 		pairConnect(t, opB, key.Addresses[0], key.Key)
-		pairWaitOraclePeer(t, hostA, "hostB-17443", localpb.PeerRole_PEER_ROLE_ACCEPTOR, 3*time.Second)
-		pairWaitOraclePeer(t, hostB, "hostA-17443", localpb.PeerRole_PEER_ROLE_DIALER, 3*time.Second)
+		pairWaitOraclePeer(t, hostA, "hostB.peer", localpb.PeerRole_PEER_ROLE_ACCEPTOR, 3*time.Second)
+		pairWaitOraclePeer(t, hostB, "hostA.peer", localpb.PeerRole_PEER_ROLE_DIALER, 3*time.Second)
 
 		c.Cut(t, "hostA", "hostB")
 		harness.Eventually(t, 3*time.Second, "both Brokers notice the cut", func() (bool, string) {
-			statusA, state := pairOracleStatus(t, hostA, "hostB-17443")
+			statusA, state := pairOracleStatus(t, hostA, "hostB.peer")
 			if state != "" {
 				return false, "hostA: " + state
 			}
-			statusB, state := pairOracleStatus(t, hostB, "hostA-17443")
+			statusB, state := pairOracleStatus(t, hostB, "hostA.peer")
 			if state != "" {
 				return false, "hostB: " + state
 			}
@@ -326,11 +326,11 @@ func TestJourneyPairBrokers(t *testing.T) {
 
 		c.Restore(t)
 		harness.Eventually(t, pairReconnectBound, "both Brokers reconnect without any tool call", func() (bool, string) {
-			statusA, state := pairOracleStatus(t, hostA, "hostB-17443")
+			statusA, state := pairOracleStatus(t, hostA, "hostB.peer")
 			if state != "" {
 				return false, "hostA: " + state
 			}
-			statusB, state := pairOracleStatus(t, hostB, "hostA-17443")
+			statusB, state := pairOracleStatus(t, hostB, "hostA.peer")
 			if state != "" {
 				return false, "hostB: " + state
 			}

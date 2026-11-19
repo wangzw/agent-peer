@@ -129,7 +129,7 @@ func TestMITM(t *testing.T) {
 			if matches := secFingerprintPattern.FindAll(data, -1); len(matches) > 0 {
 				t.Fatalf("%s stored a peer fingerprint after the rejected pairing: %s", name, data)
 			}
-			for _, marker := range []string{"hostA-17443", "hostB-17443"} {
+			for _, marker := range []string{"hostA.peer", "hostB.peer"} {
 				if bytes.Contains(data, []byte(marker)) {
 					t.Fatalf("%s stored %q in peers.json after the rejected pairing: %s", name, marker, data)
 				}
@@ -169,8 +169,8 @@ func TestLinkEncrypted(t *testing.T) {
 		key := secCreateKey(t, opA)
 		aWan := net.JoinHostPort(c.Addr("hostA", "wan"), secBrokerPort)
 		secConnect(t, opB, secShownAddress(t, key.Addresses, aWan), key.Key).MustOK(t)
-		secWaitConnected(t, bNode, "hostA-17443", secRelinkBound)
-		secWaitConnected(t, aNode, "hostB-17443", secRelinkBound)
+		secWaitConnected(t, bNode, "hostA.peer", secRelinkBound)
+		secWaitConnected(t, aNode, "hostB.peer", secRelinkBound)
 
 		token := secToken(t)
 		nameA := "secret-agent-" + token
@@ -260,8 +260,8 @@ func TestPrivateTopicNamesStayHome(t *testing.T) {
 	key := secCreateKey(t, opA)
 	aWan := net.JoinHostPort(c.Addr("hostA", "wan"), secBrokerPort)
 	secConnect(t, opB, secShownAddress(t, key.Addresses, aWan), key.Key).MustOK(t)
-	secWaitConnected(t, bNode, "hostA-17443", secRelinkBound)
-	secWaitConnected(t, aNode, "hostB-17443", secRelinkBound)
+	secWaitConnected(t, bNode, "hostA.peer", secRelinkBound)
+	secWaitConnected(t, aNode, "hostB.peer", secRelinkBound)
 
 	token := secToken(t)
 	workerName := "api-worker-" + token
@@ -361,7 +361,7 @@ func TestPrivateTopicNamesStayHome(t *testing.T) {
 			if !ok {
 				return false, workerName + " is not listed"
 			}
-			want := workerName + "@hostA-17443"
+			want := workerName + "@hostA.peer"
 			if entry.Address != want {
 				return false, fmt.Sprintf("the member address is %q, want %q", entry.Address, want)
 			}

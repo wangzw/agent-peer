@@ -160,11 +160,11 @@ func TestConfigTools(t *testing.T) {
 		a := harness.NewLocalHost(t, harness.LocalOptions{Name: "config-alias-a"})
 		addrB := b.FreeAddr(t)
 		startB := ctStartBroker(t, b, harness.BrokerSpec{
-			ConfigYAML: ctConfig("broker:\n  listen: " + addrB + "\n"),
+			ConfigYAML: ctConfig("broker:\n  alias: config-alias-b\n  listen: " + addrB + "\n"),
 		})
 		addrB = startB.Address(addrB)
 		ctStartBroker(t, a, harness.BrokerSpec{
-			ConfigYAML: ctConfig("broker:\n  listen: " + a.FreeAddr(t) + "\n"),
+			ConfigYAML: ctConfig("broker:\n  alias: config-alias-a\n  listen: " + a.FreeAddr(t) + "\n"),
 		})
 
 		opB := ctOperator(t, b)

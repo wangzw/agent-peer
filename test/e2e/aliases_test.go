@@ -32,7 +32,22 @@ const alTopic = "t"
 // TestAliases covers fingerprint stability, the default and configured alias,
 // initiator and acceptor alias conflicts, and peer renames on a flat network.
 func TestAliases(t *testing.T) {
+	// The compose file reads HOSTA_NAME for hostA's hostname, and the harness
+	// passes the test process's environment through. The default alias takes
+	// the first dot-separated label, so the domain must be part of the injected
+	// hostname for the assertion to prove it.
+	t.Setenv("HOSTA_NAME", "hostA.example.com")
+
 	c := harness.Up(t, harness.TopoFlat(3))
+
+	// REQ-broker-pairing-002 names the account alice. The image's account is
+	// peer, so rename its entry in the account database before any Broker
+	// starts; the host test process keeps its uid and home directory.
+	c.Root(t, "hostA", "sed", "-i", "s/^peer:/alice:/", "/etc/passwd")
+	if got := strings.TrimSpace(c.Root(t, "hostA", "getent", "passwd", "alice")); got == "" {
+		t.Fatalf("hostA's account database has no alice entry after the rename")
+	}
+
 	nodes := map[string]*harness.Node{}
 	for _, name := range []string{"hostA", "hostB", "hostC"} {
 		nodes[name] = c.Node(name)
@@ -58,32 +73,36 @@ func TestAliases(t *testing.T) {
 	// responsible for rebuilding the link.
 	pk := alCreateKey(t, opY)
 	alConnect(t, opX, alShownAddress(t, c, "hostB", pk.Addresses), pk.Key).MustOK(t)
-	alWaitConnected(t, xNode, "hostB-17443", alRelinkBound)
-	alWaitConnected(t, yNode, "hostA-17443", alRelinkBound)
+	alWaitConnected(t, xNode, "hostB.peer", alRelinkBound)
+	alWaitConnected(t, yNode, "hostA.alice", alRelinkBound)
 
 	t.Run("REQ-broker-pairing-002 default alias", func(t *testing.T) {
-		alWaitAgentSuffix(t, y1, "x1", "@hostA-17443", alWaitBound)
+		// The system-level form (the hostname label alone) is covered in
+		// test/e2e/system, which can run a system-level Broker as root. This
+		// user-level Broker takes the hostname label and the account: alice is
+		// the account running it, and the domain is dropped.
+		alWaitAgentSuffix(t, y1, "x1", "@hostA.alice", alWaitBound)
 
 		// broker.advertise changes what is shown to peers, never the alias.
 		alRestart(t, c, "hostA", alConfig("broker:\n  advertise: a.example:443\n"), opX, x1)
 		opX = alOperator(t, xNode)
 		x1 = alSession(t, xNode, "x1")
-		alWaitConnected(t, yNode, "hostA-17443", alRelinkBound)
-		alWaitAgentSuffix(t, y1, "x1", "@hostA-17443", alWaitBound)
+		alWaitConnected(t, yNode, "hostA.alice", alRelinkBound)
+		alWaitAgentSuffix(t, y1, "x1", "@hostA.alice", alWaitBound)
 
-		// The port of the alias comes from broker.listen, not from advertise.
+		// The listen port does not enter the alias.
 		alRestart(t, c, "hostA", alConfig("broker:\n  listen: \":17444\"\n"), opX, x1)
 		opX = alOperator(t, xNode)
 		x1 = alSession(t, xNode, "x1")
-		alWaitConnected(t, yNode, "hostA-17444", alRelinkBound)
-		alWaitAgentSuffix(t, y1, "x1", "@hostA-17444", alWaitBound)
+		alWaitConnected(t, yNode, "hostA.alice", alRelinkBound)
+		alWaitAgentSuffix(t, y1, "x1", "@hostA.alice", alWaitBound)
 
-		// Without a listener the alias has no port.
+		// Without a listener the alias is unchanged too.
 		alRestart(t, c, "hostA", alConfig("broker:\n  listen: \"\"\n"), opX, x1)
 		opX = alOperator(t, xNode)
 		x1 = alSession(t, xNode, "x1")
-		alWaitConnected(t, yNode, "hostA", alRelinkBound)
-		alWaitAgentSuffix(t, y1, "x1", "@hostA", alWaitBound)
+		alWaitConnected(t, yNode, "hostA.alice", alRelinkBound)
+		alWaitAgentSuffix(t, y1, "x1", "@hostA.alice", alWaitBound)
 	})
 
 	t.Run("REQ-broker-pairing-003 configured alias", func(t *testing.T) {
@@ -324,8 +343,10 @@ func TestAliases(t *testing.T) {
 }
 
 // TestLongHostnameAlias covers REQ-broker-pairing-037: the default alias of a
-// long hostname shortens the hostname part so the alias stays at most 24
-// characters.
+// long hostname shortens the hostname part first and, only if it is still too
+// long, the account part, so the alias stays at most 24 characters. The
+// account here is peer (4 characters) and the hostname 26, so the hostname
+// keeps 24-1-4 = 19 characters.
 func TestLongHostnameAlias(t *testing.T) {
 	// The compose file reads HOSTA_NAME for hostA's hostname; the harness
 	// passes the test process's environment through to docker compose.
@@ -346,11 +367,11 @@ func TestLongHostnameAlias(t *testing.T) {
 
 	key := alCreateKey(t, opY)
 	alConnect(t, opX, alShownAddress(t, c, "hostB", key.Addresses), key.Key).MustOK(t)
-	alWaitConnected(t, yNode, "abcdefghijklmnopqr-17443", alRelinkBound)
+	alWaitConnected(t, yNode, "abcdefghijklmnopqrs.peer", alRelinkBound)
 
-	alWaitAgentSuffix(t, y1, "x1", "@abcdefghijklmnopqr-17443", alWaitBound)
-	if self := alSelfAddress(t, x1, "x1"); !strings.HasSuffix(self, "@abcdefghijklmnopqr-17443") {
-		t.Fatalf("self_address = %q, want it to end with @abcdefghijklmnopqr-17443", self)
+	alWaitAgentSuffix(t, y1, "x1", "@abcdefghijklmnopqrs.peer", alWaitBound)
+	if self := alSelfAddress(t, x1, "x1"); !strings.HasSuffix(self, "@abcdefghijklmnopqrs.peer") {
+		t.Fatalf("self_address = %q, want it to end with @abcdefghijklmnopqrs.peer", self)
 	}
 }
 

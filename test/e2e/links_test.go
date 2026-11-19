@@ -82,14 +82,14 @@ func TestLinks(t *testing.T) {
 	addrA := lkAddr(c, "hostA", "wan")
 	key := lkCreateKey(t, opA)
 	lkConnect(t, opB, addrA, key.Key).MustOK(t)
-	lkWaitConnected(t, bNode, "hostA-17443", lkRelinkBound)
-	lkWaitConnected(t, aNode, "hostB-17443", lkRelinkBound)
+	lkWaitConnected(t, bNode, "hostA.peer", lkRelinkBound)
+	lkWaitConnected(t, aNode, "hostB.peer", lkRelinkBound)
 
 	t.Run("REQ-broker-pairing-016 relink without key", func(t *testing.T) {
 		lkCutAndWaitDown(t, c, aNode, bNode)
 		c.Restore(t)
-		lkWaitConnected(t, bNode, "hostA-17443", lkRelinkBound)
-		lkWaitConnected(t, aNode, "hostB-17443", lkRelinkBound)
+		lkWaitConnected(t, bNode, "hostA.peer", lkRelinkBound)
+		lkWaitConnected(t, aNode, "hostB.peer", lkRelinkBound)
 
 		// No connect_broker was called during the outage; the consumed
 		// one-time key must not work a second time.
@@ -107,8 +107,8 @@ func TestLinks(t *testing.T) {
 		// rules is the last part of the outage, and measuring it as rebuild
 		// time would charge the product for the harness's own work.
 		start := time.Now()
-		lkWaitConnected(t, bNode, "hostA-17443", lkRelinkBound)
-		lkWaitConnected(t, aNode, "hostB-17443", lkRelinkBound)
+		lkWaitConnected(t, bNode, "hostA.peer", lkRelinkBound)
+		lkWaitConnected(t, aNode, "hostB.peer", lkRelinkBound)
 		if elapsed := time.Since(start); elapsed > lkRelinkBound {
 			t.Fatalf("the link took %s to rebuild, want at most %s", elapsed, lkRelinkBound)
 		}
@@ -137,13 +137,13 @@ func TestLinks(t *testing.T) {
 			if got := outSYN(); got != 0 {
 				return false, fmt.Sprintf("A sent %d outbound SYNs", got)
 			}
-			if lkStatus(t, bNode, "hostA-17443") == localpb.BrokerStatus_BROKER_STATUS_CONNECTED {
+			if lkStatus(t, bNode, "hostA.peer") == localpb.BrokerStatus_BROKER_STATUS_CONNECTED {
 				return false, "B considers the link connected although its path is blocked"
 			}
 			return true, ""
 		})
 		undo()
-		lkWaitConnected(t, bNode, "hostA-17443", lkRelinkBound)
+		lkWaitConnected(t, bNode, "hostA.peer", lkRelinkBound)
 	})
 
 	t.Run("REQ-broker-config-014 broker outlives last session", func(t *testing.T) {
@@ -160,7 +160,7 @@ func TestLinks(t *testing.T) {
 			if got := lkBrokerProcesses(t, c, "hostA"); got < 1 {
 				return false, fmt.Sprintf("A has %d Broker processes after both sessions ended", got)
 			}
-			if got := lkStatus(t, bNode, "hostA-17443"); got != localpb.BrokerStatus_BROKER_STATUS_CONNECTED {
+			if got := lkStatus(t, bNode, "hostA.peer"); got != localpb.BrokerStatus_BROKER_STATUS_CONNECTED {
 				return false, fmt.Sprintf("B sees A as %s", got)
 			}
 			return true, ""
@@ -173,10 +173,10 @@ func TestLinks(t *testing.T) {
 		opB = lkOperator(t, bNode)
 
 		// The peer table is loaded before the Broker answers.
-		if _, ok := lkFindPeer(lkPeers(t, aNode), "hostB-17443"); !ok {
+		if _, ok := lkFindPeer(lkPeers(t, aNode), "hostB.peer"); !ok {
 			t.Fatal("A does not list B immediately after the restart")
 		}
-		lkWaitConnected(t, aNode, "hostB-17443", lkRelinkBound)
+		lkWaitConnected(t, aNode, "hostB.peer", lkRelinkBound)
 
 		// Restore the sessions the later cases use.
 		a1 = lkSession(t, aNode, "a1")
@@ -190,8 +190,8 @@ func TestLinks(t *testing.T) {
 			t.Fatalf("B lists %d brokers, want one", len(peersB))
 		}
 		peer := peersB[0]
-		if peer.GetAlias() != "hostA-17443" || !peer.GetIsPeer() {
-			t.Fatalf("B lists %q (is_peer=%v), want the peer hostA-17443", peer.GetAlias(), peer.GetIsPeer())
+		if peer.GetAlias() != "hostA.peer" || !peer.GetIsPeer() {
+			t.Fatalf("B lists %q (is_peer=%v), want the peer hostA.peer", peer.GetAlias(), peer.GetIsPeer())
 		}
 		if got := hex.EncodeToString(peer.GetFingerprint()); len(got) != 64 || !lkLowerHex(got) {
 			t.Fatalf("B sees A's fingerprint as %q, want 64 lowercase hex digits", got)
@@ -210,8 +210,8 @@ func TestLinks(t *testing.T) {
 			t.Fatalf("A lists %d brokers, want one", len(peersA))
 		}
 		peerB := peersA[0]
-		if peerB.GetAlias() != "hostB-17443" || !peerB.GetIsPeer() {
-			t.Fatalf("A lists %q (is_peer=%v), want the peer hostB-17443", peerB.GetAlias(), peerB.GetIsPeer())
+		if peerB.GetAlias() != "hostB.peer" || !peerB.GetIsPeer() {
+			t.Fatalf("A lists %q (is_peer=%v), want the peer hostB.peer", peerB.GetAlias(), peerB.GetIsPeer())
 		}
 		if peerB.GetRole() != localpb.PeerRole_PEER_ROLE_ACCEPTOR {
 			t.Fatalf("A's role is %s, want ACCEPTOR", peerB.GetRole())
@@ -224,10 +224,10 @@ func TestLinks(t *testing.T) {
 	t.Run("REQ-broker-discovery-013 three statuses", func(t *testing.T) {
 		c.Cut(t, "hostA", "hostB")
 		harness.Eventually(t, lkWaitBound, "the two sides report the cut", func() (bool, string) {
-			if got := lkStatus(t, bNode, "hostA-17443"); got != localpb.BrokerStatus_BROKER_STATUS_CONNECTABLE {
+			if got := lkStatus(t, bNode, "hostA.peer"); got != localpb.BrokerStatus_BROKER_STATUS_CONNECTABLE {
 				return false, fmt.Sprintf("B sees A as %s, want CONNECTABLE", got)
 			}
-			if got := lkStatus(t, aNode, "hostB-17443"); got != localpb.BrokerStatus_BROKER_STATUS_NOT_DIRECTLY_REACHABLE {
+			if got := lkStatus(t, aNode, "hostB.peer"); got != localpb.BrokerStatus_BROKER_STATUS_NOT_DIRECTLY_REACHABLE {
 				return false, fmt.Sprintf("A sees B as %s, want NOT_DIRECTLY_REACHABLE", got)
 			}
 			return true, ""
@@ -237,16 +237,16 @@ func TestLinks(t *testing.T) {
 		}
 
 		c.Restore(t)
-		lkWaitConnected(t, bNode, "hostA-17443", lkRelinkBound)
-		lkWaitConnected(t, aNode, "hostB-17443", lkRelinkBound)
+		lkWaitConnected(t, bNode, "hostA.peer", lkRelinkBound)
+		lkWaitConnected(t, aNode, "hostB.peer", lkRelinkBound)
 	})
 
 	t.Run("REQ-broker-pairing-021 disconnect", func(t *testing.T) {
-		r := opA.Call(t, "disconnect_broker", map[string]any{"broker": "hostB-17443"})
+		r := opA.Call(t, "disconnect_broker", map[string]any{"broker": "hostB.peer"})
 		r.MustOK(t)
 
 		harness.Eventually(t, 3*time.Second, "B no longer sees A as connected", func() (bool, string) {
-			got := lkStatus(t, bNode, "hostA-17443")
+			got := lkStatus(t, bNode, "hostA.peer")
 			return got != localpb.BrokerStatus_BROKER_STATUS_CONNECTED, fmt.Sprintf("B sees A as %s", got)
 		})
 		harness.Eventually(t, 3*time.Second, "A's connection on 17443 is gone", func() (bool, string) {
@@ -257,7 +257,7 @@ func TestLinks(t *testing.T) {
 		})
 
 		harness.Eventually(t, lkWaitBound, "A forgets B", func() (bool, string) {
-			if _, ok := lkFindPeer(lkPeers(t, aNode), "hostB-17443"); ok {
+			if _, ok := lkFindPeer(lkPeers(t, aNode), "hostB.peer"); ok {
 				return false, "A still lists B"
 			}
 			return true, ""
@@ -276,14 +276,14 @@ func TestLinks(t *testing.T) {
 		// control proving the flag reflects the pairing table rather than a
 		// constant. A must no longer mark anything as a peer, and if B's card
 		// is still listed it must carry is_peer=false.
-		if peerB, ok := lkFindPeer(lkPeers(t, bNode), "hostA-17443"); !ok || !peerB.GetIsPeer() {
+		if peerB, ok := lkFindPeer(lkPeers(t, bNode), "hostA.peer"); !ok || !peerB.GetIsPeer() {
 			t.Fatalf("B lists A as present=%v is_peer=%v after A unpaired B; B never unpaired A", ok, peerB.GetIsPeer())
 		}
 		for _, peer := range lkPeers(t, aNode) {
 			if peer.GetIsPeer() {
 				t.Fatalf("A still marks %q as a peer after unpairing B", peer.GetAlias())
 			}
-			if peer.GetAlias() == "hostB-17443" && peer.GetIsPeer() {
+			if peer.GetAlias() == "hostB.peer" && peer.GetIsPeer() {
 				t.Fatalf("A lists the unpaired B as a peer")
 			}
 		}
@@ -291,7 +291,7 @@ func TestLinks(t *testing.T) {
 
 	t.Run("REQ-broker-pairing-035 rejected dialer stops", func(t *testing.T) {
 		harness.Eventually(t, lkWaitBound, "B marks the link to A as rejected", func() (bool, string) {
-			peer, ok := lkFindPeer(lkPeers(t, bNode), "hostA-17443")
+			peer, ok := lkFindPeer(lkPeers(t, bNode), "hostA.peer")
 			if !ok {
 				return false, "A is not listed"
 			}
@@ -323,8 +323,8 @@ func TestLinks(t *testing.T) {
 	t.Run("REQ-broker-pairing-022 re-pair after unpair", func(t *testing.T) {
 		fresh := lkCreateKey(t, opA)
 		lkConnect(t, opB, addrA, fresh.Key).MustOK(t)
-		lkWaitConnected(t, bNode, "hostA-17443", lkWaitBound)
-		lkWaitConnected(t, aNode, "hostB-17443", lkWaitBound)
+		lkWaitConnected(t, bNode, "hostA.peer", lkWaitBound)
+		lkWaitConnected(t, aNode, "hostB.peer", lkWaitBound)
 	})
 
 	t.Run("REQ-broker-pairing-034 acceptor addresses change", func(t *testing.T) {
@@ -334,7 +334,7 @@ func TestLinks(t *testing.T) {
 		wan := net.JoinHostPort(c.Addr("hostA", "wan"), "17443")
 		wan2 := net.JoinHostPort(extra, "17443")
 		harness.Eventually(t, lkWaitBound, "B sees both of A's addresses", func() (bool, string) {
-			peer, ok := lkFindPeer(lkPeers(t, bNode), "hostA-17443")
+			peer, ok := lkFindPeer(lkPeers(t, bNode), "hostA.peer")
 			if !ok {
 				return false, "A is not listed"
 			}
@@ -353,7 +353,7 @@ func TestLinks(t *testing.T) {
 		t.Cleanup(undo)
 		lkCutAndWaitDown(t, c, aNode, bNode)
 		c.Restore(t)
-		lkWaitConnected(t, bNode, "hostA-17443", lkRelinkBound+lkRelinkSlack)
+		lkWaitConnected(t, bNode, "hostA.peer", lkRelinkBound+lkRelinkSlack)
 		if got := inSYN(); got <= before {
 			t.Fatalf("B never dialed A's second address: %d SYNs, want more than %d", got, before)
 		}
@@ -374,20 +374,20 @@ func TestLinksRestartWithTwoPeers(t *testing.T) {
 	// X dials Y.
 	keyY := lkCreateKey(t, opY)
 	lkConnect(t, opX, lkShownAddress(t, c, "hostB", opY), keyY.Key).MustOK(t)
-	lkWaitConnected(t, yNode, "hostA-17443", lkRelinkBound)
+	lkWaitConnected(t, yNode, "hostA.peer", lkRelinkBound)
 
 	// Z dials X.
 	keyX := lkCreateKey(t, opX)
 	lkConnect(t, opZ, lkShownAddress(t, c, "hostA", opX), keyX.Key).MustOK(t)
-	lkWaitConnected(t, xNode, "hostC-17443", lkRelinkBound)
+	lkWaitConnected(t, xNode, "hostC.peer", lkRelinkBound)
 
 	lkRestart(t, c, "hostA", lkConfig(), opX)
 	opX = lkOperator(t, xNode)
 
 	harness.Eventually(t, lkRelinkBound, "X restores both links after the restart", func() (bool, string) {
 		peers := lkPeers(t, xNode)
-		y, okY := lkFindPeer(peers, "hostB-17443")
-		z, okZ := lkFindPeer(peers, "hostC-17443")
+		y, okY := lkFindPeer(peers, "hostB.peer")
+		z, okZ := lkFindPeer(peers, "hostC.peer")
 		if !okY || !okZ {
 			return false, fmt.Sprintf("X lists %v", lkPeerAliases(peers))
 		}
@@ -527,8 +527,8 @@ func lkCutAndWaitDown(t *testing.T, c *harness.Cluster, aNode, bNode *harness.No
 	t.Helper()
 	c.Cut(t, "hostA", "hostB")
 	harness.Eventually(t, lkWaitBound, "both sides notice the cut", func() (bool, string) {
-		a := lkStatus(t, aNode, "hostB-17443")
-		b := lkStatus(t, bNode, "hostA-17443")
+		a := lkStatus(t, aNode, "hostB.peer")
+		b := lkStatus(t, bNode, "hostA.peer")
 		if a == localpb.BrokerStatus_BROKER_STATUS_CONNECTED || b == localpb.BrokerStatus_BROKER_STATUS_CONNECTED {
 			return false, fmt.Sprintf("A sees B as %s, B sees A as %s", a, b)
 		}

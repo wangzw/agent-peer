@@ -69,12 +69,12 @@ func TestRemoteSendFaults(t *testing.T) {
 
 	key := srCreateKey(t, opA)
 	srConnect(t, opB, srShownAddress(t, c, "hostA", key.Addresses), key.Key).MustOK(t)
-	srWaitConnected(t, bNode, "hostA-17443", srRelinkBound)
-	srWaitConnected(t, aNode, "hostB-17443", srRelinkBound)
+	srWaitConnected(t, bNode, "hostA.peer", srRelinkBound)
+	srWaitConnected(t, aNode, "hostB.peer", srRelinkBound)
 
 	t.Run("REQ-broker-pairing-020 both directions behind NAT", func(t *testing.T) {
 		fromA := srMark("nat-a-")
-		r := a1.Call(t, "send_message", map[string]any{"to": "b1@hostB-17443", "message": fromA})
+		r := a1.Call(t, "send_message", map[string]any{"to": "b1@hostB.peer", "message": fromA})
 		r.MustOK(t)
 		frame := b1.WaitFrame(t, srWaitBound)
 		if body := srEnvelopeBody(t, frame.Content); body != fromA {
@@ -82,7 +82,7 @@ func TestRemoteSendFaults(t *testing.T) {
 		}
 
 		fromB := srMark("nat-b-")
-		r = b1.Call(t, "send_message", map[string]any{"to": "a1@hostA-17443", "message": fromB})
+		r = b1.Call(t, "send_message", map[string]any{"to": "a1@hostA.peer", "message": fromB})
 		r.MustOK(t)
 		frame = a1.WaitFrame(t, srWaitBound)
 		if body := srEnvelopeBody(t, frame.Content); body != fromB {
@@ -102,7 +102,7 @@ func TestRemoteSendFaults(t *testing.T) {
 		// waits out the rest of the budget. Both must answer inside the budget.
 		failedFromB = srMark("unreachable-b-")
 		start := time.Now()
-		r := b1.Call(t, "send_message", map[string]any{"to": "a1@hostA-17443", "message": failedFromB})
+		r := b1.Call(t, "send_message", map[string]any{"to": "a1@hostA.peer", "message": failedFromB})
 		elapsed := time.Since(start)
 		r.MustCode(t, "peer_unreachable")
 		if !r.HasPrefix("Not sent") {
@@ -114,7 +114,7 @@ func TestRemoteSendFaults(t *testing.T) {
 
 		failedFromA = srMark("unreachable-a-")
 		start = time.Now()
-		r = a1.Call(t, "send_message", map[string]any{"to": "b1@hostB-17443", "message": failedFromA})
+		r = a1.Call(t, "send_message", map[string]any{"to": "b1@hostB.peer", "message": failedFromA})
 		elapsed = time.Since(start)
 		r.MustCode(t, "peer_unreachable")
 		if !r.HasPrefix("Not sent") {
@@ -127,18 +127,18 @@ func TestRemoteSendFaults(t *testing.T) {
 
 	t.Run("REQ-agent-messaging-019 never delivered later", func(t *testing.T) {
 		c.Restore(t)
-		srWaitConnected(t, bNode, "hostA-17443", srRelinkBound)
-		srWaitConnected(t, aNode, "hostB-17443", srRelinkBound)
+		srWaitConnected(t, bNode, "hostA.peer", srRelinkBound)
+		srWaitConnected(t, aNode, "hostB.peer", srRelinkBound)
 
 		// Sentinels prove the direction works again before the old bodies are
 		// declared absent: a queued message would have to sit in front of them.
 		sentinelToB := srMark("sentinel-to-b-")
-		r := a1.Call(t, "send_message", map[string]any{"to": "b1@hostB-17443", "message": sentinelToB})
+		r := a1.Call(t, "send_message", map[string]any{"to": "b1@hostB.peer", "message": sentinelToB})
 		r.MustOK(t)
 		b1.WaitFrame(t, srWaitBound)
 
 		sentinelToA := srMark("sentinel-to-a-")
-		r = b1.Call(t, "send_message", map[string]any{"to": "a1@hostA-17443", "message": sentinelToA})
+		r = b1.Call(t, "send_message", map[string]any{"to": "a1@hostA.peer", "message": sentinelToA})
 		r.MustOK(t)
 		a1.WaitFrame(t, srWaitBound)
 
@@ -168,7 +168,7 @@ func TestRemoteSendFaults(t *testing.T) {
 		// loses the reply while the write itself succeeds.
 		a1.Fake().SetMode(fakesession.HoldOpen)
 		marker := srMark("unknown-")
-		ch := srSendAsync(t, b1, "a1@hostA-17443", marker)
+		ch := srSendAsync(t, b1, "a1@hostA.peer", marker)
 		frame := a1.WaitFrame(t, srWaitBound)
 		if !strings.Contains(frame.Content, marker) {
 			t.Fatalf("the in-flight frame carries %q, want the marker %q", frame.Content, marker)
@@ -187,8 +187,8 @@ func TestRemoteSendFaults(t *testing.T) {
 		if got := srCountMark(a1.Fake().Frames(), marker); got != 1 {
 			t.Fatalf("A received the message %d times, want exactly once", got)
 		}
-		srWaitConnected(t, bNode, "hostA-17443", srRelinkBound)
-		srWaitConnected(t, aNode, "hostB-17443", srRelinkBound)
+		srWaitConnected(t, bNode, "hostA.peer", srRelinkBound)
+		srWaitConnected(t, aNode, "hostB.peer", srRelinkBound)
 		a1.Fake().SetMode(fakesession.CloseAfterRead)
 	})
 
@@ -200,13 +200,13 @@ func TestRemoteSendFaults(t *testing.T) {
 		bNode.WriteConfig(t, config)
 		bNode.StopBroker(t, syscall.SIGTERM)
 		srStartBroker(t, bNode, config)
-		srWaitConnected(t, bNode, "hostA-17443", srRelinkBound)
-		srWaitConnected(t, aNode, "hostB-17443", srRelinkBound)
+		srWaitConnected(t, bNode, "hostA.peer", srRelinkBound)
+		srWaitConnected(t, aNode, "hostB.peer", srRelinkBound)
 		srWaitSessionVisible(t, a1, "b1")
 
 		a1.Fake().SetMode(fakesession.HoldOpen)
 		marker := srMark("reply-lost-")
-		ch := srSendAsync(t, b1, "a1@hostA-17443", marker)
+		ch := srSendAsync(t, b1, "a1@hostA.peer", marker)
 		frame := a1.WaitFrame(t, srWaitBound)
 		if !strings.Contains(frame.Content, marker) {
 			t.Fatalf("the in-flight frame carries %q, want the marker %q", frame.Content, marker)
@@ -224,7 +224,7 @@ func TestRemoteSendFaults(t *testing.T) {
 		// receiver's dedupe table must not write it again.
 		a1.Fake().SetMode(fakesession.CloseAfterRead)
 		sentinel := srMark("reply-lost-sentinel-")
-		r = b1.Call(t, "send_message", map[string]any{"to": "a1@hostA-17443", "message": sentinel})
+		r = b1.Call(t, "send_message", map[string]any{"to": "a1@hostA.peer", "message": sentinel})
 		r.MustOK(t)
 		a1.WaitFrame(t, srWaitBound)
 
@@ -242,7 +242,7 @@ func TestRemoteSendFaults(t *testing.T) {
 
 		gone.Fake().RemoveSocket()
 		start := time.Now()
-		r := a1.Call(t, "send_message", map[string]any{"to": "gone@hostB-17443", "message": srMark("gone-")})
+		r := a1.Call(t, "send_message", map[string]any{"to": "gone@hostB.peer", "message": srMark("gone-")})
 		elapsed := time.Since(start)
 		r.MustCode(t, "inbox_unwritable")
 		if !r.HasPrefix("Not sent") {
@@ -268,7 +268,7 @@ func TestRemoteSendFaults(t *testing.T) {
 				return false, state
 			}
 			name, gotRef, alias := srSplitAddress(out.Self)
-			if name != "b1" || gotRef == "" || alias != "hostB-17443" {
+			if name != "b1" || gotRef == "" || alias != "hostB.peer" {
 				return false, "self_address is " + out.Self
 			}
 			ref = gotRef
@@ -293,7 +293,7 @@ func TestRemoteSendFaults(t *testing.T) {
 		framesBefore := len(a1.Fake().Frames())
 
 		oversize := strings.Repeat("x", overLimit)
-		r := b1.Call(t, "send_message", map[string]any{"to": "a1@hostA-17443", "message": oversize})
+		r := b1.Call(t, "send_message", map[string]any{"to": "a1@hostA.peer", "message": oversize})
 		r.MustCode(t, "too_large")
 		if !r.HasPrefix("Not sent") {
 			t.Fatalf("the oversize error is %q, want it to start with Not sent", r.Text)
@@ -310,7 +310,7 @@ func TestRemoteSendFaults(t *testing.T) {
 
 		atBoundary := strings.Repeat("x", atLimit)
 		boundaryBefore := bytesIn()
-		r = b1.Call(t, "send_message", map[string]any{"to": "a1@hostA-17443", "message": atBoundary})
+		r = b1.Call(t, "send_message", map[string]any{"to": "a1@hostA.peer", "message": atBoundary})
 		r.MustOK(t)
 		frame := a1.WaitFrame(t, srWaitBound)
 		if body := srEnvelopeBody(t, frame.Content); body != atBoundary {
@@ -454,7 +454,7 @@ func srCutAndWaitDown(t *testing.T, c *harness.Cluster, aNode, bNode *harness.No
 	t.Helper()
 	c.Cut(t, "hostA", "hostB")
 	harness.Eventually(t, srWaitBound, "both sides notice the cut", func() (bool, string) {
-		if srPeerConnected(t, aNode, "hostB-17443") || srPeerConnected(t, bNode, "hostA-17443") {
+		if srPeerConnected(t, aNode, "hostB.peer") || srPeerConnected(t, bNode, "hostA.peer") {
 			return false, "a side still reports the link connected"
 		}
 		return true, ""

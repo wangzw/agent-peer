@@ -74,10 +74,10 @@ func TestCardExpiresAfterSevenDays(t *testing.T) {
 	clockB := dxClockFile(t)
 	clockC := dxClockFile(t)
 
-	listenA = dxStartBroker(t, aHost, dxConfig(listenA, true), listenA, nil)
-	listenB = dxStartBroker(t, bHost, dxConfig(listenB, false), listenB,
+	listenA = dxStartBroker(t, aHost, dxConfig(listenA, "expiry-a", true), listenA, nil)
+	listenB = dxStartBroker(t, bHost, dxConfig(listenB, "expiry-b", false), listenB,
 		map[string]string{dxClockEnv: clockB})
-	listenC = dxStartBroker(t, cHost, dxConfig(listenC, false), listenC,
+	listenC = dxStartBroker(t, cHost, dxConfig(listenC, "expiry-c", false), listenC,
 		map[string]string{dxClockEnv: clockC})
 
 	opA := adOperator(t, aHost)
@@ -140,9 +140,9 @@ func TestCardRenewedDaily(t *testing.T) {
 	clock := dxClockFile(t)
 	clockEnv := map[string]string{dxClockEnv: clock}
 
-	listenA = dxStartBroker(t, aHost, dxConfig(listenA, true), listenA, clockEnv)
-	listenB = dxStartBroker(t, bHost, dxConfig(listenB, false), listenB, clockEnv)
-	listenC = dxStartBroker(t, cHost, dxConfig(listenC, false), listenC, clockEnv)
+	listenA = dxStartBroker(t, aHost, dxConfig(listenA, "renew-a", true), listenA, clockEnv)
+	listenB = dxStartBroker(t, bHost, dxConfig(listenB, "renew-b", false), listenB, clockEnv)
+	listenC = dxStartBroker(t, cHost, dxConfig(listenC, "renew-c", false), listenC, clockEnv)
 
 	opA := adOperator(t, aHost)
 	defer opA.End(t)
@@ -387,8 +387,8 @@ func TestPublicTopicExpiresWithDeclarer(t *testing.T) {
 	listenB := bHost.FreeAddr(t)
 	clockB := dxClockFile(t)
 
-	listenA = dxStartBroker(t, aHost, dxConfig(listenA, true), listenA, nil)
-	listenB = dxStartBroker(t, bHost, dxConfig(listenB, false), listenB,
+	listenA = dxStartBroker(t, aHost, dxConfig(listenA, "topic-expiry-a", true), listenA, nil)
+	listenB = dxStartBroker(t, bHost, dxConfig(listenB, "topic-expiry-b", false), listenB,
 		map[string]string{dxClockEnv: clockB})
 
 	opA := adOperator(t, aHost)
@@ -500,13 +500,14 @@ func dxSetClock(t *testing.T, path string, offset time.Duration) {
 }
 
 // dxConfig builds one node's configuration: the shortened timers, the one
-// second reconciliation interval, and one loopback address used both to listen
-// and to advertise.
-func dxConfig(listen string, public bool) string {
+// second reconciliation interval, one loopback address used both to listen and
+// to advertise, and an explicit alias that keeps the Brokers sharing this host
+// distinct.
+func dxConfig(listen, alias string, public bool) string {
 	parts := []string{
 		harness.FastTimers,
 		"directory:\n  reconcile_interval: 1s",
-		fmt.Sprintf("broker:\n  listen: %q\n  advertise: %q", listen, listen),
+		fmt.Sprintf("broker:\n  alias: %q\n  listen: %q\n  advertise: %q", alias, listen, listen),
 	}
 	if public {
 		parts = append(parts, "broker:\n  public: true")
