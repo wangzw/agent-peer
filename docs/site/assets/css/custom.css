@@ -1,11 +1,23 @@
-/* Home page: the install command between the subtitle and the buttons. It
-   fills the content column so it lines up with the subtitle and the buttons.
-   Its own horizontal scroll keeps a narrow screen free of sideways scrolling
-   on the page. */
+/* Home page: the install command below the hero buttons. The block is a flex
+   row holding the scrolling command and the copy button, so the command
+   scrolls horizontally inside its own area on a narrow screen while the
+   button keeps its place at the block's right edge. */
 .home-install {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   width: 100%;
   min-width: 0;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
+  padding: 0 0.625rem 0 1rem;
+  border: 1px solid var(--hx-color-gray-200);
+  border-radius: 1rem;
+  background-color: var(--hx-color-gray-50);
+}
+
+:root.dark .home-install {
+  border-color: var(--hx-color-neutral-800);
+  background-color: var(--hx-color-neutral-900);
 }
 
 /* Home page: hero actions with a primary and a secondary button. */
@@ -58,14 +70,15 @@
   flex: none;
 }
 
-/* Home page: the steps section between the buttons and the feature cards. */
+/* Home page: the steps section between the install command and the feature
+   cards. */
 .home-features .hextra-feature-card h3 {
   align-items: flex-start;
 }
 
 .home-how-it-works {
   width: 100%;
-  margin-top: 2rem;
+  margin-top: 3rem;
   margin-bottom: 3.5rem;
 }
 
@@ -139,13 +152,13 @@
 }
 
 .home-how-code {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 0;
   overflow-x: auto;
   white-space: pre;
-  border: 1px solid var(--hx-color-gray-200);
-  border-radius: 1rem;
-  background-color: var(--hx-color-gray-50);
+  background-color: transparent;
   color: var(--hx-color-gray-800);
   font-size: 0.875rem;
   line-height: 1.5rem;
@@ -156,9 +169,89 @@
 }
 
 :root.dark .home-how-code {
+  color: var(--hx-color-gray-200);
+}
+
+/* Copy control for the install command. A native button so it is focusable
+   and responds to Enter and Space; it stays visible at every width instead of
+   appearing on hover, since a touch screen has no hover. */
+.home-install-copy {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid var(--hx-color-gray-200);
+  border-radius: 0.5rem;
+  background-color: var(--hx-color-gray-50);
+  color: var(--hx-color-gray-500);
+  cursor: pointer;
+  transition: color 150ms ease-in, border-color 150ms ease-in;
+}
+
+.home-install-copy:hover {
+  border-color: var(--hx-color-gray-400);
+  color: var(--hx-color-gray-900);
+}
+
+.home-install-copy:focus-visible {
+  outline: 2px solid var(--hx-color-primary-600);
+  outline-offset: 2px;
+}
+
+.home-install-copy svg {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+}
+
+.home-install-copy .home-install-check-icon {
+  display: none;
+}
+
+.home-install-copy.copied {
+  border-color: var(--hx-color-primary-600);
+  color: var(--hx-color-primary-600);
+}
+
+.home-install-copy.copied .home-install-copy-icon {
+  display: none;
+}
+
+.home-install-copy.copied .home-install-check-icon {
+  display: block;
+}
+
+:root.dark .home-install-copy {
   border-color: var(--hx-color-neutral-800);
   background-color: var(--hx-color-neutral-900);
-  color: var(--hx-color-gray-200);
+  color: var(--hx-color-gray-400);
+}
+
+:root.dark .home-install-copy:hover {
+  border-color: var(--hx-color-neutral-600);
+  color: var(--hx-color-gray-50);
+}
+
+:root.dark .home-install-copy.copied {
+  border-color: var(--hx-color-primary-400);
+  color: var(--hx-color-primary-400);
+}
+
+/* The copy status is announced to screen readers without taking space. */
+.home-install-copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (max-width: 640px) {

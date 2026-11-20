@@ -16,14 +16,12 @@ layout: hextra-home
 {{< /hextra/hero-subtitle >}}
 </div>
 
-<div class="home-install">
-  <pre class="home-how-code"><code>curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh</code></pre>
-</div>
-
 <div class="home-hero-actions">
 {{< hextra/hero-button text="Quick start" link="docs/getting-started" >}}
 <a href="https://github.com/wangzw/agent-peer" target="_blank" rel="noreferrer" class="home-secondary-button">{{< icon name="github" attributes="height=18" >}} GitHub</a>
 </div>
+
+{{< home-install label="Copy install command" copied="Copied" >}}
 
 <div class="home-how-it-works">
   <h2 class="home-section-title">How it works</h2>
