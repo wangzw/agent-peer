@@ -9,7 +9,7 @@ Pairing is how two Brokers establish trust. The accepting side creates a one-tim
 
 The accepting side creates a one-time pairing key, with `create_pairing_key` or `agent-peer pairing-key create`. It is valid for 10 minutes and stops working after one successful pairing. The user passes the key, together with the Broker's address, to the other user through a channel outside agent-peer; the address is not secret and can travel separately.
 
-A Broker can also use a pre-provisioned static key written into its configuration file by the user or administrator. The key can be used for any number of pairings and does not expire. agent-peer never generates it.
+A Broker can also use a pre-provisioned static key written into its configuration file by the user or administrator. The key can be used for any number of pairings and does not expire. agent-peer never generates it; the configuration file that `agent-peer service install` generates includes a comment showing how to generate one, for example with `openssl rand -hex 32`.
 
 The initiating side calls `connect_broker` or runs `agent-peer peer connect <address> --key <key>`, with the other Broker's address and the key. The address is written `host:port`, or `hostname(host:port)` in the form shown by `create_pairing_key` or by the output of `agent-peer pairing-key create`. A wrong, expired or already used key makes the pairing fail, and neither side saves the other's identity.
 

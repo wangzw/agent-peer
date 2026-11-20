@@ -7,6 +7,10 @@ weight: 8
 
 Download the archive for your platform from [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest), check it against `checksums.txt`, and put the binary on your `PATH`. Then follow the [quick start]({{< relref "getting-started.md" >}}) to register the MCP server with the name `peer`.
 
+## Where is the configuration file?
+
+A user Broker reads `~/.agent-peer/config.yaml` and a system Broker reads `/etc/agent-peer/config.yaml`. `agent-peer service install` generates the file for its level when it does not exist. Without a file, every key takes its default and the Broker runs normally. See [Configuration keys]({{< relref "reference/configuration.md" >}}) for the generated file and how to change it.
+
 ## Which platforms are supported?
 
 macOS and Linux, on amd64 and arm64. Native Windows is not supported. See [design choices and caveats]({{< relref "limitations.md" >}}).

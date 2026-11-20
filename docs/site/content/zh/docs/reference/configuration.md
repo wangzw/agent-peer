@@ -3,7 +3,36 @@ title: 配置键
 weight: 3
 ---
 
-两种部署形态各读一个 YAML 文件：用户级 Broker 读 `~/.agent-peer/config.yaml`，系统级 Broker 读 `/etc/agent-peer/config.yaml`。每个键都可选，未出现的键取默认值。Broker 会监视该文件，所以无论是手工修改、经 `set_config` 修改，还是经 `agent-peer config set` 修改，合法的改动都会在运行期间生效。两个保活键是例外：它们在建立监听或链路时读取，改动只对之后建立的监听或链路生效。
+两种部署形态各读一个 YAML 文件：用户级 Broker 读 `~/.agent-peer/config.yaml`，系统级 Broker 读 `/etc/agent-peer/config.yaml`。没有文件时 Broker 照常运行，每个键都可选，未出现的键取默认值。`agent-peer service install` 如何生成这个文件，见下文“生成的配置文件”一节。Broker 会监视该文件，所以无论是手工修改、经 `set_config` 修改，还是经 `agent-peer config set` 修改，合法的改动都会在运行期间生效。两个保活键是例外：它们在建立监听或链路时读取，改动只对之后建立的监听或链路生效。
+
+## 生成的配置文件
+
+`agent-peer service install` 只在该级别的配置文件不存在时写入模板，已存在的文件不改。模板列出全部键，每个键上方有一行说明。有固定默认值的键直接写出取值。默认值为空或在运行时计算的 5 个键写成注释并附示例：`broker.alias`（默认值在运行时计算），以及默认为空的 `broker.advertise`、`broker.advertise_extra`、`broker.local_socket_group` 和 `pairing.static_key`。取消注释并填入合法值，改动就会像其他合法改动一样在 Broker 运行期间生效。没有配置文件就启动的 Broker 不会得到模板。
+
+系统级模板有两处不同。开头说明讲的是，把文件的读权限授予某个组，该组的账户就能读取配置；把写权限授予某个组，该组的账户就能修改配置、管理配对。此外，用户级模板在 `broker.local_socket_group` 与 `broker.local_socket_mode` 这两个键的说明后注明，它们只对系统级 Broker 生效。
+
+模板以一段说明注释开头：
+
+```yaml
+# agent-peer user Broker configuration.
+#
+# Every key is optional; a key that is absent takes its default value.
+# This file belongs to this account only: only this account runs the Broker
+# and reads or writes the file.
+```
+
+文件按键分成若干段。开头注释与 `pairing` 段之间是 `broker` 段，`pairing` 之后还有 `topics`、`directory`、`send`、`link` 和 `log` 段；下面的节选省略了这些段，只给出 `pairing` 段：
+
+```yaml
+pairing:
+  # Pairing requests per minute that match no pairing key; successful matches of the static key are not counted.
+  max_attempts_per_minute: 10
+  # Failed verifications allowed before a one-time pairing key is invalidated.
+  max_failures: 5
+  # Static pairing key of 16 to 128 characters; a non-empty value takes effect.
+  # static_key: ""
+  # Fill in 16 to 128 random characters, for example the output of `openssl rand -hex 32`. An empty value leaves the static key unset.
+```
 
 ## 配置键
 
@@ -17,7 +46,7 @@ weight: 3
 | `broker.address_check_interval` | 时长 | `1m` | Broker 重新读取本机地址的间隔。 | 可以 |
 | `broker.local_socket_group` | 字符串 | 空 | 系统级 Broker 本机 socket 的属组。空值沿用运行时目录的属组。组必须存在于账户数据库，取值不能含空白、`:` 或 `/`。用户级 Broker 忽略此项。 | 可以 |
 | `broker.local_socket_mode` | 字符串 | `0666` | 系统级 Broker 本机 socket 的文件权限，写成 3 或 4 位八进制数。用户级 Broker 固定为 `0600`。 | 可以 |
-| `pairing.static_key` | 字符串（密钥） | 空 | 预置静态密钥，16 至 128 个字符。有值即生效。 | 不可以，只能改文件 |
+| `pairing.static_key` | 字符串（密钥） | 空 | 预置静态密钥，16 至 128 个字符。有值即生效。可用 `openssl rand -hex 32` 生成，输出 64 个十六进制字符。 | 不可以，只能改文件 |
 | `pairing.max_failures` | 整数 | `5` | 一次性配对密钥作废前允许的验证失败次数。 | 可以 |
 | `pairing.max_attempts_per_minute` | 整数 | `10` | 每分钟允许的、没有匹配上任何配对密钥的配对请求数。匹配上预置静态密钥的请求不计入。 | 可以 |
 | `topics.auto_join` | 布尔 | `true` | 会话是否自动加入默认 topic。 | 可以 |
@@ -57,6 +86,6 @@ weight: 3
 
 ## 修改配置
 
-`set_config` 以文本接收新值，返回旧值与新值。`agent-peer config set` 在终端做同样的事，规则相同。两者都不能修改 `pairing.static_key`，在 Broker 以 `--listen` 运行时也都不能修改 `broker.listen`。手工编辑文件时，Broker 采纳其中合法的改动；某个键的值不合法时，该键保留旧值，Broker 向日志写入一条错误。
+`set_config` 以文本接收新值，返回旧值与新值。`agent-peer config set` 在终端做同样的事，规则相同。两者修改模板中写成注释的键时，都在注释所在位置取消注释并写入新值，文件其余内容不变。文件不存在时，新建的文件只写这一项。两者都不能修改 `pairing.static_key`，在 Broker 以 `--listen` 运行时也都不能修改 `broker.listen`。手工编辑文件时，Broker 采纳其中合法的改动；某个键的值不合法时，该键保留旧值，Broker 向日志写入一条错误。
 
 文件位置与权限见[文件与路径]({{< relref "docs/reference/files" >}})。会话默认加入哪些 topic 见[项目配置文件]({{< relref "docs/reference/project-config" >}})。

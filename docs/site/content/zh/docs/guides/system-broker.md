@@ -12,7 +12,7 @@ weight: 5
 
 系统级 Broker 取的是 root 的账户锁。如果 root 名下已有用户级 Broker 在运行，系统级安装会被拒绝，并提示先停掉它。
 
-系统级 Broker 使用 `/etc/agent-peer/config.yaml`、`/var/log/agent-peer/audit.log` 和 `/var/lib/agent-peer`。安装时如果配置文件不存在，会以属主 root、权限 0600 创建它。
+系统级 Broker 使用 `/etc/agent-peer/config.yaml`、`/var/log/agent-peer/audit.log` 和 `/var/lib/agent-peer`。配置文件不存在时，安装会生成它，内容是一份列出全部键的模板，属主为 root，权限 `0600`；已存在的文件不改动。
 
 ## 允许账户使用它
 

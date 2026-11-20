@@ -7,6 +7,10 @@ weight: 8
 
 从 [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest) 下载对应平台的归档，用 `checksums.txt` 校验后把二进制放进 `PATH`。然后按[快速开始]({{< relref "getting-started.md" >}})用名字 `peer` 注册 MCP 服务。
 
+## 配置文件在哪里？
+
+用户级 Broker 读 `~/.agent-peer/config.yaml`，系统级 Broker 读 `/etc/agent-peer/config.yaml`。`agent-peer service install` 在该级别的文件不存在时生成它。没有文件时，每个键都取默认值，Broker 照常运行。生成的文件与修改方法见[配置键]({{< relref "reference/configuration.md" >}})。
+
 ## 支持哪些平台？
 
 macOS 与 Linux，支持 amd64 与 arm64。不支持原生 Windows。见[设计取舍与注意事项]({{< relref "limitations.md" >}})。

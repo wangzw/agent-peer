@@ -9,7 +9,7 @@ Broker 把配置、身份、对端表、名录和审计日志放在固定位置�
 
 | 路径 | 内容 |
 |---|---|
-| `~/.agent-peer/config.yaml` | 配置文件。 |
+| `~/.agent-peer/config.yaml` | 配置文件，权限 `0600`。文件不存在时由 `agent-peer service install` 生成。 |
 | `~/.agent-peer/identity.key` | Broker 的私钥，权限 `0600`。 |
 | `~/.agent-peer/identity.crt` | 与私钥配对的自签名证书，权限 `0600`。 |
 | `~/.agent-peer/peers.json` | 已配对的对端，权限 `0600`。 |
@@ -18,13 +18,13 @@ Broker 把配置、身份、对端表、名录和审计日志放在固定位置�
 | `/tmp/agent-peer-<uid>/broker.sock` | 本机 socket，权限 `0600`。 |
 | `/tmp/agent-peer-<uid>/broker.lock` | 账户锁，保证每个账户至多一个 Broker。 |
 
-`<uid>` 是账户的数字 ID。运行时目录权限为 `0700`。身份文件在 Broker 第一次启动时创建；`peers.json` 和 `directory.json` 在第一次有内容需要保存时出现。以 root 运行用户级 Broker 时（例如 root 在终端里启动的那一个），运行时目录是 Linux 上的 `/run/agent-peer`、macOS 上的 `/var/run/agent-peer`，与系统级 Broker 相同。
+`<uid>` 是账户的数字 ID。运行时目录权限为 `0700`。身份文件在 Broker 第一次启动时创建；`peers.json` 和 `directory.json` 在第一次有内容需要保存时出现。以 root 运行用户级 Broker 时（例如 root 在终端里启动的那一个），运行时目录是 Linux 上的 `/run/agent-peer`、macOS 上的 `/var/run/agent-peer`，与系统级 Broker 相同。不经 `service install` 直接运行 Broker 时不会生成配置文件；文件不存在时，全部键都取默认值。
 
 ## 系统级 Broker
 
 | 路径 | 内容 |
 |---|---|
-| `/etc/agent-peer/config.yaml` | 配置文件。`agent-peer service install --system` 在该文件不存在时创建它。 |
+| `/etc/agent-peer/config.yaml` | 配置文件，列出全部键，属主为 root，属组为 `0`，权限 `0600`。文件不存在时由 `agent-peer service install --system` 生成。 |
 | `/var/lib/agent-peer/identity.key` | Broker 的私钥，权限 `0600`。 |
 | `/var/lib/agent-peer/identity.crt` | 与私钥配对的自签名证书，权限 `0600`。 |
 | `/var/lib/agent-peer/peers.json` | 已配对的对端，权限 `0600`。 |
@@ -57,7 +57,7 @@ Broker 把运行日志写到标准错误，把审计日志写到上面的审计�
 
 ## 权限
 
-用户级 Broker 以该账户身份运行。Broker 以 `0700` 创建数据目录，以 `0600` 创建文件，并以 `0600` 绑定本机 socket，所以只有该账户能访问它们。
+用户级 Broker 以该账户身份运行。Broker 在数据目录不存在时以 `0700` 创建它，以 `0600` 创建文件，并以 `0600` 绑定本机 socket，所以只有该账户能访问它们。
 
 系统级 Broker 以 root 运行。配置文件的权限决定其他账户能用管理工具和终端命令做哪些事：读权限允许读取配置、完整状态与审计日志；写权限允许修改配置和管理配对。管理员可以用 `chgrp` 和 `chmod` 把文件的相应权限授予一个组。Broker 检查调用方对实际文件的访问权限，所以经工具或终端命令能做的事不超出直接编辑文件能做的事。
 

@@ -3,7 +3,36 @@ title: Configuration keys
 weight: 3
 ---
 
-Both deployment forms read one YAML file: `~/.agent-peer/config.yaml` for a user Broker and `/etc/agent-peer/config.yaml` for a system Broker. Every key is optional; an absent key takes its default. The Broker watches the file, so a valid change takes effect while it runs, whether the change is written by hand, by `set_config`, or by `agent-peer config set`. The two keepalive keys are the exception: they are read when a listener or a link is created, so a change applies only to listeners or links established afterwards.
+Both deployment forms read one YAML file: `~/.agent-peer/config.yaml` for a user Broker and `/etc/agent-peer/config.yaml` for a system Broker. A Broker runs normally without a file, and every key is optional: an absent key takes its default. See The generated file below for how `agent-peer service install` creates it. The Broker watches the file, so a valid change takes effect while it runs, whether the change is written by hand, by `set_config`, or by `agent-peer config set`. The two keepalive keys are the exception: they are read when a listener or a link is created, so a change applies only to listeners or links established afterwards.
+
+## The generated file
+
+`agent-peer service install` writes the template only when the file for its level does not exist; an existing file is left unchanged. The template lists every key, with one line of explanation above each. A key with a fixed default is written out with that value. The five keys whose default is empty or computed at runtime are written as comments with an example instead: `broker.alias`, whose default is computed at runtime, and `broker.advertise`, `broker.advertise_extra`, `broker.local_socket_group` and `pairing.static_key`, which default to empty. Uncomment a line and fill in a valid value, and the change takes effect while the Broker runs, like any other valid change. A Broker started without a configuration file does not get a template.
+
+The system-level template differs in two places. Its opening comment explains that granting a group read access to the file lets that group's accounts read the configuration, and granting write access lets them change the configuration and manage pairing. The user-level template also notes after `broker.local_socket_group` and `broker.local_socket_mode` that those keys apply to the system Broker only.
+
+The template begins with a comment block:
+
+```yaml
+# agent-peer user Broker configuration.
+#
+# Every key is optional; a key that is absent takes its default value.
+# This file belongs to this account only: only this account runs the Broker
+# and reads or writes the file.
+```
+
+The file groups its keys into sections. The `broker` section comes between this opening comment and `pairing`; the `topics`, `directory`, `send`, `link` and `log` sections follow `pairing`. The excerpt below omits them and shows the `pairing` section:
+
+```yaml
+pairing:
+  # Pairing requests per minute that match no pairing key; successful matches of the static key are not counted.
+  max_attempts_per_minute: 10
+  # Failed verifications allowed before a one-time pairing key is invalidated.
+  max_failures: 5
+  # Static pairing key of 16 to 128 characters; a non-empty value takes effect.
+  # static_key: ""
+  # Fill in 16 to 128 random characters, for example the output of `openssl rand -hex 32`. An empty value leaves the static key unset.
+```
 
 ## Keys
 
@@ -17,7 +46,7 @@ Both deployment forms read one YAML file: `~/.agent-peer/config.yaml` for a user
 | `broker.address_check_interval` | duration | `1m` | How often the Broker re-reads the host's local addresses. | Yes |
 | `broker.local_socket_group` | string | empty | The group that owns the system Broker's local socket. Empty keeps the runtime directory's group. The group must exist in the account database; the value must not contain whitespace, `:`, or `/`. Ignored by a user Broker. | Yes |
 | `broker.local_socket_mode` | string | `0666` | The file mode of the system Broker's local socket, written as 3 or 4 octal digits. A user Broker always uses `0600`. | Yes |
-| `pairing.static_key` | secret string | empty | A pre-provisioned static pairing key, 16 to 128 characters. The key is active as soon as it is set. | No, file only |
+| `pairing.static_key` | secret string | empty | A pre-provisioned static pairing key, 16 to 128 characters. The key is active as soon as it is set. Generate one with `openssl rand -hex 32`, which produces 64 hexadecimal characters. | No, file only |
 | `pairing.max_failures` | integer | `5` | Failed verifications allowed before a one-time pairing key is discarded. | Yes |
 | `pairing.max_attempts_per_minute` | integer | `10` | Pairing requests per minute that match no pairing key. Requests matched by the static key do not count. | Yes |
 | `topics.auto_join` | boolean | `true` | Whether sessions join their default topics automatically. | Yes |
@@ -57,6 +86,6 @@ A value that fails a check is rejected, and the configuration remains as it was.
 
 ## Changing the configuration
 
-`set_config` takes the new value as text and returns the old and new values. `agent-peer config set` does the same from the terminal and follows the same rules. Neither can change `pairing.static_key`, and neither can change `broker.listen` while the Broker runs with `--listen`. When the file is edited by hand, the Broker applies the valid changes; a key whose value is invalid keeps its old value and the Broker writes an error to its log.
+`set_config` takes the new value as text and returns the old and new values. `agent-peer config set` does the same from the terminal and follows the same rules. When either changes a key that the template left commented out, it uncomments that line at the same position and writes the new value, leaving the rest of the file unchanged. When the file does not exist, the file it creates holds only that key. Neither can change `pairing.static_key`, and neither can change `broker.listen` while the Broker runs with `--listen`. When the file is edited by hand, the Broker applies the valid changes; a key whose value is invalid keeps its old value and the Broker writes an error to its log.
 
 The file locations and their permissions are listed under [Files and paths]({{< relref "docs/reference/files" >}}). Which topics sessions join by default is described under [Project configuration file]({{< relref "docs/reference/project-config" >}}).

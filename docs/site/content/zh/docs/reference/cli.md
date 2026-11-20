@@ -138,8 +138,10 @@ Addresses:
 
 写入并启用服务定义，然后立即启动 Broker。它会等 Broker 应答，最多等 20 秒；超时会使安装失败，并给出服务日志的位置。重新安装会用新的二进制替换正在运行的 Broker。
 
-- 不带 `--system` 时安装用户级服务，账户登录时启动 Broker。不能以 root 运行。在 macOS 上只能在图形登录会话里运行。
-- 带 `--system` 时安装系统级服务，开机时启动 Broker。必须以 root 运行，并会在 `/etc/agent-peer/config.yaml` 不存在时创建它。
+- 不带 `--system` 时安装用户级服务，账户登录时启动 Broker。不能以 root 运行。在 macOS 上只能在图形登录会话里运行。`~/.agent-peer/config.yaml` 不存在时，生成这个文件，属主为执行安装的账户，权限 `0600`；已存在的文件不改动。
+- 带 `--system` 时安装系统级服务，开机时启动 Broker。必须以 root 运行。`/etc/agent-peer/config.yaml` 不存在时，生成这个文件，属主为 root，权限 `0600`；已存在的文件不改动。
+
+生成的文件是一份列出全部键的模板：有固定默认值的键写出取值，其余键写成注释并附示例值或空占位。安装写入文件时输出 `generated the configuration file <path>`，文件已存在时输出 `kept the existing configuration file <path>`。
 
 如果这一级别已有 Broker 正在应答，而且不是这个服务启动的，安装会被拒绝，并提示先停掉它。
 

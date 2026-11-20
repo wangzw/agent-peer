@@ -12,7 +12,7 @@ Install the binary in a directory that root owns and that group and others canno
 
 The system Broker takes root's account lock. If a user Broker is already running as root, the system-level install refuses and asks you to stop it first.
 
-The system Broker uses `/etc/agent-peer/config.yaml`, `/var/log/agent-peer/audit.log` and `/var/lib/agent-peer`. The install creates the configuration file with owner root and mode 0600 if it does not exist.
+The system Broker uses `/etc/agent-peer/config.yaml`, `/var/log/agent-peer/audit.log` and `/var/lib/agent-peer`. If the configuration file does not exist, the install generates it as a template that lists every configuration key, with owner root and mode `0600`; an existing file is left unchanged.
 
 ## Let accounts use it
 

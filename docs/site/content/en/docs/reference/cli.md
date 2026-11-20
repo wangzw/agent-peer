@@ -138,8 +138,10 @@ Requires write permission on the Broker's configuration file. A usage error exit
 
 Installs a service definition, enables the service, and starts the Broker immediately. It waits up to 20 seconds for the Broker to answer; a timeout fails the install and reports where the service logs go. Reinstalling replaces the running Broker with the new binary.
 
-- Without `--system`, installs a user-level service that starts the Broker when the account logs in. It must not run as root. On macOS it must run in a graphical login session.
-- With `--system`, installs a system-level service that starts the Broker at boot. It must run as root, and it creates `/etc/agent-peer/config.yaml` if the file does not exist yet.
+- Without `--system`, installs a user-level service that starts the Broker when the account logs in. It must not run as root. On macOS it must run in a graphical login session. If `~/.agent-peer/config.yaml` does not exist, it generates the file, owned by the account that runs the install with mode `0600`; an existing file is left unchanged.
+- With `--system`, installs a system-level service that starts the Broker at boot. It must run as root. If `/etc/agent-peer/config.yaml` does not exist, it generates the file, owned by root with mode `0600`; an existing file is left unchanged.
+
+The generated file is a template that lists every configuration key: keys with a fixed default are written out, and the remaining keys are comments with an example value or an empty placeholder. When the install writes the file it prints `generated the configuration file <path>`; when the file already exists it prints `kept the existing configuration file <path>`.
 
 If a Broker that this service did not start is already running at that level, the install refuses and asks you to stop it first.
 

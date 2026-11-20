@@ -22,6 +22,8 @@ agent-peer service install
 
 The command writes the unit file or plist, enables the service, and starts the Broker immediately. It waits up to 20 seconds for the Broker to answer; if it does not answer, the install fails and reports where the service logs go. Reinstalling replaces the running Broker with the new binary. A user-level install must not run as root, because the unit belongs to one account. The install refuses a binary inside the temporary directory; this applies to both the user-level and the system-level form.
 
+When `~/.agent-peer/config.yaml` does not exist, the install generates it as a template that lists every configuration key: keys with a fixed default are written out, and the remaining keys are comments with an example value or an empty placeholder. The file belongs to the account that runs the install and has mode `0600`; an existing file is left unchanged. The install reports either `generated the configuration file <path>` or `kept the existing configuration file <path>`. [Configuration keys]({{< relref "docs/reference/configuration" >}}) describes the generated file.
+
 On Linux with systemd, the unit is `~/.config/systemd/user/agent-peer.service` (or under `$XDG_CONFIG_HOME`). On macOS, the LaunchAgent is `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`, and the install must run in a graphical login session; a host without one uses the system-level service instead.
 
 The unit or plist runs `agent-peer broker` as that account. It starts when the account logs in and restarts the Broker if it exits.
@@ -40,7 +42,7 @@ On an Intel Mac with Homebrew, `/usr/local/bin` belongs to the ordinary user, so
 
 The install checks the binary and every directory above it, then starts the Broker immediately.
 
-On Linux the command writes `/etc/systemd/system/agent-peer.service`, enables it and starts it. On macOS it writes and loads `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`. A system install also creates `/etc/agent-peer/config.yaml` if it does not exist, owned by root with mode 0600.
+On Linux the command writes `/etc/systemd/system/agent-peer.service`, enables it and starts it. On macOS it writes and loads `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`. A system install also generates the configuration file at `/etc/agent-peer/config.yaml` from the system-level template if it does not exist, owned by root with mode `0600`; an existing file is left unchanged.
 
 ## Uninstall a service
 
