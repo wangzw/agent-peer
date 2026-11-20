@@ -46,6 +46,7 @@ pairing:
 | `broker.address_check_interval` | 时长 | `1m` | Broker 重新读取本机地址的间隔。 | 可以 |
 | `broker.local_socket_group` | 字符串 | 空 | 系统级 Broker 本机 socket 的属组。空值沿用运行时目录的属组。组必须存在于账户数据库，取值不能含空白、`:` 或 `/`。用户级 Broker 忽略此项。 | 可以 |
 | `broker.local_socket_mode` | 字符串 | `0666` | 系统级 Broker 本机 socket 的文件权限，写成 3 或 4 位八进制数。用户级 Broker 固定为 `0600`。 | 可以 |
+| `broker.offline` | 布尔 | `false` | 本 Broker 是否拒绝其他主机发来的消息。链路与名录照常工作，运行中修改立即生效。 | 可以 |
 | `pairing.static_key` | 字符串（密钥） | 空 | 预置静态密钥，16 至 128 个字符。有值即生效。可用 `openssl rand -hex 32` 生成，输出 64 个十六进制字符。 | 不可以，只能改文件 |
 | `pairing.max_failures` | 整数 | `5` | 一次性配对密钥作废前允许的验证失败次数。 | 可以 |
 | `pairing.max_attempts_per_minute` | 整数 | `10` | 每分钟允许的、没有匹配上任何配对密钥的配对请求数。匹配上预置静态密钥的请求不计入。 | 可以 |

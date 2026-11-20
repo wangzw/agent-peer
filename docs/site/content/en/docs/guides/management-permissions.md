@@ -14,6 +14,7 @@ The tools and the terminal commands can change a Broker only as far as the calli
 | `list_brokers`, `agent-peer peer list` | none |
 | `get_config`, `agent-peer config get`, full `agent-peer status` output, `agent-peer audit` | read |
 | `set_config`, `agent-peer config set` | write |
+| `set_broker_online`, `agent-peer offline`, `agent-peer online` | write |
 | `create_pairing_key`, `agent-peer pairing-key create` | write |
 | `connect_broker`, `agent-peer peer connect` | write |
 | `disconnect_broker`, `agent-peer peer disconnect` | write |

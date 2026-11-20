@@ -14,6 +14,8 @@ Commands:
                               run the Broker
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker
+  offline                     refuse messages from other hosts
+  online                      accept messages from other hosts again
   audit [--limit <n>]         read the audit log
   config get [<key>]          show all configuration items, or one
   config set <key> <value>    change a configuration item
@@ -65,7 +67,7 @@ Commands:
 - `Agents`：每个已登记 Agent 的地址、账户、状态、topic 与曾用名。
 - `Peers`：每个对端的别名、指纹、本 Broker 的角色、状态、链路状态、对外地址与详细信息。
 
-某一节为空时打印为 `Agents: none` 或 `Peers: none`。没有 Broker 配置文件的读权限时，只列出调用方自己的 Agent；对端与链路照常显示。
+某一节为空时打印为 `Agents: none` 或 `Peers: none`。没有 Broker 配置文件的读权限时，只列出调用方自己的 Agent；对端与链路照常显示。本 Broker 下线时，两张表之前先输出一行 `Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.`
 
 有更新的正式发布版本时，`agent-peer status` 在最后多打印一行：
 
@@ -85,7 +87,7 @@ Update: <v> available (current <c>); run agent-peer update
 
 ## Broker 管理命令
 
-`config`、`pairing-key` 与 `peer` 下的命令连接正在运行的 Broker，不会启动 Broker。它们按执行命令的操作系统账户选择 Broker，没有按级别指定 Broker 的命令行选项：先找本账户正在运行的用户级 Broker，再找本账户有权使用的系统级 Broker。本账户运行着自己的用户级 Broker、又要管理系统级 Broker 时，必须以 `sudo` 执行命令。`status`、`audit` 与 `update` 遵循同一规则。选择规则与相关设置见[运行系统级 Broker]({{< relref "/docs/guides/system-broker" >}})。
+`config`、`pairing-key`、`peer`、`offline` 与 `online` 命令连接正在运行的 Broker，不会启动 Broker。它们按执行命令的操作系统账户选择 Broker，没有按级别指定 Broker 的命令行选项：先找本账户正在运行的用户级 Broker，再找本账户有权使用的系统级 Broker。本账户运行着自己的用户级 Broker、又要管理系统级 Broker 时，必须以 `sudo` 执行命令。`status`、`audit` 与 `update` 遵循同一规则。选择规则与相关设置见[运行系统级 Broker]({{< relref "/docs/guides/system-broker" >}})。
 
 Broker 按执行命令的账户判定每个命令的权限，规则与对应的工具相同。写操作留下的审计记录中，`account` 是执行命令的账户，`actor` 为空。管理员以 `sudo` 执行时，系统级 Broker 按 root 的权限判定。系统级 Broker 管理组的成员在本账户没有运行自己的用户级 Broker 时，不用 `sudo` 也能管理它；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。这些命令不经过 Claude Code 的权限确认。Broker 拒绝某个命令时，它给出的英文错误写到标准错误，其中包含配置文件的路径，命令以退出码 1 结束。
 
@@ -130,7 +132,7 @@ Addresses:
 
 ## agent-peer peer list
 
-把正在运行的 Broker 已知的全部 Broker 列成表格，包括还不是对端的 Broker。列为 `ALIAS`、`FINGERPRINT`、`PEER`（`yes` 或 `no`）、`STATUS`、`DIRECTION` 与 `ADDRESSES`，按别名排序。`ADDRESSES` 列用逗号连接各地址。没有任何 Broker 时输出 `Brokers: none`。
+把正在运行的 Broker 已知的全部 Broker 列成表格，包括还不是对端的 Broker。列为 `ALIAS`、`FINGERPRINT`、`PEER`（`yes` 或 `no`）、`STATUS`、`DIRECTION` 与 `ADDRESSES`，按别名排序。`ADDRESSES` 列用逗号连接各地址。没有任何 Broker 时输出 `Brokers: none`。本 Broker 下线时，表格之前同样先输出 `Broker: offline; …` 这一行。
 
 不需要权限。用法错误以退出码 2 结束，其余失败以退出码 1 结束。
 
@@ -153,6 +155,14 @@ Addresses:
 - `broker` 写对端的别名或完整的 64 位十六进制指纹。
 
 需要 Broker 配置文件的写权限。用法错误以退出码 2 结束，其余失败以退出码 1 结束。
+
+## agent-peer offline and online
+
+`agent-peer offline` 让本 Broker 拒绝其他主机发来的消息，`agent-peer online` 恢复接收。两个命令分别输出 `Broker is now offline` 与 `Broker is now online`。
+
+其他主机发往已下线 Broker 上 Agent 的消息被拒绝，错误码为 `broker_offline`，由本 Broker 报告。本机 Agent 之间照常互发，本机 Agent 也能发往其他主机，但对方的回复会被拒绝；需要双向通信时先执行 `agent-peer online`。链路、topic 成员关系、名录与新的配对都照常工作。对端只有在发送被拒绝时才知道本 Broker 已下线，它的 Broker 列表与链路状态都不显示这一点。
+
+这一状态就是配置键 `broker.offline`，重启后保留。命令需要配置文件的写权限，与修改配置相同；没有写权限时以 `permission_denied` 失败，错误中包含配置文件的路径。每次变化都写入审计日志，并记录执行命令的账户。
 
 ## agent-peer update
 

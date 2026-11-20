@@ -20,6 +20,7 @@ A Claude Code session reaches agent-peer through the MCP server `peer`, which th
 | `create_pairing_key` | Creates a one-time pairing key and reports this Broker's addresses. | None. | Write |
 | `get_config` | Reads this Broker's configuration. | `key` (string, optional): one key such as `broker.alias`; omit it for every key. | Read |
 | `set_config` | Changes one configuration key. | `key` (string, required). `value` (string, required): the new value as text, such as `10m`, `true` or `[a, b]`. | Write |
+| `set_broker_online` | Sets whether this Broker refuses messages from other hosts. | `online` (boolean, required): `true` accepts them, `false` refuses them. | Write |
 | `update_broker` | Upgrades this Broker to the latest formal release and restarts it. | None. | Write |
 
 ## Results
@@ -30,7 +31,7 @@ A Claude Code session reaches agent-peer through the MCP server `peer`, which th
 
 ### Messages
 
-`send_message` returns `result` and `to`. The result is `delivered to the recipient's session (not necessarily read)`: success means the Broker wrote the message into the recipient session's inbox socket, not that the agent read it. If delivery definitively failed, the call returns an error beginning `Not sent`. If the request went out and no definite answer came back, it returns an error beginning `Delivery unknown`, warning that a resend may deliver a second copy.
+`send_message` returns `result` and `to`. The result is `delivered to the recipient's session (not necessarily read)`: success means the Broker wrote the message into the recipient session's inbox socket, not that the agent read it. If delivery definitively failed, the call returns an error beginning `Not sent`. If the request went out and no definite answer came back, it returns an error beginning `Delivery unknown`, warning that a resend may deliver a second copy. When the recipient's host runs a Broker that is offline, the call returns an error beginning `Not sent` with the code `broker_offline`, reported by that Broker; resending the message does not help.
 
 ### Topics
 
@@ -38,9 +39,9 @@ A Claude Code session reaches agent-peer through the MCP server `peer`, which th
 
 ### Brokers
 
-`list_brokers` returns `brokers`. Each entry has an `alias`, a lowercase hexadecimal `fingerprint`, `advertised_addresses` (each with a `kind` and an `addr`; the only kind is `direct`), `is_peer`, a `status` of `connected`, `connectable` or `not_directly_reachable`, and a `status_detail`. A peer also has `role`, either `dialer` or `acceptor` for this Broker, and `link_state`: `dialing`, `waiting`, `handshaking`, `established`, `backoff` or `rejected`.
+`list_brokers` returns `brokers`. Each entry has an `alias`, a lowercase hexadecimal `fingerprint`, `advertised_addresses` (each with a `kind` and an `addr`; the only kind is `direct`), `is_peer`, a `status` of `connected`, `connectable` or `not_directly_reachable`, and a `status_detail`. A peer also has `role`, either `dialer` or `acceptor` for this Broker, and `link_state`: `dialing`, `waiting`, `handshaking`, `established`, `backoff` or `rejected`. The result also has `local`, which describes this Broker; `offline` tells whether it refuses messages from other hosts.
 
-`connect_broker` returns the peer's `alias` and `fingerprint`, a `shown_host`, and any `warnings`. `disconnect_broker` returns `result`. `create_pairing_key` returns `key`, `expires_at` in RFC 3339 UTC, `shown_addresses` and an optional `note`. The addresses are shown for the user to pass on; they are not part of the key.
+`set_broker_online` returns `online`, the state after the change, and `changed`, which says whether the call changed it. `connect_broker` returns the peer's `alias` and `fingerprint`, a `shown_host`, and any `warnings`. `disconnect_broker` returns `result`. `create_pairing_key` returns `key`, `expires_at` in RFC 3339 UTC, `shown_addresses` and an optional `note`. The addresses are shown for the user to pass on; they are not part of the key.
 
 ### Configuration
 
@@ -67,10 +68,10 @@ agent-peer <v> is available (this Broker runs <c>). Ask the agent to call update
 The permission column in the table names the level of access the calling account has to the Broker's configuration file. The account is taken from the process credentials the operating system reports for the local socket, not from anything the call says.
 
 - A user Broker's configuration file belongs to the account, so every call passes.
-- A system Broker uses the file to decide: read access allows `get_config`; write access allows `connect_broker`, `disconnect_broker`, `create_pairing_key`, `set_config` and `update_broker`. An administrator delegates these operations by granting the `agent-peer` group access to the file; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group.
+- A system Broker uses the file to decide: read access allows `get_config`; write access allows `connect_broker`, `disconnect_broker`, `create_pairing_key`, `set_config`, `set_broker_online` and `update_broker`. An administrator delegates these operations by granting the `agent-peer` group access to the file; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group.
 - The messaging and topic tools, and `list_brokers`, need no file permission.
 
-Unlike the read-only tools, `update_broker` does not carry the read-only annotation and is declared destructive, so Claude Code asks by default for confirmation before the call runs. Do not add it to automatic approval: that confirmation is the last manual check before the Broker is replaced and restarted.
+Unlike the read-only tools, `update_broker` does not carry the read-only annotation and is declared destructive, so Claude Code asks by default for confirmation before the call runs. Do not add it to automatic approval: that confirmation is the last manual check before the Broker is replaced and restarted. `set_broker_online` is declared separately from `set_config`, so Claude Code's permission settings can allow it on its own.
 
 `list_agents`, `send_message`, `list_topics`, `join_topic` and `leave_topic` act for the session and need a registered session. The discovery, pairing and configuration tools also work while registration is still pending.
 

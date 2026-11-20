@@ -14,6 +14,7 @@ weight: 7
 | `list_brokers`、`agent-peer peer list` | 无 |
 | `get_config`、`agent-peer config get`、完整的 `agent-peer status` 输出、`agent-peer audit` | 读 |
 | `set_config`、`agent-peer config set` | 写 |
+| `set_broker_online`、`agent-peer offline`、`agent-peer online` | 写 |
 | `create_pairing_key`、`agent-peer pairing-key create` | 写 |
 | `connect_broker`、`agent-peer peer connect` | 写 |
 | `disconnect_broker`、`agent-peer peer disconnect` | 写 |

@@ -20,6 +20,7 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer，安装会�
 | `create_pairing_key` | 生成一次性配对密钥，并给出本 Broker 的地址。 | 无。 | 写 |
 | `get_config` | 读取本 Broker 的配置。 | `key`（字符串，可选）：一个键，例如 `broker.alias`；省略则返回全部键。 | 读 |
 | `set_config` | 修改一个配置键。 | `key`（字符串，必填）。`value`（字符串，必填）：新值的文本形式，例如 `10m`、`true` 或 `[a, b]`。 | 写 |
+| `set_broker_online` | 设置本 Broker 是否拒绝其他主机发来的消息。 | `online`（布尔，必填）：`true` 恢复接收，`false` 拒绝接收。 | 写 |
 | `update_broker` | 把本 Broker 升级到最新的正式发布版本并重启。 | 无。 | 写 |
 
 ## 返回结果
@@ -30,7 +31,7 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer，安装会�
 
 ### 消息
 
-`send_message` 返回 `result` 和 `to`。`result` 为 `delivered to the recipient's session (not necessarily read)`：成功只表示 Broker 把消息写进了接收方会话的 inbox socket，不表示对方 Agent 读过。确定没有送达时，调用返回以 `Not sent` 开头的错误。请求已经发出、但没有收到明确答复时，返回以 `Delivery unknown` 开头的错误，并提示重发可能让对方收到两份。
+`send_message` 返回 `result` 和 `to`。`result` 为 `delivered to the recipient's session (not necessarily read)`：成功只表示 Broker 把消息写进了接收方会话的 inbox socket，不表示对方 Agent 读过。确定没有送达时，调用返回以 `Not sent` 开头的错误。请求已经发出、但没有收到明确答复时，返回以 `Delivery unknown` 开头的错误，并提示重发可能让对方收到两份。接收方所在主机上的 Broker 已下线时，调用返回以 `Not sent` 开头、错误码为 `broker_offline` 的错误，由对方 Broker 报告；重发这条消息没有用。
 
 ### topic
 
@@ -38,9 +39,9 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer，安装会�
 
 ### Broker
 
-`list_brokers` 返回 `brokers`。每项有 `alias`、小写十六进制的 `fingerprint`、`advertised_addresses`（每项含 `kind` 与 `addr`，只有 `direct` 一种）、`is_peer`、`status`（`connected`、`connectable` 或 `not_directly_reachable`）以及 `status_detail`。对端还有 `role`，取 `dialer` 或 `acceptor`，表示本 Broker 的角色；还有 `link_state`：`dialing`、`waiting`、`handshaking`、`established`、`backoff` 或 `rejected`。
+`list_brokers` 返回 `brokers`。每项有 `alias`、小写十六进制的 `fingerprint`、`advertised_addresses`（每项含 `kind` 与 `addr`，只有 `direct` 一种）、`is_peer`、`status`（`connected`、`connectable` 或 `not_directly_reachable`）以及 `status_detail`。对端还有 `role`，取 `dialer` 或 `acceptor`，表示本 Broker 的角色；还有 `link_state`：`dialing`、`waiting`、`handshaking`、`established`、`backoff` 或 `rejected`。结果还带 `local`，描述本 Broker；其中 `offline` 表示它是否拒绝其他主机发来的消息。
 
-`connect_broker` 返回对端的 `alias` 和 `fingerprint`，以及 `shown_host` 和可能的 `warnings`。`disconnect_broker` 返回 `result`。`create_pairing_key` 返回 `key`、RFC 3339 UTC 格式的 `expires_at`、`shown_addresses` 和可选的 `note`。地址只是给用户转交对端的，不属于密钥本身。
+`set_broker_online` 返回修改后的 `online`，以及表示是否有变化的 `changed`。`connect_broker` 返回对端的 `alias` 和 `fingerprint`，以及 `shown_host` 和可能的 `warnings`。`disconnect_broker` 返回 `result`。`create_pairing_key` 返回 `key`、RFC 3339 UTC 格式的 `expires_at`、`shown_addresses` 和可选的 `note`。地址只是给用户转交对端的，不属于密钥本身。
 
 ### 配置
 
@@ -67,10 +68,10 @@ agent-peer <v> is available (this Broker runs <c>). Ask the agent to call update
 表中的“无”“读”“写”指调用方账户对 Broker 配置文件的访问级别。账户取自操作系统为本机 socket 另一端进程提供的凭据，不采信调用方的陈述。
 
 - 用户级 Broker 的配置文件属于本账户，所以每次调用都通过。
-- 系统级 Broker 以该文件判定权限：读权限允许 `get_config`；写权限允许 `connect_broker`、`disconnect_broker`、`create_pairing_key`、`set_config` 与 `update_broker`。管理员给组 `agent-peer` 授予文件的相应权限，就把这些操作委托给了这个组；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。
+- 系统级 Broker 以该文件判定权限：读权限允许 `get_config`；写权限允许 `connect_broker`、`disconnect_broker`、`create_pairing_key`、`set_config`、`set_broker_online` 与 `update_broker`。管理员给组 `agent-peer` 授予文件的相应权限，就把这些操作委托给了这个组；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。
 - 消息与 topic 工具以及 `list_brokers` 不要求配置文件权限。
 
-`update_broker` 不是只读工具：它的声明不带只读标记，并标为破坏性操作，Claude Code 默认会在执行前请你确认。不要把 `update_broker` 加入自动批准：这道确认是 Broker 被替换并重启前的最后一道人工检查。
+`update_broker` 不是只读工具：它的声明不带只读标记，并标为破坏性操作，Claude Code 默认会在执行前请你确认。不要把 `update_broker` 加入自动批准：这道确认是 Broker 被替换并重启前的最后一道人工检查。`set_broker_online` 与 `set_config` 分开声明，Claude Code 的权限设置可以单独放行它。
 
 `list_agents`、`send_message`、`list_topics`、`join_topic` 和 `leave_topic` 代表会话行事，需要会话已经登记。发现、配对与配置类工具在登记完成之前也能使用。
 

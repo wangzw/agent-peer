@@ -46,6 +46,7 @@ pairing:
 | `broker.address_check_interval` | duration | `1m` | How often the Broker re-reads the host's local addresses. | Yes |
 | `broker.local_socket_group` | string | empty | The group that owns the system Broker's local socket. Empty keeps the runtime directory's group. The group must exist in the account database; the value must not contain whitespace, `:`, or `/`. Ignored by a user Broker. | Yes |
 | `broker.local_socket_mode` | string | `0666` | The file mode of the system Broker's local socket, written as 3 or 4 octal digits. A user Broker always uses `0600`. | Yes |
+| `broker.offline` | boolean | `false` | Whether this Broker refuses messages from other hosts. Links and the directory keep working, and a change applies while the Broker runs. | Yes |
 | `pairing.static_key` | secret string | empty | A pre-provisioned static pairing key, 16 to 128 characters. The key is active as soon as it is set. Generate one with `openssl rand -hex 32`, which produces 64 hexadecimal characters. | No, file only |
 | `pairing.max_failures` | integer | `5` | Failed verifications allowed before a one-time pairing key is discarded. | Yes |
 | `pairing.max_attempts_per_minute` | integer | `10` | Pairing requests per minute that match no pairing key. Requests matched by the static key do not count. | Yes |

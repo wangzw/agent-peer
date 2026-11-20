@@ -14,6 +14,8 @@ Commands:
                               run the Broker
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker
+  offline                     refuse messages from other hosts
+  online                      accept messages from other hosts again
   audit [--limit <n>]         read the audit log
   config get [<key>]          show all configuration items, or one
   config set <key> <value>    change a configuration item
@@ -65,7 +67,7 @@ Connects to a running Broker, without starting one, and prints two tables:
 - `Agents`: each registered agent's address, account, status, topics and previous name.
 - `Peers`: each peer's alias, fingerprint, this Broker's role, status, link state, advertised addresses and detail.
 
-An empty section is printed as `Agents: none` or `Peers: none`. Without read permission on the Broker's configuration file, only the caller's own agents are listed; peers and links are still shown.
+An empty section is printed as `Agents: none` or `Peers: none`. Without read permission on the Broker's configuration file, only the caller's own agents are listed; peers and links are still shown. When this Broker is offline, a `Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.` line comes before the tables.
 
 When a newer formal release is available, `agent-peer status` prints one more line at the end:
 
@@ -85,7 +87,7 @@ Reading the audit log requires read permission on the Broker's configuration fil
 
 ## Broker administration commands
 
-The `config`, `pairing-key` and `peer` commands connect to a running Broker, without starting one. They choose the Broker by the operating system account that runs them, with no command-line option to select a level: this account's running user Broker first, then the system Broker this account may use. An account that runs its own user Broker and wants to manage the system Broker must run the command with `sudo`. The same rule applies to `status`, `audit` and `update`. [Run a system Broker]({{< relref "/docs/guides/system-broker" >}}) explains the choice and the settings.
+The `config`, `pairing-key`, `peer`, `offline` and `online` commands connect to a running Broker, without starting one. They choose the Broker by the operating system account that runs them, with no command-line option to select a level: this account's running user Broker first, then the system Broker this account may use. An account that runs its own user Broker and wants to manage the system Broker must run the command with `sudo`. The same rule applies to `status`, `audit` and `update`. [Run a system Broker]({{< relref "/docs/guides/system-broker" >}}) explains the choice and the settings.
 
 The Broker decides the permission of each command from the account that runs it, using the same rules as the matching tool. In the audit records left by the write commands, `account` is the account that ran the command and `actor` is empty. When an administrator runs a command with `sudo`, a system Broker authorizes it against root's permissions. A member of the system Broker's admin group can manage it without `sudo` when the account runs no user-level Broker of its own; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group. These commands do not pass through Claude Code's approval. When the Broker denies a command, its English error, which contains the path of the configuration file, is written to standard error and the command exits with code 1.
 
@@ -130,7 +132,7 @@ Requires write permission on the Broker's configuration file. A usage error exit
 
 ## agent-peer peer list
 
-Lists every Broker known to a running Broker, including Brokers that are not peers, as a table with the columns `ALIAS`, `FINGERPRINT`, `PEER` (`yes` or `no`), `STATUS`, `DIRECTION` and `ADDRESSES`, sorted by alias. The `ADDRESSES` column joins the addresses with commas. With no known Broker it prints `Brokers: none`.
+Lists every Broker known to a running Broker, including Brokers that are not peers, as a table with the columns `ALIAS`, `FINGERPRINT`, `PEER` (`yes` or `no`), `STATUS`, `DIRECTION` and `ADDRESSES`, sorted by alias. The `ADDRESSES` column joins the addresses with commas. With no known Broker it prints `Brokers: none`. When this Broker is offline, the same `Broker: offline; …` line comes before the table.
 
 Requires no permission. A usage error exits with code 2; any other failure exits with code 1.
 
@@ -153,6 +155,14 @@ Removes the pairing with a Broker and prints one line, `Disconnected <broker>`.
 - `broker` is the peer's alias or its full 64-character hexadecimal fingerprint.
 
 Requires write permission on the Broker's configuration file. A usage error exits with code 2; any other failure exits with code 1.
+
+## agent-peer offline and online
+
+`agent-peer offline` makes this Broker refuse messages sent by other hosts, and `agent-peer online` accepts them again. The commands print `Broker is now offline` and `Broker is now online` respectively.
+
+A message that another host sends to an agent on an offline Broker is refused with the error code `broker_offline`, reported by this Broker. Agents on this host still reach each other, and an agent on this host can still send to another host, but the receiver's reply is refused; run `agent-peer online` before a two-way exchange. Links, topic membership, directories and new pairings keep working. A peer learns that this Broker is offline only when a send is refused; its Broker list and link state do not show it.
+
+The state is the `broker.offline` configuration key, so it survives a restart. The commands need write permission on the configuration file, like any other configuration change; without it, they fail with `permission_denied` and an error that includes the path of the configuration file. Each change is written to the audit log with the account that ran the command.
 
 ## agent-peer update
 
