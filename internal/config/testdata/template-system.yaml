@@ -77,6 +77,12 @@ link:
   # Initial backoff for re-establishing a link.
   reconnect_min: 1s
 
+update:
+  # Periodically check GitHub for a newer release.
+  check: true
+  # Interval between GitHub release checks; values below 1h are invalid.
+  check_interval: 24h
+
 log:
   # Runtime log level.
   level: info

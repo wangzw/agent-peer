@@ -276,10 +276,12 @@ var keyTable = map[string]*keySpec{
 	},
 	"update.check": {
 		Name: "update.check", Kind: keyBool, Default: boolValue(true),
+		Doc: "Periodically check GitHub for a newer release.",
 	},
 	"update.check_interval": {
 		Name: "update.check_interval", Kind: keyDuration,
 		Default: durationValue(24 * time.Hour), MinDur: time.Hour,
+		Doc: "Interval between GitHub release checks; values below 1h are invalid.",
 	},
 }
 

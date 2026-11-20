@@ -83,6 +83,8 @@ var cteKeys = []cteKey{
 	{"link.keepalive_interval", "duration"},
 	{"link.keepalive_timeout", "duration"},
 	{"log.level", "string"},
+	{"update.check", "bool"},
+	{"update.check_interval", "duration"},
 }
 
 // cteCommentedKeys are the keys the template does not write as an effective

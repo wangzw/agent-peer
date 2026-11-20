@@ -8,7 +8,7 @@ import (
 
 // templateSections is the order in which the generated template lists the
 // configuration sections.
-var templateSections = []string{"broker", "pairing", "topics", "directory", "send", "link", "log"}
+var templateSections = []string{"broker", "pairing", "topics", "directory", "send", "link", "update", "log"}
 
 const systemTemplateHeader = `# agent-peer system Broker configuration.
 #
