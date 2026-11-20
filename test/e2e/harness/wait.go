@@ -40,14 +40,32 @@ func Eventually(t testing.TB, bound time.Duration, what string, cond func() (ok 
 	}
 }
 
+// effectiveWaitBound lifts a caller's bound to ToolCallWaitBound. These waits
+// make a poll-bounded call, and PollCall clamps that call to the time the wait
+// has left. A caller that passes three seconds, as most tests do, would
+// therefore cut the first call at three seconds, which is exactly the update
+// hint's own timeout; a Broker answering the hint slowly would consume the
+// whole wait and the wait would fail on a call that was never given its poll
+// bound. The caller's bound still applies when it is longer.
+func effectiveWaitBound(bound time.Duration) time.Duration {
+	if bound < ToolCallWaitBound {
+		return ToolCallWaitBound
+	}
+	return bound
+}
+
 // WaitRegistered waits until the session's MCP server has registered it with
 // its Broker. list_agents needs the Agent identity and fails with
 // not_registered until registration completes, so its success is the
 // observable registration point. get_config and list_brokers do not need the
 // identity and can succeed while the Broker is still registering, so they
 // cannot serve as this wait.
+//
+// bound is lifted to ToolCallWaitBound so one poll call gets its full poll
+// bound instead of being clamped to a short caller's bound.
 func WaitRegistered(t testing.TB, s *Session, bound time.Duration) {
 	t.Helper()
+	bound = effectiveWaitBound(bound)
 	deadline := time.Now().Add(bound)
 	Eventually(t, bound, "the session is registered", func() (bool, string) {
 		r, err := s.PollCall(t, deadline, "list_agents", nil)
@@ -75,8 +93,11 @@ func WaitRegistered(t testing.TB, s *Session, bound time.Duration) {
 // that registration completed. list_agents needs the Agent identity and stays
 // not_registered until registration finishes, so it cannot serve an operator
 // session. Among the identity-free tools, list_brokers is the cheapest read.
+//
+// bound is lifted to ToolCallWaitBound for the same reason as WaitRegistered.
 func WaitConnected(t testing.TB, s *Session, bound time.Duration) {
 	t.Helper()
+	bound = effectiveWaitBound(bound)
 	deadline := time.Now().Add(bound)
 	Eventually(t, bound, "the session is connected to its Broker", func() (bool, string) {
 		r, err := s.PollCall(t, deadline, "list_brokers", nil)
