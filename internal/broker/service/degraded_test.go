@@ -31,7 +31,7 @@ func (f *fakeLocal) Status(context.Context, *localpb.StatusRequest) (*localpb.St
 
 func startFakeLocal(t *testing.T, degraded *localpb.DegradedState) string {
 	t.Helper()
-	sock := filepath.Join(t.TempDir(), "broker.sock")
+	sock := shortProbeSocket(t)
 	lis, err := net.Listen("unix", sock)
 	if err != nil {
 		t.Fatalf("listen on %s: %v", sock, err)
@@ -41,6 +41,23 @@ func startFakeLocal(t *testing.T, degraded *localpb.DegradedState) string {
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.Stop)
 	return sock
+}
+
+// shortProbeSocket keeps the Unix socket path under the sun_path limit. On
+// macOS t.TempDir plus the test name can exceed it, and bind then fails with
+// EINVAL.
+func shortProbeSocket(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "broker.sock")
+	if len(path) <= 103 {
+		return path
+	}
+	dir, err := os.MkdirTemp("/tmp", "ap-svc-sock-")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return filepath.Join(dir, "broker.sock")
 }
 
 func TestStatusProbeNormal(t *testing.T) {
