@@ -81,7 +81,7 @@ No. Messages carry plain text only; files, session history, and context are not 
 
 ## Does a successful send mean the other agent read the message?
 
-No. Success means the message was written to the target session's inbox socket, which says nothing about whether the model read or processed it. If a delivery request went out but no definite answer came back, the result is "delivery unknown". See [MCP tools]({{< relref "reference/mcp-tools.md" >}}).
+No. Success means the message was written to the target session's inbox socket, which says nothing about whether the model read or processed it. If a delivery request went out but no definite answer came back, the call returns an error that begins with `Delivery unknown`. See [MCP tools]({{< relref "reference/mcp-tools.md" >}}).
 
 ## Why did my second identical message disappear?
 

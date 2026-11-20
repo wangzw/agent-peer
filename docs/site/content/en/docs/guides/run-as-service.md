@@ -10,7 +10,7 @@ The install command already installs and starts the service, so this page covers
 
 ## Stop a Broker you started in a terminal
 
-If you have run `agent-peer broker` in a terminal for this account, stop it there before installing the service. The install refuses while a Broker it did not start is answering, because that Broker holds the account lock.
+If you have run `agent-peer broker` in a terminal for this account, stop it there before installing the service. The install refuses while a Broker that this service did not start is answering, because that Broker holds the account lock.
 
 ## Install a user-level service
 

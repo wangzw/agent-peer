@@ -4,7 +4,7 @@ linkTitle: 连接公开 Broker
 weight: 4
 ---
 
-Broker 默认不公开。公开 Broker 会发布一张名片，写明它的指纹、别名和对外地址列表，名片会在连通网络内传播。在公开 Broker 上声明的公开 topic 也以同样的方式可见。与公开 Broker 配对仍然需要它的配对密钥。
+Broker 默认不公开。公开 Broker 会发布一张名片，写明它的指纹、别名和对外地址列表，名片会在连通网络内传播。在公开 Broker 上声明的公开 topic 也以同样的方式可见。与公开 Broker 配对仍然需要一个配对密钥。
 
 ## 把 Broker 设为公开
 
@@ -37,7 +37,7 @@ agent-peer config set broker.public true
 1. 让模型用公开 Broker 的某个对外地址，以及对方生成的一次性配对密钥或对方配置的预置静态密钥调用 `connect_broker`，或者运行 `agent-peer peer connect <address> --key <key>`。密钥经 agent-peer 之外的途径从另一位用户那里取得；能被发现不等于可以信任。
 2. 如果结果里出现指纹警告，说明对方出示的指纹与你看到的名片里的不一致。先与另一位用户核对，再决定是否依赖这条链路；`disconnect_broker` 或 `agent-peer peer disconnect <broker>` 可以解除配对。
 3. 让模型用公开 topic 的名字调用 `join_topic`。如果对方声明了简介，加入之前 `list_topics` 已经显示过它。
-4. 调用 `list_agents` 查看对方同在某个 topic 里的 Agent，再用 `send_message` 发送消息。
+4. 调用 `list_agents` 查看对方同在该 topic 里的 Agent，再用 `send_message` 发送消息。
 
 与公开 Broker 配对和其他配对是同一个握手过程。发现只告诉你它在哪里、自称什么。
 

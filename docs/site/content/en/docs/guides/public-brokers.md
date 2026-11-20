@@ -4,7 +4,7 @@ linkTitle: Connect a public Broker
 weight: 4
 ---
 
-A Broker is private by default. A public Broker publishes a broker card with its fingerprint, alias and advertised addresses, and the broker card spreads across the connected network. Public topics declared on a public Broker are visible in the same way. Pairing with a public Broker still needs its pairing key.
+A Broker is private by default. A public Broker publishes a broker card with its fingerprint, alias and advertised addresses, and the broker card spreads across the connected network. Public topics declared on a public Broker are visible in the same way. Pairing with a public Broker still needs a pairing key.
 
 ## Make a Broker public
 

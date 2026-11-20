@@ -89,7 +89,7 @@ sh ./install.sh
 | `--system` | 不经级别询问装为系统级；不是 root 时，脚本经 `sudo` 重新执行自己。 |
 | `--user` | 不经级别询问装为本账户的用户级。不能与 `--system` 同时给出。 |
 | `--prefix <dir>` | 把二进制装到 `<dir>`，代替默认目录：用户级安装为 `~/.local/bin`，系统级安装为 `/usr/local/bin`。 |
-| `--no-service` | 不安装 Broker 服务。[启动 Broker](#启动-broker)。 |
+| `--no-service` | 不安装 Broker 服务，需要[自己启动 Broker](#启动-broker)。 |
 | `--no-mcp` | 不注册 MCP 服务。 |
 | `--admin-group <name>` | 改用组 `<name>` 管理系统级 Broker，代替默认的 `agent-peer` 组；组名只能以小写字母或下划线开头，其后只能是小写字母、数字、下划线或连字符。只在与 `--system` 同用时有效。 |
 | `--join-admin-group` | 不询问，直接把执行安装的账户加入管理组。只在与 `--system` 同用时有效。 |

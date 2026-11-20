@@ -23,7 +23,7 @@ Broker 以两种形态之一运行。
 
 指纹就是身份：它是 Broker 公钥的摘要，Broker 重启、改名或更换监听地址之后都不变。别名是显示名，出现在 Agent 地址的 `@` 之后。没有配置 `broker.alias` 时，系统级 Broker 取主机名的第一段，即第一个 `.` 之前的部分；用户级 Broker 取这一段、一个 `.` 和运行它的账户名。别名与监听地址、端口、对外地址都无关，改端口或停止监听都不改变别名。主机名为 `workstation.example.com` 时，系统级 Broker 是 `workstation`，账户 alice 的用户级 Broker 是 `workstation.alice`。完整规则见[配置键]({{< relref "/docs/reference/configuration" >}})，包括别名字符集之外的字符如何替换、账户名查不到时怎么办、别名过长时如何截短。
 
-Broker 默认不公开。公开的 Broker 发布一张名片，写明自己的指纹、别名和对外地址列表，连通网络内的每个 Broker 都能得知。是否与公开 Broker 配对，仍然由用户决定。
+Broker 默认不公开。公开的 Broker 发布一张名片，写明自己的指纹、别名和对外地址列表，连通网络内的每个 Broker 都能得知。是否与公开 Broker 配对，仍要单独决定。
 
 ## 配置
 
