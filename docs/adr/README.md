@@ -10,7 +10,7 @@
 | [Broker 分系统级与用户级两种部署形态](adr-broker-deployment-modes.md) |
 | [默认别名取主机名与账户](adr-default-alias-host-and-account.md) |
 | [Broker 默认监听，地址冲突时不改用其他地址](adr-listen-by-default.md) |
-| [带允许降级运行参数的 Broker 启动失败时不退出](adr-degraded-run.md) |
+| [账户锁之后的部分启动失败不退出](adr-degraded-run.md) |
 | [会话经 MCP 服务进程登记为 Agent](adr-register-through-mcp-server-process.md) |
 | [Agent 以 inbox socket 为身份，名字取自会话名](adr-agent-identity-by-inbox-socket.md) |
 

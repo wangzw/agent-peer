@@ -60,7 +60,7 @@ service Local {
 }
 ```
 
-本机接口只新增字段与错误码，不提升本机协议版本，与 `UpdateStatus` 的引入方式相同。`ErrorCode` 新增 `broker_offline` 与 `broker_degraded`，两者都映射为 gRPC `FailedPrecondition`。`NotRegisteredReason` 新增 `broker_degraded`，登记流事件的 `detail` 写故障原因。`StatusResponse` 新增 `offline`（布尔；仅诊断时为假，配置不生效）与 `degraded`（档位取 `local_only` 或 `diagnostics_only`，另有步骤、原因与修复提示）。`ListBrokersResponse` 新增 `local`，给 `list_brokers` 与 `peer list` 显示本 Broker 的 `offline` 与 `degraded_reason`。旧版本的 MCP 服务进程收到不认识的错误码时按 `internal` 处理，文字仍含 Broker 给出的说明。
+本机接口只新增字段与错误码，不提升本机协议版本，与 `UpdateStatus` 的引入方式相同。`ErrorCode` 新增 `broker_offline` 与 `broker_degraded`，两者都映射为 gRPC `FailedPrecondition`。`NotRegisteredReason` 新增 `broker_degraded`，登记流事件的 `detail` 写故障原因。`StatusResponse` 新增 `offline`（布尔；仅诊断时为假，配置不生效）与 `degraded`（档位取 `local_only` 或 `diagnostics_only`，另有步骤、原因与修复提示）。`ListBrokersResponse` 新增 `local`，含 `offline` 与 `degraded`（后者含 level、step、reason 与 fix），给 `list_brokers` 与 `peer list` 显示本 Broker 的离线与降级状态。旧版本的 MCP 服务进程收到不认识的错误码时按 `internal` 处理，文字仍含 Broker 给出的说明。
 
 仅诊断降级时，本机接口只照常应答 `Hello`；`Status` 返回只含 `current_version` 与 `degraded` 的应答；`Register` 在下行流上发出 `not_registered` 及原因 `broker_degraded`，流保持打开；其余调用返回 `broker_degraded`，说明为 `degraded.reason`。离开仅诊断时，降级服务关闭全部本机连接，同一 socket 路径上换成完整服务，客户端按现有规则重连。
 
@@ -313,8 +313,8 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 1. 确定形态。带 `--system` 而进程不是以 root 运行的，报错退出。
 2. 经 `inbox` 的 `InSession` 检查自己是否运行在某个 Claude Code 会话的进程树内，是则报错退出。
 3. 对账户锁加排他的文件锁，拿不到即报告已有实例在运行并退出。账户锁的路径由 `config` 给出，只取决于本进程的账户，与形态、配置内容和监听地址无关；以不同的监听地址再启动一个实例，同样拿不到锁。系统级 Broker 取的是 root 的账户锁，root 因此不能同时运行一个系统级和一个用户级的实例。
-4. 加载配置，把 `--listen` 给出的地址作为本次运行的监听地址。带 `--allow-degraded` 时，只有数据目录与审计日志不可用的失败使进程转入降级运行；配置文件读取与解析、取值校验、对外地址准备的失败都与不带该参数时一样使进程退出。
-5. 按顺序执行各装配器：由装配器依次打开身份与对端表、构造 link 并把拨号与关闭链路的能力注入 `pairing`、构造 topic 与名录，各包实例在此时建立；配置读写与审计的装配器排在最后，把权限拦截器加入本机接口的服务端选项；随后构造本机接口并启动各组件，各组件在此时注册链路帧处理、配置变更的订阅与 `broker.listen` 的校验函数，早于本机 socket 的绑定与 `link` 的启动，因此先于任何入站连接和链路事件生效。
+4. 加载配置，把 `--listen` 给出的地址作为本次运行的监听地址。带 `--allow-degraded` 时，`Load` 因审计日志不可用而失败使进程转入仅诊断；配置文件读取与解析、取值校验、对外地址准备的失败都与不带该参数时一样使进程退出。
+5. 按顺序执行各装配器：由装配器依次打开身份与对端表、构造 link 并把拨号与关闭链路的能力注入 `pairing`、构造 topic 与名录，各包实例在此时建立；配置读写与审计的装配器排在最后，把权限拦截器加入本机接口的服务端选项；随后构造本机接口并启动各组件，各组件在此时注册链路帧处理、配置变更的订阅与 `broker.listen` 的校验函数，早于本机 socket 的绑定与 `link` 的启动，因此先于任何入站连接和链路事件生效。身份、对端表与名录由装配器打开，不在 `Load` 里；装配器把打开它们时的“数据目录不可用”错误包上 `config` 导出的哨兵（[config](design-config.md) 的“错误与失败语义”）。带 `--allow-degraded` 时，`run.go` 用 `errors.Is` 认出这个哨兵并转入仅诊断；其余装配或组件启动失败照常致命退出。
 6. 绑定监听地址。这一步在全部组件启动之后执行，地址取本次运行的生效监听地址。绑定失败时，未带 `--allow-degraded` 的报告该地址不可用并退出；带它的进入仅本机降级，不改用其他地址或端口（[ADR-listen-by-default](../../adr/adr-listen-by-default.md)，[ADR-degraded-run](../../adr/adr-degraded-run.md)，`REQ-broker-config-024`、`REQ-broker-config-058`）。监听地址配置为空时跳过这一步。启动组件之后、各组件的 `AfterReady` 之前送达的 `broker.listen` 变更不立即绑定：`AfterReady` 阶段按当时的生效值与这一步绑定的地址比较，不同则补绑一次，相同则跳过。
 7. 只有持锁的进程删除残留的本机 socket 文件并绑定本机 socket：用户级的权限为 `0600`；系统级的在绑定后按配置设置属组与权限，默认为运行时目录的属组与 `0666`，管理员把它设为某个组与该组可写的权限，即把能连接它的账户限定到该组（`REQ-broker-config-027`）。绑定后关闭 Go 默认的关闭即删除行为；删除本机 socket 文件前核对它仍是本进程绑定的文件。系统级先设属组再设权限；`broker.local_socket_group` 指向不存在的组时启动失败并指出该项，即使带 `--allow-degraded` 也退出。这两项经配置文件或 `SetConfig` 变化时立即重新应用到 socket 文件，已建立的连接不受影响。
 
@@ -341,7 +341,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 | 仅本机（`local_only`） | 只有绑定监听地址失败，其余步骤成功；系统级的低端口规则拒绝绑定时同样归这一档 | 全部调用照常；`CreatePairingKey` 返回 `broker_degraded`，说明含地址与 `broker.listen`；`Status` 与 `ListBrokers` 带故障；向本方作为接受方的对端发送按现有规则返回 `peer_unreachable`，说明末尾附降级原因 | 重试绑定成功 |
 | 仅诊断（`diagnostics_only`） | 账户锁之后、监听绑定之前的失败，且失败是数据目录（身份、对端表、名录文件）或审计日志不可用 | `Hello` 照常；`Status` 只返回故障；`Register` 发出 `not_registered` 及原因 `broker_degraded`，流保持打开；其余调用返回 `broker_degraded` | 重试从失败的那一步起的全部启动步骤成功 |
 
-以下失败即使带 `--allow-degraded` 也致命退出：配置文件读不出或解析失败、取值不合法、对外地址准备失败、`broker.local_socket_group` 指向不存在的组，以及与数据目录无关的装配或组件启动失败。配置不可信时不提供诊断服务，避免用一份读错的值决定谁能连接本机 socket。
+启动阶段，以下失败即使带 `--allow-degraded` 也致命退出：配置文件读不出或解析失败、取值不合法、对外地址准备失败、`broker.local_socket_group` 指向不存在的组，以及与数据目录无关的装配或组件启动失败。配置不可信时不提供诊断服务，避免用一份读错的值决定谁能连接本机 socket。
 
 #### 状态一览
 
@@ -383,7 +383,7 @@ stateDiagram-v2
 重试规则：
 
 - 配置文件变化时立即重试。仅诊断时 `config` 的监视没有运行（`Load` 失败时不会启动它），由降级服务自己监视配置文件所在目录；仅本机时沿用 `broker.listen` 的变更订阅，变更时调用 `link.Listen`，失败记 `listen_rebind_failed`。
-- 仅诊断时的失败另每分钟重试一次；重试失败只在原因发生变化时写运行日志，避免每分钟一条。
+- 仅诊断时的失败另每分钟重试一次；重试失败只在原因发生变化时写运行日志，避免每分钟一条。仅诊断状态下重试时，`Load` 因配置文件读取、解析或取值失败不退出，只把原因与修复提示更新为这次失败；致命分类只适用于启动阶段。
 - 监听绑定失败另按退避重试：首次 1 秒，每次翻倍，封顶 1 分钟（`REQ-broker-config-062`）。以 `--listen` 给出地址的运行中，配置文件中的 `broker.listen` 不参与，只有这一项重试生效。
 
 离开仅诊断时，降级服务关闭全部本机接口连接，本机 socket 文件不重新绑定，完整的本机服务接着在同一个 socket 上应答。MCP 服务进程在连接离开 READY 后按现有规则重连并重新调用 `Hello` 与登记（[mcpserver](design-mcpserver.md) 的“启动与登记”与“重新登记”），会话不需要重新连接 MCP 服务。离开时写 `degraded_left` 运行日志。
@@ -615,7 +615,7 @@ Broker 处理 `ApplyUpdate`：
 `agent-peer uninstall [--purge]` 的步骤：
 
 1. 确定级别。root 为系统级。非 root 账户：本账户有用户级安装时为用户级；否则有系统级安装时询问 `Uninstall the system-wide installation (requires sudo)? [y/N]`，回答 y 时以 `sudo <本二进制> uninstall [--purge]` 重新执行，回答其他或无法询问时说明 `sudo agent-peer uninstall` 并以 0 退出；两者都没有时，MCP 注册指向本二进制的按用户级卸载，否则报告没有安装并以 0 退出。root 同时有用户级与系统级安装时卸载系统级；非 root 同时有时卸载用户级，结束后说明主机上仍有系统级安装及 `sudo agent-peer uninstall`。一次只卸载一个级别。“有安装”的判定沿用 `service uninstall`：服务定义文件存在，或服务管理器仍有启用或加载的状态。
-2. 确定是否删除数据：`--purge` 为删，不带时询问 `Also remove configuration, identity, audit and service logs? [y/N]`，无法询问时按留。询问在第 1 步的 sudo 之前完成，回答 y 时以 `--purge` 传给 root 进程，每句只问一次。
+2. 确定是否删除数据：`--purge` 为删。不带时询问 `Also remove configuration, identity, audit and service logs? [y/N]`，无法询问时按留。系统级的询问在第 1 步经 `sudo` 重新执行之后由 root 进程执行；只有用户自己给出 `--purge` 时才把它传给 root 进程，重新执行时不为用户补上。每句只问一次。
 3. 从服务定义中读出它启动的二进制路径（`ExecStart` 的第一个字段，或 `ProgramArguments` 的第一项）。
 4. 调用现有的 `service.Uninstall` 停止并删除服务定义。
 5. 删除 MCP 注册：用户级为执行命令的账户；系统级为 `SUDO_USER`，为空或为 root 时跳过并给出手工命令。只在 `claude mcp get peer` 报告的命令等于第 3 步的二进制路径时执行 `claude mcp remove -s user peer`，与安装脚本只认自己注册的条目相同；找不到 `claude` 时给出手工命令。
@@ -629,7 +629,7 @@ Broker 处理 `ApplyUpdate`：
 | 服务定义 | `~/.config/systemd/user/agent-peer.service`（`XDG_CONFIG_HOME` 优先） | `/etc/systemd/system/agent-peer.service` | `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist` | `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist` |
 | drop-in | `~/.config/systemd/user/agent-peer.service.d/` | `/etc/systemd/system/agent-peer.service.d/` | 无 | 无 |
 | 配置 | `~/.agent-peer/config.yaml` | `/etc/agent-peer/` | `~/.agent-peer/config.yaml` | `/etc/agent-peer/` |
-| 数据与审计 | `~/.agent-peer/` | `/var/lib/agent-peer/`、`/var/log/agent-peer/audit.log` | `~/.agent-peer/` | `/var/lib/agent-peer/`、`/var/log/agent-peer/` |
+| 数据与审计 | `~/.agent-peer/` | `/var/lib/agent-peer/`、`/var/log/agent-peer/audit.log` | `~/.agent-peer/` | `/var/lib/agent-peer/`、`/var/log/agent-peer/audit.log` |
 | 服务日志 | 无 | 无 | `~/Library/Logs/agent-peer/` | `/var/log/agent-peer/broker.log` |
 | 运行时目录 | `/tmp/agent-peer-<uid>/` | `/run/agent-peer/` | `/tmp/agent-peer-<uid>/` | `/var/run/agent-peer/` |
 | 管理组 | 无 | `groupdel <组>` | 无 | `dseditgroup -o delete <组>` |

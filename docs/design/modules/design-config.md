@@ -149,7 +149,7 @@ type PathSet struct {
 }
 ```
 
-加载之前调用导出函数的语义：`Get`、`Set`、`ReadAudit` 返回 `ErrNotLoaded`；`All` 与 `Advertised` 返回 `nil`；`Secret` 返回空字符串；`Paths` 返回零值；`Validate`、`Subscribe`、`SubscribeAdvertised` 是装配错误，直接 panic；`Audit` 以错误级别写一条运行日志并丢弃该事件；`Close` 无动作。`Load` 只能成功一次，第二次返回 `ErrAlreadyLoaded`。`Close` 之后本包回到未加载的状态，各导出函数按上面的语义处理：`Set` 返回 `ErrNotLoaded`，`Secret` 返回空字符串，其余同未加载时。错误以哨兵值导出（`ErrNotLoaded`、`ErrAlreadyLoaded`、`ErrUnknownKey`、`ErrSecretKey`、`ErrListenOverridden`、`ErrInvalidValue`、`ErrInvalidCombination`、`ErrTooManyAddresses`、`ErrFileWrite`），调用方用 `errors.Is` 区分。数据目录与审计日志不可用的失败另包上可判别的哨兵错误，供 `broker` 决定是否进入仅诊断；`Load` 的其余失败不带这一标记。
+加载之前调用导出函数的语义：`Get`、`Set`、`ReadAudit` 返回 `ErrNotLoaded`；`All` 与 `Advertised` 返回 `nil`；`Secret` 返回空字符串；`Paths` 返回零值；`Validate`、`Subscribe`、`SubscribeAdvertised` 是装配错误，直接 panic；`Audit` 以错误级别写一条运行日志并丢弃该事件；`Close` 无动作。`Load` 只能成功一次，第二次返回 `ErrAlreadyLoaded`。`Close` 之后本包回到未加载的状态，各导出函数按上面的语义处理：`Set` 返回 `ErrNotLoaded`，`Secret` 返回空字符串，其余同未加载时。错误以哨兵值导出（`ErrNotLoaded`、`ErrAlreadyLoaded`、`ErrUnknownKey`、`ErrSecretKey`、`ErrListenOverridden`、`ErrInvalidValue`、`ErrInvalidCombination`、`ErrTooManyAddresses`、`ErrFileWrite`），调用方用 `errors.Is` 区分。`Load` 在审计日志不可用时把错误包上可判别的哨兵值，并导出这个哨兵；数据目录不可用时，`broker` 的装配器在打开身份、对端表与名录时把错误包上同一个哨兵值。`broker` 用 `errors.Is` 按这个哨兵决定是否进入仅诊断；`Load` 的其余失败不带这一标记。
 
 启动时的低端口检查不属于 `Load`。`Load` 成功之后、绑定监听地址之前，由 `broker` 调用本包导出的检查函数；`broker.listen` 的端口小于 1024 而配置文件可被组或其他人写入时返回错误，按监听地址不可用处理。
 

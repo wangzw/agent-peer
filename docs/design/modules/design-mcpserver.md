@@ -37,7 +37,7 @@ MCP 服务的名字是 `peer`，模型看到的工具全名是 `mcp__peer__<工�
 | `list_topics` | 无 | 是 | 无 | 已加入的 topic；已知的公开 topic 及简介 | `REQ-topics-013` |
 | `join_topic` | `name?`、`public?`、`description?` | 否 | 无 | 加入后的 topic 列表；`name` 为空时加入本会话的默认 topic | `REQ-topics-001`、`REQ-topics-010`、`REQ-topics-023`、`REQ-topics-026` |
 | `leave_topic` | `name?` | 否 | 无 | 退出后的 topic 列表；`name` 为空时退出本会话的默认 topic | `REQ-topics-003`、`REQ-topics-027` |
-| `list_brokers` | 无 | 是 | 无 | 每个已知 Broker 的别名、指纹、对外地址列表、是否对端、状态；对端另标明本方是它的拨号方还是接受方；另带 `local`：本 Broker 的 `offline` 与 `degraded_reason` | `REQ-broker-discovery-012` 至 `REQ-broker-discovery-014`、`REQ-broker-config-068` |
+| `list_brokers` | 无 | 是 | 无 | 每个已知 Broker 的别名、指纹、对外地址列表、是否对端、状态；对端另标明本方是它的拨号方还是接受方；另带 `local`：本 Broker 的 `offline` 与 `degraded` | `REQ-broker-discovery-012` 至 `REQ-broker-discovery-014`、`REQ-broker-config-068` |
 | `connect_broker` | `address`，对方的连接地址，写作 `地址:端口` 或 `主机名(地址:端口)`；`key`，配对密钥；`local_alias?` | 否 | 写 | 对方的别名与指纹，`address` 带主机名时一并给出，可能附带警告；或以 `Not connected` 开头的错误 | `REQ-broker-pairing-010`、`REQ-broker-config-021` |
 | `disconnect_broker` | `broker`，对端的别名或 64 位十六进制指纹 | 否 | 写 | 解除配对的结果 | `REQ-broker-pairing-021`、`REQ-broker-config-021` |
 | `create_pairing_key` | 无 | 否 | 写 | 一次性配对密钥及其失效时间；另行展示本机 Broker 的地址，写作 `主机名(地址:端口)`，对外地址列表有多项时一并列出，为空时说明没有可展示的地址、需要用户自行告知对方连接地址；本 Broker 不监听时返回错误，提示由对方生成密钥、本方发起配对 | `REQ-broker-pairing-005`、`REQ-broker-pairing-025`、`REQ-broker-pairing-028`、`REQ-broker-pairing-036`、`REQ-broker-config-021` |
@@ -60,7 +60,7 @@ MCP 服务的名字是 `peer`，模型看到的工具全名是 `mcp__peer__<工�
 - `send_message`：`result`、`to`。
 - `list_topics`：`joined_topics`、`public_topics`；每项有 `name`、`description`。
 - `join_topic`、`leave_topic`：`topics`。
-- `list_brokers`：`brokers` 与 `local`；每个 Broker 项有 `alias`、`fingerprint`、`advertised_addresses`、`is_peer`、`role`、`link_state`、`status`、`status_detail`，地址项有 `kind`、`addr`；`local` 有 `offline`、`degraded_reason`。
+- `list_brokers`：`brokers` 与 `local`；每个 Broker 项有 `alias`、`fingerprint`、`advertised_addresses`、`is_peer`、`role`、`link_state`、`status`、`status_detail`，地址项有 `kind`、`addr`；`local` 有 `offline`、`degraded`；`degraded` 有 level、step、reason 与 fix。
 - `connect_broker`：`alias`、`fingerprint`、`shown_host`、`warnings`。
 - `disconnect_broker`：`result`。
 - `create_pairing_key`：`key`、`expires_at`、`shown_addresses`、`note`。
@@ -134,9 +134,9 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 
 重新登记以同一个 socket 路径进行，得到的 Agent 标识不变；消歧标识按当时本 Broker 上的 Agent 集合重新计算，集合未变时其他 Agent 手里的地址继续有效。登记完成后按原来的公开声明与简介重新加入本进程记着的全部 topic；Broker 撤销登记后再次发出登记完成时同样如此。默认 topic 只在本进程第一次收到登记完成时确定一次，结果先记入记忆再逐个加入，加入途中断开时下次仍能恢复。Broker 已改为不公开的，公开声明失败，该 topic 仍以不公开方式加入。带错误详情而被拒绝的不公开 topic 从记忆中删除，没有错误详情的错误（连接中断）保留，等下一次登记完成再试。本进程退出后，它记着的 topic 随之丢失：MCP 服务被停用后重新启用，新的进程只重新加入默认 topic。
 
-默认 topic 的列表另存一份，不随退出而删除。`join_topic` 的 `name` 为空时逐个加入列表中的 topic，`public` 与 `description` 对每一个生效；`leave_topic` 的 `name` 为空时逐个退出其中已加入的 topic，未加入的跳过。列表为空时，两者都返回 `invalid_argument` 类的本地错误，说明本会话没有默认 topic。退出的 topic 按现有规则从记忆中删除，本会话内重新登记时不再加入；新的会话重新确定默认 topic 并自动加入（`REQ-topics-026`、`REQ-topics-027`）。
+默认 topic 的列表另存一份，不随退出而删除。这份列表按“默认 topic 的确定”的第三至第五步得出，不看 `topics.auto_join` 与项目配置文件的 `auto_join`。`join_topic` 的 `name` 为空时逐个加入列表中的 topic，`public` 与 `description` 对每一个生效；`leave_topic` 的 `name` 为空时逐个退出其中已加入的 topic，未加入的跳过。列表为空时，两者都返回 `invalid_argument` 类的本地错误，说明本会话没有默认 topic。退出的 topic 按现有规则从记忆中删除，本会话内重新登记时不再加入；新的会话重新确定默认 topic 并自动加入（`REQ-topics-026`、`REQ-topics-027`）。
 
-不带名字的 `join_topic` 是用户明确的请求，忽略 `topics.auto_join` 与项目配置文件的 `auto_join`，按“默认 topic 的确定”的第三至第五步得出列表。
+登记完成时的自动加入另按“默认 topic 的确定”的第一、二步判断 `topics.auto_join` 与项目配置文件的 `auto_join`，两项都允许时加入这份列表。不带名字的 `join_topic` 是用户明确的请求，不看这两项，直接加入列表。
 
 ### 默认 topic 的确定
 
