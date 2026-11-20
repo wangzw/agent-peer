@@ -349,6 +349,15 @@ const (
 	pairHostB Service = "hostB"
 )
 
+// pairInnerTestTimeout bounds one role's test binary inside its container. Even
+// at every bound, one role's waits add up to about two and a half minutes: its
+// startup including the MCP handshake, at most two exchange waits (72s is the
+// longest) and its terminal commands. Five minutes is more than four times the
+// longest exchange wait and over twice that sum, which leaves room for a loaded
+// CI host while ending a role stuck in an unbounded call well before the outer
+// 30-minute e2e bound (E2E_TIMEOUT in the Makefile).
+const pairInnerTestTimeout = 5 * time.Minute
+
 // RunPair is the TestMain entry point of a package that runs one of its tests
 // on two hosts. Inside either pair container it runs the selected tests as the
 // role the container carries. On the test host it builds the test binary and
@@ -406,6 +415,7 @@ func RunPairTest(t *testing.T, opts PairOptions) {
 		"-test.run", runTestFlag(t.Name()),
 		"-test.v",
 		"-test.count=1",
+		"-test.timeout=" + pairInnerTestTimeout.String(),
 	}
 
 	type pairResult struct {
