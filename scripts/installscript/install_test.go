@@ -111,7 +111,6 @@ func (f *fixture) environ(overrides map[string]string) []string {
 		"LC_ALL":                  "C",
 		"FAKE_AGENT_LOG":          f.agentLog,
 		"FAKE_AGENT_VERSION":      "agent-peer test-version",
-		"FAKE_AGENT_STATUS":       "ok",
 		"FAKE_AGENT_SERVICE_EXIT": "0",
 		"FAKE_PATH_AGENT_LOG":     f.pathAgentLog,
 		"FAKE_CLAUDE_LOG":         f.claudeLog,
@@ -414,8 +413,8 @@ func TestInstallScriptUserInstall(t *testing.T) {
 	if got := countLines(agent, "--version"); got != 1 {
 		t.Errorf("--version calls = %d, want 1; calls: %q", got, agent)
 	}
-	if got := countLines(agent, "status"); got != 1 {
-		t.Errorf("status calls = %d, want 1; calls: %q", got, agent)
+	if got := countLines(agent, "status"); got != 0 {
+		t.Errorf("status calls = %d, want 0; the service summary reports the state; calls: %q", got, agent)
 	}
 
 	claude := readLines(t, f.claudeLog)
@@ -426,10 +425,16 @@ func TestInstallScriptUserInstall(t *testing.T) {
 		t.Errorf("mcp add calls = %d, want 1 with %s; calls: %q", got, binary, claude)
 	}
 
-	mustContain(t, "stdout", stdout, "agent-peer installed")
-	mustContain(t, "stdout", stdout, "MCP:     registered")
+	mustContain(t, "stdout", stdout, "agent-peer test-version installed (user-level, starts at login)")
+	mustContain(t, "stdout", stdout, "MCP:        registered")
 	mustContain(t, "stdout", stdout, "Reopen any Claude Code session")
 	mustContain(t, "stdout", stdout, binary[:strings.LastIndex(binary, "/")]+" is not on PATH")
+
+	// The binary, version, service state and status belong to service install;
+	// the script must not repeat them.
+	mustNotContain(t, "stdout", stdout, "  version:")
+	mustNotContain(t, "stdout", stdout, "  service:")
+	mustNotContain(t, "stdout", stdout, "  status:")
 
 	// The script must run the installed binary, never one found on PATH.
 	if calls := readLines(t, f.pathAgentLog); len(calls) != 0 {
@@ -463,7 +468,7 @@ func TestInstallScriptUserInstallRejectsRoot(t *testing.T) {
 func TestInstallScriptCustomPrefix(t *testing.T) {
 	f := newFixture(t)
 	prefix := filepath.Join(f.base, "custom", "bin")
-	stdout, stderr, code := f.run(nil, "--prefix", prefix)
+	stdout, stderr, code := f.run(nil, "--prefix", prefix, "--no-service")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
@@ -479,7 +484,8 @@ func TestInstallScriptCustomPrefix(t *testing.T) {
 	if got := countLines(claude, "mcp add --scope user peer -- "+binary+" mcp"); got != 1 {
 		t.Errorf("mcp add calls = %d, want 1 with %s; calls: %q", got, binary, claude)
 	}
-	mustContain(t, "stdout", stdout, "binary:  "+binary)
+	mustContain(t, "stdout", stdout, "agent-peer test-version installed (no service)")
+	mustContain(t, "stdout", stdout, "binary:     "+binary)
 }
 
 func TestInstallScriptNoPathHintWhenPrefixIsOnPath(t *testing.T) {
@@ -506,7 +512,7 @@ func TestInstallScriptClaudeMissing(t *testing.T) {
 	binary := f.pathUnderHome(t, ".local", "bin", "agent-peer")
 	combined := stdout + stderr
 	mustContain(t, "output", combined, "claude mcp add --scope user peer -- "+binary+" mcp")
-	mustContain(t, "stdout", stdout, "MCP:     skipped (claude not found)")
+	mustContain(t, "stdout", stdout, "MCP:        skipped (claude not found)")
 	if calls := readLines(t, f.claudeLog); len(calls) != 0 {
 		t.Errorf("claude was called although it is missing: %q", calls)
 	}
@@ -579,8 +585,9 @@ func TestInstallScriptNoServiceNoMCP(t *testing.T) {
 	if calls := readLines(t, f.claudeLog); len(calls) != 0 {
 		t.Errorf("claude was called with --no-mcp: %q", calls)
 	}
-	mustContain(t, "stdout", stdout, "service: skipped (--no-service)")
-	mustContain(t, "stdout", stdout, "MCP:     skipped (--no-mcp)")
+	mustContain(t, "stdout", stdout, "agent-peer test-version installed (no service)")
+	mustContain(t, "stdout", stdout, "binary:     "+f.pathUnderHome(t, ".local", "bin", "agent-peer"))
+	mustContain(t, "stdout", stdout, "MCP:        skipped (--no-mcp)")
 }
 
 func TestInstallScriptRejectsUnexpectedVersion(t *testing.T) {
@@ -635,8 +642,8 @@ func TestInstallScriptAcceptsDegradedService(t *testing.T) {
 	// service install printed the summary; the script kept going through the
 	// MCP registration and its own summary.
 	mustContain(t, "stdout", stdout, "installed (user-level, starts at login)")
-	mustContain(t, "stdout", stdout, "agent-peer installed")
-	mustContain(t, "stdout", stdout, "MCP:     registered")
+	mustContain(t, "stdout", stdout, "agent-peer test-version installed")
+	mustContain(t, "stdout", stdout, "MCP:        registered")
 	mustContain(t, "stderr", stderr, "Broker: degraded (local only)")
 	mustContain(t, "stderr", stderr, "Fix:")
 
@@ -650,14 +657,63 @@ func TestInstallScriptAcceptsDegradedService(t *testing.T) {
 	}
 }
 
-func TestInstallScriptToleratesStatusFailure(t *testing.T) {
-	f := newFixture(t)
-	stdout, stderr, code := f.run(map[string]string{"FAKE_AGENT_STATUS": "fail"})
-	if code != 0 {
-		t.Fatalf("exit = %d, want 0\nstderr:\n%s", code, stderr)
+func TestInstallScriptReportsUpgrade(t *testing.T) {
+	writeOldBinary := func(t *testing.T, prefix, version string) {
+		t.Helper()
+		if err := os.MkdirAll(prefix, 0o755); err != nil {
+			t.Fatalf("creating %s: %v", prefix, err)
+		}
+		writeExecutable(t, filepath.Join(prefix, "agent-peer"),
+			"#!/bin/sh\nprintf 'agent-peer "+version+"\\n'\n")
 	}
-	mustContain(t, "stdout", stdout, "status:  not available yet")
-	mustContain(t, "stdout", stdout, "agent-peer installed")
+
+	t.Run("no service", func(t *testing.T) {
+		f := newFixture(t)
+		prefix := filepath.Join(f.base, "upbin")
+		writeOldBinary(t, prefix, "0.2.0")
+
+		stdout, stderr, code := f.run(nil, "--prefix", prefix, "--no-service", "--no-mcp")
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+		}
+		mustContain(t, "stdout", stdout, "upgraded from 0.2.0")
+		mustContain(t, "stdout", stdout, "agent-peer test-version installed (no service)")
+		mustContain(t, "stdout", stdout, "binary:     "+f.userBinary(prefix))
+		if got := countLines(readLines(t, f.agentLog), "--version"); got != 1 {
+			t.Errorf("new binary --version calls = %d, want 1", got)
+		}
+	})
+
+	t.Run("before the service summary", func(t *testing.T) {
+		f := newFixture(t)
+		prefix := filepath.Join(f.base, "upbin")
+		writeOldBinary(t, prefix, "0.1.0")
+
+		stdout, stderr, code := f.run(nil, "--prefix", prefix, "--no-mcp")
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+		}
+		upgraded := strings.Index(stdout, "upgraded from 0.1.0")
+		summary := strings.Index(stdout, "agent-peer test-version installed")
+		if upgraded < 0 || summary < 0 || upgraded > summary {
+			t.Errorf("stdout does not report the upgrade before the service summary:\n%s", stdout)
+		}
+	})
+
+	t.Run("unexpected version output", func(t *testing.T) {
+		f := newFixture(t)
+		prefix := filepath.Join(f.base, "upbin")
+		if err := os.MkdirAll(prefix, 0o755); err != nil {
+			t.Fatalf("creating %s: %v", prefix, err)
+		}
+		writeExecutable(t, filepath.Join(prefix, "agent-peer"), "#!/bin/sh\nprintf 'something else\\n'\n")
+
+		stdout, stderr, code := f.run(nil, "--prefix", prefix, "--no-service", "--no-mcp")
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+		}
+		mustNotContain(t, "stdout", stdout, "upgraded from")
+	})
 }
 
 // hostSystemDefinitionPath is the existence check the script makes for a
@@ -1181,8 +1237,9 @@ func TestInstallScriptSystemInstallsIntoRootOwnedDirectory(t *testing.T) {
 	if got := countLines(readLines(t, f.agentLog), "--version"); got != 1 {
 		t.Errorf("--version calls = %d, want 1", got)
 	}
-	mustContain(t, "stdout", stdout, "service: skipped (--no-service)")
-	mustContain(t, "stdout", stdout, "MCP:     skipped (--no-mcp)")
+	mustContain(t, "stdout", stdout, "agent-peer test-version installed (no service)")
+	mustContain(t, "stdout", stdout, "binary:     "+binary)
+	mustContain(t, "stdout", stdout, "MCP:        skipped (--no-mcp)")
 }
 
 func TestInstallScriptSystemChecksDirectoriesWithBSDStat(t *testing.T) {
@@ -1235,7 +1292,7 @@ func TestInstallScriptSystemPrintsManualMCPCommand(t *testing.T) {
 			binary := f.installedBinary(t, prefix)
 			combined := stdout + stderr
 			mustContain(t, "output", combined, "claude mcp add --scope user peer -- "+binary+" mcp")
-			mustContain(t, "stdout", stdout, "MCP:     skipped (no account to register for)")
+			mustContain(t, "stdout", stdout, "MCP:        skipped (no account to register for)")
 			if calls := readLines(t, f.claudeLog); len(calls) != 0 {
 				t.Errorf("claude was called without a user to register for: %q", calls)
 			}
@@ -1263,9 +1320,9 @@ func TestInstallScriptSystemRegistersForSudoUser(t *testing.T) {
 			t.Fatalf("run %d exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", run, code, stdout, stderr)
 		}
 		if run == 1 {
-			mustContain(t, "stdout", stdout, "MCP:     registered")
+			mustContain(t, "stdout", stdout, "MCP:        registered")
 		} else {
-			mustContain(t, "stdout", stdout, "MCP:     already registered")
+			mustContain(t, "stdout", stdout, "MCP:        already registered")
 		}
 	}
 	if got := countLines(readLines(t, f.claudeLog), "mcp add --scope user peer -- "+binary+" mcp"); got != 1 {
@@ -1646,22 +1703,19 @@ case $1 in
 	printf '%s\n' "$FAKE_AGENT_VERSION"
 	;;
 service)
-	if [ "${FAKE_AGENT_SERVICE_EXIT:-0}" != "0" ]; then
-		if [ "$FAKE_AGENT_SERVICE_EXIT" = "3" ]; then
-			printf 'agent-peer installed (user-level, starts at login)\n'
-			printf '  binary:     unattested\n'
-			printf 'Broker: degraded (local only): cannot bind 127.0.0.1:17443\n' >&2
-			printf 'Fix: change broker.listen in the configuration\n' >&2
-		fi
-		exit "$FAKE_AGENT_SERVICE_EXIT"
+	_exit=${FAKE_AGENT_SERVICE_EXIT:-0}
+	if [ "$_exit" = "0" ] || [ "$_exit" = "3" ]; then
+		printf 'agent-peer %s installed (user-level, starts at login)\n' "${FAKE_AGENT_VERSION#agent-peer }"
+		printf '  binary:     %s\n' "${FAKE_AGENT_BINARY:-/usr/local/bin/agent-peer}"
+		printf '  uninstall:  agent-peer uninstall\n'
 	fi
-	;;
-status)
-	if [ "$FAKE_AGENT_STATUS" = "fail" ]; then
-		printf 'no broker is running\n' >&2
-		exit 1
+	if [ "$_exit" = "3" ]; then
+		printf 'Broker: degraded (local only): cannot bind 127.0.0.1:17443\n' >&2
+		printf 'Fix: change broker.listen in the configuration\n' >&2
 	fi
-	printf 'broker: running\n'
+	if [ "$_exit" != "0" ]; then
+		exit "$_exit"
+	fi
 	;;
 esac
 exit 0

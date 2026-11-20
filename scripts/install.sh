@@ -441,6 +441,18 @@ if [ "$_os" = "Darwin" ]; then
 	xattr -d com.apple.quarantine "$archive_binary" 2>/dev/null || true
 fi
 
+# Record the version of a binary already at the target path, so the summary can
+# report an upgrade. Only an agent-peer binary answers with the expected
+# prefix; anything else is replaced without claiming an upgrade.
+_previous_version=
+if [ -f "$prefix/agent-peer" ]; then
+	if _previous_output=$("$prefix/agent-peer" --version 2>/dev/null); then
+		case $_previous_output in
+			"agent-peer "*) _previous_version=${_previous_output#agent-peer } ;;
+		esac
+	fi
+fi
+
 # 1. Install the binary.
 if [ "$system" -eq 1 ]; then
 	if ! install -o root -g 0 -m 0755 "$archive_binary" "$prefix/agent-peer"; then
@@ -462,6 +474,12 @@ case $_version_output in
 	*) fail "unexpected output from $prefix/agent-peer --version: $_version_output" ;;
 esac
 
+# Report the upgrade before the service prints its summary; the service does
+# not know what was installed before.
+if [ -n "$_previous_version" ]; then
+	printf 'upgraded from %s\n' "$_previous_version"
+fi
+
 # 3. Install the service. service install is repeatable: an existing service is
 # restarted with the new binary, so the script does not check first. Exit status
 # 3 means the service is installed and running, but the Broker runs degraded;
@@ -470,21 +488,17 @@ esac
 _service_status=0
 _service_degraded=0
 _service_level="user-level"
-if [ "$install_service" -eq 0 ]; then
-	_service_state="skipped (--no-service)"
-elif [ "$system" -eq 1 ]; then
-	_service_level="system-level"
-	if [ "$admin_group_set" -eq 1 ]; then
-		"$prefix/agent-peer" service install --system --admin-group "$admin_group" || _service_status=$?
-	else
-		"$prefix/agent-peer" service install --system || _service_status=$?
-	fi
-	_service_state="installed (system-level, starts at boot)"
-else
-	"$prefix/agent-peer" service install || _service_status=$?
-	_service_state="installed (user-level, starts at login)"
-fi
 if [ "$install_service" -eq 1 ]; then
+	if [ "$system" -eq 1 ]; then
+		_service_level="system-level"
+		if [ "$admin_group_set" -eq 1 ]; then
+			"$prefix/agent-peer" service install --system --admin-group "$admin_group" || _service_status=$?
+		else
+			"$prefix/agent-peer" service install --system || _service_status=$?
+		fi
+	else
+		"$prefix/agent-peer" service install || _service_status=$?
+	fi
 	case $_service_status in
 		0) ;;
 		3) _service_degraded=1 ;;
@@ -638,21 +652,14 @@ if [ "$system" -eq 0 ]; then
 	esac
 fi
 
-# 7. Summarize. The status call contacts the Broker and is allowed to fail; a
-# Broker that is still starting or a host without one must not fail the
-# installation after the binary and service are in place.
-printf '\nagent-peer installed\n'
-printf '  binary:  %s\n' "$prefix/agent-peer"
-printf '  version: %s\n' "$_version_output"
-printf '  service: %s\n' "$_service_state"
-printf '  MCP:     %s\n' "$_mcp_state"
-if [ "$install_service" -eq 1 ]; then
-	if _status_output=$("$prefix/agent-peer" status 2>&1); then
-		printf '  status:  %s\n' "$_status_output"
-	else
-		printf '  status:  not available yet\n'
-	fi
+# 7. Summarize what the script alone knows. service install printed the binary,
+# version, configuration, logs and service commands. Without a service, the
+# script reports the binary it placed.
+if [ "$install_service" -eq 0 ]; then
+	printf '\nagent-peer %s installed (no service)\n' "${_version_output#agent-peer }"
+	printf '  %-12s%s\n' 'binary:' "$prefix/agent-peer"
 fi
+printf '  %-12s%s\n' 'MCP:' "$_mcp_state"
 if [ -n "$_admin_group_user" ]; then
 	printf "\n%s was added to %s; log in again or run \`newgrp %s\` before managing the Broker without sudo.\n" \
 		"$_admin_group_user" "$admin_group" "$admin_group"
