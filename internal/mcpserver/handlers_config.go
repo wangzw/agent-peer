@@ -53,6 +53,33 @@ func (h *handlers) SetConfig(ctx context.Context, in SetConfigIn) (SetConfigOut,
 	}, nil
 }
 
+// SetBrokerOnline forwards set_broker_online to the Broker as a change of
+// broker.offline. The agent id is sent only for the audit record. Changed
+// compares the values the Broker reports before and after the write.
+func (h *handlers) SetBrokerOnline(ctx context.Context, in SetBrokerOnlineIn) (SetBrokerOnlineOut, error) {
+	st, err := h.preflight("set_broker_online", callGeneric, false)
+	if err != nil {
+		return SetBrokerOnlineOut{}, err
+	}
+	// broker.offline is the opposite of the tool's online flag.
+	value := "true"
+	if in.Online {
+		value = "false"
+	}
+	resp, err := st.Client.SetConfig(ctx, &localpb.SetConfigRequest{
+		Key:     "broker.offline",
+		Value:   value,
+		AgentId: st.AgentID,
+	})
+	if err != nil {
+		return SetBrokerOnlineOut{}, rpcError("set_broker_online", callGeneric, permWrite, err)
+	}
+	return SetBrokerOnlineOut{
+		Online:  in.Online,
+		Changed: resp.GetOldValue().GetBoolValue() != resp.GetNewValue().GetBoolValue(),
+	}, nil
+}
+
 // renderValue renders one configuration value the way the config file writes
 // it. A nil value and a value whose oneof is unset render as the empty string.
 func renderValue(v *localpb.ConfigValue) string {

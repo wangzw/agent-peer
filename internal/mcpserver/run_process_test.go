@@ -75,8 +75,8 @@ func TestRunProcessServesMCP(t *testing.T) {
 	)
 	cs, _ := startRunProcess(t, env)
 
-	if got := len(listTools(t, cs)); got != 12 {
-		t.Fatalf("ListTools returned %d tools, want 12", got)
+	if got := len(listTools(t, cs)); got != 13 {
+		t.Fatalf("ListTools returned %d tools, want 13", got)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -99,8 +99,8 @@ func TestRunProcessSurvivesMissingBroker(t *testing.T) {
 	)
 	cs, cmd := startRunProcess(t, env)
 
-	if got := len(listTools(t, cs)); got != 12 {
-		t.Fatalf("ListTools returned %d tools, want 12", got)
+	if got := len(listTools(t, cs)); got != 13 {
+		t.Fatalf("ListTools returned %d tools, want 13", got)
 	}
 
 	var res *mcp.CallToolResult

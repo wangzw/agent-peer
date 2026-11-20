@@ -184,6 +184,20 @@ type SetConfigOut struct {
 	New string `json:"new_value"`
 }
 
+// SetBrokerOnlineIn is the input of set_broker_online. Online only affects
+// messages other hosts send to this Broker; links and messages this Broker
+// sends stay available either way.
+type SetBrokerOnlineIn struct {
+	Online bool `json:"online" jsonschema:"true to accept messages from other hosts, false to refuse them; links and local messages are not affected"`
+}
+
+// SetBrokerOnlineOut is the result of set_broker_online. Changed reports
+// whether the stored value differed from the requested one.
+type SetBrokerOnlineOut struct {
+	Online  bool `json:"online"`
+	Changed bool `json:"changed"`
+}
+
 // UpdateBrokerOut is the result of update_broker. The three version fields
 // mirror the Broker's ApplyUpdate reply; an empty to_version means the Broker
 // is already current. Result carries the sentence shown to the model.
@@ -207,10 +221,11 @@ type toolSet interface {
 	CreatePairingKey(ctx context.Context, in NoArgs) (CreatePairingKeyOut, error)
 	GetConfig(ctx context.Context, in GetConfigIn) (GetConfigOut, error)
 	SetConfig(ctx context.Context, in SetConfigIn) (SetConfigOut, error)
+	SetBrokerOnline(ctx context.Context, in SetBrokerOnlineIn) (SetBrokerOnlineOut, error)
 	UpdateBroker(ctx context.Context, in NoArgs) (UpdateBrokerOut, error)
 }
 
-// newMCPServer declares the "peer" MCP server with all twelve tools and the
+// newMCPServer declares the "peer" MCP server with all thirteen tools and the
 // instructions that tell the model how to use them. log receives the panic
 // reports of the tool handlers; nil disables them.
 func newMCPServer(version string, ts toolSet, log *slog.Logger) *mcp.Server {
@@ -251,6 +266,10 @@ func newMCPServer(version string, ts toolSet, log *slog.Logger) *mcp.Server {
 	addTool(s, log, "set_config",
 		"Change this Broker's configuration; requires write permission on the Broker's config file.",
 		false, ts.SetConfig)
+	addReversibleTool(s, log, "set_broker_online",
+		"Set whether this Broker accepts messages from other hosts; links and messages sent from this Broker are not affected. "+
+			"Requires write permission on the Broker's config file.",
+		ts.SetBrokerOnline)
 	addDestructiveTool(s, log, "update_broker",
 		"Upgrade this Broker to the latest agent-peer release and restart it; requires write permission on the Broker's config file. "+
 			"The connection recovers automatically, and this session's MCP server uses the new version only after the session is reopened.",
@@ -275,6 +294,20 @@ func addTool[In, Out any](s *mcp.Server, log *slog.Logger, name, description str
 func addDestructiveTool[In, Out any](s *mcp.Server, log *slog.Logger, name, description string,
 	h func(context.Context, In) (Out, error)) {
 	destructive := true
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        name,
+		Description: description,
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive},
+	}, safe(name, log, h))
+}
+
+// addReversibleTool registers a tool that changes state but can undo the
+// change through the same tool. The destructive hint is explicitly false, so
+// a client does not infer one from the missing value and treat the call like
+// update_broker.
+func addReversibleTool[In, Out any](s *mcp.Server, log *slog.Logger, name, description string,
+	h func(context.Context, In) (Out, error)) {
+	destructive := false
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        name,
 		Description: description,

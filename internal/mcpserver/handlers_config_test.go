@@ -171,6 +171,90 @@ func TestGetConfig(t *testing.T) {
 	})
 }
 
+// TestSetBrokerOnline covers both directions, the changed flag taken from the
+// Broker's old and new values, and the denied write.
+// REQ-broker-config-067.
+func TestSetBrokerOnline(t *testing.T) {
+	t.Parallel()
+
+	boolean := func(v bool) *localpb.ConfigValue {
+		return &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: v}}
+	}
+	cases := []struct {
+		name        string
+		online      bool
+		oldOffline  bool
+		newOffline  bool
+		wantValue   string
+		wantChanged bool
+	}{
+		{"go offline", false, false, true, "true", true},
+		{"go online", true, true, false, "false", true},
+		{"already offline", false, true, true, "true", false},
+		{"already online", true, false, false, "false", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h, s := newConfigTestHandler(t, fakelocal.Handlers{
+				SetConfig: func(context.Context, *localpb.SetConfigRequest) (*localpb.SetConfigResponse, error) {
+					return &localpb.SetConfigResponse{
+						OldValue: boolean(tc.oldOffline),
+						NewValue: boolean(tc.newOffline),
+					}, nil
+				},
+			})
+
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			out, err := h.SetBrokerOnline(ctx, SetBrokerOnlineIn{Online: tc.online})
+			if err != nil {
+				t.Fatalf("SetBrokerOnline: %v", err)
+			}
+			if out.Online != tc.online || out.Changed != tc.wantChanged {
+				t.Errorf("result = %+v, want online %v and changed %v", out, tc.online, tc.wantChanged)
+			}
+
+			calls := s.Calls()
+			if len(calls) != 1 || calls[0].Method != "SetConfig" {
+				t.Fatalf("calls = %v, want one SetConfig", calls)
+			}
+			req := calls[0].Request.(*localpb.SetConfigRequest)
+			if req.GetKey() != "broker.offline" || req.GetValue() != tc.wantValue {
+				t.Errorf("request = (%q, %q), want (broker.offline, %q)", req.GetKey(), req.GetValue(), tc.wantValue)
+			}
+			if req.GetAgentId() != "agent-1" {
+				t.Errorf("request agent_id = %q, want agent-1 for the audit record", req.GetAgentId())
+			}
+		})
+	}
+
+	t.Run("permission denied", func(t *testing.T) {
+		t.Parallel()
+		h, _ := newConfigTestHandler(t, fakelocal.Handlers{
+			SetConfig: func(context.Context, *localpb.SetConfigRequest) (*localpb.SetConfigResponse, error) {
+				return nil, fakelocal.ErrorStatus(codes.PermissionDenied, &localpb.ErrorDetail{
+					Code:    localpb.ErrorCode_ERROR_CODE_PERMISSION_DENIED,
+					Message: "write denied",
+				})
+			},
+		})
+
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		_, err := h.SetBrokerOnline(ctx, SetBrokerOnlineIn{Online: false})
+		if err == nil {
+			t.Fatal("SetBrokerOnline succeeded, want a permission error")
+		}
+		if !strings.HasPrefix(err.Error(), "set_broker_online failed:") {
+			t.Errorf("error = %q, want a set_broker_online failed prefix", err)
+		}
+		if !strings.Contains(err.Error(), "write permission") {
+			t.Errorf("error = %q, want it to mention write permission", err)
+		}
+	})
+}
+
 // TestSetConfig covers forwarding the raw value, rendering the old and new
 // values, and keeping the Broker's reason for a rejected change.
 // REQ-broker-config-002, REQ-broker-config-021, REQ-broker-config-029,

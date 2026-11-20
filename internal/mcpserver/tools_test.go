@@ -28,6 +28,7 @@ type stubToolSet struct {
 	createPairingKey func(context.Context, NoArgs) (CreatePairingKeyOut, error)
 	getConfig        func(context.Context, GetConfigIn) (GetConfigOut, error)
 	setConfig        func(context.Context, SetConfigIn) (SetConfigOut, error)
+	setBrokerOnline  func(context.Context, SetBrokerOnlineIn) (SetBrokerOnlineOut, error)
 	updateBroker     func(context.Context, NoArgs) (UpdateBrokerOut, error)
 }
 
@@ -106,6 +107,13 @@ func (s *stubToolSet) SetConfig(ctx context.Context, in SetConfigIn) (SetConfigO
 		return SetConfigOut{}, nil
 	}
 	return s.setConfig(ctx, in)
+}
+
+func (s *stubToolSet) SetBrokerOnline(ctx context.Context, in SetBrokerOnlineIn) (SetBrokerOnlineOut, error) {
+	if s.setBrokerOnline == nil {
+		return SetBrokerOnlineOut{}, nil
+	}
+	return s.setBrokerOnline(ctx, in)
 }
 
 func (s *stubToolSet) UpdateBroker(ctx context.Context, in NoArgs) (UpdateBrokerOut, error) {
@@ -221,7 +229,7 @@ func TestToolsList(t *testing.T) {
 	want := []string{
 		"list_agents", "send_message", "list_topics", "join_topic", "leave_topic",
 		"list_brokers", "connect_broker", "disconnect_broker", "create_pairing_key",
-		"get_config", "set_config", "update_broker",
+		"get_config", "set_config", "set_broker_online", "update_broker",
 	}
 	if len(tools) != len(want) {
 		t.Fatalf("got %d tools, want %d", len(tools), len(want))
@@ -305,6 +313,22 @@ func TestToolsList(t *testing.T) {
 		t.Errorf("set_config value type = %v, want string", value["type"])
 	}
 
+	// set_broker_online takes one required boolean.
+	props, required = schemaProps(t, tools["set_broker_online"])
+	if !equalStrings(keys(props), []string{"online"}) {
+		t.Errorf("set_broker_online properties = %v", keys(props))
+	}
+	if !equalStrings(required, []string{"online"}) {
+		t.Errorf("set_broker_online required = %v, want [online]", required)
+	}
+	online, ok := props["online"].(map[string]any)
+	if !ok {
+		t.Fatalf("set_broker_online online schema is %T", props["online"])
+	}
+	if online["type"] != "boolean" {
+		t.Errorf("set_broker_online online type = %v, want boolean", online["type"])
+	}
+
 	// The six config/pairing tools are distinct tools, so reading the config,
 	// changing it and creating a pairing key are authorized separately
 	// (REQ-broker-config-003, REQ-broker-config-005, REQ-broker-pairing-025).
@@ -314,13 +338,13 @@ func TestToolsList(t *testing.T) {
 		}
 	}
 
-	// Read-only hints: four true, eight false (REQ-broker-config-004).
+	// Read-only hints: four true, nine false (REQ-broker-config-004).
 	readOnly := map[string]bool{
 		"list_agents": true, "send_message": false, "list_topics": true,
 		"join_topic": false, "leave_topic": false, "list_brokers": true,
 		"connect_broker": false, "disconnect_broker": false,
 		"create_pairing_key": false, "get_config": true, "set_config": false,
-		"update_broker": false,
+		"set_broker_online": false, "update_broker": false,
 	}
 	for name, wantRO := range readOnly {
 		tool := tools[name]
@@ -337,6 +361,13 @@ func TestToolsList(t *testing.T) {
 	// destructive and be a separate authorization decision (REQ-update-008).
 	if ann := tools["update_broker"].Annotations; ann == nil || ann.DestructiveHint == nil || !*ann.DestructiveHint {
 		t.Errorf("update_broker DestructiveHint = %v, want true", ann)
+	}
+
+	// set_broker_online writes a switch that a later call can restore, so it
+	// declares the destructive hint false explicitly instead of leaving it
+	// unset (REQ-broker-config-067).
+	if ann := tools["set_broker_online"].Annotations; ann == nil || ann.DestructiveHint == nil || *ann.DestructiveHint {
+		t.Errorf("set_broker_online DestructiveHint = %v, want false", ann)
 	}
 
 	// disconnect_broker's broker parameter explains aliases and fingerprints.
@@ -377,6 +408,7 @@ func TestInstructions(t *testing.T) {
 		"deliver it twice",
 		"once per agent",
 		"drops the duplicate",
+		"broker_offline",
 		"denied or would be blocked",
 	} {
 		if !strings.Contains(info.Instructions, want) {
@@ -482,6 +514,9 @@ func TestToolResultFieldNames(t *testing.T) {
 		setConfig: func(_ context.Context, in SetConfigIn) (SetConfigOut, error) {
 			return SetConfigOut{Key: in.Key, Old: "old", New: "new"}, nil
 		},
+		setBrokerOnline: func(_ context.Context, in SetBrokerOnlineIn) (SetBrokerOnlineOut, error) {
+			return SetBrokerOnlineOut{Online: in.Online, Changed: true}, nil
+		},
 		listBrokers: func(context.Context, NoArgs) (ListBrokersOut, error) {
 			return ListBrokersOut{Brokers: []BrokerOut{{
 				Alias:       "h",
@@ -541,6 +576,11 @@ func TestToolResultFieldNames(t *testing.T) {
 	}
 	if _, ok := set["new_value"]; !ok {
 		t.Errorf("set_config has no new_value: %v", set)
+	}
+
+	online := structuredMap(t, callTool(t, cs, "set_broker_online", map[string]any{"online": true}))
+	if online["online"] != true || online["changed"] != true {
+		t.Errorf("set_broker_online = %v, want online and changed true", online)
 	}
 
 	brokers := structuredMap(t, callTool(t, cs, "list_brokers", nil))
