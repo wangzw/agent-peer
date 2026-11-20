@@ -111,6 +111,7 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 		args map[string]any
 	}{
 		{"set_config", map[string]any{"key": "broker.alias", "value": "c-alias"}},
+		{"set_broker_online", map[string]any{"online": false}},
 		{"create_pairing_key", map[string]any{}},
 		{"connect_broker", map[string]any{"address": permPeerListen, "key": deniedKey}},
 		{"disconnect_broker", map[string]any{"broker": "peer-user"}},
@@ -122,6 +123,23 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 		}
 		if !strings.Contains(text, "(code: permission_denied)") {
 			t.Errorf("%s error = %q, want (code: permission_denied)", call.tool, text)
+		}
+	}
+
+	// The terminal commands that change the offline switch need the same write
+	// permission and no less (REQ-broker-config-066).
+	for _, command := range []string{"offline", "online"} {
+		res := syscontainer.RunAs(t, "other", nil, command)
+		if res.ExitCode == 0 {
+			t.Errorf("agent-peer %s as other without write permission succeeded: %s", command, res.Stdout)
+			continue
+		}
+		combined := res.Stdout + res.Stderr
+		if !strings.Contains(combined, "permission_denied") {
+			t.Errorf("agent-peer %s error = %q, want permission_denied", command, combined)
+		}
+		if !strings.Contains(combined, permConfigPath) {
+			t.Errorf("agent-peer %s error = %q, want it to name %s", command, combined, permConfigPath)
 		}
 	}
 

@@ -67,6 +67,7 @@ func TestConfigToolAnnotations(t *testing.T) {
 		"create_pairing_key": false,
 		"get_config":         true,
 		"set_config":         false,
+		"set_broker_online":  false,
 		"update_broker":      false,
 	}
 

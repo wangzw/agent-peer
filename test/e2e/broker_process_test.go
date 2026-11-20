@@ -330,8 +330,8 @@ func TestBrokerProcessInContainer(t *testing.T) {
 		// The MCP handshake does not depend on the Broker, so the session
 		// starts and lists its tools even while no Broker can listen.
 		session = host.StartSession(t, harness.SessionSpec{Name: "s", StartMCP: true})
-		if tools := session.Tools(t); len(tools) != 12 {
-			t.Fatalf("the MCP server exposes %d tools, want 12: %v", len(tools), tools)
+		if tools := session.Tools(t); len(tools) != 13 {
+			t.Fatalf("the MCP server exposes %d tools, want 13: %v", len(tools), tools)
 		}
 
 		harness.EventuallyPoll(t, brokerReadyBound, "list_agents names the ways to start a Broker", func(deadline time.Time) (bool, string) {
