@@ -501,11 +501,13 @@ func registrationDecodeListAgents(t *testing.T, r harness.Result) (mcpserver.Lis
 }
 
 // registrationJoin joins name, retrying while the session is still
-// registering.
+// registering. join_topic's handler may spend topicRPCTimeout, ten seconds, in
+// the Broker RPC before the update hint runs, so the poll uses
+// harness.TopicCallPollBound rather than the default ToolCallPollBound.
 func registrationJoin(t *testing.T, s *harness.Session, name string) {
 	t.Helper()
-	registrationEventually(t, harness.ToolCallWaitBound, "join_topic "+name+" succeeds", func(deadline time.Time) (bool, string) {
-		r, err := s.PollCall(t, deadline, "join_topic", map[string]any{"name": name})
+	registrationEventually(t, harness.TopicCallWaitBound, "join_topic "+name+" succeeds", func(deadline time.Time) (bool, string) {
+		r, err := s.PollCallWithin(t, deadline, harness.TopicCallPollBound, "join_topic", map[string]any{"name": name})
 		if err != nil {
 			return false, err.Error()
 		}

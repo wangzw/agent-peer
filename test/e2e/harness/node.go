@@ -34,11 +34,22 @@ const sessionCallBound = 60 * time.Second
 // updateStatusTimeout, three seconds (internal/mcpserver/updatehint.go:21). A
 // call bounded at three seconds would therefore be cut off while the hint was
 // still being answered, and because a timed-out query is retried by the next
-// call, a loaded Broker would fail every poll of the wait. Seven seconds leave
-// the handler its project-wide three-second budget plus a second of margin on
-// top of the hint. It stays far below sessionCallBound, so a stalled call
-// cannot turn a bounded wait into a sixty-second hang.
+// call, a loaded Broker would fail every poll of the wait. The seven seconds
+// are a three-second handler budget plus the three-second hint and a second of
+// margin. The three-second handler budget is what every handler except the
+// topic tools uses; a topic handler bounds one Broker RPC at topicRPCTimeout,
+// ten seconds (internal/mcpserver/topics.go:16), so a topic tool call polled
+// from a wait uses TopicCallPollBound instead. The bound stays far below
+// sessionCallBound, so a stalled call cannot turn a bounded wait into a
+// sixty-second hang.
 const ToolCallPollBound = 7 * time.Second
+
+// TopicCallPollBound bounds one topic tool call made from inside a test wait.
+// join_topic and leave_topic bound their Broker RPC at topicRPCTimeout, ten
+// seconds (internal/mcpserver/topics.go:16), and the update hint adds its
+// three-second query inside the same tools/call. Ten plus three plus a second
+// of margin is fourteen seconds.
+const TopicCallPollBound = 14 * time.Second
 
 // ToolCallWaitBound is the shortest total bound an Eventually that makes a
 // poll-bounded call should use: two poll bounds, so one stalled call leaves a
@@ -46,6 +57,10 @@ const ToolCallPollBound = 7 * time.Second
 // still make the call (PollCall clamps it to the time the wait has left), but
 // one stall then consumes the whole wait instead of being retried.
 const ToolCallWaitBound = 2 * ToolCallPollBound
+
+// TopicCallWaitBound is ToolCallWaitBound for a wait that polls a topic tool:
+// two TopicCallPollBounds, so one slow join or leave leaves a second poll.
+const TopicCallWaitBound = 2 * TopicCallPollBound
 
 // LocalOptions configures a node that runs its processes directly on the
 // machine running the tests.
@@ -392,7 +407,16 @@ func (s *Session) CallErrWithin(bound time.Duration, tool string, args map[strin
 // stalled leaves what evidence it produces; later failures add only the line.
 func (s *Session) PollCall(t testing.TB, deadline time.Time, tool string, args map[string]any) (Result, error) {
 	t.Helper()
-	bound := ToolCallPollBound
+	return s.PollCallWithin(t, deadline, ToolCallPollBound, tool, args)
+}
+
+// PollCallWithin is PollCall with a bound chosen by the caller instead of
+// ToolCallPollBound. A topic tool uses TopicCallPollBound: its handler may spend
+// topicRPCTimeout before the update hint runs. The bound is still clamped to the
+// time left to deadline.
+func (s *Session) PollCallWithin(t testing.TB, deadline time.Time, pollBound time.Duration, tool string, args map[string]any) (Result, error) {
+	t.Helper()
+	bound := pollBound
 	if left := time.Until(deadline); left < bound {
 		if left <= 0 {
 			return Result{}, fmt.Errorf("harness: session %s: calling %s: no time left in the wait", s.name, tool)
