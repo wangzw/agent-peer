@@ -7,11 +7,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // getentTimeout bounds one getent invocation from start to result. The account
@@ -281,4 +284,116 @@ func execGetent(ctx context.Context, path string, args []string) (getentResult, 
 		return res, nil
 	}
 	return res, err
+}
+
+// errUnavailable reports that a lookup failed for a reason other than a
+// missing entry: the database could not be read, or an answer could not be
+// trusted. Callers must treat it as a failed check, not as a missing account.
+var errUnavailable = errors.New("accountdb: account database unavailable")
+
+// validateName rejects names that must never reach a subprocess argument.
+// Colon and whitespace are refused because they cannot occur in a sane account
+// name and would change the meaning of a colon-separated or space-separated
+// entry; NUL cannot be passed to exec at all.
+func validateName(name string) error {
+	if name == "" {
+		return errors.New("accountdb: empty account name")
+	}
+	if strings.ContainsAny(name, ":\x00") || strings.IndexFunc(name, unicode.IsSpace) >= 0 {
+		return fmt.Errorf("accountdb: invalid account name %q", name)
+	}
+	return nil
+}
+
+// oneLine returns the single non-empty line of out. Everything else is an
+// error: a lookup answering with several entries is not trusted, because the
+// first line might not correspond to the request.
+func oneLine(out []byte) (string, error) {
+	s := string(out)
+	line := strings.TrimSuffix(s, "\n")
+	if line == "" {
+		return "", errors.New("empty output")
+	}
+	if strings.ContainsAny(line, "\r\n") {
+		return "", fmt.Errorf("output has %d lines, want one", strings.Count(line, "\n")+1)
+	}
+	return line, nil
+}
+
+// parsePasswd parses one getent passwd entry.
+func parsePasswd(out []byte) (User, error) {
+	line, err := oneLine(out)
+	if err != nil {
+		return User{}, fmt.Errorf("passwd entry: %w", err)
+	}
+	fields := strings.Split(line, ":")
+	if len(fields) != 7 {
+		return User{}, fmt.Errorf("passwd entry has %d fields, want 7", len(fields))
+	}
+	if err := validateName(fields[0]); err != nil {
+		return User{}, err
+	}
+	uid, err := parseDecimal32(fields[2])
+	if err != nil {
+		return User{}, fmt.Errorf("passwd entry uid: %w", err)
+	}
+	gid, err := parseDecimal32(fields[3])
+	if err != nil {
+		return User{}, fmt.Errorf("passwd entry gid: %w", err)
+	}
+	home := fields[5]
+	if !filepath.IsAbs(home) {
+		return User{}, fmt.Errorf("passwd entry home %q is not absolute", home)
+	}
+	return User{Name: fields[0], UID: uid, GID: gid, Home: home}, nil
+}
+
+// parseGroup parses one getent group entry and returns its name and gid.
+func parseGroup(out []byte) (string, uint32, error) {
+	line, err := oneLine(out)
+	if err != nil {
+		return "", 0, fmt.Errorf("group entry: %w", err)
+	}
+	fields := strings.Split(line, ":")
+	if len(fields) != 4 {
+		return "", 0, fmt.Errorf("group entry has %d fields, want 4", len(fields))
+	}
+	name := fields[0]
+	if err := validateName(name); err != nil {
+		return "", 0, err
+	}
+	gid, err := parseDecimal32(fields[2])
+	if err != nil {
+		return "", 0, fmt.Errorf("group entry gid: %w", err)
+	}
+	return name, gid, nil
+}
+
+// parseInitgroups parses the single line of getent initgroups. The first field
+// is the account name; the remaining fields are decimal gids.
+func parseInitgroups(out []byte, name string) ([]uint32, error) {
+	line, err := oneLine(out)
+	if err != nil {
+		return nil, fmt.Errorf("initgroups entry: %w", err)
+	}
+	fields := strings.Fields(line)
+	if len(fields) == 0 || fields[0] != name {
+		return nil, fmt.Errorf("initgroups entry does not start with %q", name)
+	}
+	ids := make([]uint32, 0, len(fields)-1)
+	for _, field := range fields[1:] {
+		id, err := parseDecimal32(field)
+		if err != nil {
+			return nil, fmt.Errorf("initgroups entry: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// warnFallback records that the preferred lookup failed and os/user is used
+// instead. The design requires this warning: falling back can make an account
+// that the C library resolves invisible to the Broker.
+func warnFallback(request string, err error) {
+	slog.Warn("accountdb_lookup_fallback", "request", request, "error", err.Error())
 }
