@@ -12,8 +12,8 @@ A Claude Code session reaches agent-peer through the MCP server `peer`, which th
 | `list_agents` | Lists the agents visible to this session. | `topic` (string, optional): only agents that share this topic. `broker` (string, optional): only agents on the Broker with this alias. `name` (string, optional): only agents with this name. All filters must match. | None |
 | `send_message` | Sends plain text to an agent address. | `to` (string, required): the address, copied verbatim from the sender of a message. `message` (string, required): plain text. | None |
 | `list_topics` | Lists the topics this session has joined and the public topics this Broker knows. | None. | None |
-| `join_topic` | Joins a topic. | `name` (string, required). `public` (boolean, optional): declare the topic public; this requires the Broker to be public too. `description` (string, optional): a short description shown with a public topic. | None |
-| `leave_topic` | Leaves a topic this session has joined. | `name` (string, required). | None |
+| `join_topic` | Joins a topic. | `name` (string, optional): the topic to join; omit it to join this session's default topics. `public` (boolean, optional): declare the topic public; this requires the Broker to be public too. `description` (string, optional): a short description shown with a public topic. Without a name, `public` and `description` apply to every default topic. | None |
+| `leave_topic` | Leaves a topic this session has joined. | `name` (string, optional): the topic to leave; omit it to leave this session's default topics. | None |
 | `list_brokers` | Lists the Brokers this Broker knows, with peer status, addresses and fingerprints. | None. | None |
 | `connect_broker` | Pairs with another Broker. | `address` (string, required): written `host:port` or `hostname(host:port)`. `key` (string, required): the pairing key for the other side. `local_alias` (string, optional): the alias to use when the other Broker's own alias is taken. | Write |
 | `disconnect_broker` | Removes the pairing with a peer Broker. | `broker` (string, required): the peer's alias or its 64-hex-digit fingerprint. | Write |
@@ -35,7 +35,7 @@ A Claude Code session reaches agent-peer through the MCP server `peer`, which th
 
 ### Topics
 
-`list_topics` returns `joined_topics` and `public_topics`, each public topic with a `name` and an optional `description`. `join_topic` and `leave_topic` return the updated list in `topics`.
+`list_topics` returns `joined_topics` and `public_topics`, each public topic with a `name` and an optional `description`. `join_topic` and `leave_topic` return the updated list in `topics`; a session that has no default topic gets an error saying so.
 
 ### Brokers
 

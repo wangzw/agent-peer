@@ -39,7 +39,7 @@ After the session registers, it joins default topics in this order, and the firs
 4. Otherwise, if the project's git repository has an `origin` address that can be normalized, one topic named after the address is joined.
 5. Otherwise no topic is joined.
 
-`topics: []` counts as no declaration and reaches rule 4. Automatic joining never declares a topic public. A session can join more topics later with `join_topic`.
+`topics: []` counts as no declaration and reaches rule 4. Automatic joining never declares a topic public. A session can join more topics later with `join_topic`. A nameless `join_topic` or `leave_topic` acts on these default topics even when automatic joining is off, using rules 3 to 5 alone; see [Topics]({{< relref "/docs/concepts/topics" >}}).
 
 The Broker's own switch is `topics.auto_join` in [Configuration keys]({{< relref "docs/reference/configuration" >}}). Topics and visibility are explained in [Concepts]({{< relref "docs/concepts" >}}).
 

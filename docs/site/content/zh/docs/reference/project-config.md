@@ -39,7 +39,7 @@ auto_join: true
 4. 否则，项目的 git 仓库有可规范化的 `origin` 地址时，加入以规范化结果命名的一个 topic。
 5. 其余情况不加入任何 topic。
 
-`topics: []` 视同未声明，会走到第 4 条。自动加入从不把 topic 声明为公开。会话之后可以用 `join_topic` 加入更多 topic。
+`topics: []` 视同未声明，会走到第 4 条。自动加入从不把 topic 声明为公开。会话之后可以用 `join_topic` 加入更多 topic。不带名字的 `join_topic` 或 `leave_topic` 即使自动加入已关闭，也作用于这些默认 topic，只按第 3 至第 5 条确定；见 [topic]({{< relref "/docs/concepts/topics" >}})。
 
 Broker 侧的开关是[配置键]({{< relref "docs/reference/configuration" >}})里的 `topics.auto_join`。topic 与可见范围见[概念]({{< relref "docs/concepts" >}})。
 

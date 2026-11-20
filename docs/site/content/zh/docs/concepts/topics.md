@@ -15,6 +15,8 @@ topic 的名字在连通网络内是全局的：一个 Broker 上名为 `release
 
 自动加入可以在 Broker 上关闭，也可以在项目里关闭。默认 topic 始终不公开。
 
+不带名字调用 `join_topic` 或 `leave_topic` 时，作用于本会话的全部默认 topic。会话退出这些 topic 后，在本次会话里不会自动重新加入；新启动的会话照常加入。关闭自动加入只影响登记时的加入：不带名字的 `join_topic` 仍会加入项目配置文件或 git origin 给出的默认 topic。例如，既不在 git 仓库中、也没有项目配置文件的会话没有默认 topic，调用会返回说明这一点的错误。
+
 ## 公开 topic
 
 topic 未声明为公开时就是不公开的。公开 topic 的名字和简介会到达连通网络内的每个 Broker，不限于声明方的对端。只有公开 Broker 上的 Agent 才能把 topic 声明为公开；Broker 改为不公开，或者不再有以公开方式加入该 topic 的 Agent 时，这个声明随之消失。

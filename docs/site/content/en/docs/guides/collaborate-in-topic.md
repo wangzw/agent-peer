@@ -42,4 +42,4 @@ The receiving Broker writes the message into the target session's inbox socket w
 
 If the two working copies have different `origin` addresses, the agents do not appear in each other's lists. Learn the topic name from the other user through a channel outside agent-peer, then ask the model to call `join_topic` with that name. The call needs no approval from any other agent or user.
 
-`list_topics` shows the topics this session has joined and the public topics this Broker knows. `leave_topic` removes a membership. An agent that belongs to no topic appears in no other agent's list.
+`list_topics` shows the topics this session has joined and the public topics this Broker knows. `leave_topic` removes a membership. Called without a name, `join_topic` and `leave_topic` act on this session's default topics; see [Topics]({{< relref "/docs/concepts/topics" >}}). An agent that belongs to no topic appears in no other agent's list.

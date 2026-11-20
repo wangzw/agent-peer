@@ -15,6 +15,8 @@ The default topic comes from the project configuration file `.agent-peer.yaml`, 
 
 Automatic joining can be turned off for a Broker or for a project. The default topic is always private.
 
+Called without a name, `join_topic` and `leave_topic` act on all of the session's default topics. Once a session leaves them, it does not join them again automatically; a new session joins them as usual. Turning automatic joining off affects only registration: a nameless `join_topic` still joins the default topics that the project configuration file or the git origin gives the session. A session that has none, such as one that is outside a git repository and has no project configuration file, gets an error that says so.
+
 ## Public topics
 
 A topic is private unless it is declared public. A public topic's name and description reach every Broker in the connected network, not only the declaring Broker's peers. Only an agent on a public Broker can declare a topic public, and the declaration ends when the Broker becomes private or no agent remains in the topic that joined it publicly.

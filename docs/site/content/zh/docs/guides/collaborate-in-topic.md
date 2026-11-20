@@ -42,4 +42,4 @@ topics:
 
 两个工作区的 `origin` 地址不同时，两个 Agent 不会出现在对方的列表里。经 agent-peer 之外的途径从另一位用户那里得知 topic 名，然后让模型调用 `join_topic` 加入它。这个调用不需要任何其他 Agent 或用户批准。
 
-`list_topics` 显示本会话已加入的 topic 和本 Broker 知道的公开 topic；`leave_topic` 用于退出。不属于任何 topic 的 Agent 不会出现在任何其他 Agent 的列表里。
+`list_topics` 显示本会话已加入的 topic 和本 Broker 知道的公开 topic；`leave_topic` 用于退出。不带名字调用 `join_topic` 或 `leave_topic` 时，作用于本会话的全部默认 topic，见 [topic]({{< relref "/docs/concepts/topics" >}})。不属于任何 topic 的 Agent 不会出现在任何其他 Agent 的列表里。

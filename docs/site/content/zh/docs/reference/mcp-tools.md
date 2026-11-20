@@ -12,8 +12,8 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer，安装会�
 | `list_agents` | 列出本会话能看到的 Agent。 | `topic`（字符串，可选）：只列与本会话同在这个 topic 的 Agent。`broker`（字符串，可选）：只列别名为此值的 Broker 上的 Agent。`name`（字符串，可选）：只列名字为此值的 Agent。给出的筛选条件须全部匹配。 | 无 |
 | `send_message` | 向一个 Agent 地址发送纯文本。 | `to`（字符串，必填）：地址，照抄消息发送方的地址。`message`（字符串，必填）：纯文本。 | 无 |
 | `list_topics` | 列出本会话已加入的 topic，以及本 Broker 已知的公开 topic。 | 无。 | 无 |
-| `join_topic` | 加入一个 topic。 | `name`（字符串，必填）。`public`（布尔，可选）：声明该 topic 公开，这要求 Broker 本身也是公开的。`description`（字符串，可选）：公开 topic 显示的简短说明。 | 无 |
-| `leave_topic` | 退出本会话已加入的一个 topic。 | `name`（字符串，必填）。 | 无 |
+| `join_topic` | 加入一个 topic。 | `name`（字符串，可选）：要加入的 topic；省略时加入本会话的默认 topic。`public`（布尔，可选）：声明该 topic 公开，这要求 Broker 本身也是公开的。`description`（字符串，可选）：公开 topic 显示的简短说明。不带名字时，这两项对每个默认 topic 生效。 | 无 |
+| `leave_topic` | 退出本会话已加入的一个 topic。 | `name`（字符串，可选）：要退出的 topic；省略时退出本会话的默认 topic。 | 无 |
 | `list_brokers` | 列出本 Broker 已知的 Broker，包括对端状态、地址与指纹。 | 无。 | 无 |
 | `connect_broker` | 与另一个 Broker 配对。 | `address`（字符串，必填）：写作 `host:port` 或 `hostname(host:port)`。`key`（字符串，必填）：对端的配对密钥。`local_alias`（字符串，可选）：对端自报别名被占用时改用的别名。 | 写 |
 | `disconnect_broker` | 解除与一个对端 Broker 的配对。 | `broker`（字符串，必填）：对端的别名或 64 位十六进制指纹。 | 写 |
@@ -35,7 +35,7 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer，安装会�
 
 ### topic
 
-`list_topics` 返回 `joined_topics` 和 `public_topics`，后者每项有 `name` 和可选的 `description`。`join_topic` 与 `leave_topic` 返回更新后的列表 `topics`。
+`list_topics` 返回 `joined_topics` 和 `public_topics`，后者每项有 `name` 和可选的 `description`。`join_topic` 与 `leave_topic` 返回更新后的列表 `topics`；本会话没有默认 topic 时返回说明这一点的错误。
 
 ### Broker
 
