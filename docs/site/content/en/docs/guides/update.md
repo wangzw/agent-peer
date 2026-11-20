@@ -34,7 +34,7 @@ Run the command in a terminal:
 agent-peer update
 ```
 
-It asks before changing anything. Answering `y` or `yes` goes ahead; any other answer cancels the update and leaves the binary and the service as they were. What the command then does depends on the Broker it selects and on how that Broker runs.
+It first refuses a binary that is not a release build. It then asks before changing anything; answering `y` or `yes` goes ahead, and any other answer cancels the update and leaves the binary and the service as they were. Only after you confirm does it select a Broker; what it then does depends on that Broker and on how it runs.
 
 Add `--yes` to skip the question. When standard input is not a terminal, as in a script or a scheduled job, the command requires `--yes` and otherwise refuses with `standard input is not a terminal; run "agent-peer update --yes" to update without asking`. When the installed version is already the latest, the command prints `agent-peer 0.2.0 is up to date` and exits without changing anything.
 
@@ -57,15 +57,24 @@ When the user-level Broker does not run under the service manager, the Broker de
 
 For a system-level installation the command asks the system-level Broker to update itself, and the Broker does the same work: it checks write permission on its configuration file, downloads and verifies the release, replaces its binary, and the service manager restarts it. Members of the admin group run the command without `sudo`; [Management permissions]({{< relref "/docs/guides/management-permissions" >}}#the-admin-group) describes the group. An account outside the group is refused, because the Broker checks write permission on its configuration file, so use `sudo agent-peer update` instead, or join the group first. When this account also runs its own user-level Broker, the command selects that Broker first, so `sudo agent-peer update` is the way to reach the system-level Broker.
 
+A system-level Broker that you started by hand in a terminal cannot update itself: the command reports an error that gives the commands for installing the Broker as a service. Whether a Broker runs under the service manager is decided by the main process PID that the service manager reports.
+
 The command waits until the restarted Broker reports the new version. If it does not within the wait, the command reports a timeout and names where the system-level service writes its log. A failure before the replacement leaves the binary and the service unchanged.
 
 A system-level update restarts only the system-level service. When other accounts run a user-level Broker from the same binary, each of them must restart its own Broker before it uses the new version.
 
 An update the Broker applies downloads through the Broker service process, so its proxy environment variables come from that process. A replacement the command makes itself reads them from the command's environment.
 
+A system-level Broker reads them from its service environment:
+
+- Linux: run `sudo systemctl edit agent-peer.service`, add `[Service]` and `Environment=HTTPS_PROXY=http://proxy.example:8080` (plus `HTTP_PROXY` and `NO_PROXY` as needed), then restart the service. The drop-in survives a reinstall.
+- macOS: add an `EnvironmentVariables` dictionary to `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist` with `HTTPS_PROXY` and any other variables, then boot the service out and in again: `sudo launchctl bootout system/io.github.wangzw.agent-peer` and `sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`. A reinstall rewrites the plist, so add the dictionary again afterwards.
+
+A user-level service works the same way: on Linux, edit the drop-in with `systemctl --user edit agent-peer.service` and restart the service with `systemctl --user restart agent-peer.service`; on macOS, add the dictionary to `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist` and boot the service out and in again. A reinstall rewrites that plist too, so add the dictionary again afterwards.
+
 ### Update with no running Broker
 
-When no Broker is running, the command replaces the binary itself, after checking that the directory holding the binary is writable. It does not start or restart any service, because the service may have been stopped on purpose. It prints the installed and available versions and the release page, replaces the binary, and ends with:
+When no Broker is running, the command replaces the binary itself, after checking that the directory holding the binary is writable. It does not start or restart any service, because the service may have been stopped on purpose. After you confirm and it finds a newer release, it prints the installed and available versions and the release page, replaces the binary, and ends with:
 
 ```text
 The new binary takes effect the next time the Broker starts.
@@ -75,7 +84,7 @@ Start the Broker the way you started it before, for example with `agent-peer bro
 
 ### Update from a session
 
-A session can update the Broker with the `update_broker` tool, which takes no arguments. It asks the Broker registered for the session to upgrade itself and returns as soon as the Broker answers, with the version before and after and whether the Broker is about to restart. When the installed version is already the latest, it says so and changes nothing. A Broker that does not run under the service manager cannot update itself, and the tool says to use the terminal command instead.
+A session can update the Broker with the `update_broker` tool, which takes no arguments. It asks the Broker registered for the session to upgrade itself and returns as soon as the Broker answers, with the version before and after and whether the Broker is about to restart. When the installed version is already the latest, it says so and changes nothing. A user-level or system-level Broker that does not run under the service manager cannot update itself, and the tool says to use the terminal command instead.
 
 The tool needs write permission on the Broker's configuration file, which is granted separately from read permission. It needs no terminal: Claude Code asks by default for confirmation before the call runs, and that confirmation is the last manual check before the Broker's binary is replaced. Do not add `update_broker` to auto-approved tools, so the confirmation is never skipped.
 

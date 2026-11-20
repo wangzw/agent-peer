@@ -63,7 +63,7 @@ Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见
 
 ## 怎样更新 agent-peer？
 
-在终端运行 `agent-peer update`，或在会话里调用 `update_broker`。系统级安装由管理组成员更新，不用 `sudo`；不在组内的账户用 `sudo agent-peer update`，或先加入管理组。同一账户还运行着用户级 Broker 时，用 `sudo agent-peer update` 到达系统级 Broker。更新会校验下载内容、替换二进制；作为服务运行的 Broker 会用新版本重启，没有在运行的 Broker 在下次启动时用上新版本。已经打开的会话要用 `/mcp` 重连或重开。见[更新 agent-peer]({{< relref "guides/update.md" >}})。
+在终端运行 `agent-peer update`，或在会话里调用 `update_broker`。系统级安装由管理组成员更新，不用 `sudo`；不在组内的账户用 `sudo agent-peer update`，或先加入管理组。同一账户还运行着用户级 Broker 时，用 `sudo agent-peer update` 到达系统级 Broker。更新会校验下载内容、替换二进制；作为服务运行的 Broker 会用新版本重启，没有在运行的 Broker，或者不在服务管理器下运行的用户级 Broker，下次启动时才用上新版本。已经打开的会话要用 `/mcp` 重连或重开。见[更新 agent-peer]({{< relref "guides/update.md" >}})。
 
 ## 能关闭更新检查吗？
 

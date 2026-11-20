@@ -34,7 +34,7 @@ agent-peer 0.2.1 is available (this Broker runs 0.2.0). Ask the agent to call up
 agent-peer update
 ```
 
-命令在改动任何东西之前询问。回答 `y` 或 `yes` 才会继续；其他回答会取消更新，二进制与服务都保持原样。命令随后做什么，取决于它选中哪个 Broker，以及那个 Broker 怎样运行。
+命令先拒绝不是正式发布版本的二进制，然后在改动任何东西之前询问。回答 `y` 或 `yes` 才会继续；其他回答会取消更新，二进制与服务都保持原样。确认之后才选 Broker；随后做什么，取决于选中的 Broker 以及它怎样运行。
 
 加 `--yes` 可以跳过询问。标准输入不是终端时，例如在脚本或计划任务里，命令要求带 `--yes`，否则拒绝执行，并给出 `standard input is not a terminal; run "agent-peer update --yes" to update without asking`。已经是最新版本时，命令打印 `agent-peer 0.2.0 is up to date`，直接退出，不做任何改动。
 
@@ -57,15 +57,24 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 
 对系统级安装，命令请系统级 Broker 自己更新，Broker 做同样的工作：先检查自己能否写入配置文件，再下载并校验发布包，替换自己的二进制，由服务管理器以新版本重新启动。管理组成员不用 `sudo` 就能运行这条命令，见[管理权限]({{< relref "/docs/guides/management-permissions" >}}#管理组)。不在组内的账户会被拒绝，因为 Broker 按配置文件的写权限判定，要改用 `sudo agent-peer update`，或者先加入管理组。本账户同时运行着自己的用户级 Broker 时，命令先选中它，要用 `sudo agent-peer update` 才能到达系统级 Broker。
 
+在终端里手动启动的系统级 Broker 不能自己更新：命令会报错，并给出把 Broker 装成服务的命令。Broker 是否在服务管理器下运行，按服务管理器报告的主进程 PID 判断。
+
 命令要等到重启后的 Broker 报出新版本。超过等待时间仍未报出时，命令报告超时，并给出系统级服务日志的位置。替换之前的任何一步失败，二进制与服务都不改动。
 
 系统级更新只重启系统级服务。其他账户如果从同一个二进制运行用户级 Broker，要各自重启自己的 Broker，才会用上新版本。
 
 由 Broker 执行的更新，下载在 Broker 服务进程里进行，代理环境变量取自那个进程；由命令自己替换二进制时，变量取自命令的环境。
 
+系统级 Broker 从服务环境里读取这些变量：
+
+- Linux：运行 `sudo systemctl edit agent-peer.service`，加入 `[Service]` 与 `Environment=HTTPS_PROXY=http://proxy.example:8080`（需要时加上 `HTTP_PROXY` 与 `NO_PROXY`），然后重启服务。drop-in 在重装后仍然保留。
+- macOS：在 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist` 里加入 `EnvironmentVariables` 字典，写入 `HTTPS_PROXY` 等变量，然后执行 `sudo launchctl bootout system/io.github.wangzw.agent-peer` 与 `sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`。重装会重写 plist，之后要重新加入这个字典。
+
+用户级服务的做法相同：Linux 上用 `systemctl --user edit agent-peer.service` 编辑 drop-in，再用 `systemctl --user restart agent-peer.service` 重启服务；macOS 上在 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist` 里加入字典，再把服务 `bootout` 后重新 `bootstrap`。重装同样会重写这个 plist，之后要重新加入。
+
 ### 没有正在运行的 Broker
 
-没有 Broker 在运行时，命令自己替换二进制，替换前同样检查二进制所在目录是否可写。它不启动也不重启任何服务，因为服务可能是有意停掉的。它打印已安装版本、可用版本与发布页面，替换二进制，最后输出：
+没有 Broker 在运行时，命令自己替换二进制，替换前同样检查二进制所在目录是否可写。它不启动也不重启任何服务，因为服务可能是有意停掉的。你确认之后，如果查到更新的发布版本，它打印已安装版本、可用版本与发布页面，替换二进制，最后输出：
 
 ```text
 The new binary takes effect the next time the Broker starts.
@@ -75,7 +84,7 @@ The new binary takes effect the next time the Broker starts.
 
 ### 在会话里更新
 
-会话可以用 `update_broker` 工具更新 Broker，这个工具不带参数。它请会话已登记的 Broker 升级自己，在 Broker 应答后立即返回，给出升级前后的版本，以及 Broker 是否即将重启。已是最新版本时，它说明这一点，不做任何改动。不在服务管理器下运行的 Broker 不能自己更新，工具会提示改用终端命令。
+会话可以用 `update_broker` 工具更新 Broker，这个工具不带参数。它请会话已登记的 Broker 升级自己，在 Broker 应答后立即返回，给出升级前后的版本，以及 Broker 是否即将重启。已是最新版本时，它说明这一点，不做任何改动。用户级或系统级的 Broker 不在服务管理器下运行时，不能自己更新，工具会提示改用终端命令。
 
 这个工具需要对 Broker 配置文件的写权限，这一权限可以与读权限分开授予。它不需要终端：Claude Code 默认会在调用前请你确认，这次确认是 Broker 的二进制被替换之前最后一道人工检查。不要把 `update_broker` 加入自动批准，以免跳过这道确认。
 

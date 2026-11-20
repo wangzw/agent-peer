@@ -24,8 +24,10 @@ Commands:
   peer disconnect <broker>    remove a pairing
   update [--yes]              update through the selected Broker, or replace
                               the user-level binary locally; --yes skips the question
-  service install [--system]  install and start the Broker as a user-level service,
-                              or system-level with --system
+  service install [--system] [--admin-group <name>]
+                              install and start the Broker as a user-level service,
+                              or system-level with --system; --admin-group names the
+                              group that administers the system-level Broker
   service uninstall [--system]
                               stop and remove the installed service; configuration,
                               identity and audit logs are kept
@@ -157,16 +159,17 @@ usage: agent-peer update [--yes]
 - `--yes` 跳过确认问题。不给时，命令询问 `agent-peer <c> is installed. Update to the latest release? [y/N]`（`<c>` 是当前版本），输入 `y` 或 `yes`（不区分大小写）即确认。标准输入不是终端时，没有 `--yes` 就拒绝执行。用户回答 `n` 时，命令输出 `Update canceled; nothing was changed.`，以退出码 0 结束。
 - 用法错误以退出码 2 结束，其余失败以退出码 1 结束。更新成功、已是最新与取消更新都以退出码 0 结束。
 
+命令先检查本二进制是不是正式发布版本，未给 `--yes` 时再请求确认，之后才选择 Broker。只有没有 Broker 在运行，或者选中的用户级 Broker 不在服务管理器下运行时，命令才在本地替换二进制；系统级 Broker 不在服务管理器下运行时，命令报错。
+
 ### 由 Broker 执行
 
 命令选中正在运行的 Broker 时，由它自己安装更新。系统级 Broker 管理组的成员不用 `sudo` 就能更新它；本账户运行着自己的用户级 Broker 时，用 `sudo agent-peer update` 作用于系统级 Broker。
 
-1. 当前版本不是正式发布版本时拒绝执行。从源码构建、未带发布版本号的二进制报告 `agent-peer dev`，不能自我更新。
-2. 把请求发给选中的 Broker。Broker 按对配置文件的写权限判定权限，命令不先行检查。权限被拒时，Broker 的英文错误写到标准错误，命令以退出码 1 结束，没有发出任何下载请求。
-3. 已经是最新版本时，命令输出 `agent-peer <c> is up to date`，以退出码 0 结束。
-4. Broker 下载本平台与架构的发布包和 `checksums.txt`，核对发布包的 SHA-256，取出其中名为 `agent-peer` 的普通文件，并运行新二进制的 `--version`，确认它报告的版本符合预期。然后它替换自己的二进制；符号链接仍指向更新后的文件。
-5. Broker 先应答再重启。命令输出 `The Broker is restarting to version <v>.`，并等到重启后的 Broker 报告该版本，因为只有新进程在运行，更新才算完成。成功时输出 `The Broker is running agent-peer <v>.`，随后输出会话提示。重启后的 Broker 未及时报告新版本时，命令失败，并给出该级别服务日志的位置。
-6. 会话提示为 `Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.`
+1. 把请求发给选中的 Broker。Broker 按对配置文件的写权限判定权限，命令不先行检查。权限被拒时，Broker 的英文错误写到标准错误，命令以退出码 1 结束，没有发出任何下载请求。
+2. 已经是最新版本时，命令输出 `agent-peer <c> is up to date`，以退出码 0 结束。
+3. Broker 下载本平台与架构的发布包和 `checksums.txt`，核对发布包的 SHA-256，取出其中名为 `agent-peer` 的普通文件，并运行新二进制的 `--version`，确认它报告的版本符合预期。然后它替换自己的二进制；符号链接仍指向更新后的文件。
+4. Broker 先应答再重启。命令输出 `The Broker is restarting to version <v>.`，并等到重启后的 Broker 报告该版本，因为只有新进程在运行，更新才算完成。成功时输出 `The Broker is running agent-peer <v>.`，随后输出会话提示。重启后的 Broker 未及时报告新版本时，命令失败，并给出该级别服务日志的位置。
+5. 会话提示为 `Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.`
 
 在终端里启动、而不是由服务管理器启动的用户级 Broker 不能替换并重启自己，会把命令交给下面的本地替换。
 
@@ -174,13 +177,12 @@ usage: agent-peer update [--yes]
 
 没有正在运行的 Broker，或上面的用户级 Broker 无法自我更新时，命令在本地替换二进制：
 
-1. 当前版本不是正式发布版本时拒绝执行，同上。
-2. 定位正在运行的可执行文件，并解析符号链接。只替换它们指向的文件。
-3. 检查能否写入目标所在的目录，这一步先于任何下载。没有写权限时输出 `cannot write to <dir>: ...`，随后输出 `run "sudo agent-peer update" to update a system-level installation`，以退出码 1 结束。
-4. 向 GitHub 查询最新的正式发布版本。已经是最新版本时输出 `agent-peer <c> is up to date`，以退出码 0 结束。
-5. 下载本平台与架构的发布包和 `checksums.txt`，核对发布包的 SHA-256，取出其中名为 `agent-peer` 的普通文件，并运行新二进制的 `--version`，确认它报告的版本符合预期。它输出 `agent-peer <c> is installed; version <v> is available.`；发布填了地址时再输出 `Release: <url>`。
-6. 在目标所在的目录写入新二进制，把属主与权限改成与原文件相同，再改名到目标路径。旧版本不保留。它输出 `agent-peer <v> is installed.`。
-7. 不启动也不重启任何服务，因为服务可能是有意停掉的。它输出 `The new binary takes effect the next time the Broker starts.`。
+1. 定位正在运行的可执行文件，并解析符号链接。只替换它们指向的文件。
+2. 检查能否写入目标所在的目录，这一步先于任何下载。没有写权限时输出 `cannot write to <dir>: ...`，随后输出 `run "sudo agent-peer update" to update a system-level installation`，以退出码 1 结束。
+3. 向 GitHub 查询最新的正式发布版本。已经是最新版本时输出 `agent-peer <c> is up to date`，以退出码 0 结束。
+4. 下载本平台与架构的发布包和 `checksums.txt`，核对发布包的 SHA-256，取出其中名为 `agent-peer` 的普通文件，并运行新二进制的 `--version`，确认它报告的版本符合预期。它输出 `agent-peer <c> is installed; version <v> is available.`；发布填了地址时再输出 `Release: <url>`。
+5. 在目标所在的目录写入新二进制，把属主与权限改成与原文件相同，再改名到目标路径。旧版本不保留。
+6. 不启动也不重启任何服务，因为服务可能是有意停掉的。它输出 `The new binary takes effect the next time the Broker starts.`。
 
 更新成功的输出是下面两种之一。只有发布填了地址时才出现 `Release:` 一行。
 
@@ -199,7 +201,6 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
 agent-peer 0.2.0 is installed; version 0.2.1 is available.
 Release: https://github.com/wangzw/agent-peer/releases/tag/v0.2.1
-agent-peer 0.2.1 is installed.
 The new binary takes effect the next time the Broker starts.
 ```
 
@@ -210,9 +211,11 @@ The new binary takes effect the next time the Broker starts.
 - `standard input is not a terminal; run "agent-peer update --yes" to update without asking`
 - `checksum mismatch for <archive>`
 - `downloaded binary reported "<x>", want "agent-peer <v>"`
-- `the Broker did not report version <v> within <duration>; check the service log with <command or path>`
+- `the Broker did not report version <v> within <duration>; check the service log with <command or path>`；最后一次查询出错时，原因放在括号里跟在时长后面：`within <duration> (<error>)`
 - `the Broker is not running under a service manager, so it cannot start the new binary again; install it as a service and run the update against that service (for example, "agent-peer service install" or "sudo agent-peer service install --system")`
 - `another update is already in progress`
+
+经 Broker 更新时，校验和不符、版本不符这类报错出现在 `installing <v> failed: ` 之后，查询最新发布版本失败出现在 `looking up the latest release failed: ` 之后。
 
 ## agent-peer service install
 

@@ -27,6 +27,6 @@ agent-peer does what the rest of this site describes. This page explains the des
 - A message that arrives while the receiving session is in the middle of a turn may not reach it as a separate turn.
 - A build that is not a release version cannot update itself. A binary built from source without the release version reports `agent-peer dev`, and `agent-peer update` refuses it.
 - When the Broker applies an update, its connections recover automatically, but a session that is already open keeps the old MCP server until it reconnects with `/mcp` or is reopened.
-- Updating a system-level installation needs write permission on its configuration file and a service manager to restart the Broker. A member of the admin group updates it without `sudo`.
+- Updating a system-level installation needs write permission on its configuration file and a service manager to restart the Broker. A member of the admin group whose account runs no user-level Broker of its own updates it without `sudo`; an account that also runs a user-level Broker uses `sudo agent-peer update`.
 - Updating a shared binary restarts only the system-level service. When other accounts run a user-level Broker from the same binary, each of them must restart their own Broker before it uses the new version.
 - An update installs only a newer formal release. You cannot choose a version, and you cannot go back to an older one.

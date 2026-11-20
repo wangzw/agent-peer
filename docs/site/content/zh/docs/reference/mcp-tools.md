@@ -50,6 +50,8 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer。安装脚�
 
 `update_broker` 返回 `from_version`、`to_version`、`restarting` 与一句 `result`。Broker 升级时，`restarting` 为真，结果为 `Upgrading the Broker from <from> to <to>; the Broker restarts and the connection recovers automatically. Reopen this session to use the new MCP server.`。已经是最新版本时，`to_version` 为空，`restarting` 为假，结果为 `The Broker is already up to date (<from>).`。调用在 Broker 应答后立即返回，早于重启完成。
 
+调用失败时，错误以 `Upgrade failed` 开头。Broker 不能自我更新时，错误以 ``(code: failed_precondition). Run `agent-peer update` in a terminal instead.`` 结尾；已有更新在进行时，错误内容为 `another update is already in progress`，并以 `(code: aborted)` 结尾。
+
 ### 更新提示
 
 每个 MCP 服务进程在第一次工具调用时向 Broker 查询更新状态，此后最多每 10 分钟查询一次。已知有更新的正式发布版本时，该次工具结果的末尾多出一段文本：

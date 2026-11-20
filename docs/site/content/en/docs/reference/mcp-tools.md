@@ -50,6 +50,8 @@ A Claude Code session reaches agent-peer through an MCP server named `peer`. The
 
 `update_broker` returns `from_version`, `to_version`, `restarting` and a `result` sentence. When the Broker upgrades, `restarting` is true and the result is `Upgrading the Broker from <from> to <to>; the Broker restarts and the connection recovers automatically. Reopen this session to use the new MCP server.` When it is already up to date, `to_version` is empty, `restarting` is false, and the result is `The Broker is already up to date (<from>).` The call returns as soon as the Broker answers, before the restart finishes.
 
+A failed call returns an error beginning `Upgrade failed`. When the Broker cannot update itself, the error ends with ``(code: failed_precondition). Run `agent-peer update` in a terminal instead.``; when another update is already in progress, it says `another update is already in progress` and ends with `(code: aborted)`.
+
 ### Update notice
 
 Each MCP server process queries the Broker for the update state on its first tool call, and then at most once every 10 minutes. When a newer formal release is known, that tool result ends with one more text block:

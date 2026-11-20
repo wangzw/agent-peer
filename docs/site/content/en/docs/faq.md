@@ -63,7 +63,7 @@ Starting with 0.2.0, the default alias no longer contains the listen port: on a 
 
 ## How do I update agent-peer?
 
-Run `agent-peer update` in a terminal, or call `update_broker` from a session. A system-level installation is updated without `sudo` by a member of the admin group; an account outside the group uses `sudo agent-peer update`, or joins the group first. When the same account also runs a user-level Broker, `sudo agent-peer update` reaches the system-level Broker. The update verifies the download and replaces the binary; a Broker that runs as a service is restarted with the new version, and one that is not running takes it up at its next start. Sessions that are already open must reconnect with `/mcp` or be restarted. See [Update agent-peer]({{< relref "guides/update.md" >}}).
+Run `agent-peer update` in a terminal, or call `update_broker` from a session. A system-level installation is updated without `sudo` by a member of the admin group; an account outside the group uses `sudo agent-peer update`, or joins the group first. When the same account also runs a user-level Broker, `sudo agent-peer update` reaches the system-level Broker. The update verifies the download and replaces the binary; a Broker that runs as a service is restarted with the new version, and one that is not running, or a user-level Broker that does not run under a service manager, takes it up at its next start. Sessions that are already open must reconnect with `/mcp` or be restarted. See [Update agent-peer]({{< relref "guides/update.md" >}}).
 
 ## Can I turn off update checks?
 

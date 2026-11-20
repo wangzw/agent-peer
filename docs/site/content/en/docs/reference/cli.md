@@ -24,8 +24,10 @@ Commands:
   peer disconnect <broker>    remove a pairing
   update [--yes]              update through the selected Broker, or replace
                               the user-level binary locally; --yes skips the question
-  service install [--system]  install and start the Broker as a user-level service,
-                              or system-level with --system
+  service install [--system] [--admin-group <name>]
+                              install and start the Broker as a user-level service,
+                              or system-level with --system; --admin-group names the
+                              group that administers the system-level Broker
   service uninstall [--system]
                               stop and remove the installed service; configuration,
                               identity and audit logs are kept
@@ -157,16 +159,17 @@ The command installs only a newer formal release: drafts and prereleases are ign
 - `--yes` skips the confirmation question. Without it the command asks `agent-peer <c> is installed. Update to the latest release? [y/N]`, where `<c>` is the current version, and accepts `y` or `yes`, in any case, as confirmation. When standard input is not a terminal, the command refuses to run without `--yes`. When the user answers `n`, it prints `Update canceled; nothing was changed.` and exits with code 0.
 - A usage error exits with code 2. Any other failure exits with code 1. A successful update, an up-to-date result and a canceled update all exit with code 0.
 
+The command first checks that this binary is a formal release build, then asks for confirmation unless `--yes` is given, and only then selects the Broker. It replaces the binary locally only when no Broker is running or when the selected user-level Broker does not run under a service manager; a system-level Broker that does not run under a service manager makes the command fail instead.
+
 ### Through the Broker
 
 When the command selects a running Broker, that Broker installs the update itself. A member of the system Broker's admin group can update it without `sudo`; an account that runs its own user Broker reaches the system Broker with `sudo agent-peer update`.
 
-1. Refuses a version that is not a formal release. A binary built from source without a release version, which reports `agent-peer dev`, cannot update itself.
-2. Sends the request to the selected Broker. The Broker decides permission from write access to its configuration file; the command does not check it first. On a denial the Broker's English error is written to standard error and the command exits with code 1, with nothing downloaded.
-3. When the current version is already the latest, the command prints `agent-peer <c> is up to date` and exits with code 0.
-4. The Broker downloads the archive for this platform and `checksums.txt`, verifies the archive's SHA-256, extracts the regular file named `agent-peer`, and runs the new binary's `--version` to confirm that it reports the expected version. It then replaces its own binary. A symbolic link keeps pointing at the updated file.
-5. The Broker answers before it restarts. The command prints `The Broker is restarting to version <v>.` and waits until the restarted Broker reports that version, because the update is complete only when that process runs. On success it prints `The Broker is running agent-peer <v>.` and then the session notice. When the restarted Broker does not report the new version in time, the command fails and names where that level's service log is.
-6. The session notice reads `Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.`
+1. Sends the request to the selected Broker. The Broker decides permission from write access to its configuration file; the command does not check it first. On a denial the Broker's English error is written to standard error and the command exits with code 1, with nothing downloaded.
+2. When the current version is already the latest, the command prints `agent-peer <c> is up to date` and exits with code 0.
+3. The Broker downloads the archive for this platform and `checksums.txt`, verifies the archive's SHA-256, extracts the regular file named `agent-peer`, and runs the new binary's `--version` to confirm that it reports the expected version. It then replaces its own binary. A symbolic link keeps pointing at the updated file.
+4. The Broker answers before it restarts. The command prints `The Broker is restarting to version <v>.` and waits until the restarted Broker reports that version, because the update is complete only when that process runs. On success it prints `The Broker is running agent-peer <v>.` and then the session notice. When the restarted Broker does not report the new version in time, the command fails and names where that level's service log is.
+5. The session notice reads `Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.`
 
 A user-level Broker that was started from a terminal, rather than by a service manager, cannot replace and restart itself. It leaves the command to the local replacement below.
 
@@ -174,13 +177,12 @@ A user-level Broker that was started from a terminal, rather than by a service m
 
 With no running Broker, or after the user-level Broker above declines, the command replaces the binary in place:
 
-1. Refuses a version that is not a formal release, as above.
-2. Locates the running executable and resolves symbolic links. Only the file they point at is replaced.
-3. Checks that it can write in the target's directory, before any download. Without permission it prints `cannot write to <dir>: ...`, then `run "sudo agent-peer update" to update a system-level installation`, and exits with code 1.
-4. Queries GitHub for the latest formal release. When the current version is already the latest, it prints `agent-peer <c> is up to date` and exits with code 0.
-5. Downloads the archive for this platform and `checksums.txt`, verifies the archive's SHA-256, extracts the regular file named `agent-peer`, and runs the new binary's `--version` to confirm that it reports the expected version. It prints `agent-peer <c> is installed; version <v> is available.` and, when the release has a URL, `Release: <url>`.
-6. Writes the new binary next to the target, gives it the same owner and mode as the old one, and renames it into place. The old version is not kept. It prints `agent-peer <v> is installed.`
-7. Starts no service and restarts none, because the service may have been stopped on purpose. It prints `The new binary takes effect the next time the Broker starts.`
+1. Locates the running executable and resolves symbolic links. Only the file they point at is replaced.
+2. Checks that it can write in the target's directory, before any download. Without permission it prints `cannot write to <dir>: ...`, then `run "sudo agent-peer update" to update a system-level installation`, and exits with code 1.
+3. Queries GitHub for the latest formal release. When the current version is already the latest, it prints `agent-peer <c> is up to date` and exits with code 0.
+4. Downloads the archive for this platform and `checksums.txt`, verifies the archive's SHA-256, extracts the regular file named `agent-peer`, and runs the new binary's `--version` to confirm that it reports the expected version. It prints `agent-peer <c> is installed; version <v> is available.` and, when the release has a URL, `Release: <url>`.
+5. Writes the new binary next to the target, gives it the same owner and mode as the old one, and renames it into place. The old version is not kept.
+6. Starts no service and restarts none, because the service may have been stopped on purpose. It prints `The new binary takes effect the next time the Broker starts.`
 
 The output of a successful update looks like one of these. `Release:` appears only when the release has a URL.
 
@@ -199,7 +201,6 @@ By replacing the binary:
 agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
 agent-peer 0.2.0 is installed; version 0.2.1 is available.
 Release: https://github.com/wangzw/agent-peer/releases/tag/v0.2.1
-agent-peer 0.2.1 is installed.
 The new binary takes effect the next time the Broker starts.
 ```
 
@@ -210,9 +211,11 @@ Failures are written to standard error with the prefix `agent-peer update: `. Th
 - `standard input is not a terminal; run "agent-peer update --yes" to update without asking`
 - `checksum mismatch for <archive>`
 - `downloaded binary reported "<x>", want "agent-peer <v>"`
-- `the Broker did not report version <v> within <duration>; check the service log with <command or path>`
+- `the Broker did not report version <v> within <duration>; check the service log with <command or path>`; when the last status query failed, its reason is in parentheses after the duration: `within <duration> (<error>)`
 - `the Broker is not running under a service manager, so it cannot start the new binary again; install it as a service and run the update against that service (for example, "agent-peer service install" or "sudo agent-peer service install --system")`
 - `another update is already in progress`
+
+When the update goes through a Broker, a checksum or version mismatch appears after `installing <v> failed: `, and a failure to look up the latest release appears after `looking up the latest release failed: `.
 
 ## agent-peer service install
 
