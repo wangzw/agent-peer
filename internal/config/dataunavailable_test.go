@@ -44,11 +44,33 @@ func TestLoadClassifiesDataDirectoryFailure(t *testing.T) {
 	}
 }
 
+// errorTextWithoutPaths removes the resolved paths that a DataUnavailableError
+// is required to name. A check that the remaining text carries no configuration
+// value must not mistake a directory name for one, such as a temporary
+// directory whose name happens to contain "0660". Longer paths go first because
+// the audit log and the configuration file live under the data directory.
+func errorTextWithoutPaths(err error, paths PathSet) string {
+	text := err.Error()
+	for _, p := range []string{paths.AuditLog, paths.ConfigFile, paths.DataDir, paths.RuntimeDir} {
+		if p != "" {
+			text = strings.ReplaceAll(text, p, "")
+		}
+	}
+	return text
+}
+
 // TestLoadCarriesSocketSettingsOnAuditFailure covers an audit log that cannot
 // be opened while the data directory is usable: the loaded socket settings are
 // carried for a diagnostics-only bind and are kept out of the error text.
 func TestLoadCarriesSocketSettingsOnAuditFailure(t *testing.T) {
-	home := t.TempDir()
+	// The audit log path appears in the error text by design. A fixed "0660"
+	// in the home directory makes a check that mistakes the path for a
+	// configuration value fail every time rather than only when the random
+	// temporary directory name happens to contain the same digits.
+	home := filepath.Join(t.TempDir(), "home-0660")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	dir := filepath.Join(home, ".agent-peer")
 	if err := os.MkdirAll(filepath.Join(dir, "audit.log"), 0o700); err != nil {
 		t.Fatal(err)
@@ -73,7 +95,7 @@ func TestLoadCarriesSocketSettingsOnAuditFailure(t *testing.T) {
 	if de.LocalSocketGroup != "agents" || de.LocalSocketMode != "0660" {
 		t.Errorf("socket settings = %q/%q, want agents/0660", de.LocalSocketGroup, de.LocalSocketMode)
 	}
-	if strings.Contains(err.Error(), "agents") || strings.Contains(err.Error(), "0660") {
+	if text := errorTextWithoutPaths(err, de.Paths); strings.Contains(text, "agents") || strings.Contains(text, "0660") {
 		t.Errorf("error text %q names a configuration value", err)
 	}
 }
