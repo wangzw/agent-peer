@@ -412,16 +412,16 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 安装、升级与卸载失败时，输出必须写明具体原因，不得只说连不上或没有启动。
 
 - **验收**：分别制造下列失败，每种情况命令都以非零退出，输出含括号中的内容：监听地址被另一个进程占用（地址、配置文件路径与配置项 `broker.listen`）；`systemctl` 或 `launchctl` 返回失败（执行的命令与它的错误输出）；对安装目录或配置文件没有权限（路径与所缺的权限）；Broker 在启动阶段退出（运行日志中 `startup_failed` 记录的原因）。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/install_port_conflict_test.go` 的 `TestSystemServiceInstallListenPortConflict`、`test/e2e/darwinservice/install_port_test.go` 的 `TestUserServiceInstallRefusesAnOccupiedListenPort`（地址被占时错误含地址、配置文件路径与 `broker.listen`）；其余失败路径由单元测试覆盖：`internal/broker/service/install_test.go` 的 `TestInstallLinuxStepFailures`、`TestInstallDarwinBootstrapFailureReportsTheOutput`、`TestCreateConfigRemovesPartialFileOnWriteFailure`、`TestInstallReportsTheStartupFailureOnTimeout`、`TestInstallReportsTheServiceManagerStateOnTimeout`（命令失败、权限不足、启动阶段退出与服务管理器状态），`cmd/agent-peer/uninstall_cmd_test.go` 的 `TestUninstallStopsAfterAFailedStep`、`TestUninstallReportsPathsRemovedBeforeAPurgeFailure`（卸载失败的步骤、路径与原因），`internal/broker/update/apply_test.go` 的 `TestApplyFailureLeavesTargetUnchanged` 与 `api_test.go` 的 `TestLatestRejectsAPIError`、`TestLatestRejectsInvalidContent`（升级失败的原因）
 
 ### REQ-broker-config-050
 
 安装或升级成功后，输出必须给出安装级别、二进制路径、版本、配置文件路径、运行日志的位置、审计日志路径、启动、停止与重启 Broker 的命令，以及卸载命令。
 
 - **验收**：分别完成一次用户级安装与一次系统级安装，输出中逐项出现上述内容，其中的路径在主机上存在，给出的启动、停止、重启与卸载命令照抄执行都成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/install_summary_test.go` 的 `TestREQBrokerConfig050_SystemServiceInstallPrintsSummary`、`TestREQBrokerConfig050_UserServiceInstallPrintsSummary`（Linux：系统级与用户级，路径存在与沿用配置，并照抄汇总里的 start、stop、restart、uninstall 命令逐条执行成功）；`test/e2e/darwinservice/install_summary_test.go` 的 `TestREQBrokerConfig050_UserServiceInstallPrintsSummary`、`TestREQBrokerConfig050_SystemServiceInstallPrintsSummary`（macOS：用户级与系统级，同一组断言与照抄执行）
 
 ### REQ-broker-config-051
 
@@ -532,8 +532,8 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 服务注册之后 Broker 进入降级运行时，`agent-peer service install` 必须保留已安装并在运行的服务，输出故障与修复命令，并以退出码 3 结束。注册之前预检发现监听地址被占用时，安装必须拒绝并不注册服务。
 
 - **验收**：在已完成安装的主机上让审计日志所在目录不可写，再执行 `agent-peer service install`：命令以 3 退出，输出写明原因、路径与修复命令；服务定义与二进制都在，服务管理器报告服务处于运行状态，`agent-peer status` 报告降级运行。另在安装前让 17443 端口被另一个进程占用：安装失败并说明地址不可用，服务定义没有写入，主机上没有本服务。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/install_summary_test.go` 的 `TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog`、`test/e2e/system/install_port_conflict_test.go` 的 `TestSystemServiceInstallListenPortConflict/an occupied port fails the install and registers nothing`（Linux：审计日志不可用后的降级重装与预检端口占用）；`test/e2e/darwinservice/install_summary_test.go` 的 `TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog`、`test/e2e/darwinservice/install_port_test.go` 的 `TestUserServiceInstallRefusesAnOccupiedListenPort`（macOS：同一验收）
 
 ### REQ-broker-config-065
 
