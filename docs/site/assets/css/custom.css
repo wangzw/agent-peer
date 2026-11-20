@@ -1,3 +1,13 @@
+/* Home page: the install command between the subtitle and the buttons. It
+   fills the content column so it lines up with the subtitle and the buttons.
+   Its own horizontal scroll keeps a narrow screen free of sideways scrolling
+   on the page. */
+.home-install {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 1rem;
+}
+
 /* Home page: hero actions with a primary and a secondary button. */
 .home-hero-actions {
   display: flex;
@@ -48,14 +58,15 @@
   flex: none;
 }
 
-/* Home page: "How it works" section below the feature cards. */
+/* Home page: the steps section between the buttons and the feature cards. */
 .home-features .hextra-feature-card h3 {
   align-items: flex-start;
 }
 
 .home-how-it-works {
   width: 100%;
-  margin-top: 3.5rem;
+  margin-top: 2rem;
+  margin-bottom: 3.5rem;
 }
 
 .home-section-title {
