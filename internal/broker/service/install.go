@@ -74,6 +74,13 @@ const (
 // launchdPIDPattern matches the "pid = <n>" line of launchctl print.
 var launchdPIDPattern = regexp.MustCompile(`(?m)^\s*pid = (\d+)$`)
 
+// launchdStatePattern and launchdLastExitCodePattern match the two fields of
+// launchctl print that explain a service that did not start.
+var (
+	launchdStatePattern        = regexp.MustCompile(`(?m)^\s*state = (.+)$`)
+	launchdLastExitCodePattern = regexp.MustCompile(`(?m)^\s*last exit code = (.+)$`)
+)
+
 // Options is everything Install needs. DefaultOptions fills it from the running
 // process; tests fill it by hand and set Root to a temporary directory.
 type Options struct {
@@ -994,7 +1001,14 @@ func waitReady(opts Options, domain string, since time.Time) (time.Time, error) 
 			if reason != "" {
 				return deadline, fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s; its last startup_failed record says: %s", path, bound, logHint(opts), reason)
 			}
-			return deadline, fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s", path, bound, logHint(opts))
+			// No failure record was written after this install began. The
+			// service manager still knows whether the unit failed and with what
+			// exit code, which is the next best description of the cause.
+			state, stateErr := serviceManagerState(opts, domain)
+			if stateErr != nil {
+				return deadline, fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s; the service manager state could not be read: %w", path, bound, logHint(opts), stateErr)
+			}
+			return deadline, fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s; the service manager reports %s", path, bound, logHint(opts), state)
 		}
 		time.Sleep(readyPollInterval)
 	}
@@ -1020,6 +1034,56 @@ func waitStatus(opts Options, deadline time.Time) (DegradedState, bool, error) {
 		}
 		time.Sleep(readyPollInterval)
 	}
+}
+
+// serviceManagerState returns the state and last exit status the service
+// manager reports for the unit or job, for a readiness timeout whose log has no
+// startup_failed record. It names the query in its own error and includes its
+// output, so a failing service manager does not turn into another silent
+// failure.
+func serviceManagerState(opts Options, domain string) (string, error) {
+	switch opts.GOOS {
+	case "linux":
+		args := []string{"show", "-p", "ActiveState", "-p", "SubState", "-p", "ExecMainStatus", UnitName}
+		if !opts.System {
+			args = append([]string{"--user"}, args...)
+		}
+		cmdline := strings.Join(append([]string{"systemctl"}, args...), " ")
+		out, err := opts.Run("systemctl", args...)
+		if err != nil {
+			if msg := strings.TrimSpace(string(out)); msg != "" {
+				return "", fmt.Errorf("%s: %w: %s", cmdline, err, msg)
+			}
+			return "", fmt.Errorf("%s: %w", cmdline, err)
+		}
+		state := strings.Join(strings.Fields(string(out)), " ")
+		if state == "" {
+			return "", fmt.Errorf("%s printed no state", cmdline)
+		}
+		return state, nil
+	case "darwin":
+		target := domain + "/" + Label
+		cmdline := "launchctl print " + target
+		out, err := opts.Run("launchctl", "print", target)
+		if err != nil {
+			if msg := strings.TrimSpace(string(out)); msg != "" {
+				return "", fmt.Errorf("%s: %w: %s", cmdline, err, msg)
+			}
+			return "", fmt.Errorf("%s: %w", cmdline, err)
+		}
+		var parts []string
+		if m := launchdStatePattern.FindStringSubmatch(string(out)); m != nil {
+			parts = append(parts, "state = "+strings.TrimSpace(m[1]))
+		}
+		if m := launchdLastExitCodePattern.FindStringSubmatch(string(out)); m != nil {
+			parts = append(parts, "last exit code = "+strings.TrimSpace(m[1]))
+		}
+		if len(parts) == 0 {
+			return "", fmt.Errorf("%s printed no state or last exit code", cmdline)
+		}
+		return strings.Join(parts, ", "), nil
+	}
+	return "", fmt.Errorf("service: unsupported platform %q", opts.GOOS)
 }
 
 // logHint names where the service manager writes the Broker's standard error.

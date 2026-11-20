@@ -2563,6 +2563,154 @@ func TestInstallFailsWhenTheStatusCannotBeRead(t *testing.T) {
 	}
 }
 
+// TestInstallReportsTheServiceManagerStateOnTimeout checks the readiness
+// timeout when the service log has no startup_failed record written by this
+// installation. The error must carry what the service manager reports about
+// the service instead of only the silent socket.
+func TestInstallReportsTheServiceManagerStateOnTimeout(t *testing.T) {
+	t.Run("linux user", func(t *testing.T) {
+		opts := baseOptions(t)
+		opts.Run = func(name string, args ...string) ([]byte, error) {
+			switch {
+			case slices.Contains(args, "ActiveState"):
+				return []byte("ActiveState=failed\nSubState=failed\nExecMainStatus=1\n"), nil
+			case slices.Contains(args, "show"):
+				return []byte("4242\n"), nil
+			case name == "journalctl":
+				return nil, nil
+			}
+			return nil, nil
+		}
+		opts.Probe = func(string) (int, bool) { return 0, false }
+		opts.ReadyTimeout = 20 * time.Millisecond
+
+		_, err := Install(opts)
+		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+			t.Fatalf("Install error = %v, want the readiness timeout", err)
+		}
+		for _, want := range []string{"ActiveState=failed", "SubState=failed", "ExecMainStatus=1"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not carry %q", err, want)
+			}
+		}
+	})
+
+	t.Run("darwin user", func(t *testing.T) {
+		opts := baseOptions(t)
+		opts.GOOS = "darwin"
+		opts.EUID = 501
+		opts.UID = 501
+		opts.Home = "/Users/alice"
+		bootedOut := false
+		started := false
+		opts.Run = func(name string, args ...string) ([]byte, error) {
+			switch {
+			case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+				return []byte("com.apple.launchd\n"), nil
+			case len(args) == 2 && args[0] == "print" && args[1] == "gui/501/"+Label:
+				if bootedOut && !started {
+					return []byte("Could not find service \"" + Label + "\" in domain for user"), exitError(t, 113)
+				}
+				return []byte("state = exited\n\tlast exit code = 1\n"), nil
+			case len(args) > 0 && args[0] == "bootout":
+				bootedOut = true
+				return nil, exitError(t, 3)
+			case len(args) > 0 && args[0] == "bootstrap":
+				started = true
+			}
+			return nil, nil
+		}
+		opts.Probe = func(string) (int, bool) { return 0, false }
+		opts.ReadyTimeout = 20 * time.Millisecond
+
+		_, err := Install(opts)
+		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+			t.Fatalf("Install error = %v, want the readiness timeout", err)
+		}
+		for _, want := range []string{"state = exited", "last exit code = 1"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not carry %q", err, want)
+			}
+		}
+	})
+
+	t.Run("query failure", func(t *testing.T) {
+		opts := baseOptions(t)
+		opts.Run = func(name string, args ...string) ([]byte, error) {
+			switch {
+			case slices.Contains(args, "ActiveState"):
+				return []byte("Failed to connect to bus: No such file or directory"), errors.New("exit status 1")
+			case slices.Contains(args, "show"):
+				return []byte("4242\n"), nil
+			case name == "journalctl":
+				return nil, nil
+			}
+			return nil, nil
+		}
+		opts.Probe = func(string) (int, bool) { return 0, false }
+		opts.ReadyTimeout = 20 * time.Millisecond
+
+		_, err := Install(opts)
+		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+			t.Fatalf("Install error = %v, want the readiness timeout", err)
+		}
+		for _, want := range []string{"service manager state could not be read", "ActiveState", "Failed to connect to bus"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not carry %q", err, want)
+			}
+		}
+	})
+}
+
+// TestServiceManagerStateQueryArguments checks the query the readiness timeout
+// makes: the user level asks systemd for this account's unit with --user, and
+// the system level asks about the system unit without it.
+func TestServiceManagerStateQueryArguments(t *testing.T) {
+	cases := []struct {
+		name     string
+		system   bool
+		wantUser bool
+	}{
+		{name: "user level", system: false, wantUser: true},
+		{name: "system level", system: true, wantUser: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := baseOptions(t)
+			opts.System = tc.system
+			if tc.system {
+				opts.EUID = 0
+			}
+			var activeArgs []string
+			opts.Run = func(name string, args ...string) ([]byte, error) {
+				switch {
+				case slices.Contains(args, "ActiveState"):
+					activeArgs = append([]string(nil), args...)
+					return []byte("ActiveState=failed\nSubState=failed\nExecMainStatus=1\n"), nil
+				case slices.Contains(args, "show"):
+					return []byte("4242\n"), nil
+				case name == "journalctl":
+					return nil, nil
+				}
+				return nil, nil
+			}
+			opts.Probe = func(string) (int, bool) { return 0, false }
+			opts.ReadyTimeout = 20 * time.Millisecond
+
+			_, err := Install(opts)
+			if err == nil || !strings.Contains(err.Error(), "the service manager reports") {
+				t.Fatalf("Install error = %v, want the readiness timeout with the service manager state", err)
+			}
+			if activeArgs == nil {
+				t.Fatal("the readiness timeout did not query the service manager state")
+			}
+			if got := slices.Contains(activeArgs, "--user"); got != tc.wantUser {
+				t.Errorf("systemctl state query arguments = %q, --user present = %v, want %v", activeArgs, got, tc.wantUser)
+			}
+		})
+	}
+}
+
 func TestInstallUnsupportedOS(t *testing.T) {
 	opts := baseOptions(t)
 	opts.GOOS = "freebsd"
