@@ -31,8 +31,13 @@ var (
 // agent-peer-e2e:ape2e-<pid>-<start>-u<uid>-g<gid>-<hash>. The owner marker
 // lets a cleanup remove only images of runs that are gone, so two suites on
 // one host never delete each other's image. The image holds an agent-peer test
-// build, so a container scenario can name a Broker socket through the
-// agentpeer_testenv hook, and the e2e-node build. The system Broker and service
+// build, so a container scenario can name a Broker socket through
+// AGENT_PEER_TEST_SOCKET, and the e2e-node build. The test build carries hooks,
+// and each one acts only when its variable is set: AGENT_PEER_TEST_SOCKET names
+// the Broker socket, AGENT_PEER_TEST_UPDATE_API points the updater at a fake
+// API, and AGENT_PEER_TEST_RUNTIME_ROOT and AGENT_PEER_TEST_HOME relocate the
+// runtime directory and the home directory. With none of them set, the test
+// build behaves like the release build. The system Broker and service
 // installation unit derives its image from it.
 func Image(tb testing.TB) string {
 	tb.Helper()
