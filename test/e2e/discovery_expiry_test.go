@@ -77,7 +77,7 @@ func TestCardExpiresAfterSevenDays(t *testing.T) {
 	listenA = dxStartBroker(t, aHost, dxConfig(listenA, "expiry-a", true), listenA, nil)
 	listenB = dxStartBroker(t, bHost, dxConfig(listenB, "expiry-b", false), listenB,
 		map[string]string{dxClockEnv: clockB})
-	listenC = dxStartBroker(t, cHost, dxConfig(listenC, "expiry-c", false), listenC,
+	dxStartBroker(t, cHost, dxConfig(listenC, "expiry-c", false), listenC,
 		map[string]string{dxClockEnv: clockC})
 
 	opA := adOperator(t, aHost)
@@ -142,7 +142,7 @@ func TestCardRenewedDaily(t *testing.T) {
 
 	listenA = dxStartBroker(t, aHost, dxConfig(listenA, "renew-a", true), listenA, clockEnv)
 	listenB = dxStartBroker(t, bHost, dxConfig(listenB, "renew-b", false), listenB, clockEnv)
-	listenC = dxStartBroker(t, cHost, dxConfig(listenC, "renew-c", false), listenC, clockEnv)
+	dxStartBroker(t, cHost, dxConfig(listenC, "renew-c", false), listenC, clockEnv)
 
 	opA := adOperator(t, aHost)
 	defer opA.End(t)
@@ -388,7 +388,7 @@ func TestPublicTopicExpiresWithDeclarer(t *testing.T) {
 	clockB := dxClockFile(t)
 
 	listenA = dxStartBroker(t, aHost, dxConfig(listenA, "topic-expiry-a", true), listenA, nil)
-	listenB = dxStartBroker(t, bHost, dxConfig(listenB, "topic-expiry-b", false), listenB,
+	dxStartBroker(t, bHost, dxConfig(listenB, "topic-expiry-b", false), listenB,
 		map[string]string{dxClockEnv: clockB})
 
 	opA := adOperator(t, aHost)

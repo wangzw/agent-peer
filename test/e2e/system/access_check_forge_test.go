@@ -158,9 +158,9 @@ func startAccessCheckForger(t *testing.T) *forger {
 				return true, ""
 			}
 			select {
-			case <-exited:
-				t.Fatalf("the access-check forger exited before it was ready: %s",
-					strings.TrimSpace(stderr.String()))
+			case err := <-exited:
+				t.Fatalf("the access-check forger exited before it was ready: %v: %s",
+					err, strings.TrimSpace(stderr.String()))
 			default:
 			}
 			return false, "the ready file is absent"

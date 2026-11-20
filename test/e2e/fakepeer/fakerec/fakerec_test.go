@@ -116,7 +116,9 @@ func TestSeedDeterministic(t *testing.T) {
 	if !bytes.Equal(firstBody.PublicKey, secondBody.PublicKey) {
 		t.Fatalf("public keys differ: %x vs %x", firstBody.PublicKey, secondBody.PublicKey)
 	}
-	if PublisherOf("same-seed") != PublisherOf("same-seed") {
+	firstPublisher := PublisherOf("same-seed")
+	secondPublisher := PublisherOf("same-seed")
+	if firstPublisher != secondPublisher {
 		t.Fatal("PublisherOf is not deterministic")
 	}
 }

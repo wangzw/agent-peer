@@ -369,9 +369,9 @@ func sgRun(t *testing.T, timeout time.Duration, cmd *exec.Cmd) syscontainer.Resu
 		return result
 	case <-time.After(timeout):
 		_ = cmd.Process.Kill()
-		<-done
-		t.Fatalf("syscontainer: %q did not exit within %s; stderr:\n%s",
-			cmd.Args, timeout, strings.TrimSpace(stderr.String()))
+		err := <-done
+		t.Fatalf("syscontainer: %q did not exit within %s (wait: %v); stderr:\n%s",
+			cmd.Args, timeout, err, strings.TrimSpace(stderr.String()))
 		return syscontainer.Result{}
 	}
 }

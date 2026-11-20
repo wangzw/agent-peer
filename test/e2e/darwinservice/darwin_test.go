@@ -237,7 +237,7 @@ func writeUserConfig(t *testing.T, listen string) {
 // through a LaunchDaemon, so it has no launchd label to collide with.
 type systemPeer struct {
 	pid     int
-	done    chan error
+	done    chan struct{}
 	log     *os.File
 	stopped bool
 }
@@ -261,8 +261,8 @@ func startSystemPeer(t *testing.T) *systemPeer {
 		_ = logFile.Close()
 		t.Fatalf("starting the peer Broker: %v", err)
 	}
-	peer := &systemPeer{pid: cmd.Process.Pid, done: make(chan error, 1), log: logFile}
-	go func() { peer.done <- cmd.Wait() }()
+	peer := &systemPeer{pid: cmd.Process.Pid, done: make(chan struct{}), log: logFile}
+	go func() { _ = cmd.Wait(); close(peer.done) }()
 	t.Cleanup(func() { peer.stop(t) })
 
 	waitFor(t, serviceStartBound, "the peer Broker socket "+systemSocketPath, func() (bool, string) {

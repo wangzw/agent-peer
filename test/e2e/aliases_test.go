@@ -289,7 +289,6 @@ func TestAliases(t *testing.T) {
 		// Rename B to hostC. B is the dialer, so it reconnects to A on its
 		// own after the restart.
 		alRestart(t, conflict, "hostB", alConfig("broker:\n  alias: hostC\n"), bOp, b1)
-		bOp = alOperator(t, bNode)
 		b1 = alSession(t, bNode, "b1")
 
 		var bAddr string
@@ -625,7 +624,7 @@ func alHexSuffix(s string) bool {
 		return false
 	}
 	for _, r := range s {
-		if !(r >= '0' && r <= '9') && !(r >= 'a' && r <= 'f') {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
 			return false
 		}
 	}

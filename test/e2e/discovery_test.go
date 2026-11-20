@@ -112,14 +112,6 @@ func (d *discNode) start(t *testing.T) {
 	}
 }
 
-// restart stops the node's Broker and starts it again with the same
-// configuration and data directory.
-func (d *discNode) restart(t *testing.T) {
-	t.Helper()
-	d.StopBroker(t, syscall.SIGTERM)
-	d.start(t)
-}
-
 // discOperator starts a session that can call the pairing and configuration
 // tools but never registers as an Agent. It waits for the Broker connection
 // before the caller's first tool call.
@@ -717,7 +709,7 @@ func TestDiscoveryPublicWithoutListen(t *testing.T) {
 
 	// A has no listener but dials B; C dials B as well. The card reaches C
 	// through B.
-	a.Node.StopBroker(t, syscall.SIGTERM)
+	a.StopBroker(t, syscall.SIGTERM)
 	a.addr = ""
 	a.config = discConfig("", a.alias, true, "")
 	a.start(t)

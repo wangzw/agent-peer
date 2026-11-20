@@ -514,7 +514,7 @@ func ctcRequireLinkCycle(t *testing.T, n *harness.Node, since time.Time, downWan
 	if len(ups) != 2 {
 		t.Fatalf("the audit holds %d records matching %q, want one per establishment (2)", len(ups), upWant.name)
 	}
-	if !(ups[0] < downs[0] && downs[0] < ups[1]) {
+	if ups[0] >= downs[0] || downs[0] >= ups[1] {
 		t.Fatalf("the link events are out of order: up at %d, down at %d, up at %d", ups[0], downs[0], ups[1])
 	}
 }

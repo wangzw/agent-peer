@@ -382,7 +382,6 @@ func TestLinksRestartWithTwoPeers(t *testing.T) {
 	lkWaitConnected(t, xNode, "hostC.peer", lkRelinkBound)
 
 	lkRestart(t, c, "hostA", lkConfig(), opX)
-	opX = lkOperator(t, xNode)
 
 	harness.Eventually(t, lkRelinkBound, "X restores both links after the restart", func() (bool, string) {
 		peers := lkPeers(t, xNode)
@@ -604,7 +603,7 @@ func lkAddressStrings(addrs []*localpb.AdvertisedAddress) []string {
 // lkLowerHex reports whether s is a non-empty run of lowercase hex digits.
 func lkLowerHex(s string) bool {
 	for _, r := range s {
-		if !(r >= '0' && r <= '9') && !(r >= 'a' && r <= 'f') {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
 			return false
 		}
 	}
