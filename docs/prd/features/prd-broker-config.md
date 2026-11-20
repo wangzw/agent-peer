@@ -156,8 +156,8 @@ MCP 服务进程不得启动任何 Broker。会话按 `REQ-broker-config-026` �
 用户必须能用一条命令从本项目的 GitHub 正式发布在线安装：命令下载最新正式版本中本平台的发布包，校验后用发布包中的安装脚本完成安装。系统级安装以管理员身份执行同一条命令并带上系统级参数。用户可以指定要安装的版本。校验和不符或下载失败时，安装必须中止，主机上不得留下任何改动。
 
 - **验收**：在没有安装过本系统的 Linux 主机上，以普通账户执行一条在线安装命令，结果与在本地执行发布包内安装脚本相同；以管理员身份带系统级参数执行，结果与本地系统级安装相同。指定一个已发布的版本时，安装的是该版本；指定一个不存在的版本时，命令以非零退出，报错 `version <v> not found`，主机上没有改动。让下载的发布包与校验和不符，命令以非零退出，二进制、服务、MCP 注册都没有改动，也没有留下临时文件。
-- **状态**：未实现
-- **端到端测试**：未实现（由端到端工作项填写）
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/remote_install_test.go` 的 `TestRemoteInstallUser`、`TestRemoteInstallSystem`、`TestRemoteInstallPinnedVersion`、`TestRemoteInstallUnknownVersion`、`TestRemoteInstallArchiveWithoutInstallScript`、`TestRemoteInstallTruncatedScript`、`TestRemoteInstallChecksumMismatch`
 
 ### REQ-broker-config-013
 
