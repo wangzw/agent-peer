@@ -4,41 +4,13 @@ agent-peer is a cross-host communication system for Claude Code sessions: a Brok
 
 ## Install
 
-### One-command installation
-
-To install the latest release with one command:
-
-```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
-```
-
-The script detects the platform and architecture, downloads the matching archive, verifies it against the release's `checksums.txt`, and runs the install script from the archive. For a system-level Broker, run the same command with `sudo` from the account whose Claude Code should use the system Broker:
-
-```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --system
-```
-
-`--version <version>` installs a published version instead of the latest and must come before any other option. A version that does not exist makes the command fail with `version <version> not found` and leaves the host unchanged.
-
-Piping the script to a shell carries the same trust as downloading the archive and running it by hand: the releases are not signed. To inspect the script first, download it, read it, and run it from the directory that holds it.
-
-### Install from the archive
-
-Extract the archive and run the install script from the extracted directory. The script installs the binary, installs the Broker as a service and starts it, and registers the MCP server with Claude Code for your account.
-
-For a user-level Broker, run it as your own account:
+Extract the archive and run the install script from the extracted directory:
 
 ```sh
 sh ./install.sh
 ```
 
-For a system-level Broker, run it with `sudo` from the account whose Claude Code should use the system Broker:
-
-```sh
-sudo sh ./install.sh --system
-```
-
-`--prefix <dir>` installs the binary in another directory, `--no-service` skips the service, and `--no-mcp` skips the MCP registration. Running the script again is safe: it replaces the binary, restarts the service, and does not register the MCP server twice.
+The script installs the binary, installs the Broker as a service and starts it, and registers the MCP server with Claude Code for your account. It asks whether to install system-wide for all accounts or only for your account; a system-wide installation obtains sudo itself, so run the command as your own account and do not put `sudo` in front of it. Running the script again is safe: it replaces the binary, restarts the service, and does not register the MCP server twice.
 
 ## Get started
 
@@ -90,23 +62,11 @@ When the update runs through the Broker, the Broker restarts and open sessions r
 
 ## Uninstall
 
-Stop and remove the service, remove the MCP registration, and delete the binary:
-
 ```sh
-agent-peer service uninstall
-claude mcp remove -s user peer
-rm ~/.local/bin/agent-peer
+agent-peer uninstall
 ```
 
-For a system-level installation, use `sudo` for the service and delete the binary from its system prefix:
-
-```sh
-sudo agent-peer service uninstall --system
-claude mcp remove -s user peer
-sudo rm /usr/local/bin/agent-peer
-```
-
-Configuration, identity and audit logs are kept when the service is removed.
+The command removes the service, the MCP registration, the binary and the runtime directory. Configuration, identity and audit logs are kept. Add `--purge` to remove them as well, together with the service logs and, for a system-level installation, the admin group.
 
 ## Documentation
 
