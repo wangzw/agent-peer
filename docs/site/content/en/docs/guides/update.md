@@ -13,13 +13,13 @@ A release build of the Broker checks GitHub shortly after it starts: it waits ab
 When a newer release exists, you see it in two places. The last line of `agent-peer status` is:
 
 ```text
-Update: 0.2.1 available (current 0.2.0); run agent-peer update
+Update: 0.3.0 available (current 0.2.0); run agent-peer update
 ```
 
 When a newer release is available, a tool result in the session ends with:
 
 ```text
-agent-peer 0.2.1 is available (this Broker runs 0.2.0). Ask the agent to call update_broker, or run `agent-peer update` in a terminal.
+agent-peer 0.3.0 is available (this Broker runs 0.2.0). Ask the agent to call update_broker, or run `agent-peer update` in a terminal.
 ```
 
 A session shows the notice once for a given version. If a newer release appears while the session stays open, a later tool call shows the notice again. The MCP server queries the Broker for the update state on its first tool call and then at most once every 10 minutes. A build that is not a formal release, such as a binary built from source without `-ldflags`, does not check and never shows either line.
@@ -38,7 +38,7 @@ agent-peer update
 
 It first refuses a binary that is not a release build. It then asks before changing anything; answering `y` or `yes` goes ahead, and any other answer cancels the update and leaves the binary and the service as they were. Only after you confirm does it select a Broker; what it then does depends on that Broker and on how it runs.
 
-Add `--yes` to skip the question. When standard input is not a terminal, as in a script or a scheduled job, the command requires `--yes` and otherwise refuses with `standard input is not a terminal; run "agent-peer update --yes" to update without asking`. When the installed version is already the latest, the command prints `agent-peer 0.2.0 is up to date` and exits without changing anything.
+Add `--yes` to skip the question. When standard input is not a terminal, as in a script or a scheduled job, the command requires `--yes` and otherwise refuses with `standard input is not a terminal; run "agent-peer update --yes" to update without asking`. When the installed version is already the latest, the command prints `agent-peer 0.3.0 is up to date` and exits without changing anything.
 
 [Command line]({{< relref "/docs/reference/cli" >}}) gives the full description of the command.
 
@@ -48,8 +48,8 @@ When this account's user-level Broker is running under the service manager, the 
 
 ```text
 agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
-The Broker is restarting to version 0.2.1.
-The Broker is running agent-peer 0.2.1.
+The Broker is restarting to version 0.3.0.
+The Broker is running agent-peer 0.3.0.
 Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.
 ```
 
@@ -100,7 +100,7 @@ When the Broker applies an update, it restarts and its connections recover autom
 
 | Installation | Command | What happens |
 |---|---|---|
-| User-level: the install command answered n to the system-wide question or run with `--user`, or a binary you placed in `~/.local/bin` | `agent-peer update` | With a service, the Broker replaces its binary and the service manager restarts it. Without one, the command replaces the binary and it takes effect at the next start. |
+| User-level: on a host without a system-level service, answered n or pressed Enter at `Install system-wide (all accounts)? [y/N]`; ran without a terminal as a non-root account; ran with `--user`; or placed the binary in `~/.local/bin` yourself | `agent-peer update` | With a service, the Broker replaces its binary and the service manager restarts it. Without one, the command replaces the binary and it takes effect at the next start. |
 | System-level: the install command with `--system` or answered y at the level question, or run as root, or a manual `sudo install` into `/usr/local/bin` | `agent-peer update` for a member of the admin group with no user-level Broker running; otherwise `sudo agent-peer update`, or join the group if the account is outside it | The Broker replaces its binary and the service manager restarts it. |
 | No running Broker | `agent-peer update` | The command replaces the binary, and nothing is started or restarted. |
 

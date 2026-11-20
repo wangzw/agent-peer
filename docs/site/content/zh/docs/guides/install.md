@@ -8,14 +8,14 @@ weight: 1
 
 ## 选择安装级别
 
-一条命令安装与发布包里的 `sh ./install.sh` 两种级别都能装。以 root 运行时，脚本不经询问直接装系统级。其他账户在终端里运行、又没有给出指定级别的选项时，会看到询问 `Install system-wide (all accounts)? [y/N]`：回答 y 经 `sudo` 安装为系统级，其他回答装成本账户的用户级。没有终端时，非 root 账户装用户级。主机上已有系统级服务时，询问改为 `Upgrade the system-wide installation? [Y/n]`：直接回车或回答 y 升级系统级安装，回答 n 时主机不做任何改动，以退出码 0 结束，并提示改用 `--user`。`--system` 与 `--user` 跳过询问；同时给出两个是用法错误，以 root 给出 `--user` 会被拒绝并提示去掉它。回答 y 之后 `sudo` 不可用时，脚本失败，并提示改用 `--user`。
+一条命令安装与发布包里的 `sh ./install.sh` 两种级别都能装。以 root 运行时，脚本不经询问直接装系统级。其他账户在终端里运行、又没有给出指定级别的选项时，会看到询问 `Install system-wide (all accounts)? [y/N]`：回答 y 经 `sudo` 安装为系统级，其他回答装成本账户的用户级。没有终端时，非 root 账户装用户级。主机上已有系统级服务时，询问改为 `Upgrade the system-wide installation? [Y/n]`：直接回车或回答 y 升级系统级安装，回答 n 时主机不做任何改动，以退出码 0 结束，并提示改用 `--user`。`--system` 与 `--user` 跳过询问；同时给出两个是用法错误，以 root 给出 `--user` 会被拒绝并提示去掉它。回答 y 之后 `sudo` 不可用时，脚本失败，并给出 `a system-level install needs sudo, which was not found; install sudo, or pass --user for a user-level install`。
 
 ## 用一条命令安装
 
 安装指定版本时，先设好版本号，再传 `--version`：
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version "$VERSION"
 ```
 
@@ -39,7 +39,7 @@ sh install.sh
 agent-peer 以 `tar.gz` 发布包的形式放在 [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest) 上。下载对应平台和架构的发布包，以及同一发布里的 `checksums.txt`：
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/agent-peer_${VERSION}_<os>_<arch>.tar.gz
 curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/checksums.txt
 ```
@@ -49,21 +49,21 @@ curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/chec
 使用前先用 `checksums.txt` 校验发布包。Linux 上：
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 grep agent-peer_${VERSION}_linux_arm64.tar.gz checksums.txt | sha256sum -c -
 ```
 
 macOS 上用 `shasum`：
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 grep agent-peer_${VERSION}_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
 ```
 
 新建一个目录，把发布包解压进去：发布包没有外层目录，不新建目录时，`LICENSE`、`README.md`、`third_party/` 等文件会和二进制一起直接落在当前目录：
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 mkdir agent-peer-${VERSION}
 tar -xzf agent-peer_${VERSION}_darwin_arm64.tar.gz -C agent-peer-${VERSION}
 ```
@@ -73,7 +73,7 @@ Linux 上把 `darwin` 换成 `linux`。
 进入解压出的目录并运行脚本：
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 cd agent-peer-${VERSION}
 sh ./install.sh
 ```
@@ -109,7 +109,7 @@ macOS 上，脚本自己清除二进制上的隔离属性，所以用浏览器�
 
 ## 安装输出
 
-安装成功时，输出给出级别、二进制路径、版本、配置文件路径、运行日志位置、审计日志路径，以及启动、停止、重启与卸载 Broker 的命令。系统级安装的启动、停止、重启命令带 `sudo`。升级时还会给出升级前的版本。[文件与路径]({{< relref "/docs/reference/files" >}})列出配置、运行日志、审计日志与运行时目录的路径。
+安装成功的汇总以 `agent-peer <version> installed (<level>, starts at <login|boot>)` 开头；升级时在这之前先输出 `upgraded from <version>`。汇总给出级别、二进制路径、版本、配置文件路径、运行日志位置、审计日志路径，以及启动、停止、重启与卸载 Broker 的命令。系统级安装的启动、停止、重启命令带 `sudo`。[文件与路径]({{< relref "/docs/reference/files" >}})列出配置、运行日志、审计日志与运行时目录的路径。
 
 安装失败时，输出写明原因：地址已被占用时给出地址、配置文件与 `broker.listen`；服务管理器报错时给出执行的命令与它的输出；权限不足时给出路径和缺少的权限；Broker 在启动阶段退出时给出运行日志里的原因。只有服务在运行、Broker 进入降级运行时，安装才保留服务、给出修复命令，并以退出码 3 结束；安装失败时写入或启用的服务，不会在开机或登录时自动启动。细节见 [agent-peer service install]({{< relref "/docs/reference/cli" >}}#agent-peer-service-install) 与 [FAQ 的端口一问]({{< relref "/docs/faq" >}}#端口被占用时会怎样)。
 
@@ -122,7 +122,7 @@ macOS 上，脚本自己清除二进制上的隔离属性，所以用浏览器�
 macOS 上，浏览器下载的文件带有隔离属性，而二进制没有签名，也没有经过公证，所以清除之前 macOS 会阻止运行二进制。如果发布包是浏览器下载的，先从解压出的二进制上清除：
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer
 ```
 
@@ -133,7 +133,7 @@ xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer
 把二进制移到 `PATH` 上的目录：
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 mkdir -p ~/.local/bin
 mv agent-peer-${VERSION}/agent-peer ~/.local/bin/
 agent-peer --version
@@ -184,7 +184,7 @@ agent-peer broker
 从源码构建需要 Go 1.27。克隆仓库并构建：
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 git clone https://github.com/wangzw/agent-peer
 cd agent-peer
 go build -trimpath -ldflags "-X main.version=$VERSION" -o agent-peer ./cmd/agent-peer

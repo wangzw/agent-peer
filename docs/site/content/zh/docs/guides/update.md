@@ -13,13 +13,13 @@ Broker 的正式发布版本启动后会检查 GitHub：先等约一分钟，检
 有新版本时，两个地方会显示。`agent-peer status` 的最后一行是：
 
 ```text
-Update: 0.2.1 available (current 0.2.0); run agent-peer update
+Update: 0.3.0 available (current 0.2.0); run agent-peer update
 ```
 
 有可用新版本时，某次工具结果的末尾会附上：
 
 ```text
-agent-peer 0.2.1 is available (this Broker runs 0.2.0). Ask the agent to call update_broker, or run `agent-peer update` in a terminal.
+agent-peer 0.3.0 is available (this Broker runs 0.2.0). Ask the agent to call update_broker, or run `agent-peer update` in a terminal.
 ```
 
 同一个版本在一个会话中只提示一次；会话开着期间出了新版本，之后的工具调用会再提示一次。MCP 服务在第一次工具调用时向 Broker 查询更新状态，此后最多每 10 分钟查询一次。不是正式发布版本的构建，例如不带 `-ldflags` 从源码构建的二进制，不检查，也不会出现这两行。
@@ -38,7 +38,7 @@ agent-peer update
 
 命令先拒绝不是正式发布版本的二进制，然后在改动任何东西之前询问。回答 `y` 或 `yes` 才会继续；其他回答会取消更新，二进制与服务都保持原样。确认之后才选 Broker；随后做什么，取决于选中的 Broker 以及它怎样运行。
 
-加 `--yes` 可以跳过询问。标准输入不是终端时，例如在脚本或计划任务里，命令要求带 `--yes`，否则拒绝执行，并给出 `standard input is not a terminal; run "agent-peer update --yes" to update without asking`。已经是最新版本时，命令打印 `agent-peer 0.2.0 is up to date`，直接退出，不做任何改动。
+加 `--yes` 可以跳过询问。标准输入不是终端时，例如在脚本或计划任务里，命令要求带 `--yes`，否则拒绝执行，并给出 `standard input is not a terminal; run "agent-peer update --yes" to update without asking`。已经是最新版本时，命令打印 `agent-peer 0.3.0 is up to date`，直接退出，不做任何改动。
 
 命令的完整说明见[命令行]({{< relref "/docs/reference/cli" >}})。
 
@@ -48,8 +48,8 @@ agent-peer update
 
 ```text
 agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
-The Broker is restarting to version 0.2.1.
-The Broker is running agent-peer 0.2.1.
+The Broker is restarting to version 0.3.0.
+The Broker is running agent-peer 0.3.0.
 Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.
 ```
 
@@ -100,7 +100,7 @@ Broker 重启后，连接会自动恢复。发起调用的会话里，MCP 服务
 
 | 安装方式 | 命令 | 处理方式 |
 |---|---|---|
-| 用户级：对系统级询问回答 n 或带 `--user` 的安装命令，或手工放进 `~/.local/bin` 的二进制 | `agent-peer update` | 装有服务时，Broker 替换自己的二进制，服务管理器重启它；没有服务时，命令替换二进制，下次启动时生效。 |
+| 用户级：主机上没有系统级服务时，对 `Install system-wide (all accounts)? [y/N]` 回答 n 或直接回车；非 root 账户没有终端时运行；带 `--user`；或手工把二进制放进 `~/.local/bin` | `agent-peer update` | 装有服务时，Broker 替换自己的二进制，服务管理器重启它；没有服务时，命令替换二进制，下次启动时生效。 |
 | 系统级：带 `--system` 或对级别询问回答 y 的安装命令，或以 root 运行，或手工 `sudo install` 到 `/usr/local/bin` | 管理组成员且本账户没有运行用户级 Broker 时用 `agent-peer update`；其余情形用 `sudo agent-peer update`；不在组内的，也可以先加入管理组 | Broker 替换自己的二进制，服务管理器重启它。 |
 | 没有正在运行的 Broker | `agent-peer update` | 命令替换二进制，不启动也不重启任何服务。 |
 

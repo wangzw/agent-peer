@@ -20,7 +20,7 @@ A Claude Code session reaches agent-peer through the MCP server `peer`, which th
 | `create_pairing_key` | Creates a one-time pairing key and reports this Broker's addresses. | None. | Write |
 | `get_config` | Reads this Broker's configuration. | `key` (string, optional): one key such as `broker.alias`; omit it for every key. | Read |
 | `set_config` | Changes one configuration key. | `key` (string, required). `value` (string, required): the new value as text, such as `10m`, `true` or `[a, b]`. | Write |
-| `set_broker_online` | Sets whether this Broker refuses messages from other hosts. | `online` (boolean, required): `true` accepts them, `false` refuses them. | Write |
+| `set_broker_online` | Sets whether this Broker accepts messages from other hosts; links and messages sent from this Broker are not affected. | `online` (boolean, required): `true` accepts them, `false` refuses them. | Write |
 | `update_broker` | Upgrades this Broker to the latest formal release and restarts it. | None. | Write |
 
 ## Results

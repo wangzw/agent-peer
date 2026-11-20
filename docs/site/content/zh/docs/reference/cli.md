@@ -14,9 +14,9 @@ Commands:
                               run the Broker
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker
-  offline                     refuse messages from other hosts
-  online                      accept messages from other hosts again
   audit [--limit <n>]         read the audit log
+  offline                     refuse messages from other hosts, keeping links
+  online                      accept messages from other hosts again
   config get [<key>]          show all configuration items, or one
   config set <key> <value>    change a configuration item
   pairing-key create          create a one-time pairing key
@@ -30,17 +30,14 @@ Commands:
                               install and start the Broker as a user-level service,
                               or system-level with --system; --admin-group names the
                               group that administers the system-level Broker
-  service start               start the installed service for this account, or
-                              the system-level service as root
-  service stop                stop it without disabling it
-  service restart             restart it
   service uninstall [--system]
-                              stop and remove only the installed service; configuration,
+                              stop and remove the installed service; configuration,
                               identity and audit logs are kept
-  uninstall [--purge]         remove the installation for this account, or the
-                              system-level installation as root; --purge deletes
-                              configuration, identity, audit and service logs,
-                              and at the system level the admin group
+  service start|stop|restart  start, stop or restart the service of the executing
+                              account (root: system-level, other accounts: user-level)
+  uninstall [--purge]         remove the installation of this account, or the
+                              system-wide one when run as root; --purge also removes
+                              configuration, identity and logs
 ```
 
 ## agent-peer --version
@@ -211,8 +208,8 @@ usage: agent-peer update [--yes]
 
 ```text
 agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
-The Broker is restarting to version 0.2.1.
-The Broker is running agent-peer 0.2.1.
+The Broker is restarting to version 0.3.0.
+The Broker is running agent-peer 0.3.0.
 Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.
 ```
 
@@ -220,8 +217,8 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 
 ```text
 agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
-agent-peer 0.2.0 is installed; version 0.2.1 is available.
-Release: https://github.com/wangzw/agent-peer/releases/tag/v0.2.1
+agent-peer 0.2.0 is installed; version 0.3.0 is available.
+Release: https://github.com/wangzw/agent-peer/releases/tag/v0.3.0
 The new binary takes effect the next time the Broker starts.
 ```
 
@@ -245,7 +242,7 @@ The new binary takes effect the next time the Broker starts.
 - 不带 `--system` 时安装用户级服务，账户登录时启动 Broker。不能以 root 运行。在 macOS 上只能在图形登录会话里运行。`~/.agent-peer/config.yaml` 不存在时，生成这个文件，属主为执行安装的账户，权限 `0600`；已存在的文件不改动。
 - 带 `--system` 时安装系统级服务，开机时启动 Broker。必须以 root 运行。组 `agent-peer` 不存在时，命令新建它；已存在时直接使用，不改动成员。`/etc/agent-peer/config.yaml` 不存在时，生成这个文件，属主为 `root`，组为 `agent-peer`，权限 `0660`；已存在的文件不改动。`--admin-group <name>` 只在带 `--system` 时有效，用于改用另一个组；组名只能以小写字母或下划线开头，其后只能是小写字母、数字、下划线或连字符。
 
-生成的文件是一份列出全部键的模板：有固定默认值的键写出取值，其余键写成注释并附示例值或空占位。安装写入文件时输出 `generated the configuration file <path>`，文件已存在时输出 `kept the existing configuration file <path>`，系统级安装还会输出 `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`。执行这条命令就把已有安装交给该组，组成员随后不用 `sudo` 就能管理 Broker；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。`broker.listen` 使用小于 1024 的端口时，不要把文件交给这个组；规则与修复方法见[配置键]({{< relref "/docs/reference/configuration" >}}#类型与约束)。
+生成的文件是一份列出全部键的模板：有固定默认值的键写出取值，其余键写成注释并附示例值或空占位。安装汇总的 `config:` 一行以 `(generated)` 结尾表示本次写入，以 `(kept)` 结尾表示文件已存在；系统级安装保留了已有文件时，还会输出 `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`。执行这条命令就把已有安装交给该组，组成员随后不用 `sudo` 就能管理 Broker；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。`broker.listen` 使用小于 1024 的端口时，不要把文件交给这个组；规则与修复方法见[配置键]({{< relref "/docs/reference/configuration" >}}#类型与约束)。
 
 如果这一级别已有 Broker 正在应答，而且不是这个服务启动的，安装会被拒绝，并提示先停掉它。
 
@@ -263,6 +260,8 @@ The new binary takes effect the next time the Broker starts.
 
 启动、停止或重启已安装的服务。作用的级别按执行命令的账户确定，命令不接受 `--system`：root 作用于系统级服务，其他账户作用于本账户的用户级服务。要操作系统级服务，用 `sudo` 执行命令。
 
+成功时输出 `Broker service started (user-level)`，或对应的 `Broker service stopped (user-level)`、`Broker service restarted (user-level)`；系统级服务括号里为 `system-level`。
+
 `stop` 不禁用服务，下次登录或开机时仍会启动。该级别没有安装服务时，命令以退出码 1 结束，并说明该级别没有安装服务；只有系统级服务的账户还会收到提示，改用 `sudo agent-peer service <command>`。
 
 `start` 与 `restart` 和安装一样等待 Broker 应答并检查是否处于降级运行；退出码规则见 [agent-peer service install](#agent-peer-service-install)。
@@ -276,12 +275,13 @@ The new binary takes effect the next time the Broker starts.
 
 ## agent-peer uninstall
 
-卸载一个安装：服务、服务启动的二进制、执行命令的账户的 MCP 注册和运行时目录。
+卸载一个安装：服务、服务启动的二进制、执行 `sudo` 的账户（未经 `sudo` 时为执行命令的账户）的 MCP 注册，以及运行时目录。
 
 - 以 root 执行时，卸载系统级安装。其他账户卸载自己的用户级安装；主机上同时有系统级安装时，命令先卸载用户级安装，结束后说明另一级别用 `sudo agent-peer uninstall` 卸载。
-- 主机上只有系统级安装时，命令询问 `Uninstall the system-wide installation (requires sudo)? [y/N]`。回答 `y` 时命令经 `sudo` 重新执行；回答其他内容或者无法询问时，主机不做改动，输出 `sudo agent-peer uninstall`，以退出码 0 结束。
-- 不给 `--purge` 时，命令询问 `Also remove configuration, identity, audit and service logs? [y/N]`，除回答 `y` 外都保留这些数据；无法询问时同样保留。系统级安装回答 `y` 时，同时删除管理组。
-- `--purge` 跳过这句询问，一并删除这些数据；系统级安装同时删除管理组。
+- 主机上只有系统级安装时，命令询问 `Uninstall the system-wide installation (requires sudo)? [y/N]`。回答 `y` 时命令经 `sudo` 重新执行；回答其他内容或者无法询问时，主机不做改动，输出 `Run: sudo agent-peer uninstall`，以退出码 0 结束。给过 `--purge` 时，输出的命令末尾带 ` --purge`。
+- 不给 `--purge` 时，命令询问 `Also remove configuration, identity, audit and service logs? [y/N]`，除回答 `y` 外都保留这些数据；无法询问时同样保留。
+- `--purge` 跳过这句询问，一并删除这些数据。
+- 系统级安装中，回答 `y` 或给出 `--purge` 时，只有管理组是安装时创建的，或者是 v0.2.0 安装的默认 `agent-peer` 组且配置文件属于该组，才会删除它；其余情况，或该组仍在使用时，管理组保留，命令打印手动删除的方法。
 - 其他账户的 MCP 注册会保留，各自由相应账户用 `claude mcp remove -s user peer` 删除。系统级安装删除执行 `sudo` 的账户的注册；以 root 直接运行时只打印命令。
 
 删除系统级二进制之前，命令会列出用户级 Broker 正在运行的其他账户，然后照常删除。

@@ -24,7 +24,7 @@ agent-peer service install
 
 命令写入单元文件或 plist，启用服务，并立即启动 Broker。它会等 Broker 应答，最多等 20 秒；Broker 没有应答时，安装失败，并给出服务日志的位置。重新安装会用新的二进制替换正在运行的 Broker。用户级安装不能用 root 运行，因为单元属于一个账户。位于临时目录里的二进制会被拒绝安装，用户级与系统级都如此。
 
-`~/.agent-peer/config.yaml` 不存在时，安装会生成它，内容是一份列出全部键的模板：有固定默认值的键写出取值，其余键写成注释并附示例值或空占位。文件属主是执行安装的账户，权限为 `0600`；已存在的文件不改动。安装会输出 `generated the configuration file <path>` 或 `kept the existing configuration file <path>`。[配置键]({{< relref "docs/reference/configuration" >}})介绍生成的文件。
+`~/.agent-peer/config.yaml` 不存在时，安装会生成它，内容是一份列出全部键的模板：有固定默认值的键写出取值，其余键写成注释并附示例值或空占位。文件属主是执行安装的账户，权限为 `0600`；已存在的文件不改动。安装汇总的 `config:` 一行以 `(generated)` 或 `(kept)` 结尾。[配置键]({{< relref "docs/reference/configuration" >}})介绍生成的文件。
 
 在装有 systemd 的 Linux 上，单元文件是 `~/.config/systemd/user/agent-peer.service`（或位于 `$XDG_CONFIG_HOME` 下）。在 macOS 上，LaunchAgent 是 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`，安装只能在图形登录会话里执行；没有图形会话的主机改用系统级服务。
 
@@ -37,7 +37,7 @@ agent-peer service install
 二进制必须放在 root 拥有、且组和其他人不可写的目录里，例如 `/usr/local/bin`。服务以 root 身份运行这个二进制，能改动它或其上级目录的普通账户可能借此接管服务：
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 sudo install -o root -g 0 -m 0755 agent-peer-${VERSION}/agent-peer /usr/local/bin/agent-peer
 sudo /usr/local/bin/agent-peer service install --system
 ```

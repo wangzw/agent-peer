@@ -24,7 +24,7 @@ agent-peer service install
 
 The command writes the unit file or plist, enables the service, and starts the Broker immediately. It waits up to 20 seconds for the Broker to answer; if it does not answer, the install fails and reports where the service logs go. Reinstalling replaces the running Broker with the new binary. A user-level install must not run as root, because the unit belongs to one account. The install refuses a binary inside the temporary directory; this applies to both the user-level and the system-level form.
 
-When `~/.agent-peer/config.yaml` does not exist, the install generates it as a template that lists every configuration key: keys with a fixed default are written out, and the remaining keys are comments with an example value or an empty placeholder. The file belongs to the account that runs the install and has mode `0600`; an existing file is left unchanged. The install reports either `generated the configuration file <path>` or `kept the existing configuration file <path>`. [Configuration keys]({{< relref "docs/reference/configuration" >}}) describes the generated file.
+When `~/.agent-peer/config.yaml` does not exist, the install generates it as a template that lists every configuration key: keys with a fixed default are written out, and the remaining keys are comments with an example value or an empty placeholder. The file belongs to the account that runs the install and has mode `0600`; an existing file is left unchanged. The install summary's `config:` line ends with `(generated)` or `(kept)`. [Configuration keys]({{< relref "docs/reference/configuration" >}}) describes the generated file.
 
 On Linux with systemd, the unit is `~/.config/systemd/user/agent-peer.service` (or under `$XDG_CONFIG_HOME`). On macOS, the LaunchAgent is `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`, and the install must run in a graphical login session; a host without one uses the system-level service instead.
 
@@ -37,7 +37,7 @@ A system-level install runs as root and makes the Broker start at boot. Answerin
 The binary must be in a directory that root owns and that group and others cannot write, such as `/usr/local/bin`. The service starts the binary as root, so an ordinary account that can modify the binary or one of its parent directories could take over the service:
 
 ```sh
-VERSION=0.2.0
+VERSION=0.3.0
 sudo install -o root -g 0 -m 0755 agent-peer-${VERSION}/agent-peer /usr/local/bin/agent-peer
 sudo /usr/local/bin/agent-peer service install --system
 ```

@@ -14,9 +14,9 @@ Commands:
                               run the Broker
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker
-  offline                     refuse messages from other hosts
-  online                      accept messages from other hosts again
   audit [--limit <n>]         read the audit log
+  offline                     refuse messages from other hosts, keeping links
+  online                      accept messages from other hosts again
   config get [<key>]          show all configuration items, or one
   config set <key> <value>    change a configuration item
   pairing-key create          create a one-time pairing key
@@ -30,17 +30,14 @@ Commands:
                               install and start the Broker as a user-level service,
                               or system-level with --system; --admin-group names the
                               group that administers the system-level Broker
-  service start               start the installed service for this account, or
-                              the system-level service as root
-  service stop                stop it without disabling it
-  service restart             restart it
   service uninstall [--system]
-                              stop and remove only the installed service; configuration,
+                              stop and remove the installed service; configuration,
                               identity and audit logs are kept
-  uninstall [--purge]         remove the installation for this account, or the
-                              system-level installation as root; --purge deletes
-                              configuration, identity, audit and service logs,
-                              and at the system level the admin group
+  service start|stop|restart  start, stop or restart the service of the executing
+                              account (root: system-level, other accounts: user-level)
+  uninstall [--purge]         remove the installation of this account, or the
+                              system-wide one when run as root; --purge also removes
+                              configuration, identity and logs
 ```
 
 ## agent-peer --version
@@ -211,8 +208,8 @@ Through the Broker:
 
 ```text
 agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
-The Broker is restarting to version 0.2.1.
-The Broker is running agent-peer 0.2.1.
+The Broker is restarting to version 0.3.0.
+The Broker is running agent-peer 0.3.0.
 Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.
 ```
 
@@ -220,8 +217,8 @@ By replacing the binary:
 
 ```text
 agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
-agent-peer 0.2.0 is installed; version 0.2.1 is available.
-Release: https://github.com/wangzw/agent-peer/releases/tag/v0.2.1
+agent-peer 0.2.0 is installed; version 0.3.0 is available.
+Release: https://github.com/wangzw/agent-peer/releases/tag/v0.3.0
 The new binary takes effect the next time the Broker starts.
 ```
 
@@ -245,7 +242,7 @@ Installs a service definition, enables the service, and starts the Broker immedi
 - Without `--system`, installs a user-level service that starts the Broker when the account logs in. It must not run as root. On macOS it must run in a graphical login session. If `~/.agent-peer/config.yaml` does not exist, it generates the file, owned by the account that runs the install with mode `0600`; an existing file is left unchanged.
 - With `--system`, installs a system-level service that starts the Broker at boot. It must run as root. The command creates the `agent-peer` group when it does not exist, and uses it without changing its members when it does. If `/etc/agent-peer/config.yaml` does not exist, it generates the file, owned by `root` with group `agent-peer` and mode `0660`; an existing file is left unchanged. `--admin-group <name>`, only with `--system`, uses another group; the name may start only with a lowercase letter or an underscore and may contain only lowercase letters, digits, underscores and hyphens.
 
-The generated file is a template that lists every configuration key: keys with a fixed default are written out, and the remaining keys are comments with an example value or an empty placeholder. When the install writes the file it prints `generated the configuration file <path>`; when the file already exists it prints `kept the existing configuration file <path>` and, for a system-level install, `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`. Running that command hands an existing installation to the group, whose members then manage the Broker without `sudo`; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group. Do not hand the file to the group when `broker.listen` uses a port below 1024; [Configuration keys]({{< relref "/docs/reference/configuration" >}}#types-and-constraints) gives the rule and the fix.
+The generated file is a template that lists every configuration key: keys with a fixed default are written out, and the remaining keys are comments with an example value or an empty placeholder. The install summary's `config:` line ends with `(generated)` when it wrote the file and `(kept)` when the file already existed; a system-level install that kept an existing file also prints `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`. Running that command hands an existing installation to the group, whose members then manage the Broker without `sudo`; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group. Do not hand the file to the group when `broker.listen` uses a port below 1024; [Configuration keys]({{< relref "/docs/reference/configuration" >}}#types-and-constraints) gives the rule and the fix.
 
 If a Broker that this service did not start is already running at that level, the install refuses and asks you to stop it first.
 
@@ -263,6 +260,8 @@ The install script in the release archive installs the service with this command
 
 Starts, stops or restarts the installed service. The account that runs the command selects the level, and the command takes no `--system` option: root acts on the system-level service, and every other account on its own user-level service. Run it with `sudo` to act on the system-level service.
 
+On success the command prints `Broker service started (user-level)` or the matching `Broker service stopped (user-level)` or `Broker service restarted (user-level)` line, with `system-level` for the system-level service.
+
 `stop` does not disable the service, so it starts again at the next login or boot. When that level has no installed service, the command exits with code 1 and says that no service is installed; an account that has only the system-level service installed is also told to run `sudo agent-peer service <command>`.
 
 `start` and `restart` wait for the Broker to answer and check whether it runs degraded, as an install does; [agent-peer service install](#agent-peer-service-install) gives the exit codes.
@@ -276,12 +275,13 @@ Stops and removes only the installed service. The binary and the MCP registratio
 
 ## agent-peer uninstall
 
-Removes an installation: the service, the binary that the service starts, the MCP registration of the account that runs the command, and the runtime directory.
+Removes an installation: the service, the binary that the service starts, the MCP registration of the account that ran `sudo` (or of the account that runs the command when it is not run through `sudo`), and the runtime directory.
 
 - Run as root to remove a system-level installation. Another account removes its own user-level installation; when the host also has a system-level installation, the command removes the user-level one and then says to use `sudo agent-peer uninstall` for the other.
-- An account whose host has only the system-level installation is asked `Uninstall the system-wide installation (requires sudo)? [y/N]`. Answering `y` runs the command again with `sudo`; any other answer, or no terminal to ask, leaves the host unchanged, prints `sudo agent-peer uninstall` and exits with code 0.
-- Unless `--purge` is given, the command asks `Also remove configuration, identity, audit and service logs? [y/N]` and keeps them on any answer other than `y` or when there is no terminal to ask. At the system level, answering `y` also removes the admin group.
-- `--purge` skips that question and removes the data too; at the system level it also removes the admin group.
+- An account whose host has only the system-level installation is asked `Uninstall the system-wide installation (requires sudo)? [y/N]`. Answering `y` runs the command again with `sudo`; any other answer, or no terminal to ask, leaves the host unchanged, prints `Run: sudo agent-peer uninstall` and exits with code 0. When `--purge` was given, the printed command ends with ` --purge`.
+- Unless `--purge` is given, the command asks `Also remove configuration, identity, audit and service logs? [y/N]` and keeps them on any answer other than `y` or when there is no terminal to ask.
+- `--purge` skips that question and removes the data too.
+- At the system level, answering `y` or giving `--purge` removes the admin group only when the installation created it, or when it is the default `agent-peer` group of a v0.2.0 installation and the configuration file belongs to it. Otherwise, or when the group is still in use, the group is kept, and the command prints how to remove it by hand.
 - The MCP registration of every other account stays; each of those accounts removes it with `claude mcp remove -s user peer`. At the system level the command removes the registration of the account that ran `sudo`; when it runs as root directly, it prints the command instead.
 
 Before deleting a system-level binary, the command lists other accounts whose user-level Broker is running, then deletes the binary anyway.

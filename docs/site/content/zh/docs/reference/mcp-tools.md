@@ -20,7 +20,7 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer，安装会�
 | `create_pairing_key` | 生成一次性配对密钥，并给出本 Broker 的地址。 | 无。 | 写 |
 | `get_config` | 读取本 Broker 的配置。 | `key`（字符串，可选）：一个键，例如 `broker.alias`；省略则返回全部键。 | 读 |
 | `set_config` | 修改一个配置键。 | `key`（字符串，必填）。`value`（字符串，必填）：新值的文本形式，例如 `10m`、`true` 或 `[a, b]`。 | 写 |
-| `set_broker_online` | 设置本 Broker 是否拒绝其他主机发来的消息。 | `online`（布尔，必填）：`true` 恢复接收，`false` 拒绝接收。 | 写 |
+| `set_broker_online` | 设置本 Broker 是否接受其他主机发来的消息；链路和本 Broker 发出的消息不受影响。 | `online`（布尔，必填）：`true` 接受，`false` 拒绝。 | 写 |
 | `update_broker` | 把本 Broker 升级到最新的正式发布版本并重启。 | 无。 | 写 |
 
 ## 返回结果

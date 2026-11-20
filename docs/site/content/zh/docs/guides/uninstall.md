@@ -20,11 +20,11 @@ sudo agent-peer uninstall
 
 ## 保留还是删除数据
 
-命令询问 `Also remove configuration, identity, audit and service logs? [y/N]`，除非回答 `y`，这些数据都会保留；无法询问时也保留。`agent-peer uninstall --purge` 跳过询问，一并删除这些数据；系统级安装同时删除管理组。
+命令询问 `Also remove configuration, identity, audit and service logs? [y/N]`，除非回答 `y`，这些数据都会保留；无法询问时也保留。`agent-peer uninstall --purge` 跳过询问，一并删除这些数据。
 
 ## 删除其他账户的 MCP 注册
 
-命令删除执行命令的账户的 MCP 注册。其他注册过 MCP 服务的账户，各自用 `claude mcp remove -s user peer` 删除。
+命令删除执行 `sudo` 的账户（未经 `sudo` 时即执行命令的账户）的 MCP 注册。其他注册过 MCP 服务的账户，各自用 `claude mcp remove -s user peer` 删除；以 root 直接运行时只打印这条命令。
 
 ## 只卸载服务
 

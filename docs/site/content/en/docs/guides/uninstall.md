@@ -20,11 +20,11 @@ The account that runs the command decides the level. Root removes the system-lev
 
 ## Keep or delete the data
 
-The command asks `Also remove configuration, identity, audit and service logs? [y/N]` and keeps them unless you answer `y`; without a terminal to ask, it keeps them. `agent-peer uninstall --purge` skips the question and deletes the data too; at the system level it also removes the admin group.
+The command asks `Also remove configuration, identity, audit and service logs? [y/N]` and keeps them unless you answer `y`; without a terminal to ask, it keeps them. `agent-peer uninstall --purge` skips the question and deletes the data too.
 
 ## Remove the MCP registration of other accounts
 
-The command removes the MCP registration of the account that runs it. Every other account that registered the MCP server removes its own with `claude mcp remove -s user peer`.
+The command removes the MCP registration of the account that ran `sudo`, or of the account that runs it when it is not run through `sudo`. Every other account that registered the MCP server removes its own with `claude mcp remove -s user peer`; when the command runs as root directly, it prints that command instead.
 
 ## Remove only the service
 
