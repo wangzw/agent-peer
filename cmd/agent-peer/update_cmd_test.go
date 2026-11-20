@@ -455,6 +455,33 @@ func TestUpdateRestartTimeoutNamesTheUserLevelLog(t *testing.T) {
 	}
 }
 
+// TestUpdateLogHintPerPlatform pins the log location each platform's service
+// manager writes to. A timeout on macOS must name the launchd log of the level
+// that answered ApplyUpdate, as it does for systemd on Linux.
+func TestUpdateLogHintPerPlatform(t *testing.T) {
+	previous := updateGOOS
+	t.Cleanup(func() { updateGOOS = previous })
+
+	cases := []struct {
+		goos      string
+		userLevel bool
+		want      string
+	}{
+		{"linux", false, "journalctl -u agent-peer.service"},
+		{"linux", true, "journalctl --user -u agent-peer.service"},
+		{"darwin", false, "/var/log/agent-peer/broker.log"},
+		{"darwin", true, "~/Library/Logs/agent-peer/broker.log"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.goos+"/user="+fmt.Sprint(tc.userLevel), func(t *testing.T) {
+			updateGOOS = tc.goos
+			if got := updateLogHint(tc.userLevel); got != tc.want {
+				t.Errorf("updateLogHint(%v) with GOOS %q = %q, want %q", tc.userLevel, tc.goos, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestUpdateBrokerPermissionDeniedMakesNoDownload(t *testing.T) {
 	env := newUpdateTestEnv(t)
 	stub := &stubDeps{

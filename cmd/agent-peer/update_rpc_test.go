@@ -53,6 +53,27 @@ func TestApplyUpdateThroughBrokerUsesSystemBrokerWithoutUserBroker(t *testing.T)
 	if n := wireMethodCalls(srv, "ApplyUpdate"); n != 1 {
 		t.Fatalf("ApplyUpdate calls = %d, want 1 on the system-level Broker", n)
 	}
+	if got.UserLevel {
+		t.Error("UserLevel = true for the system-level Broker, want false")
+	}
+}
+
+// The user-level Broker that applies the update is this account's own, so the
+// command marks the result user-level and a timeout names the user's log.
+func TestApplyUpdateThroughBrokerMarksTheUserLevel(t *testing.T) {
+	newUpdateTestEnv(t) // euid 1000
+	path, _ := startApplyUpdateBroker(t, func(h *fakelocal.Handlers) {
+		h.ApplyUpdate = fakelocal.ApplyUpdateAnswer("0.1.1", "0.1.2", true)
+	})
+	withUserSocketPath(t, path)
+
+	got, err := applyUpdateThroughBroker(t.Context())
+	if err != nil {
+		t.Fatalf("applyUpdateThroughBroker: %v", err)
+	}
+	if !got.UserLevel {
+		t.Error("UserLevel = false for this account's user-level Broker, want true")
+	}
 }
 
 // An ordinary account with its own user-level Broker selected falls back to a
