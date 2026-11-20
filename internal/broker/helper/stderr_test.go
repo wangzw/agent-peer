@@ -26,7 +26,7 @@ func TestHelperStderrTagsUIDAndFlushes(t *testing.T) {
 
 	w.flush()
 	out := buf.String()
-	for _, want := range []string{"uid=4242", "event=account_helper_stderr", "second"} {
+	for _, want := range []string{"uid=4242", "msg=account_helper_stderr", "second"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("log %q does not contain %q", out, want)
 		}

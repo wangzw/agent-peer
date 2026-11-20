@@ -2,6 +2,13 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Runtime log records no longer carry the `event` key twice. A caller-supplied event name replaces the message, which moves to the `message` field, and audit failures name their kind under `audit_event` instead of a second `event`.
+- Runtime log event values that were free text now use their snake-case names, so a value can be matched: `accountdb: account database lookup failed; falling back to os/user` → `accountdb_lookup_fallback`, `access check for an account outside the account database; denying` → `access_check_unknown_account`, `access check process reported an error` → `access_check_failed`, `account helper exited` → `account_helper_exited`, `account helper stderr` → `account_helper_stderr`. The config package logs `config_audit_before_load`, `config_audit_unknown_kind`, `config_audit_encode_failed`, `config_audit_not_open` and `config_audit_closed` in place of its `config: ...` messages, and keeps the audit event kind in `audit_event`.
+
 ## [0.2.0] - 2026-11-20
 
 ### Added

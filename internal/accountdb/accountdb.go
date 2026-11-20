@@ -190,8 +190,7 @@ func normalizeGroupIDs(primary uint32, ids []uint32) []uint32 {
 // instead. The design requires this warning: falling back can make an account
 // that the C library resolves invisible to the Broker.
 func warnFallback(request string, err error) {
-	slog.Warn("accountdb: account database lookup failed; falling back to os/user",
-		"event", "accountdb_lookup_fallback", "request", request, "error", err.Error())
+	slog.Warn("accountdb_lookup_fallback", "request", request, "error", err.Error())
 }
 
 // The os/user implementations serve as the platform implementation outside

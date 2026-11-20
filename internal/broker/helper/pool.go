@@ -502,8 +502,7 @@ func (p *Pool) watchLive(st *helperState, live *liveHelper) {
 	st.mu.Unlock()
 
 	err := live.wait()
-	p.opts.Logger.Error("account helper exited",
-		"event", "account_helper_exited", "uid", st.uid, "err", err)
+	p.opts.Logger.Error("account_helper_exited", "uid", st.uid, "err", err)
 	if watches > 0 {
 		p.startRespawn(st)
 	}

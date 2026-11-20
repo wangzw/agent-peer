@@ -202,7 +202,7 @@ func (a *auditLog) append(e Event) error {
 		return errAuditClosed
 	}
 	if !validEventKind(e.Event) {
-		a.logger.Error("config: dropped audit event with unknown kind", "event", string(e.Event))
+		a.logger.Error("config_audit_unknown_kind", "audit_event", string(e.Event))
 		return fmt.Errorf("config: unknown audit event kind %q", e.Event)
 	}
 	if e.Time.IsZero() {
@@ -276,7 +276,7 @@ func (a *auditLog) writeEventLocked(e Event) error {
 	e.MergeKey = ""
 	line, err := encodeEvent(e)
 	if err != nil {
-		a.logger.Error("config: cannot encode audit record", "event", string(e.Event), "err", err)
+		a.logger.Error("config_audit_encode_failed", "audit_event", string(e.Event), "err", err)
 		return err
 	}
 	if _, err := a.file.Write(line); err != nil {
@@ -680,11 +680,11 @@ func (c *core) auditAppend(e Event) {
 	log := c.audit
 	c.auditMu.RUnlock()
 	if log == nil {
-		c.loggerOr().Error("config: dropping an audit event; the audit log is not open", "event", string(e.Event))
+		c.loggerOr().Error("config_audit_not_open", "audit_event", string(e.Event))
 		return
 	}
 	if err := log.append(e); errors.Is(err, errAuditClosed) {
-		c.loggerOr().Error("config: dropping an audit event; the audit log is closed", "event", string(e.Event))
+		c.loggerOr().Error("config_audit_closed", "audit_event", string(e.Event))
 	}
 }
 

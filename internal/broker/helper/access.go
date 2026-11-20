@@ -211,8 +211,7 @@ func (c *AccessChecker) Check(ctx context.Context, uid uint32, path string, need
 	acct, err := lookup(uid)
 	if err != nil {
 		if errors.Is(err, ErrNoAccount) {
-			log.Warn("access check for an account outside the account database; denying",
-				"event", "access_check_unknown_account", "uid", uid)
+			log.Warn("access_check_unknown_account", "uid", uid)
 			return false, nil
 		}
 		return false, fmt.Errorf("helper: access check for uid %d: %w", uid, err)
@@ -294,8 +293,7 @@ func (c *AccessChecker) Check(ctx context.Context, uid uint32, path string, need
 	// reach the Broker log instead of being replaced by a uid mismatch. An
 	// error response is never allowed, whatever its Allowed field says.
 	if msg := res.msg.GetError(); msg != "" {
-		log.Warn("access check process reported an error",
-			"event", "access_check_failed", "uid", uid, "error", msg)
+		log.Warn("access_check_failed", "uid", uid, "error", msg)
 		return false, fmt.Errorf("helper: access check for uid %d: %s", uid, msg)
 	}
 	if got := res.msg.GetUid(); got != uid {

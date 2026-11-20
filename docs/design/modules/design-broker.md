@@ -280,7 +280,7 @@ Broker A 自报的别名是 `hostA`，Broker B 自报的别名是 `hostB`，A �
 
 同一主机上另一个账户的 Broker 已经占用了默认配置中的监听地址时，本实例在第 6 步失败，由用户在启动参数或配置中改用其他地址或端口。Agent 表为空时 Broker 不退出（`REQ-broker-config-014`）。
 
-运行日志每行一个 JSON 对象，键为 `time`（RFC 3339，UTC）、`level` 与 `event`，其余为事件字段。用户级 Broker 写到标准错误；由用户级的服务管理机制启动时，标准错误由该机制收集。级别随 `log.level` 的修改即时变化。
+运行日志每行一个 JSON 对象，键为 `time`（RFC 3339，UTC）、`level` 与 `event`，其余为事件字段；一行中每个键只出现一次。调用方需要附加说明文字时放进 `message` 字段。用户级 Broker 写到标准错误；由用户级的服务管理机制启动时，标准错误由该机制收集。级别随 `log.level` 的修改即时变化。名为 `event` 的组和非字符串的 `event` 值放进 `event_details`。
 
 ### 调用方的识别与权限判定
 

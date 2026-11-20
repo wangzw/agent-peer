@@ -351,7 +351,7 @@ func TestCheckUnknownAccountDenied(t *testing.T) {
 		t.Error("started a check process for a nonexistent account")
 	}
 	if !strings.Contains(logBuf.String(), "access_check_unknown_account") {
-		t.Errorf("log %q does not record event=access_check_unknown_account", logBuf.String())
+		t.Errorf("log %q does not record msg=access_check_unknown_account", logBuf.String())
 	}
 }
 

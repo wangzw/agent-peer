@@ -365,7 +365,7 @@ func Subscribe(key string, onChange func(old, new Value)) {
 func Audit(e Event) {
 	c := currentCore()
 	if c == nil {
-		defaultLogger().Error("config: Audit called before Load", "event", string(e.Event))
+		defaultLogger().Error("config_audit_before_load", "audit_event", string(e.Event))
 		return
 	}
 	c.auditAppend(e)

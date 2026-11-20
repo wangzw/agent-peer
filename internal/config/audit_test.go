@@ -1009,7 +1009,7 @@ func TestConfigAuditUnknownEventKindDropped(t *testing.T) {
 	if len(bytes.TrimSpace(data)) != 0 {
 		t.Errorf("unknown event kind was written: %s", data)
 	}
-	if !strings.Contains(logs.String(), "dropped audit event with unknown kind") {
+	if !strings.Contains(logs.String(), "config_audit_unknown_kind") {
 		t.Errorf("drop was not logged: %s", logs.String())
 	}
 }
@@ -1301,7 +1301,7 @@ func TestConfigAuditAfterCloseIsLogged(t *testing.T) {
 	}
 
 	c.auditAppend(Event{Event: EventLinkUp})
-	if got := logs.String(); !strings.Contains(got, "the audit log is closed") {
+	if got := logs.String(); !strings.Contains(got, "config_audit_closed") {
 		t.Fatalf("an event after Close was dropped silently; log = %q", got)
 	}
 }

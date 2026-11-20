@@ -58,8 +58,7 @@ func (w *helperStderr) flush() {
 }
 
 func (w *helperStderr) logLine(line string) {
-	w.log.Warn("account helper stderr",
-		"event", "account_helper_stderr",
+	w.log.Warn("account_helper_stderr",
 		"uid", w.uid,
 		"line", line)
 }

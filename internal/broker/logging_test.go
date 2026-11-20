@@ -91,6 +91,256 @@ func TestRunLogLinesAreJSON(t *testing.T) {
 	}
 }
 
+// countLogKeys counts the keys of one JSON log line. Decoding into a map would
+// hide a duplicate, so the object is read token by token.
+func countLogKeys(t *testing.T, line string) map[string]int {
+	t.Helper()
+	dec := json.NewDecoder(strings.NewReader(line))
+	tok, err := dec.Token()
+	if err != nil {
+		t.Fatalf("decode first token: %v", err)
+	}
+	if delim, ok := tok.(json.Delim); !ok || delim != '{' {
+		t.Fatalf("first token = %v, want %q", tok, '{')
+	}
+	keys := map[string]int{}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			t.Fatalf("decode key: %v", err)
+		}
+		key, ok := tok.(string)
+		if !ok {
+			t.Fatalf("key token = %v, want a string", tok)
+		}
+		keys[key]++
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			t.Fatalf("decode value for %q: %v", key, err)
+		}
+	}
+	if _, err := dec.Token(); err != nil {
+		t.Fatalf("decode closing token: %v", err)
+	}
+	return keys
+}
+
+func decodeEventAndMessage(t *testing.T, line string) (event, message string) {
+	t.Helper()
+	var rec struct {
+		Event   string `json:"event"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(line), &rec); err != nil {
+		t.Fatalf("decode line: %v", err)
+	}
+	return rec.Event, rec.Message
+}
+
+// TestNewLoggerKeepsEventKeyUnique checks that a caller's "event" attribute
+// supplies the event name instead of producing a second "event" key.
+func TestNewLoggerKeepsEventKeyUnique(t *testing.T) {
+	var buf bytes.Buffer
+	var level slog.LevelVar
+	logger := NewLogger(&buf, &level)
+
+	logger.Warn("free text", "event", "snake_event", "uid", 1001)
+
+	line := strings.TrimSuffix(buf.String(), "\n")
+	if got := countLogKeys(t, line)["event"]; got != 1 {
+		t.Fatalf("event key appears %d times in %s, want 1", got, line)
+	}
+	event, message := decodeEventAndMessage(t, line)
+	if event != "snake_event" {
+		t.Errorf("event = %q, want %q", event, "snake_event")
+	}
+	if message != "free text" {
+		t.Errorf("message = %q, want %q", message, "free text")
+	}
+}
+
+// TestNewLoggerWithEventAttrKeepsEventKeyUnique covers the same rule for an
+// event supplied through logger.With.
+func TestNewLoggerWithEventAttrKeepsEventKeyUnique(t *testing.T) {
+	var buf bytes.Buffer
+	var level slog.LevelVar
+	logger := NewLogger(&buf, &level)
+
+	logger.With("event", "with_event", "uid", 1001).Info("free text")
+
+	line := strings.TrimSuffix(buf.String(), "\n")
+	if got := countLogKeys(t, line)["event"]; got != 1 {
+		t.Fatalf("event key appears %d times in %s, want 1", got, line)
+	}
+	event, message := decodeEventAndMessage(t, line)
+	if event != "with_event" {
+		t.Errorf("event = %q, want %q", event, "with_event")
+	}
+	if message != "free text" {
+		t.Errorf("message = %q, want %q", message, "free text")
+	}
+}
+
+// TestNewLoggerEmptyGroupEventIsEventName covers an event inside a group with
+// an empty name, which the JSON handler writes at the top level. The handler
+// must flatten the group before deciding what the event key holds.
+func TestNewLoggerEmptyGroupEventIsEventName(t *testing.T) {
+	t.Run("record", func(t *testing.T) {
+		var buf bytes.Buffer
+		var level slog.LevelVar
+		logger := NewLogger(&buf, &level)
+
+		logger.Info("free text", slog.Group("", "event", "group_event", "uid", 1001))
+
+		line := strings.TrimSuffix(buf.String(), "\n")
+		if got := countLogKeys(t, line)["event"]; got != 1 {
+			t.Fatalf("event key appears %d times in %s, want 1", got, line)
+		}
+		event, message := decodeEventAndMessage(t, line)
+		if event != "group_event" {
+			t.Errorf("event = %q, want %q", event, "group_event")
+		}
+		if message != "free text" {
+			t.Errorf("message = %q, want %q", message, "free text")
+		}
+	})
+
+	t.Run("with", func(t *testing.T) {
+		var buf bytes.Buffer
+		var level slog.LevelVar
+		logger := NewLogger(&buf, &level)
+
+		logger.With(slog.Group("", "event", "with_group_event", "uid", 1001)).Info("free text")
+
+		line := strings.TrimSuffix(buf.String(), "\n")
+		if got := countLogKeys(t, line)["event"]; got != 1 {
+			t.Fatalf("event key appears %d times in %s, want 1", got, line)
+		}
+		event, message := decodeEventAndMessage(t, line)
+		if event != "with_group_event" {
+			t.Errorf("event = %q, want %q", event, "with_group_event")
+		}
+		if message != "free text" {
+			t.Errorf("message = %q, want %q", message, "free text")
+		}
+	})
+}
+
+// TestNewLoggerEventInsideGroupStaysNested checks that an "event" attribute
+// written after WithGroup is scoped to the group and does not become the
+// record's event name.
+func TestNewLoggerEventInsideGroupStaysNested(t *testing.T) {
+	var buf bytes.Buffer
+	var level slog.LevelVar
+	logger := NewLogger(&buf, &level)
+
+	logger.WithGroup("g").Info("outer_event", "event", "nested_event", "uid", 1001)
+
+	line := strings.TrimSuffix(buf.String(), "\n")
+	if got := countLogKeys(t, line)["event"]; got != 1 {
+		t.Fatalf("top-level event key appears %d times in %s, want 1", got, line)
+	}
+	event, message := decodeEventAndMessage(t, line)
+	if event != "outer_event" {
+		t.Errorf("event = %q, want %q", event, "outer_event")
+	}
+	if message != "" {
+		t.Errorf("message = %q, want no message", message)
+	}
+	var rec struct {
+		Group map[string]any `json:"g"`
+	}
+	if err := json.Unmarshal([]byte(line), &rec); err != nil {
+		t.Fatalf("decode line: %v", err)
+	}
+	if got := rec.Group["event"]; got != "nested_event" {
+		t.Errorf("g.event = %v, want %q", got, "nested_event")
+	}
+}
+
+// TestNewLoggerKeepsCallerMessage checks that an explicit message attribute is
+// not duplicated by the message the record already carries.
+func TestNewLoggerKeepsCallerMessage(t *testing.T) {
+	var buf bytes.Buffer
+	var level slog.LevelVar
+	logger := NewLogger(&buf, &level)
+
+	logger.Info("log message", "event", "caller_message_event", "message", "caller text")
+
+	line := strings.TrimSuffix(buf.String(), "\n")
+	keys := countLogKeys(t, line)
+	if got := keys["event"]; got != 1 {
+		t.Fatalf("event key appears %d times in %s, want 1", got, line)
+	}
+	if got := keys["message"]; got != 1 {
+		t.Fatalf("message key appears %d times in %s, want 1", got, line)
+	}
+	event, message := decodeEventAndMessage(t, line)
+	if event != "caller_message_event" {
+		t.Errorf("event = %q, want %q", event, "caller_message_event")
+	}
+	if message != "caller text" {
+		t.Errorf("message = %q, want the caller's %q", message, "caller text")
+	}
+}
+
+// TestNewLoggerGroupUnderEventKeyKeepsItsData covers a group named "event".
+// A group cannot name an event, so its members move to "event_details" and
+// the message still names the record.
+func TestNewLoggerGroupUnderEventKeyKeepsItsData(t *testing.T) {
+	t.Run("record", func(t *testing.T) {
+		var buf bytes.Buffer
+		var level slog.LevelVar
+		logger := NewLogger(&buf, &level)
+
+		logger.Info("group_event_message", slog.Group("event", "phase", "listen"))
+
+		line := strings.TrimSuffix(buf.String(), "\n")
+		if got := countLogKeys(t, line)["event"]; got != 1 {
+			t.Fatalf("event key appears %d times in %s, want 1", got, line)
+		}
+		event, _ := decodeEventAndMessage(t, line)
+		if event != "group_event_message" {
+			t.Errorf("event = %q, want %q", event, "group_event_message")
+		}
+		var rec struct {
+			Details map[string]any `json:"event_details"`
+		}
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("decode line: %v", err)
+		}
+		if got := rec.Details["phase"]; got != "listen" {
+			t.Errorf("event_details.phase = %v, want %q", got, "listen")
+		}
+	})
+
+	t.Run("with", func(t *testing.T) {
+		var buf bytes.Buffer
+		var level slog.LevelVar
+		logger := NewLogger(&buf, &level)
+
+		logger.With(slog.Group("event", "phase", "listen")).Info("group_event_message")
+
+		line := strings.TrimSuffix(buf.String(), "\n")
+		if got := countLogKeys(t, line)["event"]; got != 1 {
+			t.Fatalf("event key appears %d times in %s, want 1", got, line)
+		}
+		event, _ := decodeEventAndMessage(t, line)
+		if event != "group_event_message" {
+			t.Errorf("event = %q, want %q", event, "group_event_message")
+		}
+		var rec struct {
+			Details map[string]any `json:"event_details"`
+		}
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("decode line: %v", err)
+		}
+		if got := rec.Details["phase"]; got != "listen" {
+			t.Errorf("event_details.phase = %v, want %q", got, "listen")
+		}
+	})
+}
+
 // TestLogTimeFormat pins the time format: a record timestamp in a fixed
 // non-UTC zone must be rendered in UTC with nanosecond precision.
 func TestLogTimeFormat(t *testing.T) {
