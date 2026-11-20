@@ -249,8 +249,10 @@ func moduleRoot() (string, error) {
 }
 
 // Run runs the current test inside a fresh container of svc and fails t when
-// the inner run fails. The test must not touch the container itself.
-func Run(t *testing.T, svc Service) {
+// the inner run fails. The test must not touch the container itself. Each
+// extraEnv entry is a NAME=value pair the inner test needs, such as an address
+// the host chose at run time.
+func Run(t *testing.T, svc Service, extraEnv ...string) {
 	t.Helper()
 	t.Parallel()
 
@@ -278,6 +280,7 @@ func Run(t *testing.T, svc Service) {
 		"AGENT_PEER_E2E_BIN=" + filepath.Dir(testBinary),
 		"AGENT_PEER_E2E_SYSTEM_SUBNET=" + subnet,
 	}
+	env = append(env, extraEnv...)
 	c := &container{
 		t:           t,
 		project:     project,

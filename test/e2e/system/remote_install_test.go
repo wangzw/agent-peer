@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -72,6 +71,11 @@ const (
 	// report active. Install starts the service before it returns; the bound
 	// follows the e2e wait convention's three seconds.
 	remoteInstallServiceBound = 3 * time.Second
+
+	// remoteInstallReleasePortEnv carries the fake release service's host port
+	// into the container. The host takes the port the kernel assigns and
+	// forwards it, so the two sides never derive a port independently.
+	remoteInstallReleasePortEnv = "AGENT_PEER_E2E_SYSTEM_RELEASE_PORT"
 )
 
 // TestRemoteInstallUser installs through the remote script as an ordinary
@@ -82,8 +86,7 @@ const (
 // must not add the MCP server again.
 func TestRemoteInstallUser(t *testing.T) {
 	if !syscontainer.InContainer() {
-		remoteInstallServe(t, remoteInstallReleaseOptions{})
-		syscontainer.Run(t, syscontainer.Systemd)
+		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{})
 		return
 	}
 
@@ -122,8 +125,7 @@ func TestRemoteInstallUser(t *testing.T) {
 // registration for SUDO_USER with the system binary.
 func TestRemoteInstallSystem(t *testing.T) {
 	if !syscontainer.InContainer() {
-		remoteInstallServe(t, remoteInstallReleaseOptions{})
-		syscontainer.Run(t, syscontainer.Systemd)
+		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{})
 		return
 	}
 
@@ -165,10 +167,9 @@ func TestRemoteInstallSystem(t *testing.T) {
 // checks that the archive for the pinned release was installed, not latest.
 func TestRemoteInstallPinnedVersion(t *testing.T) {
 	if !syscontainer.InContainer() {
-		remoteInstallServe(t, remoteInstallReleaseOptions{
+		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{
 			extraVersions: []string{remoteInstallPinnedVersion},
 		})
-		syscontainer.Run(t, syscontainer.Systemd)
 		return
 	}
 
@@ -195,8 +196,7 @@ func TestRemoteInstallPinnedVersion(t *testing.T) {
 // directory.
 func TestRemoteInstallUnknownVersion(t *testing.T) {
 	if !syscontainer.InContainer() {
-		remoteInstallServe(t, remoteInstallReleaseOptions{})
-		syscontainer.Run(t, syscontainer.Systemd)
+		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{})
 		return
 	}
 
@@ -221,8 +221,7 @@ func TestRemoteInstallUnknownVersion(t *testing.T) {
 // found instead of running a half install, and leave the host untouched.
 func TestRemoteInstallArchiveWithoutInstallScript(t *testing.T) {
 	if !syscontainer.InContainer() {
-		remoteInstallServe(t, remoteInstallReleaseOptions{omitInstallScript: true})
-		syscontainer.Run(t, syscontainer.Systemd)
+		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{omitInstallScript: true})
 		return
 	}
 
@@ -259,8 +258,7 @@ func remoteInstallRequireNotFound(t *testing.T, res syscontainer.Result, version
 // request at all.
 func TestRemoteInstallTruncatedScript(t *testing.T) {
 	if !syscontainer.InContainer() {
-		remoteInstallServe(t, remoteInstallReleaseOptions{})
-		syscontainer.Run(t, syscontainer.Systemd)
+		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{})
 		return
 	}
 
@@ -286,8 +284,7 @@ func TestRemoteInstallTruncatedScript(t *testing.T) {
 // leftover temporary directory.
 func TestRemoteInstallChecksumMismatch(t *testing.T) {
 	if !syscontainer.InContainer() {
-		remoteInstallServe(t, remoteInstallReleaseOptions{badChecksum: true})
-		syscontainer.Run(t, syscontainer.Systemd)
+		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{badChecksum: true})
 		return
 	}
 
@@ -313,16 +310,6 @@ func TestRemoteInstallChecksumMismatch(t *testing.T) {
 	remoteInstallRequireUnchanged(t, remoteInstallHome(t), peerUID, tmp)
 }
 
-// remoteInstallServe starts the fake release service on the test host and
-// serves the repository's scripts as release assets. It runs on the host, and
-// the container reaches it through the bridge gateway of its internal network.
-// extraVersions are served besides the latest release, and when badChecksum is
-// true the checksums.txt of the latest release is wrong on purpose.
-//
-// The service must run on the host: the container has no copy of the
-// repository, so the host side is where the archive is built from
-// scripts/remote-install.sh and scripts/install.sh. The container fetches both
-// over HTTP, which is the transport the real install command uses.
 // remoteInstallReleaseOptions changes what the fake release service serves.
 type remoteInstallReleaseOptions struct {
 	// extraVersions are served in addition to the latest release.
@@ -341,7 +328,11 @@ type remoteInstallReleaseOptions struct {
 // repository, so the host side is where the archive is built from
 // scripts/remote-install.sh and scripts/install.sh. The container fetches both
 // over HTTP, which is the transport the real install command uses.
-func remoteInstallServe(t *testing.T, opts remoteInstallReleaseOptions) {
+//
+// The kernel assigns the port from zero, so a second suite on the same host
+// gets a different one and never collides with this service. The returned port
+// is forwarded to the container, which cannot derive it on its own.
+func remoteInstallServe(t *testing.T, opts remoteInstallReleaseOptions) int {
 	t.Helper()
 
 	root := remoteInstallModuleRoot(t)
@@ -378,15 +369,25 @@ func remoteInstallServe(t *testing.T, opts remoteInstallReleaseOptions) {
 		set.badChecksumVersion = remoteInstallLatestVersion
 	}
 
-	port := remoteInstallPort(t)
-	listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+	listener, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
-		t.Fatalf("starting the fake release service on port %d: %v", port, err)
+		t.Fatalf("starting the fake release service: %v", err)
 	}
+	port := listener.Addr().(*net.TCPAddr).Port
 	server := &http.Server{Handler: set}
 	t.Cleanup(func() { _ = server.Close() })
 	go func() { _ = server.Serve(listener) }()
 	t.Logf("fake release service listening on the host at port %d", port)
+	return port
+}
+
+// remoteInstallRunInContainer starts the fake release service on the host and
+// runs the test in a systemd container with the service's port forwarded. It is
+// the host-side body of every remote install test.
+func remoteInstallRunInContainer(t *testing.T, opts remoteInstallReleaseOptions) {
+	t.Helper()
+	port := remoteInstallServe(t, opts)
+	syscontainer.Run(t, syscontainer.Systemd, remoteInstallReleasePortEnv+"="+strconv.Itoa(port))
 }
 
 // remoteInstallRelease is one served release.
@@ -604,17 +605,27 @@ func remoteInstallTarGz(t *testing.T, version string, binary, installScript, rea
 	return buf.Bytes()
 }
 
-// remoteInstallPort derives the host port from the test name. The host and the
-// container compute the same value, which is how the container finds the
-// service without any other channel between them.
+// remoteInstallPort returns the host port remoteInstallServe bound. The host
+// forwards it through remoteInstallReleasePortEnv, so the container learns the
+// kernel-assigned port instead of deriving one that two suites could share.
 func remoteInstallPort(t *testing.T) int {
 	t.Helper()
-	sum := sha256.Sum256([]byte(t.Name()))
-	return 20000 + int(binary.BigEndian.Uint16(sum[:2]))%20000
+	raw := os.Getenv(remoteInstallReleasePortEnv)
+	if raw == "" {
+		t.Fatalf("%s is empty; the host must forward the fake release service's port", remoteInstallReleasePortEnv)
+	}
+	port, err := strconv.Atoi(raw)
+	if err != nil {
+		t.Fatalf("%s=%q is not a port: %v", remoteInstallReleasePortEnv, raw, err)
+	}
+	if port < 1 || port > 65535 {
+		t.Fatalf("%s=%q is outside the port range 1-65535", remoteInstallReleasePortEnv, raw)
+	}
+	return port
 }
 
 // remoteInstallBaseURL is the value of AGENT_PEER_TEST_RELEASE_BASE inside the
-// container: the bridge gateway and the derived port.
+// container: the bridge gateway and the port passed to this test.
 func remoteInstallBaseURL(t *testing.T) string {
 	t.Helper()
 	return fmt.Sprintf("http://%s:%d%s", remoteInstallGateway(t), remoteInstallPort(t), remoteInstallReleasePath)
