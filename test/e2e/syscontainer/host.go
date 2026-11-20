@@ -64,13 +64,20 @@ type ProcInfo struct {
 // /run/agent-peer/broker.sock. The process is terminated when the test ends.
 func StartSystemBroker(t *testing.T, configYAML string) *Proc {
 	t.Helper()
+	return StartSystemBrokerEnv(t, configYAML, nil)
+}
+
+// StartSystemBrokerEnv is StartSystemBroker with extra environment entries,
+// such as the variables a shell inherits from the process that opened it.
+func StartSystemBrokerEnv(t *testing.T, configYAML string, env []string) *Proc {
+	t.Helper()
 	if !InContainer() {
-		t.Fatalf("syscontainer: StartSystemBroker runs inside the container")
+		t.Fatalf("syscontainer: StartSystemBrokerEnv runs inside the container")
 	}
 	if configYAML != "" {
 		writeSystemConfig(t, configYAML)
 	}
-	cmd := Command("root", nil, agentPeerBinary, "broker", "--system")
+	cmd := Command("root", env, agentPeerBinary, "broker", "--system")
 	return startAndWait(t, cmd, systemSocketPath, "the system Broker")
 }
 

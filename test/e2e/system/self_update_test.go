@@ -49,6 +49,13 @@ const (
 	selfUpdateStatusRPCTimeout = 5 * time.Second
 	// selfUpdateListToolsTimeout bounds one MCP tools/list call.
 	selfUpdateListToolsTimeout = 10 * time.Second
+	// selfUpdateNoRestartWindow is how long the already-latest case watches a
+	// Broker that must not restart. The Broker schedules a restart 500 ms after
+	// answering ApplyUpdate, so the window covers that timer with slack.
+	selfUpdateNoRestartWindow = 2 * time.Second
+	// selfUpdateInheritedInvocationID is a value a shell started by systemd
+	// carries into every child process.
+	selfUpdateInheritedInvocationID = "3f0a6f0b1c2d4e5f8a9b0c1d2e3f4a5b"
 )
 
 // TestREQUpdate007_SystemUpdateByAdminGroup covers the first acceptance of
@@ -348,6 +355,140 @@ func TestREQUpdate007_TerminalSystemBrokerNeedsServiceManager(t *testing.T) {
 	}
 	if got := fake.Downloads(); got != downloadsBefore {
 		t.Fatalf("the refused update downloaded %d assets, want none", got-downloadsBefore)
+	}
+}
+
+// TestREQUpdate007_TerminalBrokerWithInheritedServiceEnvironmentIsRefused
+// covers the service-manager test without the environment shortcut: the Broker
+// is started by hand, but its shell carries INVOCATION_ID the way a terminal
+// started by systemd does. The Broker is still not the systemd unit's main
+// process, so both the CLI and update_broker refuse before any download and
+// leave the binary alone. update_broker names the terminal replacement.
+func TestREQUpdate007_TerminalBrokerWithInheritedServiceEnvironmentIsRefused(t *testing.T) {
+	if !syscontainer.InContainer() {
+		selfUpdateStageHostAssets(t, false)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+	updateRequireFeature(t)
+
+	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+
+	syscontainer.CopyReleaseArtifact(t, updateOldArtifact, selfUpdateBinary, 0o755)
+	selfUpdateRunRoot(t, "chown", "0:0", selfUpdateBinary)
+	selfUpdateRunRoot(t, "chmod", "0755", selfUpdateBinary)
+	beforeHash := updateFileHash(t, selfUpdateBinary)
+
+	syscontainer.StartSystemBrokerEnv(t, "broker:\n  alias: sys\n", []string{
+		"INVOCATION_ID=" + selfUpdateInheritedInvocationID,
+		"AGENT_PEER_TEST_UPDATE_API=" + fake.URL(),
+	})
+	downloadsBefore := fake.Downloads()
+
+	res := syscontainer.RunAs(t, "root", selfUpdateAPIEnv(fake), "update", "--yes")
+	combined := res.Stdout + res.Stderr
+	if res.ExitCode == 0 {
+		t.Fatalf("the update succeeded on a manually started system Broker whose shell carries INVOCATION_ID\nstdout:\n%s\nstderr:\n%s",
+			res.Stdout, res.Stderr)
+	}
+	lower := strings.ToLower(combined)
+	if !strings.Contains(lower, "service manager") && !strings.Contains(lower, "service install") {
+		t.Fatalf("the refusal does not say that a service manager is required:\n%s", combined)
+	}
+	if after := updateFileHash(t, selfUpdateBinary); after != beforeHash {
+		t.Fatalf("the binary at %s changed after the refused update", selfUpdateBinary)
+	}
+
+	// The same Broker refuses the tool and names the terminal command.
+	session := syscontainer.NewSession(t, "root", "terminal-env-update")
+	selfUpdateRequireUpdateTool(t, session)
+	selfUpdateWaitConnected(t, session)
+	text, isError := session.Call(t, "update_broker", map[string]any{})
+	if !isError {
+		t.Fatalf("update_broker succeeded on a manually started Broker: %s", text)
+	}
+	if !strings.Contains(text, "failed_precondition") {
+		t.Fatalf("update_broker = %q, want failed_precondition", text)
+	}
+	if !strings.Contains(text, "Run `agent-peer update` in a terminal instead.") {
+		t.Fatalf("update_broker = %q, want the terminal alternative", text)
+	}
+
+	if got := fake.Downloads(); got != downloadsBefore {
+		t.Fatalf("the refused updates downloaded %d assets, want none", got-downloadsBefore)
+	}
+	if got := updateBinaryVersion(t, selfUpdateBinary); got != "agent-peer "+updateOldVersion {
+		t.Fatalf("the binary reports %q after the refusal, want %q", got, "agent-peer "+updateOldVersion)
+	}
+}
+
+// TestREQUpdate008_UpdateBrokerAlreadyLatest covers an up-to-date Broker: the
+// tool answers with an empty target version and the already-current sentence,
+// nothing is downloaded, the Broker keeps its pid, and the session lists Agents
+// without reconnecting.
+func TestREQUpdate008_UpdateBrokerAlreadyLatest(t *testing.T) {
+	if !syscontainer.InContainer() {
+		selfUpdateStageHostAssets(t, false)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+	updateRequireFeature(t)
+
+	svc := updateSetupUserService(t)
+	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateOldVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	selfUpdateSetUserUnitEnv(t, "peer", svc.userEnv, fake.URL())
+	selfUpdateWaitUserBrokerVersion(t, "peer", updateOldVersion)
+
+	beforePID := selfUpdateUserServiceMainPID(t, "peer", svc.userEnv)
+	beforeHash := updateFileHash(t, svc.target)
+	downloadsBefore := fake.Downloads()
+
+	session := syscontainer.NewSession(t, "peer", "mcp-update-current")
+	selfUpdateRequireUpdateTool(t, session)
+	selfUpdateWaitConnected(t, session)
+
+	text, isError := session.Call(t, "update_broker", map[string]any{})
+	if isError {
+		t.Fatalf("update_broker on an up-to-date Broker reported an error: %s", text)
+	}
+	var out struct {
+		FromVersion string `json:"from_version"`
+		ToVersion   string `json:"to_version"`
+		Restarting  bool   `json:"restarting"`
+		Result      string `json:"result"`
+	}
+	if err := json.Unmarshal([]byte(selfUpdateJSONLine(t, text)), &out); err != nil {
+		t.Fatalf("decoding the update_broker result %q: %v", text, err)
+	}
+	if out.FromVersion != updateOldVersion {
+		t.Errorf("from_version = %q, want %q", out.FromVersion, updateOldVersion)
+	}
+	if out.ToVersion != "" {
+		t.Errorf("to_version = %q, want empty for an up-to-date Broker", out.ToVersion)
+	}
+	if out.Restarting {
+		t.Error("restarting = true for an up-to-date Broker")
+	}
+	if want := "The Broker is already up to date (" + updateOldVersion + ")."; out.Result != want {
+		t.Errorf("result = %q, want %q", out.Result, want)
+	}
+
+	// The session keeps working without being reopened.
+	selfUpdateWaitSession(t, session)
+
+	// Nothing may schedule a restart after the answer.
+	time.Sleep(selfUpdateNoRestartWindow)
+	if after := selfUpdateUserServiceMainPID(t, "peer", svc.userEnv); after != beforePID {
+		t.Errorf("the Broker MainPID changed from %d to %d without an update", beforePID, after)
+	}
+	if after := updateFileHash(t, svc.target); after != beforeHash {
+		t.Errorf("the binary at %s changed without an update", svc.target)
+	}
+	if got := fake.Downloads(); got != downloadsBefore {
+		t.Fatalf("the up-to-date call downloaded %d assets, want none", got-downloadsBefore)
+	}
+	if got := updateBinaryVersion(t, svc.target); got != "agent-peer "+updateOldVersion {
+		t.Fatalf("the binary reports %q after the up-to-date call, want %q", got, "agent-peer "+updateOldVersion)
 	}
 }
 
