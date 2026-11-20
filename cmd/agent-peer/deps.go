@@ -12,10 +12,11 @@ import (
 // line controls. It keeps cmd independent of the broker package so that the
 // subcommands can be built and tested before the Broker's entry point exists.
 type brokerOptions struct {
-	System    bool
-	Listen    string
-	Version   string
-	LogOutput io.Writer
+	System        bool
+	Listen        string
+	AllowDegraded bool
+	Version       string
+	LogOutput     io.Writer
 }
 
 // startFailure classifies a Broker startup error into the exit-code families

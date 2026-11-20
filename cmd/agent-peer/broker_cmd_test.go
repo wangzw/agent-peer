@@ -135,6 +135,33 @@ func TestBrokerPassesSystemFlag(t *testing.T) {
 	}
 }
 
+func TestBrokerPassesAllowDegraded(t *testing.T) {
+	stub := &stubDeps{}
+	a, _, _ := newBrokerCmdApp(stub)
+
+	if code := a.brokerCmd(context.Background(), []string{"--allow-degraded"}); code != exitOK {
+		t.Fatalf("brokerCmd returned %d, want %d", code, exitOK)
+	}
+	if len(stub.brokerCalls) != 1 {
+		t.Fatalf("runBroker called %d times, want 1", len(stub.brokerCalls))
+	}
+	if !stub.brokerCalls[0].AllowDegraded {
+		t.Error("AllowDegraded = false, want true")
+	}
+}
+
+func TestBrokerHelpMentionsAllowDegraded(t *testing.T) {
+	stub := &stubDeps{}
+	a, stdout, _ := newBrokerCmdApp(stub)
+
+	if code := a.brokerCmd(context.Background(), []string{"-h"}); code != exitOK {
+		t.Fatalf("brokerCmd returned %d, want %d", code, exitOK)
+	}
+	if !strings.Contains(stdout.String(), "--allow-degraded") {
+		t.Errorf("usage = %q, want it to mention --allow-degraded", stdout.String())
+	}
+}
+
 func TestBrokerRejectsPositionalArgument(t *testing.T) {
 	stub := &stubDeps{}
 	a, _, stderr := newBrokerCmdApp(stub)

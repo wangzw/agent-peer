@@ -103,6 +103,15 @@ func TestClassifyBrokerErr(t *testing.T) {
 	if got := classifyBrokerErr(errors.New("x")); got != failOther {
 		t.Fatalf("classifyBrokerErr(unclassified) = %v, want failOther", got)
 	}
+	// A privileged-port refusal is a listen failure now; it shares the listen
+	// exit code rather than the configuration one.
+	lowPort := fmt.Errorf("%w: a listen port below 1024 requires root", broker.ErrListenUnavailable)
+	if got := classifyBrokerErr(lowPort); got != failListenUnavailable {
+		t.Fatalf("classifyBrokerErr(low port) = %v, want failListenUnavailable", got)
+	}
+	if got := exitCodeFor(failListenUnavailable); got != 4 {
+		t.Fatalf("the listen failure exit code = %d, want 4", got)
+	}
 	if got := classifyBrokerErr(nil); got != failOther {
 		t.Fatalf("classifyBrokerErr(nil) = %v, want failOther", got)
 	}
@@ -141,6 +150,16 @@ func TestRealDepsBrokerOptions(t *testing.T) {
 	}
 	if !got[1].System || got[1].Listen != ":17444" {
 		t.Fatalf("RunOptions = %+v, want system mode on :17444", got[1])
+	}
+
+	if err := d.runBroker(context.Background(), brokerOptions{AllowDegraded: true}); err != nil {
+		t.Fatalf("runBroker with allow-degraded: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("broker.Run called %d times, want 3", len(got))
+	}
+	if !got[2].AllowDegraded {
+		t.Fatal("RunOptions.AllowDegraded = false, want true")
 	}
 }
 

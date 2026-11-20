@@ -8,7 +8,7 @@ import (
 	"io"
 )
 
-const brokerUsage = "usage: agent-peer broker [--system] [--listen <address>]\n"
+const brokerUsage = "usage: agent-peer broker [--system] [--listen <address>] [--allow-degraded]\n"
 
 func init() {
 	subcommands["broker"] = (*app).brokerCmd
@@ -23,6 +23,7 @@ func (a *app) brokerCmd(ctx context.Context, args []string) int {
 
 	system := fs.Bool("system", false, "run the system-level Broker")
 	listen := fs.String("listen", "", "listen address, overriding broker.listen")
+	allowDegraded := fs.Bool("allow-degraded", false, "keep running and report failures on the local socket instead of exiting")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -47,10 +48,11 @@ func (a *app) brokerCmd(ctx context.Context, args []string) int {
 	}
 
 	err := a.deps.runBroker(ctx, brokerOptions{
-		System:    *system,
-		Listen:    *listen,
-		Version:   a.version,
-		LogOutput: a.stderr,
+		System:        *system,
+		Listen:        *listen,
+		AllowDegraded: *allowDegraded,
+		Version:       a.version,
+		LogOutput:     a.stderr,
 	})
 	if err == nil {
 		return exitOK

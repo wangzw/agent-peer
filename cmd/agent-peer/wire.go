@@ -40,6 +40,7 @@ func realDeps(version string) deps {
 			opts := broker.RunOptions{
 				System:               o.System,
 				Listen:               o.Listen,
+				AllowDegraded:        o.AllowDegraded,
 				LogOutput:            o.LogOutput,
 				Version:              o.Version,
 				LocalProtocolVersion: local,
