@@ -105,13 +105,16 @@ type Options struct {
 // Result describes what Install or Uninstall did. On error it lists the steps
 // that already finished.
 type Result struct {
-	UnitPath   string   // written or removed unit file or plist
-	ConfigPath string   // configuration file for the install's level
-	ConfigNew  bool     // this run created the configuration file
-	AdminGroup string   // system-level: group delegated administration; empty for the user level
-	Commands   []string // commands that changed state, in order
-	Domain     string   // macOS: the launchd domain the service was loaded into or out of
-	Removed    bool     // Uninstall: a unit file or plist was removed
+	UnitPath   string // written or removed unit file or plist
+	ConfigPath string // configuration file for the install's level
+	ConfigNew  bool   // this run created the configuration file
+	AdminGroup string // system-level: group delegated administration; empty for the user level
+	// AdminGroupCreated reports that this run created the administration
+	// group, as opposed to reusing one that already existed.
+	AdminGroupCreated bool
+	Commands          []string // commands that changed state, in order
+	Domain            string   // macOS: the launchd domain the service was loaded into or out of
+	Removed           bool     // Uninstall: a unit file or plist was removed
 }
 
 // DefaultOptions fills Options from the running process.
@@ -248,6 +251,13 @@ func Install(opts Options) (Result, error) {
 		}
 		adminGID = gid
 		res.AdminGroup = adminGroupName(opts)
+		if res.AdminGroupCreated {
+			// Record the group before anything else: uninstall may only
+			// remove a group whose creation this installation recorded.
+			if err := recordAdminGroup(opts, res.AdminGroup); err != nil {
+				return res, err
+			}
+		}
 	}
 
 	// The configuration file comes first: the listen precheck reads it, and a

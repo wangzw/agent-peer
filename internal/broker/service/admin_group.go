@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,6 +12,11 @@ import (
 // the installation names another one. Its members can read and write the
 // system configuration file without root.
 const DefaultAdminGroup = "agent-peer"
+
+// adminGroupRecordPath records the name of a group the installation created.
+// Uninstall reads it before removing the data directory: a group without a
+// record was not created by agent-peer and is never removed.
+const adminGroupRecordPath = "/var/lib/agent-peer/admin-group"
 
 // adminGroupNameRE matches a group name both Linux and macOS accept: a letter
 // or underscore first, then letters, digits, underscores and hyphens. A name
@@ -59,7 +65,17 @@ func ensureAdminGroup(opts Options, res *Result) (int, error) {
 	if !exists {
 		return 0, fmt.Errorf("service: group %q is still missing after creating it", name)
 	}
+	res.AdminGroupCreated = true
 	return gid, nil
+}
+
+// recordAdminGroup writes the name of the group the installation created. The
+// record sits in the data directory, which uninstall reads before deleting it.
+func recordAdminGroup(opts Options, name string) error {
+	if err := os.MkdirAll(rooted(opts, systemDataDir), 0o700); err != nil {
+		return fmt.Errorf("service: create directory %s: %w", systemDataDir, err)
+	}
+	return writeFileAtomic(rooted(opts, adminGroupRecordPath), name+"\n", 0o600)
 }
 
 // lookupGroup reports the group id of name and whether the group exists.

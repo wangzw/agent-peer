@@ -488,6 +488,52 @@ func TestInstallSystemCreatesAdminGroup(t *testing.T) {
 	assertMode(t, configPath, 0o660)
 }
 
+func TestInstallSystemRecordsACreatedGroup(t *testing.T) {
+	opts := baseOptions(t)
+	opts.System = true
+	opts.EUID = 0
+	opts.GroupGID = nil
+	systemInstallWithGroupRun(t, &opts, 999)
+
+	res, err := Install(opts)
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if !res.AdminGroupCreated {
+		t.Error("AdminGroupCreated = false, want true")
+	}
+	record := filepath.Join(opts.Root, adminGroupRecordPath)
+	data, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("reading the group record %s: %v", record, err)
+	}
+	if got := strings.TrimSpace(string(data)); got != DefaultAdminGroup {
+		t.Errorf("record = %q, want %q", got, DefaultAdminGroup)
+	}
+}
+
+func TestInstallSystemDoesNotRecordAnExistingGroup(t *testing.T) {
+	opts := baseOptions(t)
+	opts.System = true
+	opts.EUID = 0
+	opts.GroupGID = func(string) (int, bool, error) { return 777, true, nil }
+	var cmds []string
+	started := false
+	opts.Run = recordCommandsUntil(&cmds, &started, "restart")
+	opts.Probe = probeAfterStart(&started, 4242)
+
+	res, err := Install(opts)
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if res.AdminGroupCreated {
+		t.Error("AdminGroupCreated = true for a group that already existed")
+	}
+	if _, err := os.Stat(filepath.Join(opts.Root, adminGroupRecordPath)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a group that already existed was recorded: %v", err)
+	}
+}
+
 func TestInstallSystemUsesAnExistingGroup(t *testing.T) {
 	opts := baseOptions(t)
 	opts.System = true
