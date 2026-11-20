@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestPairRole(t *testing.T) {
@@ -89,7 +90,7 @@ func TestPairAwaitReadsTheOtherHostsFile(t *testing.T) {
 	if err := writePairFile(dir, "connected", []byte("connected\n")); err != nil {
 		t.Fatalf("writePairFile: %v", err)
 	}
-	if got, want := string(PairAwait(t, "connected")), "connected\n"; got != want {
+	if got, want := string(PairAwait(t, "connected", time.Second)), "connected\n"; got != want {
 		t.Errorf("PairAwait returned %q, want %q", got, want)
 	}
 }

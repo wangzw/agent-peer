@@ -18,6 +18,13 @@ const (
 	// unless a product timer sets the bound.
 	termAdminCallWait = 3 * time.Second
 
+	// termAdminMCPHandshakeWait and termAdminToolCallWait mirror the bounds the
+	// syscontainer package puts on one MCP handshake and one tool call
+	// (test/e2e/syscontainer/session.go:19-23). They are repeated here because
+	// that package keeps them unexported.
+	termAdminMCPHandshakeWait = 30 * time.Second
+	termAdminToolCallWait     = 15 * time.Second
+
 	// linkDialTimeout and linkReconnectMin mirror the defaults of
 	// link.dial_timeout and link.reconnect_min (internal/link/settings.go:88-96,
 	// internal/config/keys.go:218-225). The system Broker configuration sets
@@ -31,6 +38,35 @@ const (
 	// link.reconnect_min, and the second dial can take link.dial_timeout again.
 	// 2*5s + 1s = 11s.
 	termAdminLinkWait = 2*linkDialTimeout + linkReconnectMin
+
+	// termAdminConnectedWait bounds host A's wait for the connected marker. Once
+	// host A publishes the pairing file, host B may still be finishing its own
+	// start before it reads the file: the user Broker's socket wait and one peer
+	// list. After that come the peer connect, the wait for the link to reach
+	// connected, and the wait for the pairing audit record. The connect call
+	// blocks for at most link.dial_timeout on its own dial, so it is counted at
+	// that bound rather than at termAdminCallWait. 3*termAdminCallWait +
+	// linkDialTimeout + termAdminLinkWait = 9s + 5s + 11s = 25s.
+	termAdminConnectedWait = 3*termAdminCallWait + linkDialTimeout + termAdminLinkWait
+
+	// termAdminPairingWait bounds host B's wait for the pairing file. Host A may
+	// still be starting its system Broker (the socket wait), starting the session
+	// without write permission (the MCP handshake), waiting for that session to
+	// register (one wait plus one tool call), having the session's pairing-key
+	// request refused (one tool call), then creating the key and listing peers
+	// (two terminal commands). termAdminCallWait + termAdminMCPHandshakeWait +
+	// (termAdminCallWait + termAdminToolCallWait) + termAdminToolCallWait +
+	// 2*termAdminCallWait = 3s + 30s + 18s + 15s + 6s = 72s.
+	termAdminPairingWait = termAdminCallWait + termAdminMCPHandshakeWait +
+		(termAdminCallWait + termAdminToolCallWait) + termAdminToolCallWait +
+		2*termAdminCallWait
+
+	// termAdminDoneWait bounds host B's wait for host A's completion marker. It
+	// must cover everything host A does after writing the connected marker: the
+	// wait for host B to show connected, three config commands, the disconnect,
+	// the ordered audit wait, the refused config set and its read-back, and the
+	// audit scan. termAdminLinkWait + 8*termAdminCallWait = 11s + 24s = 35s.
+	termAdminDoneWait = termAdminLinkWait + 8*termAdminCallWait
 
 	// termAdminSystemConfig is the system Broker's configuration file. A refused
 	// config set must name this path.
@@ -139,7 +175,7 @@ func termAdminHostA(t *testing.T) {
 
 	// Host B pairs using only that information and says so. Host A accepted the
 	// pairing, so its row is the acceptor.
-	syscontainer.PairAwait(t, termAdminConnectedFile)
+	syscontainer.PairAwait(t, termAdminConnectedFile, termAdminConnectedWait)
 	hostAPeer := termAdminWaitPeer(t, "root", nil, "host A", "acceptor")
 
 	// Root reads and changes one configuration item of host A.
@@ -233,7 +269,7 @@ func termAdminHostB(t *testing.T) {
 	termAdminRequireNoBrokers(t, "peer", peerEnv, "host B")
 
 	// Pair with host A using only the address and key host A printed.
-	data := syscontainer.PairAwait(t, termAdminPairingFile)
+	data := syscontainer.PairAwait(t, termAdminPairingFile, termAdminPairingWait)
 	address, key := termAdminParsePairing(t, data)
 	connected := syscontainer.RunAs(t, "peer", peerEnv, "peer", "connect", address, "--key", key)
 	termAdminRequireOK(t, connected, "agent-peer peer connect as peer on the other host")
@@ -256,7 +292,7 @@ func termAdminHostB(t *testing.T) {
 
 	// Keep host B's Broker alive until host A has listed the peer and run the
 	// disconnect, so the assertions there see the link still up.
-	syscontainer.PairAwait(t, termAdminDoneFile)
+	syscontainer.PairAwait(t, termAdminDoneFile, termAdminDoneWait)
 
 	// Host A unpaired, and pairing drops the link when the removed entry is not
 	// replaced. Host B may take a moment to observe the closed link, so wait for

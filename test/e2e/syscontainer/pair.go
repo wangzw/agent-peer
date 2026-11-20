@@ -21,15 +21,6 @@ const (
 	// pairSharedEnv carries the shared directory path into a pair container.
 	// The value is the container path, not the host path.
 	pairSharedEnv = "AGENT_PEER_E2E_PAIR_SHARED"
-
-	// pairExchangeBound bounds the wait for the other host to write a file.
-	// The two containers have booted before the tests start, so the wait covers
-	// the other host's own work: starting its Broker, one terminal command and
-	// its Broker round trip, and the scheduler delays a loaded CI host adds on
-	// top. The slowest of those is the pairing-side peer connect, whose own
-	// failure budget is termAdminLinkWait (11s); 30s leaves room for a Broker
-	// start and container scheduling without hiding a host that never writes.
-	pairExchangeBound = 30 * time.Second
 )
 
 // Role is the host a pair test process runs on.
@@ -123,10 +114,12 @@ func PairWrite(t *testing.T, name string, data []byte) {
 	}
 }
 
-// PairAwait waits up to pairExchangeBound for the other host to write name and
-// returns its contents. When the other host recorded a failure, the wait ends
-// at once with that failure named.
-func PairAwait(t *testing.T, name string) []byte {
+// PairAwait waits up to bound for the other host to write name and returns its
+// contents. The caller passes the bound its half of the scenario accounts for,
+// because only it knows what the other host still has to do before writing the
+// file. When the other host recorded a failure, the wait ends at once with that
+// failure named.
+func PairAwait(t *testing.T, name string, bound time.Duration) []byte {
 	t.Helper()
 	dir := PairSharedDir()
 	if dir == "" {
@@ -139,7 +132,7 @@ func PairAwait(t *testing.T, name string) []byte {
 	failure := filepath.Join(dir, pairFailureName(peerRole(role)))
 
 	var data []byte
-	harness.Eventually(t, pairExchangeBound, "the other host to write "+name, func() (bool, string) {
+	harness.Eventually(t, bound, "the other host to write "+name, func() (bool, string) {
 		if text, err := os.ReadFile(failure); err == nil {
 			t.Fatalf("the other host failed before writing %s: %s", name, text)
 		}
