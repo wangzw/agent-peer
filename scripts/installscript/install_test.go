@@ -625,6 +625,31 @@ func TestInstallScriptReportsServiceFailure(t *testing.T) {
 	mustContain(t, "stderr", stderr, "installing the user-level service")
 }
 
+func TestInstallScriptAcceptsDegradedService(t *testing.T) {
+	f := newFixture(t)
+	stdout, stderr, code := f.run(map[string]string{"FAKE_AGENT_SERVICE_EXIT": "3"})
+	if code != 3 {
+		t.Fatalf("exit = %d, want 3\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	// service install printed the summary; the script kept going through the
+	// MCP registration and its own summary.
+	mustContain(t, "stdout", stdout, "installed (user-level, starts at login)")
+	mustContain(t, "stdout", stdout, "agent-peer installed")
+	mustContain(t, "stdout", stdout, "MCP:     registered")
+	mustContain(t, "stderr", stderr, "Broker: degraded (local only)")
+	mustContain(t, "stderr", stderr, "Fix:")
+
+	agent := readLines(t, f.agentLog)
+	if got := countLines(agent, "service install"); got != 1 {
+		t.Errorf("service install calls = %d, want 1; calls: %q", got, agent)
+	}
+	claude := readLines(t, f.claudeLog)
+	if got := countLines(claude, "mcp add --scope user peer --"); got != 1 {
+		t.Errorf("mcp add calls = %d, want 1; calls: %q", got, claude)
+	}
+}
+
 func TestInstallScriptToleratesStatusFailure(t *testing.T) {
 	f := newFixture(t)
 	stdout, stderr, code := f.run(map[string]string{"FAKE_AGENT_STATUS": "fail"})
@@ -724,6 +749,31 @@ func TestInstallScriptReportsSudoFailure(t *testing.T) {
 	mustNotContain(t, "stderr", stderr, "rerun with sudo")
 	if got := readLines(t, f.installLog); len(got) != 0 {
 		t.Errorf("the binary was installed although sudo failed: %q", got)
+	}
+}
+
+// TestInstallScriptPassesThroughSudoDegradedExit checks that the degraded
+// service status reaches the caller unchanged and is not reported as a failed
+// installation.
+func TestInstallScriptPassesThroughSudoDegradedExit(t *testing.T) {
+	f := newFixture(t)
+	prefix := f.systemPrefix(t)
+	env := map[string]string{
+		"FAKE_ID_UID":       "1000",
+		"FAKE_STAT_OWNER":   "0",
+		"FAKE_STAT_MODE":    "755",
+		"FAKE_INSTALL_COPY": "1",
+		"FAKE_SUDO_EXIT":    "3",
+	}
+	_, stderr, code := f.run(env, "--system", "--prefix", prefix, "--no-service", "--no-mcp")
+	if code != 3 {
+		t.Fatalf("exit = %d, want 3 from the degraded service\nstderr:\n%s", code, stderr)
+	}
+	if strings.Contains(stderr, "did not complete") {
+		t.Errorf("a degraded service was reported as a failed install:\n%s", stderr)
+	}
+	if got := readLines(t, f.installLog); len(got) != 0 {
+		t.Errorf("the outer install installed a binary although the sudo run reported a degraded service: %q", got)
 	}
 }
 
@@ -1597,6 +1647,12 @@ case $1 in
 	;;
 service)
 	if [ "${FAKE_AGENT_SERVICE_EXIT:-0}" != "0" ]; then
+		if [ "$FAKE_AGENT_SERVICE_EXIT" = "3" ]; then
+			printf 'agent-peer installed (user-level, starts at login)\n'
+			printf '  binary:     unattested\n'
+			printf 'Broker: degraded (local only): cannot bind 127.0.0.1:17443\n' >&2
+			printf 'Fix: change broker.listen in the configuration\n' >&2
+		fi
 		exit "$FAKE_AGENT_SERVICE_EXIT"
 	fi
 	;;

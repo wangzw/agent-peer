@@ -463,25 +463,33 @@ case $_version_output in
 esac
 
 # 3. Install the service. service install is repeatable: an existing service is
-# restarted with the new binary, so the script does not check first.
+# restarted with the new binary, so the script does not check first. Exit status
+# 3 means the service is installed and running, but the Broker runs degraded;
+# service install has already printed the summary and the reason, so the script
+# finishes the remaining steps and exits with 3 at the end.
+_service_status=0
+_service_degraded=0
+_service_level="user-level"
 if [ "$install_service" -eq 0 ]; then
 	_service_state="skipped (--no-service)"
 elif [ "$system" -eq 1 ]; then
+	_service_level="system-level"
 	if [ "$admin_group_set" -eq 1 ]; then
-		if ! "$prefix/agent-peer" service install --system --admin-group "$admin_group"; then
-			fail "installing the system-level service"
-		fi
+		"$prefix/agent-peer" service install --system --admin-group "$admin_group" || _service_status=$?
 	else
-		if ! "$prefix/agent-peer" service install --system; then
-			fail "installing the system-level service"
-		fi
+		"$prefix/agent-peer" service install --system || _service_status=$?
 	fi
 	_service_state="installed (system-level, starts at boot)"
 else
-	if ! "$prefix/agent-peer" service install; then
-		fail "installing the user-level service"
-	fi
+	"$prefix/agent-peer" service install || _service_status=$?
 	_service_state="installed (user-level, starts at login)"
+fi
+if [ "$install_service" -eq 1 ]; then
+	case $_service_status in
+		0) ;;
+		3) _service_degraded=1 ;;
+		*) fail "installing the $_service_level service" ;;
+	esac
 fi
 
 # 4. The system-level service creates the admin group. Put the account that ran
@@ -650,3 +658,9 @@ if [ -n "$_admin_group_user" ]; then
 		"$_admin_group_user" "$admin_group" "$admin_group"
 fi
 printf '\nReopen any Claude Code session that is already open to load the peer MCP server.\n'
+
+# A degraded service is installed and running, so the installation succeeded;
+# the exit status tells the caller that the Broker needs attention.
+if [ "$_service_degraded" -eq 1 ]; then
+	exit 3
+fi
