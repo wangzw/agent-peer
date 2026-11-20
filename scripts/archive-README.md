@@ -64,6 +64,8 @@ sudo agent-peer peer connect <address> --key <key>
 sudo agent-peer peer list
 ```
 
+An administrator account that runs no user-level Broker can run them without `sudo`; the command then selects the system-level Broker. An account that also runs a user-level Broker uses `sudo` to reach the system-level Broker.
+
 Give the key and address to the other side through a channel outside this system. The address is written `address:port` or `hostname(address:port)`.
 
 ## Administer a system-level Broker without root
@@ -78,13 +80,13 @@ For an existing installation, give the file to the group with `chgrp agent-peer 
 agent-peer update
 ```
 
-The command asks for confirmation, then downloads, checks and installs the latest official release. For a user-level installation it replaces the binary and restarts the service.
+The command asks for confirmation, then downloads, checks and installs the latest official release. When it replaces a user-level binary locally, it leaves the service alone, because the service may have been stopped on purpose, and prints that the new binary takes effect the next time the Broker starts. It checks write permission on the binary's directory first and suggests `sudo` when it is missing.
 
-For a system-level installation, run the same command as an account that administers the Broker, without `sudo`: the Broker replaces its own binary and the service manager restarts it. The account needs write permission on the Broker's configuration file.
+For a system-level installation, run `agent-peer update` as an account that administers the Broker, without `sudo`, when that account runs no user-level Broker; the command selects the system-level Broker. An account that also runs a user-level Broker uses `sudo agent-peer update`, so root selects the system-level Broker. The Broker replaces its own binary and the service manager restarts it. The account needs write permission on the Broker's configuration file.
 
 A session can also start the upgrade with the `update_broker` tool. Claude Code asks for confirmation before the call runs, and that confirmation is the last manual check before the upgrade.
 
-After an update the Broker restarts and open sessions reconnect to it automatically. The MCP server inside an already open session keeps running the old binary until you reconnect it with `/mcp` or restart the session.
+When the update runs through the Broker, the Broker restarts and open sessions reconnect to it automatically. The MCP server inside an already open session keeps running the old binary until you reconnect it with `/mcp` or restart the session. A local replacement does not start or restart anything; the new binary takes effect the next time the Broker starts.
 
 ## Uninstall
 

@@ -65,7 +65,7 @@ MCP 服务的名字是 `peer`，模型看到的工具全名是 `mcp__peer__<工�
 - `set_config`：`key`、`old_value`、`new_value`。
 - `update_broker`：`from_version`、`to_version`、`restarting`。
 
-`update_broker` 在收到 Broker 的应答后立即返回，不在工具调用中等待重启。成功时的文字为 `Upgrading the Broker from <from> to <to>; the Broker restarts and the connection recovers automatically. Reopen this session to use the new MCP server.`；已经是最新版本时为 `The Broker is already up to date (<from>).`
+`update_broker` 作用于本会话已登记的 Broker。它在收到 Broker 的应答后立即返回，不在工具调用中等待重启。成功时的文字为 `Upgrading the Broker from <from> to <to>; the Broker restarts and the connection recovers automatically. Reopen this session to use the new MCP server.`；已经是最新版本时为 `The Broker is already up to date (<from>).`
 
 状态写成 `idle`、`busy`、`waiting`、`shell`，未知状态省略；指纹写成小写十六进制；时间写成 UTC 的 RFC 3339。出错的结果只有文字，不带结构化内容；错误码与来源 Broker 以 ` (code: <错误码名>)`、` (reported by Broker <指纹>)` 后缀给出。
 

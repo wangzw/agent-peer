@@ -34,7 +34,7 @@
 - 不保存消息。发送调用返回后这条消息的正文即被丢弃。
 - 不限制发送频率，不检测消息循环，由 Claude Code 接收端的入站控制承担（[ADR-no-broker-rate-limiting](../../adr/adr-no-broker-rate-limiting.md)）。
 - 不另设管理员名单，也不采信调用方自报的身份。
-- 不自行重启自己：委托升级成功后进程正常退出，由服务管理器用新二进制拉起；没有服务管理器时拒绝执行更新。终端命令的用户级更新仍在本地替换二进制并调用 `service.Restart`。
+- 不自行重启自己：委托升级成功后进程正常退出，由服务管理器用新二进制拉起；没有服务管理器时拒绝执行更新。终端命令的本地替换路径只替换二进制，不启动或重启任何服务。
 
 ## 外部接口契约
 
@@ -108,7 +108,7 @@ service Local {
 | `agent-peer peer list` | `ListBrokers` | 列出 Broker 及其连接状态（`REQ-broker-config-039`） |
 | `agent-peer peer connect <address> --key <key> [--alias <alias>]` | `Connect` | 发起配对（`REQ-broker-config-039`） |
 | `agent-peer peer disconnect <broker>` | `Disconnect` | 解除配对（`REQ-broker-config-039`） |
-| `agent-peer update [--system] [--yes]` | `ApplyUpdate`（系统级） | 检查并安装本项目的新版本。用户级在本地替换二进制并重启用户级服务；系统级经 Broker 执行，`--system` 或目标二进制属于 root 而当前不是 root 时选择系统级。`--yes` 跳过询问（`REQ-update-004` 至 `REQ-update-007`） |
+| `agent-peer update [--yes]` | `ApplyUpdate` | 检查并安装本项目的新版本。对选出的 Broker 调用 `ApplyUpdate`；所选的是本账户的用户级 Broker 且它没有在服务管理器下运行时，改为在本地替换。`--yes` 跳过询问（`REQ-update-004` 至 `REQ-update-007`） |
 | `agent-peer service install [--system] [--admin-group <名称>]` | — | 安装并立即启动用户级服务，或系统级服务；此后的登录或系统启动由服务管理器负责。系统级安装创建管理组并让新配置文件的属组为它（`REQ-broker-config-015`、`REQ-broker-config-043`） |
 | `agent-peer service uninstall [--system]` | — | 停止并卸载服务，保留配置、身份与审计日志 |
 
@@ -134,7 +134,7 @@ service Local {
 
 进程级信号由 `cmd/agent-peer` 统一处理：第一次 SIGINT 或 SIGTERM 取消运行，第二次直接终止进程。
 
-`status`、`audit` 与 `config`、`pairing-key`、`peer` 下的命令连接哪个 Broker，按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的顺序前三项确定，只查找正在运行的 Broker，不启动 Broker。找不到正在运行的 Broker 时，报错文字与 `status` 相同，说明 `agent-peer service install` 与 `agent-peer broker` 两种启动方法。连上后先调用 `Hello`，本机协议版本不同时报 `version_mismatch` 并退出，说明 Broker 与本二进制各自的版本，提示用本二进制重启 Broker。单个一元调用超时 10 秒；`Audit` 的流不设总时限，靠信号取消。
+`status`、`audit`、`config`、`pairing-key`、`peer` 与 `update` 连接哪个 Broker，按调用者身份选择，不提供显式参数：root 连接系统级 Broker；其他账户按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的顺序前三项确定，先找本账户的用户级 Broker，没有再落到系统级。选择只查找正在运行的 Broker，不启动 Broker。`update` 对选出的 Broker 调用 `ApplyUpdate`；返回 `failed_precondition` 且所选的是本账户的用户级 Broker 时，改为在本地替换；选不出正在运行的 Broker 时同样在本地替换（见“更新检查与自我更新”）。其余命令找不到正在运行的 Broker 时报错，报错文字与 `status` 相同，说明 `agent-peer service install` 与 `agent-peer broker` 两种启动方法。连上后先调用 `Hello`，本机协议版本不同时报 `version_mismatch` 并退出，说明 Broker 与本二进制各自的版本，提示用本二进制重启 Broker。单个一元调用超时 10 秒；`Audit` 的流不设总时限，靠信号取消。会话中的 MCP 服务进程按自己的顺序选择 Broker，与终端命令各自独立。
 
 `status` 的输出分 Agent 与对端两段，表格按地址或别名排序，空值写 `-`；topic 按字典序以逗号连接；指纹写完整的 64 位小写十六进制，不截短；枚举取值写去掉前缀的小写蛇形。段内没有条目时写 `Agents: none` 或 `Peers: none`。`audit` 每个事件输出一行，按到达顺序排列，依次是 RFC 3339 UTC 时间、事件名，以及 `actor`、`account`、`peer`、`key`、`old`、`new`、`count`、`detail` 中的非空字段；值为空或含空格、引号、等号时加引号。
 
@@ -415,36 +415,37 @@ Update: <v> available (current <c>); run agent-peer update
 
 没有可用版本时不输出这一行（`REQ-update-002`）。
 
-`agent-peer update [--system] [--yes]` 按目标是否属于系统级分两条路径。目标二进制属于 root 而当前账户不是 root，或者带 `--system` 时，命令经 Broker 执行升级；其余情形在本地替换。
+`agent-peer update [--yes]` 先按终端命令的选择规则选出 Broker，对它调用 `ApplyUpdate`。返回 `failed_precondition` 且所选的是本账户的用户级 Broker 时，转到下面的本地替换路径；选不出正在运行的 Broker 时同样在本地替换。管理员账户没有运行自己的用户级 Broker 时，选中的是系统级 Broker，命令直接作用于系统级；同时运行着用户级 Broker 时，选择先落在用户级 Broker，管理系统级要加 `sudo`，使进程属于 root 并直接选中系统级 Broker。
 
-用户级路径直接查询 GitHub，不依赖 Broker，按以下顺序执行：
+本地替换路径直接查询 GitHub，不在 Broker 中执行替换，按以下顺序执行：
 
 1. 取 `os.Executable()` 的结果并解析符号链接，得到要替换的二进制路径。
 2. 当前版本不是正式发布版本时拒绝执行，说明“非发布构建不能自动更新”。
-3. 在目标所在目录试建一个临时文件，检查写权限。没有写权限时，在任何下载请求之前失败（`REQ-update-006`）。
+3. 在目标所在目录试建一个临时文件，检查写权限。没有写权限时，在任何下载请求之前失败，并提示用 `sudo`（`REQ-update-006`）。
 4. 查询最新正式发布版本。已经是最新版本时输出 `agent-peer <c> is up to date`，以 0 退出。
 5. 标准输入不是终端且没有 `--yes` 时拒绝执行，说明可以用 `--yes`。
 6. 下载本平台与架构的安装包和 `checksums.txt`，按 [ADR-self-update](../../adr/adr-self-update.md) 的规则校验、解压，并在临时位置运行新二进制的 `--version`。
 7. 在目标所在目录写临时文件，把模式和属主改成与原二进制相同，`fsync` 后 `rename` 到目标路径。不保留旧版本。
-8. 调用 `service.Restart` 的用户级路径。已安装为用户级服务时重启并等待就绪；没有安装为服务时，提示用户自行重启正在运行的 Broker。
-9. 输出更新结果。
+8. 不启动、也不重启任何服务：服务可能被有意停掉。
+9. 输出 `The new binary takes effect the next time the Broker starts.`。
 
-系统级路径不读写二进制，按以下顺序执行：
+委托路径不读写二进制，按以下顺序执行：
 
-1. 按与其他终端命令相同的顺序选择 Broker，只查找正在运行的 Broker，不启动 Broker。
-2. 标准输入不是终端且没有 `--yes` 时拒绝执行；否则询问 y/N。
-3. 调用 `ApplyUpdate`。权限由 Broker 按调用方账户对配置文件的写权限判定，命令不预判；`permission_denied` 时把 Broker 的英文错误原样写到标准错误，以 1 退出，此时没有发出任何下载请求。
-4. 应答的 `to_version` 为空时输出已经是最新版本，以 0 退出。
-5. `restarting` 为真时，在 `updateRestartWait` 内轮询 `UpdateStatus`，直到 `current_version` 等于 `to_version` 才报告成功。上限取 60 秒，覆盖 `updateExitDelay`、服务管理器的重启间隔、launchd 默认 10 秒的节流与 Broker 的启动时间。超时报错，并给出该级别服务日志的位置。
-6. 输出更新结果。
+1. 标准输入不是终端且没有 `--yes` 时拒绝执行；否则询问 y/N。
+2. 调用 `ApplyUpdate`。权限由 Broker 按调用方账户对配置文件的写权限判定，命令不预判；`permission_denied` 时把 Broker 的英文错误原样写到标准错误，以 1 退出，此时没有发出任何下载请求。
+3. 应答的 `to_version` 为空时输出已经是最新版本，以 0 退出。
+4. `restarting` 为真时，在 `updateRestartWait` 内轮询 `UpdateStatus`，直到 `current_version` 等于 `to_version` 才报告成功。上限取 60 秒，覆盖 `updateExitDelay`、服务管理器的重启间隔、launchd 默认 10 秒的节流与 Broker 的启动时间。超时报错，并给出该级别服务日志的位置。
+5. 输出更新结果。
 
-以 root 执行系统级更新时同样走这条路径，不再在本地替换二进制；`service.Restart` 的系统级路径不再被 `agent-peer update` 使用。
+以 root 执行时选择系统级 Broker，同样走这条路径；选不出 Broker 时在本地替换。`agent-peer update` 不再调用 `service.Restart`。
 
-Broker 执行 `ApplyUpdate` 的流程见下文“委托升级”。两条路径成功后都另输出一行提示（`REQ-update-004`、`REQ-update-005`、`REQ-update-007`）：
+Broker 执行 `ApplyUpdate` 的流程见下文“委托升级”。委托路径成功后另输出一行提示（`REQ-update-004`、`REQ-update-005`、`REQ-update-007`）：
 
 ```
 Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.
 ```
+
+本地替换路径成功后只输出 `The new binary takes effect the next time the Broker starts.`，不提示连接恢复，因为 Broker 没有重启。
 
 二进制被多个级别共用时，例如系统级安装位于 `/usr/local/bin`，而某个普通用户的用户级服务也运行它，系统级更新只重启系统级服务，其他级别的 Broker 要由各自的用户重启。用户级路径只处理本账户的用户级服务，不读取本账户 HOME 以外的内容。
 

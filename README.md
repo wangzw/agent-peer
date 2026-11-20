@@ -210,12 +210,12 @@ On a system-level Broker, by default, an ordinary account has no write permissio
 | `agent-peer peer list` | List every known Broker with its alias, fingerprint, whether it is a peer, status, direction and addresses. |
 | `agent-peer peer connect <address> --key <key> [--alias <alias>]` | Pair with another Broker at `address`, written `address:port` or `hostname(address:port)`, using a pairing key, with an optional local alias. |
 | `agent-peer peer disconnect <broker>` | Remove the pairing with a Broker, named by alias or fingerprint. |
-| `agent-peer update [--system] [--yes]` | Check GitHub for a newer release and install it; a user-level installation replaces this binary and restarts the service, and a system-level one has the Broker replace its own binary for the service manager to restart. `--yes` skips the confirmation question. |
+| `agent-peer update [--yes]` | Check GitHub for a newer release and install it. The command asks the selected Broker to update itself; when the selected Broker is the account's user-level Broker and does not run as a service, the command replaces the binary locally. `--yes` skips the confirmation question. |
 | `agent-peer service install [--system]` | Install the Broker as a user-level service started at login, or as a system-level service started at boot, and start it immediately. |
 | `agent-peer service uninstall [--system]` | Stop and remove the installed service. Configuration, identity and audit logs are kept, and the command can be repeated when nothing is installed. |
 | `agent-peer broker [--system] [--listen <addr>]` | Run a Broker in the foreground; `--system` selects the system-level form and requires root, and `--listen` overrides the configured listen address for this run only. |
 
-When an administrator runs these commands with `sudo`, a system-level Broker authorizes them against root's permissions.
+A terminal command selects its Broker by the account that runs it, with no explicit flag: root connects to the system-level Broker, and another account uses its own user-level Broker first, then the system-level one when none is running. An administrator account that runs no user-level Broker therefore reaches the system-level Broker with the command as written; one that also runs a user-level Broker uses `sudo` to manage the system-level Broker. When an administrator runs these commands with `sudo`, a system-level Broker authorizes them against root's permissions.
 
 On macOS, a user-level service runs in launchd's `gui` domain, which exists only in a graphical login session; install it from such a session, or use `--system` on a host without one.
 
@@ -231,7 +231,7 @@ Run the update in a terminal:
 agent-peer update
 ```
 
-The command prints the current and available versions and asks for confirmation. For a user-level installation it downloads the release archive for this platform, checks it against `checksums.txt`, verifies that the new binary reports the expected version, replaces this binary, and restarts the user-level service. `--yes` skips the question and is required when standard input is not a terminal. When no service is installed, restart the running Broker yourself after the update.
+The command prints the current and available versions and asks for confirmation. It asks the Broker selected for the account to update itself. When the selected Broker is a user-level Broker that does not run as a service, or when no Broker is running, the command checks write permission on the binary's directory, then downloads the release archive for this platform, checks it against `checksums.txt`, verifies that the new binary reports the expected version, and replaces this binary. It does not start or restart any service, because the service may have been stopped on purpose, and prints that the new binary takes effect the next time the Broker starts. Without write permission it fails before downloading and suggests `sudo`. `--yes` skips the question and is required when standard input is not a terminal.
 
 For a system-level installation, run the command as an account that administers the Broker, without `sudo`:
 
@@ -239,11 +239,11 @@ For a system-level installation, run the command as an account that administers 
 agent-peer update
 ```
 
-The Broker then downloads, checks and replaces its own binary, and the service manager restarts it. Root can run the same command. The account needs write permission on the Broker's configuration file; an account without it is refused before anything is downloaded. The command succeeds only after the Broker reports the new version.
+An administrator account that runs no user-level Broker reaches the system-level Broker directly. One that also runs a user-level Broker uses `sudo agent-peer update`, so that root connects to the system-level Broker. The Broker then downloads, checks and replaces its own binary, and the service manager restarts it. The account needs write permission on the Broker's configuration file; an account without it is refused before anything is downloaded. The command succeeds only after the Broker reports the new version.
 
 A session can start the same upgrade with the `update_broker` tool. Claude Code asks for confirmation before the call runs. Do not add `update_broker` to an auto-approve list: that confirmation is the last manual check before an upgrade, and for a system-level installation the Broker replaces a binary that runs as root.
 
-After an update the Broker restarts, and open sessions reconnect to it automatically. The MCP server inside a session that is already open keeps running the old binary until you reconnect it with `/mcp` or restart the session.
+When the update runs through the Broker, the Broker restarts and open sessions reconnect to it automatically. The MCP server inside a session that is already open keeps running the old binary until you reconnect it with `/mcp` or restart the session. A local replacement does not start or restart anything; the new binary takes effect the next time the Broker starts.
 
 Downloads use the proxy environment variables of the process that performs them: the update command for a user-level installation, the Broker for a system-level one.
 
