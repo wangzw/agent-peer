@@ -14,3 +14,4 @@ These guides walk through the tasks agent-peer is built for. The first covers in
 - [Run a system Broker]({{< relref "system-broker.md" >}}): serve several accounts on one host.
 - [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}): explain who can change what.
 - [Update agent-peer]({{< relref "update.md" >}}): install newer releases with `agent-peer update`.
+- [Uninstall agent-peer]({{< relref "uninstall.md" >}}): remove an installation and choose whether to keep its data.

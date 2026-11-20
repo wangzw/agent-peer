@@ -50,7 +50,11 @@ Intel Mac 上用 Homebrew 时，`/usr/local/bin` 属于普通用户，安装会�
 
 ## 卸载服务
 
-用同一个账户运行 `agent-peer service uninstall`，可以卸载用户级服务。卸载系统级服务用 `sudo /usr/local/bin/agent-peer service uninstall --system`。命令停止 Broker 并删除服务定义；配置、身份与审计日志都保留。没有安装过服务时，命令照常成功，并报告未安装，所以可以放心重复执行。
+用同一个账户运行 `agent-peer service uninstall`，可以卸载用户级服务。卸载系统级服务用 `sudo /usr/local/bin/agent-peer service uninstall --system`。命令停止 Broker 并只删除服务定义；二进制与 MCP 注册都会保留。没有安装过服务时，命令照常成功，并报告未安装，所以可以放心重复执行。要卸载整个安装，运行 [`agent-peer uninstall`]({{< relref "/docs/reference/cli" >}}#agent-peer-uninstall)，系统级安装加 `sudo`。
+
+## 启停服务
+
+用 `agent-peer service stop` 与 `agent-peer service start` 停止和启动服务，用 `agent-peer service restart` 重启；系统级服务加 `sudo`。退出码见[命令行]({{< relref "/docs/reference/cli" >}}#agent-peer-service-start-stop-and-restart)。
 
 ## 检查服务
 

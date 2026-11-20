@@ -69,10 +69,10 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 
 系统级 Broker 从服务环境里读取这些变量：
 
-- Linux：运行 `sudo systemctl edit agent-peer.service`，加入 `[Service]` 与 `Environment=HTTPS_PROXY=http://proxy.example:8080`（需要时加上 `HTTP_PROXY` 与 `NO_PROXY`），然后重启服务。drop-in 在重装后仍然保留。
-- macOS：在 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist` 里加入 `EnvironmentVariables` 字典，写入 `HTTPS_PROXY` 等变量，然后执行 `sudo launchctl bootout system/io.github.wangzw.agent-peer` 与 `sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`。重装会重写 plist，之后要重新加入这个字典。
+- Linux：运行 `sudo systemctl edit agent-peer.service`，加入 `[Service]` 与 `Environment=HTTPS_PROXY=http://proxy.example:8080`（需要时加上 `HTTP_PROXY` 与 `NO_PROXY`），然后运行 `sudo agent-peer service restart`。drop-in 在重装后仍然保留。
+- macOS：在 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist` 里加入 `EnvironmentVariables` 字典，写入 `HTTPS_PROXY` 等变量，然后运行 `sudo agent-peer service restart`，重启会重新读取 plist。重装会重写 plist，之后要重新加入这个字典。
 
-用户级服务的做法相同：Linux 上用 `systemctl --user edit agent-peer.service` 编辑 drop-in，再用 `systemctl --user restart agent-peer.service` 重启服务；macOS 上在 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist` 里加入字典，再把服务 `bootout` 后重新 `bootstrap`。重装同样会重写这个 plist，之后要重新加入。
+用户级服务的做法相同：Linux 上用 `systemctl --user edit agent-peer.service` 编辑 drop-in，再用 `agent-peer service restart` 重启服务；macOS 上在 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist` 里加入字典，再运行 `agent-peer service restart`，重启会重新读取 plist。重装同样会重写这个 plist，之后要重新加入。
 
 ### 没有正在运行的 Broker
 

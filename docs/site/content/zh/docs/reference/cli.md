@@ -28,9 +28,17 @@ Commands:
                               install and start the Broker as a user-level service,
                               or system-level with --system; --admin-group names the
                               group that administers the system-level Broker
+  service start               start the installed service for this account, or
+                              the system-level service as root
+  service stop                stop it without disabling it
+  service restart             restart it
   service uninstall [--system]
-                              stop and remove the installed service; configuration,
+                              stop and remove only the installed service; configuration,
                               identity and audit logs are kept
+  uninstall [--purge]         remove the installation for this account, or the
+                              system-level installation as root; --purge deletes
+                              configuration, identity, audit and service logs,
+                              and at the system level the admin group
 ```
 
 ## agent-peer --version
@@ -234,9 +242,33 @@ The new binary takes effect the next time the Broker starts.
 
 发布包里的安装脚本就是用这个命令安装服务的。
 
+## agent-peer service start, stop and restart
+
+启动、停止或重启已安装的服务。作用的级别按执行命令的账户确定，命令不接受 `--system`：root 作用于系统级服务，其他账户作用于本账户的用户级服务。要操作系统级服务，用 `sudo` 执行命令。
+
+`stop` 不禁用服务，下次登录或开机时仍会启动。该级别没有安装服务时，命令以退出码 1 结束，并说明该级别没有安装服务；只有系统级服务的账户还会收到提示，改用 `sudo agent-peer service <command>`。
+
+`start` 与 `restart` 和安装一样等待 Broker 应答并检查是否处于降级运行；退出码规则见 [agent-peer service install](#agent-peer-service-install)。
+
 ## agent-peer service uninstall
 
-停止并卸载已安装的服务。配置、身份与审计日志都保留。没有安装过服务时，命令照常成功，并报告未安装，所以可以重复执行。
+只停止并卸载已安装的服务。二进制与 MCP 注册都保留，配置、身份与审计日志也保留；要卸载整个安装，用 [agent-peer uninstall](#agent-peer-uninstall)。没有安装过服务时，命令照常成功，并报告未安装，所以可以重复执行。
 
 - 不带 `--system` 时卸载用户级服务。
 - 带 `--system` 时卸载系统级服务。必须以 root 运行。
+
+## agent-peer uninstall
+
+卸载一个安装：服务、服务启动的二进制、执行命令的账户的 MCP 注册和运行时目录。
+
+- 以 root 执行时，卸载系统级安装。其他账户卸载自己的用户级安装；主机上同时有系统级安装时，命令先卸载用户级安装，结束后说明另一级别用 `sudo agent-peer uninstall` 卸载。
+- 主机上只有系统级安装时，命令询问 `Uninstall the system-wide installation (requires sudo)? [y/N]`。回答 `y` 时命令经 `sudo` 重新执行；回答其他内容或者无法询问时，主机不做改动，输出 `sudo agent-peer uninstall`，以退出码 0 结束。
+- 不给 `--purge` 时，命令询问 `Also remove configuration, identity, audit and service logs? [y/N]`，除回答 `y` 外都保留这些数据；无法询问时同样保留。系统级安装回答 `y` 时，同时删除管理组。
+- `--purge` 跳过这句询问，一并删除这些数据；系统级安装同时删除管理组。
+- 其他账户的 MCP 注册会保留，各自由相应账户用 `claude mcp remove -s user peer` 删除。系统级安装删除执行 `sudo` 的账户的注册；以 root 直接运行时只打印命令。
+
+删除系统级二进制之前，命令会列出用户级 Broker 正在运行的其他账户，然后照常删除。
+
+中途失败时命令停下，不回滚已完成的步骤；错误写明是哪一步失败，再次执行可以接着完成。两个级别都没有安装服务、但 MCP 注册指向这个二进制时，按用户级卸载；什么都没有安装时，命令报告没有安装，以退出码 0 结束。
+
+退出码：成功、没有安装、拒绝经 sudo 卸载系统级安装都是 0；失败为 1；用法错误为 2。

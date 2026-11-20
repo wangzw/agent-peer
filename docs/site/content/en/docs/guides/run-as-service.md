@@ -50,7 +50,11 @@ On Linux the command writes `/etc/systemd/system/agent-peer.service`, enables it
 
 ## Uninstall a service
 
-Run `agent-peer service uninstall` as the same account to remove a user-level service. For a system-level service, run `sudo /usr/local/bin/agent-peer service uninstall --system`. The command stops the Broker and removes the service definition; configuration, identity and audit logs are kept. If no service is installed, it succeeds and reports that nothing is installed, so it can be run again safely.
+Run `agent-peer service uninstall` as the same account to remove a user-level service. For a system-level service, run `sudo /usr/local/bin/agent-peer service uninstall --system`. The command stops the Broker and removes only the service definition; the binary and the MCP registration stay. If no service is installed, it succeeds and reports that nothing is installed, so it can be run again safely. To remove the whole installation, run [`agent-peer uninstall`]({{< relref "/docs/reference/cli" >}}#agent-peer-uninstall), with `sudo` for a system-level installation.
+
+## Start and stop the service
+
+Run `agent-peer service stop` and `agent-peer service start` to stop and start the service, and `agent-peer service restart` to restart it; use `sudo` for a system-level service. [Command line]({{< relref "/docs/reference/cli" >}}#agent-peer-service-start-stop-and-restart) gives the exit codes.
 
 ## Check the service
 

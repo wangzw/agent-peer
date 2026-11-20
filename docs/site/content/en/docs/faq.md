@@ -17,17 +17,7 @@ If the host already has a system Broker you can use, register the MCP server onl
 
 ## How do I uninstall agent-peer?
 
-Stop and remove the service, remove the MCP registration, and delete the binary:
-
-```sh
-agent-peer service uninstall
-claude mcp remove -s user peer
-rm ~/.local/bin/agent-peer
-```
-
-If you installed with `--prefix`, delete the binary from that directory instead.
-
-For a system-level installation, run `sudo agent-peer service uninstall --system`, remove the registration the same way, and delete the binary from the system prefix, such as `sudo rm /usr/local/bin/agent-peer`. Configuration, identity and audit logs are kept when the service is removed; delete them separately if you no longer need them. Other accounts that registered the MCP server themselves must remove that registration too, with `claude mcp remove -s user peer`.
+Run `agent-peer uninstall` to remove this account's installation; a system-level installation is removed with `sudo agent-peer uninstall`. The command asks whether to delete configuration, identity, audit and service logs, and keeps them unless you answer `y`. [Uninstall agent-peer]({{< relref "guides/uninstall.md" >}}) covers the levels, the questions and removing only the service.
 
 ## Where is the configuration file?
 

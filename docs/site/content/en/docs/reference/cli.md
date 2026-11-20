@@ -28,9 +28,17 @@ Commands:
                               install and start the Broker as a user-level service,
                               or system-level with --system; --admin-group names the
                               group that administers the system-level Broker
+  service start               start the installed service for this account, or
+                              the system-level service as root
+  service stop                stop it without disabling it
+  service restart             restart it
   service uninstall [--system]
-                              stop and remove the installed service; configuration,
+                              stop and remove only the installed service; configuration,
                               identity and audit logs are kept
+  uninstall [--purge]         remove the installation for this account, or the
+                              system-level installation as root; --purge deletes
+                              configuration, identity, audit and service logs,
+                              and at the system level the admin group
 ```
 
 ## agent-peer --version
@@ -234,9 +242,33 @@ The service files and paths are listed under [Files and paths]({{< relref "docs/
 
 The install script in the release archive installs the service with this command.
 
+## agent-peer service start, stop and restart
+
+Starts, stops or restarts the installed service. The account that runs the command selects the level, and the command takes no `--system` option: root acts on the system-level service, and every other account on its own user-level service. Run it with `sudo` to act on the system-level service.
+
+`stop` does not disable the service, so it starts again at the next login or boot. When that level has no installed service, the command exits with code 1 and says that no service is installed; an account that has only the system-level service installed is also told to run `sudo agent-peer service <command>`.
+
+`start` and `restart` wait for the Broker to answer and check whether it runs degraded, as an install does; [agent-peer service install](#agent-peer-service-install) gives the exit codes.
+
 ## agent-peer service uninstall
 
-Stops and removes the installed service. Configuration, identity and audit logs are kept. If no service is installed, the command succeeds and reports that nothing is installed, so it can be repeated.
+Stops and removes only the installed service. The binary and the MCP registration stay, and so do configuration, identity and audit logs; [agent-peer uninstall](#agent-peer-uninstall) removes the whole installation. If no service is installed, the command succeeds and reports that nothing is installed, so it can be repeated.
 
 - Without `--system`, removes the user-level service.
 - With `--system`, removes the system-level service. It must run as root.
+
+## agent-peer uninstall
+
+Removes an installation: the service, the binary that the service starts, the MCP registration of the account that runs the command, and the runtime directory.
+
+- Run as root to remove a system-level installation. Another account removes its own user-level installation; when the host also has a system-level installation, the command removes the user-level one and then says to use `sudo agent-peer uninstall` for the other.
+- An account whose host has only the system-level installation is asked `Uninstall the system-wide installation (requires sudo)? [y/N]`. Answering `y` runs the command again with `sudo`; any other answer, or no terminal to ask, leaves the host unchanged, prints `sudo agent-peer uninstall` and exits with code 0.
+- Unless `--purge` is given, the command asks `Also remove configuration, identity, audit and service logs? [y/N]` and keeps them on any answer other than `y` or when there is no terminal to ask. At the system level, answering `y` also removes the admin group.
+- `--purge` skips that question and removes the data too; at the system level it also removes the admin group.
+- The MCP registration of every other account stays; each of those accounts removes it with `claude mcp remove -s user peer`. At the system level the command removes the registration of the account that ran `sudo`; when it runs as root directly, it prints the command instead.
+
+Before deleting a system-level binary, the command lists other accounts whose user-level Broker is running, then deletes the binary anyway.
+
+A failure stops the command without undoing the steps that already succeeded; the error says which step failed, and running the command again continues from there. When no service is installed at either level but the MCP registration points at this binary, it uninstalls at the user level; with nothing installed, it reports that and exits with code 0.
+
+Exit codes: 0 for a successful uninstall, for nothing to uninstall, and for declining the sudo uninstall of a system-level installation; 1 for a failure; 2 for a usage error.

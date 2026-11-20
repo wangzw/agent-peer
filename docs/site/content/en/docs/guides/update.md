@@ -69,10 +69,10 @@ An update the Broker applies downloads through the Broker service process, so it
 
 A system-level Broker reads them from its service environment:
 
-- Linux: run `sudo systemctl edit agent-peer.service`, add `[Service]` and `Environment=HTTPS_PROXY=http://proxy.example:8080` (plus `HTTP_PROXY` and `NO_PROXY` as needed), then restart the service. The drop-in survives a reinstall.
-- macOS: add an `EnvironmentVariables` dictionary to `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist` with `HTTPS_PROXY` and any other variables, then boot the service out and in again: `sudo launchctl bootout system/io.github.wangzw.agent-peer` and `sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`. A reinstall rewrites the plist, so add the dictionary again afterwards.
+- Linux: run `sudo systemctl edit agent-peer.service`, add `[Service]` and `Environment=HTTPS_PROXY=http://proxy.example:8080` (plus `HTTP_PROXY` and `NO_PROXY` as needed), then run `sudo agent-peer service restart`. The drop-in survives a reinstall.
+- macOS: add an `EnvironmentVariables` dictionary to `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist` with `HTTPS_PROXY` and any other variables, then run `sudo agent-peer service restart`, which reads the plist again. A reinstall rewrites the plist, so add the dictionary again afterwards.
 
-A user-level service works the same way: on Linux, edit the drop-in with `systemctl --user edit agent-peer.service` and restart the service with `systemctl --user restart agent-peer.service`; on macOS, add the dictionary to `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist` and boot the service out and in again. A reinstall rewrites that plist too, so add the dictionary again afterwards.
+A user-level service works the same way: on Linux, edit the drop-in with `systemctl --user edit agent-peer.service` and restart the service with `agent-peer service restart`; on macOS, add the dictionary to `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist` and run `agent-peer service restart`, which reads the plist again. A reinstall rewrites that plist too, so add the dictionary again afterwards.
 
 ### Update with no running Broker
 

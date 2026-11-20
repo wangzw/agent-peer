@@ -17,17 +17,7 @@ curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install
 
 ## 如何卸载 agent-peer？
 
-停止并移除服务，移除 MCP 注册，再删除二进制：
-
-```sh
-agent-peer service uninstall
-claude mcp remove -s user peer
-rm ~/.local/bin/agent-peer
-```
-
-用 `--prefix` 安装的，改为删除该目录下的二进制。
-
-系统级安装用 `sudo agent-peer service uninstall --system` 移除服务，用同样的命令移除注册，再从系统级目录删除二进制，例如 `sudo rm /usr/local/bin/agent-peer`。移除服务时，配置、身份与审计日志都会保留；不再需要时另行删除。其他账户如果自己注册过 MCP 服务，也要用 `claude mcp remove -s user peer` 移除注册。
+运行 `agent-peer uninstall` 卸载本账户的安装；系统级安装用 `sudo agent-peer uninstall` 卸载。命令会询问是否删除配置、身份、审计和服务日志，除非回答 `y`，这些数据都会保留。[卸载 agent-peer]({{< relref "guides/uninstall.md" >}})介绍各个级别、询问内容以及只卸载服务的做法。
 
 ## 配置文件在哪里？
 
