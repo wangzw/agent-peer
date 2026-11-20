@@ -604,11 +604,11 @@ Broker 处理 `ApplyUpdate`：
 
 | 命令 | Linux | macOS |
 |---|---|---|
-| `start` | `systemctl [--user] start agent-peer.service` | 服务已加载时 `launchctl kickstart <域>/<标签>`，未加载时 `launchctl bootstrap <域> <plist>` |
+| `start` | `systemctl [--user] start agent-peer.service` | 服务已加载时 `launchctl kickstart <域>/<标签>`，未加载时先 `launchctl enable <域>/<标签>` 再 `launchctl bootstrap <域> <plist>` |
 | `stop` | `systemctl [--user] stop agent-peer.service` | `launchctl bootout <域>/<标签>` |
-| `restart` | `systemctl [--user] restart agent-peer.service` | 先 `launchctl bootout <域>/<标签>`，再 `launchctl bootstrap <域> <plist>`；未加载时忽略 bootout 的退出码 3 |
+| `restart` | `systemctl [--user] restart agent-peer.service` | 先 `launchctl bootout <域>/<标签>`，等 launchd 报告服务已卸载，再 `launchctl enable <域>/<标签>` 与 `launchctl bootstrap <域> <plist>`；未加载时忽略 bootout 的退出码 3 |
 
-`stop` 不禁用服务：Linux 上下次开机或登录仍启动；macOS 的 `bootout` 卸载服务直到下次登录或开机，`KeepAlive` 因此不会立即拉起它。`restart` 在 macOS 上重新读取 plist，服务定义的变化随之生效。`start` 与 `restart` 之后与安装一样等待本机 socket 应答并检查降级运行，退出码规则相同（`REQ-broker-config-055`、`REQ-broker-config-063`）。
+`stop` 不禁用服务：Linux 上下次开机或登录仍启动；macOS 的 `bootout` 卸载服务直到下次登录或开机，`KeepAlive` 因此不会立即拉起它。`restart` 在 macOS 上重新读取 plist，服务定义的变化随之生效。`start` 与 `restart` 在 macOS 上先 `enable`，因为失败的安装会禁用标签，不 enable 就无法 `bootstrap`。`stop` 与 `restart` 的 `bootout` 之后等 launchd 报告服务已卸载再返回（上限与安装的卸载等待相同），否则紧接着的 `bootstrap` 会撞上退出码 5。`start` 与 `restart` 之后与安装一样等待本机 socket 应答并检查降级运行，退出码规则相同（`REQ-broker-config-055`、`REQ-broker-config-063`）。
 
 ### 卸载
 
@@ -739,6 +739,6 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 状态行输出 | 未实现 | — |
 | 下线时拒绝投递 | 未实现 | — |
 | `offline` 与 `online` 命令 | 未实现 | — |
-| `service start`、`stop`、`restart` | 未实现 | — |
+| `service start`、`stop`、`restart` | 已实现 | `internal/broker/service/control.go`（`Start`、`Stop`、`Restart`、`ErrNotInstalled`）、`cmd/agent-peer/service_cmd.go` |
 | `uninstall` | 已实现 | `cmd/agent-peer/uninstall_cmd.go`、`internal/broker/service/remove.go`、`internal/broker/service/admin_group.go` |
 | 安装汇总与降级检查 | 未实现 | — |

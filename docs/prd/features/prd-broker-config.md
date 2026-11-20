@@ -460,8 +460,8 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 用户必须能用 `agent-peer service start`、`stop` 与 `restart` 启动、停止与重启 Broker 服务，作用的级别按执行命令的账户确定：root 作用于系统级服务，其他账户作用于本账户的用户级服务。没有安装该级别的服务时，命令必须失败并说明该级别没有安装服务；非 root 账户只有系统级安装时，命令必须失败并给出 `sudo agent-peer service <命令>`。`start` 与 `restart` 之后服务在运行而 Broker 处于降级运行时，命令必须输出故障与修复命令，并以退出码 3 结束。
 
 - **验收**：在同时有系统级服务与账户甲的用户级服务的主机上，甲执行 `agent-peer service stop`，甲的用户级 Broker 停止，系统级 Broker 不受影响；甲执行 `sudo agent-peer service restart`，系统级 Broker 以新的进程号运行，甲的用户级 Broker 仍是停止状态；甲执行 `agent-peer service start`，用户级 Broker 重新运行。没有安装该级别的服务时，命令以非零退出并说明该级别没有安装服务；甲在只有系统级服务的主机上执行，命令以 1 退出并给出 `sudo agent-peer service <命令>`。先停止甲的用户级服务，让另一个进程占用配置中的监听端口，甲执行 `agent-peer service start`：输出降级原因与修复命令，退出码为 3，服务处于运行状态。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl`（`stop and start act on one level only`、`a user-level command with only the system service names sudo`、`no installed service names the level`、`start reports a degraded Broker and keeps the service running`）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControl`、`TestSystemServiceControl`、`TestServiceControlNotInstalled`
 
 ### REQ-broker-config-056
 
@@ -523,9 +523,9 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 `agent-peer service install` 生成的服务定义必须以允许降级运行的方式启动 Broker。
 
-- **验收**：分别安装用户级与系统级服务，Linux 上单元文件的 `ExecStart` 与 macOS 上 plist 的 `ProgramArguments` 都含 `--allow-degraded`；在已完成安装的主机上停止服务，让另一个进程占用配置中的监听端口，再执行 `agent-peer service start`：Broker 进入降级运行，服务管理器报告服务处于运行状态，10 分钟内进程号没有变化，`agent-peer status` 报告降级运行。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **验收**：分别安装用户级与系统级服务，Linux 上单元文件的 `ExecStart` 与 macOS 上 plist 的 `ProgramArguments` 都含 `--allow-degraded`；在已完成安装的主机上停止服务，让另一个进程占用配置中的监听端口，再执行 `agent-peer service start`：Broker 进入降级运行，服务管理器报告服务处于运行状态，至少 30 秒（`RestartSec=5` 的 6 倍）内进程 pid 不变、服务管理器不重启它，`agent-peer status` 报告降级运行。
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl/start reports a degraded Broker and keeps the service running`（并断言用户级与系统级单元文件含 `--allow-degraded`，经 `service start` 的退出码 3 与两行输出断言 Broker 报告的降级状态）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControlDegraded`（并断言 plist 含 `--allow-degraded`，同样的降级断言）；服务定义模板的两级内容另由 `internal/broker/service/units_test.go` 覆盖；终端状态行的逐字输出由“终端与会话显示降级与下线”单元覆盖
 
 ### REQ-broker-config-064
 
