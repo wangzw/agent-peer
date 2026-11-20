@@ -210,6 +210,32 @@ func TestFakeNetHandlerContextCancelledOnDown(t *testing.T) {
 	}
 }
 
+// TestFakeNetDownWhileResolvingReply checks that a link that goes down while a
+// reply is being resolved reports ErrLinkDown instead of delivering the reply.
+// The reply hook moves the link at the one point where the down signal and a
+// reply are both live; without a fixed order the two ready select arms race and
+// a drop can surface as a successful request.
+func TestFakeNetDownWhileResolvingReply(t *testing.T) {
+	net := newFakeNet(t)
+	a, b := fakenetPeer(1), fakenetPeer(2)
+	endA := net.end(a)
+	net.end(b)
+
+	net.end(b).HandleRequest(400, func(_ context.Context, _ peerID, _ link.Frame) link.Frame {
+		return link.Frame{Kind: 401}
+	})
+	net.setUp(a, b, true)
+	net.onReply(func() { net.setUp(a, b, false) })
+
+	_, sent, err := endA.Request(context.Background(), b, link.Frame{Kind: 400})
+	if !sent {
+		t.Fatalf("Request sent = false, want true: the frame reached the peer")
+	}
+	if !errors.Is(err, link.ErrLinkDown) {
+		t.Fatalf("Request err = %v, want ErrLinkDown", err)
+	}
+}
+
 // TestFakeNetHandlerContextOutlivesRequest checks that the caller giving up does
 // not cancel the handler: only the connection ending does, as in the real link.
 func TestFakeNetHandlerContextOutlivesRequest(t *testing.T) {

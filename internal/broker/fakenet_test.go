@@ -52,6 +52,9 @@ type fakeNet struct {
 	kickHooks map[linkPair][]func()
 	// drops counts the replies still to be lost in one direction.
 	drops map[linkPair]int
+	// replyHook, when set, runs when a reply reaches the caller, before the
+	// request resolves it. A test uses it to move the link at that instant.
+	replyHook func()
 	// handlerCancels holds the cancel function of every handler still running,
 	// so stop can end one a test abandoned; closed refuses later handlers.
 	handlerCancels map[int]context.CancelFunc
@@ -198,6 +201,25 @@ func (n *fakeNet) dropReplies(from, to peerID, count int) {
 	n.drops[linkPair{from, to}] = count
 }
 
+// onReply installs f to run when a reply reaches the caller, before the request
+// resolves it. A test uses it to move the link at that instant, which makes the
+// reply-versus-down race in Request deterministic.
+func (n *fakeNet) onReply(f func()) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.replyHook = f
+}
+
+// reachedReply runs the reply hook, if a test installed one.
+func (n *fakeNet) reachedReply() {
+	n.mu.Lock()
+	f := n.replyHook
+	n.mu.Unlock()
+	if f != nil {
+		f()
+	}
+}
+
 // onKick installs f on the Kick calls self makes towards peer.
 func (n *fakeNet) onKick(self, peer peerID, f func()) {
 	n.mu.Lock()
@@ -303,6 +325,18 @@ func (e *fakeEnd) Request(ctx context.Context, p peerID, f link.Frame) (link.Fra
 
 	select {
 	case reply := <-replies:
+		e.net.reachedReply()
+		// A link that went down before the reply was resolved wins over the
+		// reply. The down may have canceled the handler, in which case the
+		// frame it returned is not a reply the peer ever sent; and when the
+		// down and the reply are both ready, an unordered select could
+		// otherwise pick the reply and report a success for a request whose
+		// link dropped.
+		select {
+		case <-down:
+			return link.Frame{}, true, link.ErrLinkDown
+		default:
+		}
 		if e.net.takeDrop(e.self, p) {
 			e.net.setUp(e.self, p, false)
 			return link.Frame{}, true, link.ErrLinkDown
