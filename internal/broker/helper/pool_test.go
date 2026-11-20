@@ -1,7 +1,9 @@
 package helper
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -788,5 +790,170 @@ func TestPoolCloseClosesEveryConn(t *testing.T) {
 	}
 	if _, _, err := h.pool.Acquire(ctx, 1001); err == nil {
 		t.Fatal("Acquire succeeded after Close")
+	}
+}
+
+// poolSyncBuffer is a log sink the background goroutines can write while the
+// test reads it.
+type poolSyncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *poolSyncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *poolSyncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// poolAccountHelperRecord waits for a record with the given message and decodes
+// the JSON lines the pool's logger wrote. The pool's logger is the Broker's
+// NewLogger in production; a plain JSON handler keeps the message under "msg".
+func poolAccountHelperRecord(t *testing.T, logs *poolSyncBuffer, message string) map[string]any {
+	t.Helper()
+	poolWaitFor(t, "the "+message+" record", func() bool {
+		return strings.Contains(logs.String(), `"msg":"`+message+`"`)
+	})
+	for _, line := range strings.Split(strings.TrimSuffix(logs.String(), "\n"), "\n") {
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("log line is not JSON: %v: %q", err, line)
+		}
+		if rec["msg"] == message {
+			return rec
+		}
+	}
+	t.Fatalf("no %s record in %q", message, logs.String())
+	return nil
+}
+
+// poolLogRecords decodes every JSON line the pool's logger wrote.
+func poolLogRecords(t *testing.T, logs *poolSyncBuffer) []map[string]any {
+	t.Helper()
+	raw := strings.TrimSuffix(logs.String(), "\n")
+	if raw == "" {
+		return nil
+	}
+	lines := strings.Split(raw, "\n")
+	records := make([]map[string]any, len(lines))
+	for i, line := range lines {
+		if err := json.Unmarshal([]byte(line), &records[i]); err != nil {
+			t.Fatalf("log line %d is not JSON: %v: %q", i, err, line)
+		}
+	}
+	return records
+}
+
+// poolAssertNoHelperWarning fails when any record for an account helper was
+// written at WARN or ERROR.
+func poolAssertNoHelperWarning(t *testing.T, logs *poolSyncBuffer) {
+	t.Helper()
+	for _, rec := range poolLogRecords(t, logs) {
+		msg, _ := rec["msg"].(string)
+		if !strings.HasPrefix(msg, "account_helper_") {
+			continue
+		}
+		if level := rec["level"]; level == "ERROR" || level == "WARN" {
+			t.Fatalf("%s was logged at %v during a stop (log: %s)", msg, level, logs.String())
+		}
+	}
+}
+
+// TestPoolStoppingHelperExitIsNotAnError reproduces a service stop: the
+// Broker's signal context ends and the helper goes away at the same time. That
+// exit belongs to the stop, not to a failure, so no account_helper_ record may
+// be logged at ERROR or WARN, and the helper must not be respawned.
+func TestPoolStoppingHelperExitIsNotAnError(t *testing.T) {
+	var logs poolSyncBuffer
+	stop := make(chan struct{})
+	h := newPoolHarness(t, func(o *PoolOptions) {
+		o.Logger = slog.New(slog.NewJSONHandler(&logs, nil))
+		o.Stopping = stop
+	})
+	ctx := context.Background()
+	b, release, err := h.pool.Acquire(ctx, 1001)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	defer release()
+	poolMustLookup(t, b, "/sock")
+
+	// A watch keeps the pool interested in the helper, so a respawn is possible
+	// and the test exercises the same state a service stop reaches.
+	stopWatch, err := b.Watch(ctx, "/cfg", func(int) {})
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+	defer stopWatch()
+
+	close(stop)
+	h.conn(0).crash()
+	// watchLive is counted in the child group, so waiting for the group to
+	// drain means every line it writes has been written before it is read.
+	h.pool.children.closeAndWait()
+
+	poolAssertNoHelperWarning(t, &logs)
+	if !strings.Contains(logs.String(), `"msg":"account_helper_exited"`) {
+		t.Fatalf("helper exit was not logged: %s", logs.String())
+	}
+	if got := h.startCount(); got != 1 {
+		t.Fatalf("Start calls = %d, want 1: a stop must not respawn the helper", got)
+	}
+}
+
+// TestPoolHelperExitAfterCloseIsInfo covers a helper exit observed after Close
+// started, with no Stopping channel configured, which is the self-update path.
+// Close closes closeCh, and stoppingNow must treat that as a stop.
+func TestPoolHelperExitAfterCloseIsInfo(t *testing.T) {
+	var logs poolSyncBuffer
+	p := NewPool(PoolOptions{Logger: slog.New(slog.NewJSONHandler(&logs, nil))})
+	if err := p.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Close has returned, so a later Add only balances watchLive's done.
+	p.children.wg.Add(1)
+	conn := &poolFakeConn{done: make(chan struct{}), ops: &fakeOps{}}
+	live := &liveHelper{
+		conn: conn,
+		proc: &Process{Wait: func() error { return errors.New("exit status 1") }},
+	}
+	st := &helperState{uid: 1001, watches: make(map[uint64]*poolWatch)}
+	st.live = live
+	conn.crash()
+
+	p.watchLive(st, live)
+
+	poolAssertNoHelperWarning(t, &logs)
+	if !strings.Contains(logs.String(), `"msg":"account_helper_exited"`) {
+		t.Fatalf("helper exit was not logged: %s", logs.String())
+	}
+}
+
+// TestPoolUnexpectedHelperExitIsAnError keeps an exit outside a stop at the
+// error level.
+func TestPoolUnexpectedHelperExitIsAnError(t *testing.T) {
+	var logs poolSyncBuffer
+	h := newPoolHarness(t, func(o *PoolOptions) {
+		o.Logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	})
+	b, release, err := h.pool.Acquire(context.Background(), 1001)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	defer release()
+	poolMustLookup(t, b, "/sock")
+
+	h.conn(0).crash()
+
+	rec := poolAccountHelperRecord(t, &logs, "account_helper_exited")
+	if got, want := rec["level"], "ERROR"; got != want {
+		t.Fatalf("unexpected helper exit level = %v, want %v (log: %s)", got, want, logs.String())
 	}
 }

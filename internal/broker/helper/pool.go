@@ -31,6 +31,9 @@ type PoolOptions struct {
 	RespawnMax   time.Duration                                             // default 30s
 	After        func(d time.Duration) <-chan time.Time                    // default time.After
 	Logger       *slog.Logger                                              // default slog.Default()
+	// Stopping is closed when the process starts to shut down. A helper that
+	// exits while it is closed is stopping with the Broker, not failing.
+	Stopping <-chan struct{}
 }
 
 // helperConn is the parent side of one helper connection; *Client implements it.
@@ -205,15 +208,6 @@ func NewPool(opts PoolOptions) *Pool {
 		opts.Logger = slog.Default()
 	}
 	log := opts.Logger
-	if opts.Start == nil {
-		exe := opts.Exe
-		opts.Start = func(ctx context.Context, acct Account) (*Process, error) {
-			if exe == "" {
-				return nil, errors.New("helper: no executable configured")
-			}
-			return startHelperProcess(exe, acct, log)
-		}
-	}
 
 	p := &Pool{
 		opts:    opts,
@@ -221,21 +215,50 @@ func NewPool(opts PoolOptions) *Pool {
 		closeCh: make(chan struct{}),
 	}
 	p.closeCtx, p.closeCancel = context.WithCancel(context.Background())
+	if p.opts.Start == nil {
+		exe := p.opts.Exe
+		p.opts.Start = func(ctx context.Context, acct Account) (*Process, error) {
+			if exe == "" {
+				return nil, errors.New("helper: no executable configured")
+			}
+			return startHelperProcess(exe, acct, log, p.stoppingNow)
+		}
+	}
 	p.connect = func(proc *Process) helperConn {
 		return NewClient(proc.Stdout, proc.Stdin)
 	}
 	return p
 }
 
+// stoppingNow reports whether the Broker has begun to shut down, either
+// because Close has started or because the process context passed as Stopping
+// has ended. A helper that exits or writes a cancellation line while this is
+// true is stopping with the Broker, not failing.
+func (p *Pool) stoppingNow() bool {
+	select {
+	case <-p.closeCh:
+		return true
+	default:
+	}
+	if p.opts.Stopping != nil {
+		select {
+		case <-p.opts.Stopping:
+			return true
+		default:
+		}
+	}
+	return false
+}
+
 // startHelperProcess runs exe's hidden account-helper subcommand as acct and
 // connects the child's standard streams to pipes.
-func startHelperProcess(exe string, acct Account, log *slog.Logger) (*Process, error) {
-	return startHelperProcessArgs(exe, []string{"internal", "account-helper"}, acct, log)
+func startHelperProcess(exe string, acct Account, log *slog.Logger, stopping func() bool) (*Process, error) {
+	return startHelperProcessArgs(exe, []string{"internal", "account-helper"}, acct, log, stopping)
 }
 
 // startHelperProcessArgs is startHelperProcess with the subcommand arguments
 // spelled out, so tests can exercise the same standard-stream wiring.
-func startHelperProcessArgs(exe string, args []string, acct Account, log *slog.Logger) (*Process, error) {
+func startHelperProcessArgs(exe string, args []string, acct Account, log *slog.Logger, stopping func() bool) (*Process, error) {
 	cmd := accountCommand(exe, args, acct)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -248,7 +271,7 @@ func startHelperProcessArgs(exe string, args []string, acct Account, log *slog.L
 	// The helper's stderr is a pipe read by the Broker, not the Broker's own
 	// stderr: a helper must not write into the service log as if it were the
 	// Broker, and its output is only useful with the account it belongs to.
-	stderr := newHelperStderr(log, acct.UID)
+	stderr := newHelperStderr(log, acct.UID, stopping)
 	cmd.Stderr = stderr
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -502,8 +525,22 @@ func (p *Pool) watchLive(st *helperState, live *liveHelper) {
 	st.mu.Unlock()
 
 	err := live.wait()
+	if p.stoppingNow() {
+		// The process is going down; this exit is the stop, not a failure.
+		p.opts.Logger.Info("account_helper_exited", "uid", st.uid, "err", err)
+		return
+	}
 	p.opts.Logger.Error("account_helper_exited", "uid", st.uid, "err", err)
 	if watches > 0 {
+		// Close can begin between the check above and this point. A respawn
+		// started now would find the pool closed and do nothing, so check
+		// again instead of launching a loop into a closing pool. What remains
+		// is the window between the first check and the Error above, where the
+		// record is written without a lock shared with Close; overlapping that
+		// window would still leave one Error record for a normal exit.
+		if p.stoppingNow() {
+			return
+		}
 		p.startRespawn(st)
 	}
 }

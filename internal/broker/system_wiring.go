@@ -209,9 +209,15 @@ func (s systemChecker) Check(ctx context.Context, who Caller, path string, need 
 	}
 }
 
+// newHelperPool builds the system Broker's helper pool. A test replaces it to
+// run the helper protocol in-process while still exercising the wiring below.
+var newHelperPool = helper.NewPool
+
 // newSystemDeps builds the router and checker of a system Broker and a close function.
-func newSystemDeps(exe string, logger *slog.Logger) (SessionRouter, accessChecker, func() error) {
-	pool := helper.NewPool(helper.PoolOptions{Exe: exe, Logger: logger})
+// ctx is the process context; the pool uses its cancellation to recognize
+// helper exits that belong to a normal stop.
+func newSystemDeps(ctx context.Context, exe string, logger *slog.Logger) (SessionRouter, accessChecker, func() error) {
+	pool := newHelperPool(helper.PoolOptions{Exe: exe, Logger: logger, Stopping: ctx.Done()})
 	ac := &helper.AccessChecker{Exe: exe, Logger: logger}
 	return systemRouter{pool: pool}, systemChecker{c: ac}, pool.Close
 }
@@ -226,7 +232,7 @@ var _ Assembler = systemAssembler{}
 
 func (systemAssembler) Name() string { return "system" }
 
-func (a systemAssembler) Assemble(_ context.Context, _ ConfigSource, deps *Deps, asm *Assembly) ([]Component, error) {
+func (a systemAssembler) Assemble(ctx context.Context, _ ConfigSource, deps *Deps, asm *Assembly) ([]Component, error) {
 	executable := a.executable
 	if executable == nil {
 		executable = os.Executable
@@ -237,7 +243,9 @@ func (a systemAssembler) Assemble(_ context.Context, _ ConfigSource, deps *Deps,
 	}
 	newDeps := a.newDeps
 	if newDeps == nil {
-		newDeps = newSystemDeps
+		newDeps = func(exe string, logger *slog.Logger) (SessionRouter, accessChecker, func() error) {
+			return newSystemDeps(ctx, exe, logger)
+		}
 	}
 	router, checker, closeFn := newDeps(exe, deps.Logger)
 	deps.Sessions = router

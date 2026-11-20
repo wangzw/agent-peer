@@ -2,7 +2,9 @@ package helper
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
+	"strings"
 	"sync"
 )
 
@@ -15,15 +17,16 @@ const maxHelperStderrLine = 64 << 10
 // stderr into helpers, so a helper cannot write to the Broker's terminal or
 // logs without its uid attached.
 type helperStderr struct {
-	log *slog.Logger
-	uid uint32
+	log      *slog.Logger
+	uid      uint32
+	stopping func() bool
 
 	mu  sync.Mutex
 	buf []byte
 }
 
-func newHelperStderr(log *slog.Logger, uid uint32) *helperStderr {
-	return &helperStderr{log: log, uid: uid}
+func newHelperStderr(log *slog.Logger, uid uint32, stopping func() bool) *helperStderr {
+	return &helperStderr{log: log, uid: uid, stopping: stopping}
 }
 
 func (w *helperStderr) Write(p []byte) (int, error) {
@@ -58,7 +61,13 @@ func (w *helperStderr) flush() {
 }
 
 func (w *helperStderr) logLine(line string) {
-	w.log.Warn("account_helper_stderr",
+	level := slog.LevelWarn
+	if w.stopping != nil && w.stopping() && strings.Contains(line, "context canceled") {
+		// The helper's context ended with the Broker; this is the stop, not a
+		// helper failure.
+		level = slog.LevelDebug
+	}
+	w.log.Log(context.Background(), level, "account_helper_stderr",
 		"uid", w.uid,
 		"line", line)
 }

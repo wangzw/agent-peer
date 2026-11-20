@@ -273,6 +273,142 @@ func TestSystemAssemblerFillsDeps(t *testing.T) {
 	}
 }
 
+// inProcessHelperStart serves the helper protocol over pipes instead of
+// spawning a child. exits receives one function per helper that ends it, which
+// stands in for the signal a service manager sends when it stops the Broker.
+func inProcessHelperStart(t *testing.T, exits chan<- func()) func(context.Context, helper.Account) (*helper.Process, error) {
+	t.Helper()
+	return func(_ context.Context, acct helper.Account) (*helper.Process, error) {
+		toServerR, toServerW := io.Pipe()
+		fromServerR, fromServerW := io.Pipe()
+		srvCtx, srvCancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			err := helper.Serve(srvCtx, toServerR, fromServerW, helper.InboxOps{}, helper.Identity{
+				UID:    acct.UID,
+				GID:    acct.GID,
+				Groups: acct.Groups,
+			})
+			_ = fromServerW.Close()
+			_ = toServerR.Close()
+			done <- err
+		}()
+		exits <- srvCancel
+		return &helper.Process{
+			Stdin:  toServerW,
+			Stdout: fromServerR,
+			Wait: func() error {
+				srvCancel()
+				return <-done
+			},
+			Kill: func() error {
+				srvCancel()
+				return nil
+			},
+		}, nil
+	}
+}
+
+// waitForAccountHelperRecord waits until the logger wrote a record for an
+// account helper.
+func waitForAccountHelperRecord(t *testing.T, logs *syncBuffer) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(logs.String(), "account_helper_") {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("no account_helper_ record within 3s: %s", logs.String())
+}
+
+// TestSystemStopDoesNotLogHelperExitAsError runs the production assembler and
+// its pool wiring around an in-process helper. Cancelling the context passed
+// to Assemble, as a signal does, and then ending the helper, as the service
+// manager does, must not produce an ERROR or WARN account_helper_ record.
+func TestSystemStopDoesNotLogHelperExitAsError(t *testing.T) {
+	uid := uint32(os.Getuid())
+	if _, err := helper.LookupAccount(uid); err != nil {
+		t.Skipf("the current account is not in the account database: %v", err)
+	}
+
+	var logs syncBuffer
+	level := new(slog.LevelVar)
+	level.Set(slog.LevelDebug)
+	logger := NewLogger(&logs, level)
+
+	exits := make(chan func(), 4)
+	old := newHelperPool
+	newHelperPool = func(opts helper.PoolOptions) *helper.Pool {
+		opts.Start = inProcessHelperStart(t, exits)
+		return helper.NewPool(opts)
+	}
+	t.Cleanup(func() { newHelperPool = old })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	a := systemAssembler{executable: func() (string, error) { return "/bin/true", nil }}
+	deps := &Deps{Logger: logger}
+	comps, err := a.Assemble(ctx, nil, deps, &Assembly{})
+	if err != nil {
+		t.Fatalf("Assemble: %v", err)
+	}
+	if len(comps) != 1 {
+		t.Fatalf("Assemble returned %d components, want 1", len(comps))
+	}
+	stopped := false
+	defer func() {
+		if !stopped {
+			comps[0].Stop()
+		}
+	}()
+
+	backend, release, err := deps.Sessions.Acquire(ctx, uid)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	defer release()
+	lookupCtx, cancelLookup := context.WithTimeout(ctx, 3*time.Second)
+	_, lookupErr := backend.Lookup(lookupCtx, "/no/such/dir", "/no/such/dir/inbox.sock")
+	cancelLookup()
+	if lookupErr != nil && !errors.Is(lookupErr, inbox.ErrNoRecord) {
+		t.Fatalf("Lookup: %v", lookupErr)
+	}
+
+	var exit func()
+	select {
+	case exit = <-exits:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the in-process helper did not start")
+	}
+
+	// A service stop signals the Broker and the helper at the same time.
+	cancel()
+	exit()
+
+	// Read after watchLive wrote its record, before pool Close can hide it.
+	waitForAccountHelperRecord(t, &logs)
+	records := decodeLogLines(t, logs.String())
+	found := false
+	for _, rec := range records {
+		event, _ := rec["event"].(string)
+		if !strings.HasPrefix(event, "account_helper_") {
+			continue
+		}
+		found = true
+		if lvl := rec["level"]; lvl == "ERROR" || lvl == "WARN" {
+			t.Fatalf("%s was logged at %v during a stop (log: %s)", event, lvl, logs.String())
+		}
+	}
+	if !found {
+		t.Fatalf("the helper exit was not logged: %s", logs.String())
+	}
+	stopped = true
+	comps[0].Stop()
+}
+
 func TestAssemblersForPrependsSystem(t *testing.T) {
 	x := &configWiring{}
 

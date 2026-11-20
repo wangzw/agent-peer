@@ -25,7 +25,7 @@ func TestRootHelperReportsTargetIdentity(t *testing.T) {
 
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	proc, err := startHelperProcess(exe, acct, log)
+	proc, err := startHelperProcess(exe, acct, log, nil)
 	if err != nil {
 		t.Fatalf("startHelperProcess as %s: %v", acct.Name, err)
 	}
