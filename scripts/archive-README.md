@@ -68,7 +68,7 @@ Give the key and address to the other side through a channel outside this system
 
 ## Administer a system-level Broker without root
 
-A system-level install creates the `agent-peer` group and gives the configuration file to it. The install script asks whether to add the installing account to the group, or pass `--join-admin-group` to add it without asking; log in again or run `newgrp agent-peer` afterwards. Members of the group can create pairing keys, change the configuration and pair with another Broker without `sudo`. The group can do what manual editing of the configuration file can do, and nothing more. Installing and uninstalling the service still needs root.
+A system-level install creates the `agent-peer` group and gives the configuration file to it. The install script asks whether to add the installing account to the group, or pass `--join-admin-group` to add it without asking; log in again or run `newgrp agent-peer` afterwards. Members of the group can create pairing keys, change the configuration and pair with another Broker without `sudo` when their account runs no user-level Broker; an account that also runs a user-level Broker uses `sudo` so the command reaches the system-level Broker. The group can do what manual editing of the configuration file can do, and nothing more. Installing, uninstalling and updating the service still needs root.
 
 For an existing installation, give the file to the group with `chgrp agent-peer /etc/agent-peer/config.yaml` and `chmod 0660 /etc/agent-peer/config.yaml` as root.
 
