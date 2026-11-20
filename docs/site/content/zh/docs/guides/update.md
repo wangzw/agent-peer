@@ -16,7 +16,7 @@ Broker 的正式发布版本启动后会检查 GitHub：先等约一分钟，检
 Update: 0.1.2 available (current 0.1.1); run agent-peer update
 ```
 
-每个会话里第一次工具调用的结果，末尾是：
+有可用新版本时，某次工具结果的末尾会附上：
 
 ```text
 agent-peer 0.1.2 is available (this host runs 0.1.1). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
@@ -46,7 +46,7 @@ User-level Brokers that run this binary keep the old version until they are rest
 Open Claude Code sessions must reconnect with /mcp or be restarted to use the new version.
 ```
 
-加 `--yes` 可以跳过询问。标准输入不是终端时，例如在脚本或计划任务里，命令要求带 `--yes`，否则拒绝执行，并给出 `standard input is not a terminal; run "agent-peer update --yes" to update without asking`。
+加 `--yes` 可以跳过询问。标准输入不是终端时，例如在脚本或计划任务里，命令要求带 `--yes`，否则拒绝执行，并给出 `standard input is not a terminal; run "agent-peer update --yes" to update without asking`。已经是最新版本时，不需要 `--yes`，在非终端里也能运行。
 
 下载任何内容之前，命令先确认自己能否写入二进制所在的目录。之后下载适用于本平台与架构的发布包，与 `checksums.txt` 比对，再运行新二进制，核对它报出的版本是否符合预期。全部通过后，它才替换二进制，并保留原有的权限模式与属主。替换之前的任何一步失败，命令都会停下，二进制与服务都不改动。替换之后重启服务失败时，新二进制已经装好，按报错手动重启服务即可。
 

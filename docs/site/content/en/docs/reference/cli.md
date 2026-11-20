@@ -154,15 +154,15 @@ usage: agent-peer update [--yes]
 
 The command queries GitHub directly and does not contact a Broker, so it works with no Broker running. It replaces the file that the executable resolves to, so a symbolic link keeps pointing at the updated file. Replacing a system-level installation, which lives in a root-owned directory, requires `sudo agent-peer update`; that run restarts only the system-level service.
 
-- `--yes` skips the confirmation question. Without it the command asks `Update to <v>? [y/N]` and accepts `y` or `yes`, in any case, as confirmation. When standard input is not a terminal, the command refuses to run without `--yes`.
+- `--yes` skips the confirmation question. Without it the command asks `Update to <v>? [y/N]` and accepts `y` or `yes`, in any case, as confirmation. When standard input is not a terminal, the command refuses to run without `--yes`. When the current version is already the latest, no `--yes` is needed and the command runs with standard input that is not a terminal.
 
 The command proceeds in this order:
 
 1. Refuses a version that is not a formal release. A binary built from source without a release version, which reports `agent-peer dev`, cannot update itself.
 2. Locates the running executable and resolves symbolic links.
 3. Checks that it can write in the target's directory, before any download. Without permission it fails and suggests `sudo agent-peer update`.
-4. Refuses to continue when standard input is not a terminal and `--yes` is not given.
-5. Queries the latest formal release; drafts and prereleases are ignored. When the current version is already the latest, it prints `agent-peer <c> is up to date` and exits with code 0.
+4. Queries the latest formal release; drafts and prereleases are ignored. When the current version is already the latest, it prints `agent-peer <c> is up to date` and exits with code 0.
+5. Refuses to continue when standard input is not a terminal and `--yes` is not given.
 6. Prints the current and available versions, the release page when there is one, and the confirmation question.
 7. Downloads the archive for this platform and `checksums.txt`, verifies the archive's SHA-256, extracts the regular file named `agent-peer`, and runs the new binary's `--version` to confirm that it reports the expected version.
 8. Writes the new binary next to the target, gives it the same owner and mode as the old one, and renames it into place. The old version is not kept.

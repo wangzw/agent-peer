@@ -16,7 +16,7 @@ When a newer release exists, you see it in two places. The last line of `agent-p
 Update: 0.1.2 available (current 0.1.1); run agent-peer update
 ```
 
-The first tool result in each session ends with:
+When a newer release is available, a tool result in the session ends with:
 
 ```text
 agent-peer 0.1.2 is available (this host runs 0.1.1). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
@@ -46,7 +46,7 @@ User-level Brokers that run this binary keep the old version until they are rest
 Open Claude Code sessions must reconnect with /mcp or be restarted to use the new version.
 ```
 
-Add `--yes` to skip the question. When standard input is not a terminal, as in a script or a scheduled job, the command requires `--yes` and otherwise refuses with `standard input is not a terminal; run "agent-peer update --yes" to update without asking`.
+Add `--yes` to skip the question. When standard input is not a terminal, as in a script or a scheduled job, the command requires `--yes` and otherwise refuses with `standard input is not a terminal; run "agent-peer update --yes" to update without asking`. When the installed version is already the latest, the command runs without `--yes` even when standard input is not a terminal.
 
 Before downloading anything, the command checks that it can write to the directory that holds the binary. It then downloads the archive for this platform and this architecture, checks it against `checksums.txt`, and runs the new binary to make sure that it reports the expected version. Only then does it replace the binary, keeping the original mode and owner. If any step before the replacement fails, the command stops and leaves the binary and the service unchanged. If restarting the service fails after the replacement, the new binary is already installed; restart the service yourself as the error message describes.
 
