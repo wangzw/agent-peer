@@ -34,12 +34,12 @@ topics:
 
 ## 发送与回复
 
-说“给 <address> 发送 hello。”（模型会调用 `send_message`）。消息写入接收方会话的 inbox socket 后，发送方会话报告成功。
+说“给 `<address>` 发送 hello。”（模型会调用 `send_message`）。消息写入接收方会话的 inbox socket 后，发送方会话报告成功。
 
 接收方 Broker 把消息写进目标会话的 inbox socket，并附上接收方视角下的发送方地址。空闲的目标会话无需用户输入就会开始处理。会话可以用 `send_message` 向这个发送方地址发送消息。
 
 ## 没有共同 topic 时
 
-两个工作区的 `origin` 地址不同时，两个 Agent 不会出现在对方的列表里。经 agent-peer 之外的途径从另一位用户那里得知 topic 名，然后说“加入 topic <topic-name>。”（模型会调用 `join_topic`）。这个调用不需要任何其他 Agent 或用户批准。
+两个工作区的 `origin` 地址不同时，两个 Agent 不会出现在对方的列表里。经 agent-peer 之外的途径从另一位用户那里得知 topic 名，然后说“加入 topic `<topic-name>`。”（模型会调用 `join_topic`）。这个调用不需要任何其他 Agent 或用户批准。
 
 `list_topics` 显示本会话已加入的 topic 和本 Broker 知道的公开 topic；`leave_topic` 用于退出。不带名字调用 `join_topic` 或 `leave_topic` 时，作用于本会话的全部默认 topic，见 [topic]({{< relref "/docs/concepts/topics" >}})。不属于任何 topic 的 Agent 不会出现在任何其他 Agent 的列表里。

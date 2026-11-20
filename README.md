@@ -24,9 +24,9 @@ Reopen any Claude Code session that is already open, and check the registration 
 
 ## Try it
 
-On one host, start two sessions in the same project directory. Both join the same default topic, taken from the project configuration file `.agent-peer.yaml` or, when there is none, from the workspace's git origin address. Say “List the agents.” (the model calls `list_agents`), then “Send hello to <address>.” (the model calls `send_message`).
+On one host, start two sessions in the same project directory. Both join the same default topic, taken from the project configuration file `.agent-peer.yaml` or, when there is none, from the workspace's git origin address. Say “List the agents.” (the model calls `list_agents`), then “Send hello to `<address>`.” (the model calls `send_message`).
 
-Between two hosts, at least one must be able to reach port 17443 on the other. On the host that can be reached, say “Create a pairing key.” and approve the call (the model calls `create_pairing_key`); pass the key and the displayed address to the other host through a channel outside agent-peer. On the other host, say “Connect to the Broker at <address> with the key <key>.” and approve the call (the model calls `connect_broker`). Sessions on both hosts that share a topic can now see each other.
+Between two hosts, at least one must be able to reach port 17443 on the other. On the host that can be reached, say “Create a pairing key.” and approve the call (the model calls `create_pairing_key`); pass the key and the displayed address to the other host through a channel outside agent-peer. On the other host, say “Connect to the Broker at `<address>` with the key `<key>`.” and approve the call (the model calls `connect_broker`). Sessions on both hosts that share a topic can now see each other.
 
 [Getting Started](https://zhanwei.wang/agent-peer/docs/getting-started/) walks through both.
 

@@ -61,7 +61,7 @@ Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见
 
 ## 两台主机如何开始互相信任？
 
-两台主机里至少要有一台能连到另一台。在对方能连上的那台主机上说“生成一个配对密钥。”并批准这次调用（模型会调用 `create_pairing_key`），或运行 `agent-peer pairing-key create` 生成一次性配对密钥，连同显示的地址一起，通过系统之外的途径交给另一台。另一台说“连接到 <address> 上的 Broker，密钥是 <key>。”并批准这次调用（模型会调用 `connect_broker`），或运行 `agent-peer peer connect <address> --key <key>` 配对，使用该一次性密钥或接受方配置的预置静态密钥，此后双方各凭指纹认对方。见[配对]({{< relref "concepts/pairing.md" >}})与[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。
+两台主机里至少要有一台能连到另一台。在对方能连上的那台主机上说“生成一个配对密钥。”并批准这次调用（模型会调用 `create_pairing_key`），或运行 `agent-peer pairing-key create` 生成一次性配对密钥，连同显示的地址一起，通过系统之外的途径交给另一台。另一台说“连接到 `<address>` 上的 Broker，密钥是 `<key>`。”并批准这次调用（模型会调用 `connect_broker`），或运行 `agent-peer peer connect <address> --key <key>` 配对，使用该一次性密钥或接受方配置的预置静态密钥，此后双方各凭指纹认对方。见[配对]({{< relref "concepts/pairing.md" >}})与[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。
 
 ## 什么是 topic？需要自己创建吗？
 

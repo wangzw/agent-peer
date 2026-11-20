@@ -61,7 +61,7 @@ Yes. Run `agent-peer config set update.check false`; the `Update` line and the s
 
 ## How do two hosts start trusting each other?
 
-One host must be able to reach the other. On the host that can be reached, say “Create a pairing key.” and approve the call (the model calls `create_pairing_key`) or run `agent-peer pairing-key create`, and give it, with the displayed addresses, to the other host through a channel outside the system. The other host pairs by saying “Connect to the Broker at <address> with the key <key>.” and approving the call (the model calls `connect_broker`), or by running `agent-peer peer connect <address> --key <key>`, using that one-time key or a pre-provisioned static key configured on the accepting host, and from then on each side recognizes the other by fingerprint. See [Pairing]({{< relref "concepts/pairing.md" >}}) and [Pair two hosts]({{< relref "guides/pair-hosts.md" >}}).
+One host must be able to reach the other. On the host that can be reached, say “Create a pairing key.” and approve the call (the model calls `create_pairing_key`) or run `agent-peer pairing-key create`, and give it, with the displayed addresses, to the other host through a channel outside the system. The other host pairs by saying “Connect to the Broker at `<address>` with the key `<key>`.” and approving the call (the model calls `connect_broker`), or by running `agent-peer peer connect <address> --key <key>`, using that one-time key or a pre-provisioned static key configured on the accepting host, and from then on each side recognizes the other by fingerprint. See [Pairing]({{< relref "concepts/pairing.md" >}}) and [Pair two hosts]({{< relref "guides/pair-hosts.md" >}}).
 
 ## What is a topic, and do I need to create one?
 
