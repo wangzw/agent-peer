@@ -201,4 +201,4 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 | 仓库地址的规范化 | 已实现 | `internal/mcpserver/remote.go`（`normalizeRemote`） |
 | 工具调用转发与错误转换 | 已实现 | `internal/mcpserver/handlers_messaging.go`、`handlers_topics.go`、`handlers_brokers.go`、`handlers_config.go`（`handlers` 的各工具方法）、`internal/mcpserver/errtext.go`（`rpcError`、`codeName`） |
 | 更新提示 | 已实现 | `internal/mcpserver/updatehint.go`（`updateHint`、`middleware`、`take`）、`internal/mcpserver/update_status.go`（`brokerUpdateStatus`、`queryUpdateStatus`）、`internal/mcpserver/run.go` |
-| 升级工具 | 未实现 | — |
+| 升级工具 | 已实现 | `internal/mcpserver/handlers_update.go`（`UpdateBroker`、`updateBrokerError`）、`internal/mcpserver/tools.go`（`UpdateBrokerOut`、`addDestructiveTool`） |

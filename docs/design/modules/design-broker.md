@@ -82,7 +82,7 @@ service Local {
 
 `UpdateStatus` 不需要 Agent 身份，也不需要对配置文件的权限，与 `ListBrokers` 同一类。应答带 `current_version`、`available_version` 与 `release_url`；没有可用版本时 `available_version` 为空。`StatusResponse` 另带 `available_version`，字段号取下一个空号。只新增调用与字段，不提升本机协议版本；旧版本的 Broker 对 `UpdateStatus` 返回 `Unimplemented` 时，MCP 服务进程按没有可用版本处理。
 
-`ApplyUpdate` 不带参数与来源：Broker 自己调用 `update.Latest` 取本项目最新的正式发布版本，只有 `update.Newer(current, latest)` 为真时才执行，否则返回空的 `to_version`，不做任何改动。调用方不能指定版本或来源，也不能要求降级。应答带 `from_version`、`to_version` 与 `restarting`；`restarting` 为真表示二进制已替换、Broker 即将退出并由服务管理器重新启动。它要求调用方账户对配置文件有写权限，与 `SetConfig` 同档；用户级 Broker 的检查器恒允许。当前进程不是由服务管理器启动时返回 `failed_precondition`：Linux 上 `INVOCATION_ID` 为空，或 macOS 上 `XPC_SERVICE_NAME` 为空，即视为不是；系统级安装的说明给出 `sudo agent-peer service install --system`，用户级安装的说明给出 `agent-peer service install`。同一时间只允许一个 `ApplyUpdate` 执行，并发的请求返回 `aborted`。
+`ApplyUpdate` 不带参数与来源：Broker 自己调用 `update.Latest` 取本项目最新的正式发布版本，只有 `update.Newer(current, latest)` 为真时才执行，否则返回空的 `to_version`，不做任何改动。调用方不能指定版本或来源，也不能要求降级。应答带 `from_version`、`to_version` 与 `restarting`；`restarting` 为真表示二进制已替换、Broker 即将退出并由服务管理器重新启动。它要求调用方账户对配置文件有写权限，与 `SetConfig` 同档；用户级 Broker 的检查器恒允许。当前进程不是由服务管理器启动的服务进程时返回 `failed_precondition`：向该级别的服务管理器查询服务的主进程 PID（Linux 上 `systemctl [--user] show --property MainPID --value agent-peer.service`，macOS 上 `launchctl print system/<label>` 或 `launchctl print gui/<uid>/<label>` 中的 `pid`），只有它等于本进程 PID 才算由服务管理器启动，查询失败、服务未安装、PID 不一致都按不是处理，环境变量不作判据。系统级安装的说明给出 `sudo agent-peer service install --system`，用户级安装的说明给出 `agent-peer service install`。同一时间只允许一个 `ApplyUpdate` 执行，并发的请求返回 `aborted`。
 
 终端命令不自行判断权限：`GetConfig`、`SetConfig`、`CreatePairingKey`、`Connect`、`Disconnect` 由 Broker 的拦截器按执行命令的账户判定，与上表相同，终端一侧不做预判，也不开特例。`permission_denied` 时，Broker 给出的英文错误文字原样写到标准错误，其中包含配置文件的路径，进程以退出码 1 结束。
 
@@ -434,7 +434,7 @@ Update: <v> available (current <c>); run agent-peer update
 1. 标准输入不是终端且没有 `--yes` 时拒绝执行；否则询问 y/N。
 2. 调用 `ApplyUpdate`。权限由 Broker 按调用方账户对配置文件的写权限判定，命令不预判；`permission_denied` 时把 Broker 的英文错误原样写到标准错误，以 1 退出，此时没有发出任何下载请求。
 3. 应答的 `to_version` 为空时输出已经是最新版本，以 0 退出。
-4. `restarting` 为真时，在 `updateRestartWait` 内轮询 `UpdateStatus`，直到 `current_version` 等于 `to_version` 才报告成功。上限取 60 秒，覆盖 `updateExitDelay`、服务管理器的重启间隔、launchd 默认 10 秒的节流与 Broker 的启动时间。超时报错，并给出该级别服务日志的位置。
+4. `restarting` 为真时，在 `updateRestartWait` 内轮询 `UpdateStatus`，直到 `current_version` 等于 `to_version` 才报告成功。上限取 60 秒，覆盖 `updateShutdownGrace`、服务管理器的重启间隔、launchd 默认 10 秒的节流与 Broker 的启动时间。超时报错，并给出该级别服务日志的位置。
 5. 输出更新结果。
 
 以 root 执行时选择系统级 Broker，同样走这条路径；选不出 Broker 时在本地替换。`agent-peer update` 不再调用 `service.Restart`。
@@ -462,10 +462,10 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 
 Broker 处理 `ApplyUpdate`：
 
-1. 判定服务管理器：Linux 上环境变量 `INVOCATION_ID` 非空，macOS 上 `XPC_SERVICE_NAME` 非空。两者都不满足时返回 `failed_precondition`，说明需要以服务方式运行，并给出该级别的 `service install` 命令。
-2. 当前版本不是正式发布版本时不更新，返回错误。取本项目最新的正式发布版本；`update.Newer` 不为真时返回空的 `to_version`，不做任何改动（`REQ-update-007`、`REQ-update-008`）。
+1. 判定服务管理器：向该级别的服务管理器查询服务的主进程 PID（Linux 上 `systemctl [--user] show --property MainPID --value agent-peer.service`，macOS 上 `launchctl print system/<label>` 或 `launchctl print gui/<uid>/<label>` 中的 `pid`），只有它等于本进程 PID 才算由服务管理器启动；查询失败、服务未安装、PID 不一致都按不是处理。不是时返回 `failed_precondition`，说明需要以服务方式运行，并给出该级别的 `service install` 命令。
+2. 取本项目最新的正式发布版本。当前版本不是正式发布版本时，`update.Newer` 视为不更新，按已是最新处理；否则 `update.Newer` 不为真时返回空的 `to_version`，不做任何改动（`REQ-update-007`、`REQ-update-008`）。
 3. 目标为 `os.Executable()` 解析符号链接后的路径，调用 `update.Apply`。失败时写一条 `update_failed` 审计记录，带调用方账户与原因，返回错误；二进制不变，进程不退出。
-4. 成功时先写一条 `update_applied` 审计记录，记录调用方账户与新旧版本，再把带 `restarting=true` 的应答完整发出。应答发出后等 `updateExitDelay`（500 毫秒，让应答经本机 socket 送达调用方）再取消运行上下文，走正常关闭流程，退出码为 0；服务管理器按 `Restart=always` 或 `KeepAlive` 用新二进制拉起。
+4. 成功时先写一条 `update_applied` 审计记录，记录调用方账户与新旧版本，再把带 `restarting=true` 的应答完整发出。应答发出后等 `updateShutdownGrace`（500 毫秒，让应答经本机 socket 送达调用方）再取消运行上下文，走正常关闭流程，退出码为 0；服务管理器按 `Restart=always` 或 `KeepAlive` 用新二进制拉起。
 5. 同一时间只允许一个升级执行；第一个完成之前到达的请求返回 `aborted`。
 
 `update_applied` 与 `update_failed` 都不记录 URL 以外的敏感内容。
@@ -564,4 +564,4 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 配对与对端管理的本机调用 | 已实现 | `internal/broker/connect_rpc.go`、`internal/broker/disconnect_rpc.go`、`internal/broker/pairkey_rpc.go`、`internal/broker/listbrokers.go`、`internal/broker/peerinfo.go`；非对端的列出由名片与公开 topic 接入 |
 | 配置读写与审计的本机调用 | 已实现 | `internal/broker/configrpc.go`、`internal/broker/auditrpc.go` |
 | 终端命令 | 已实现 | `cmd/agent-peer`、`internal/mcpserver/termcmd`、`cmd/agent-peer/service_cmd.go` |
-| 更新检查与自我更新 | 部分实现 | `internal/broker/updatecheck.go`（`startUpdateChecks`、`checkForUpdate`、`UpdateStatus`）、`internal/broker/update/`（`Latest`、`Newer`、`Apply`）、`internal/broker/service/restart.go`（`Restart`）、`cmd/agent-peer/update_cmd.go` |
+| 更新检查与自我更新 | 已实现 | `internal/broker/updatecheck.go`（`startUpdateChecks`、`checkForUpdate`、`UpdateStatus`）、`internal/broker/update/`（`Latest`、`Newer`、`Apply`）、`internal/broker/update_rpc.go`（`ApplyUpdate`、`detectServiceManager`、`runningUnderServiceManager`）、`internal/broker/service/mainpid.go`（`MainPID`）、`cmd/agent-peer/update_cmd.go`、`cmd/agent-peer/update_rpc.go` |
