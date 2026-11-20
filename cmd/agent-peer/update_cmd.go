@@ -41,8 +41,8 @@ var updateRestartWait = 60 * time.Second
 var updateStatusPollDelay = 250 * time.Millisecond
 
 // Test seams for the parts of the update command that reach the operating
-// system. The command's GitHub requests and the service restart are reached
-// through deps so an ordinary test double covers them as well.
+// system. The command's GitHub requests are reached through deps so an
+// ordinary test double covers them as well.
 var (
 	updateExecutable   = os.Executable
 	updateEvalSymlinks = filepath.EvalSymlinks
@@ -114,8 +114,10 @@ func (a *app) updateCmd(ctx context.Context, args []string) int {
 	return a.reportBrokerUpdate(ctx, result)
 }
 
-// updateLocal replaces a user-level binary in place and restarts the
-// user-level service that runs it. The user has already confirmed the update.
+// updateLocal replaces a user-level binary in place. It starts and stops
+// nothing: a Broker restarting itself does that through its service manager,
+// and an installed service may have been stopped on purpose. The user has
+// already confirmed the update.
 func (a *app) updateLocal(ctx context.Context, current string) int {
 	target, err := updateTarget()
 	if err != nil {
