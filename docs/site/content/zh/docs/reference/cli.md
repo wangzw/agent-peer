@@ -22,6 +22,8 @@ Commands:
   peer connect <address> --key <key> [--alias <alias>]
                               pair with another Broker
   peer disconnect <broker>    remove a pairing
+  update [--yes]              update to the latest release and restart the
+                              installed service; --yes skips the question
   service install [--system]  install and start the Broker as a user-level service,
                               or system-level with --system
   service uninstall [--system]
@@ -54,6 +56,14 @@ Commands:
 - `Peers`：每个对端的别名、指纹、本 Broker 的角色、状态、链路状态、对外地址与详细信息。
 
 某一节为空时打印为 `Agents: none` 或 `Peers: none`。没有 Broker 配置文件的读权限时，只列出调用方自己的 Agent；对端与链路照常显示。
+
+有更新的正式发布版本时，`agent-peer status` 在最后多打印一行：
+
+```text
+Update: <v> available (current <c>); run agent-peer update
+```
+
+没有可用版本时不打印这一行。关闭 `update.check` 后它立即消失：Broker 不再检查，也不再报告可用版本。两个更新相关的键见[配置键]({{< relref "docs/reference/configuration" >}})。
 
 ## agent-peer audit
 
@@ -133,6 +143,56 @@ Addresses:
 - `broker` 写对端的别名或完整的 64 位十六进制指纹。
 
 需要 Broker 配置文件的写权限。用法错误以退出码 2 结束，其余失败以退出码 1 结束。
+
+## agent-peer update
+
+检查 GitHub 上是否有最新的正式发布版本，经确认后替换正在运行的二进制，并重启已安装的服务。
+
+```text
+usage: agent-peer update [--yes]
+```
+
+命令直接查询 GitHub，不联系 Broker，没有 Broker 在运行也能用。它替换的是可执行文件解析符号链接后实际指向的文件，符号链接本身不变。替换系统级安装要用 `sudo agent-peer update`，因为系统级安装所在的目录属于 root；这样运行只重启系统级服务。
+
+- `--yes` 跳过确认问题。不给时，命令询问 `Update to <v>? [y/N]`，输入 `y` 或 `yes`（不区分大小写）即确认。标准输入不是终端时，没有 `--yes` 就拒绝执行。
+
+命令按以下顺序执行：
+
+1. 当前版本不是正式发布版本时拒绝执行。从源码构建、未带发布版本号的二进制报告 `agent-peer dev`，不能自我更新。
+2. 定位正在运行的可执行文件，并解析符号链接。
+3. 检查能否写入目标所在的目录，这一步先于任何下载。没有写权限时失败，并提示改用 `sudo agent-peer update`。
+4. 没有给 `--yes` 且标准输入不是终端时，拒绝执行。
+5. 查询最新的正式发布版本，草稿与预发布不算。已经是最新版本时，输出 `agent-peer <c> is up to date`，以退出码 0 结束。
+6. 打印当前版本、可用版本、发布页面地址（有的话），并询问是否更新。
+7. 下载本平台与架构的发布包和 `checksums.txt`，核对发布包的 SHA-256，取出其中名为 `agent-peer` 的普通文件，并运行新二进制的 `--version`，确认它报告的版本符合预期。
+8. 在目标所在的目录写入新二进制，把属主与权限改成与原文件相同，再改名到目标路径。旧版本不保留。
+9. 重启调用方所在级别已安装的服务：以 root 运行时是系统级服务，否则是用户级服务。没有安装为服务时，提示自行重启正在运行的 Broker。
+10. 提示已经打开的 Claude Code 会话要用 `/mcp` 重连或重开会话。
+
+更新成功的输出如下。只有发布填了地址时才出现 `Release:` 一行。
+
+```text
+agent-peer 0.1.1 is installed; version 0.1.2 is available.
+Release: https://github.com/wangzw/agent-peer/releases/tag/v0.1.2
+Update to 0.1.2? [y/N] y
+agent-peer 0.1.2 is installed.
+Restarted the agent-peer service.
+User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.
+Open Claude Code sessions must reconnect with /mcp or be restarted to use the new version.
+```
+
+给了 `--yes` 时不打印询问。用户回答 `n` 时，命令输出 `Update canceled; the binary and service were not changed.`，以退出码 0 结束。没有安装为服务时，重启那一行换成 `The Broker is not installed as a service; restart it to use the new version.`。
+
+失败信息写到标准错误，前缀为 `agent-peer update: `，包括：
+
+- `version "dev" is not a release build; only release builds can update themselves`
+- `cannot write to <dir>: ...`，随后是 `run "sudo agent-peer update" to update a system-level installation`
+- `standard input is not a terminal; run "agent-peer update --yes" to update without asking`
+- `checksum mismatch for <archive>`
+- `downloaded binary reported "<x>", want "agent-peer <v>"`
+- `restarting the service: ...`
+
+用法错误以退出码 2 结束，其余失败以退出码 1 结束。更新成功、已是最新与取消更新都以退出码 0 结束。
 
 ## agent-peer service install
 

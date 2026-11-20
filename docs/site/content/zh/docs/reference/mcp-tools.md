@@ -45,6 +45,16 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer。用 `claude
 
 `get_config` 返回 `entries`，每项有 `key` 和 `value`。密钥类键的值只显示 `(set)` 或 `(not set)`。`set_config` 返回该键的 `old_value` 和 `new_value`。
 
+### 更新提示
+
+每个 MCP 服务进程在第一次工具调用时向 Broker 查询更新状态，此后最多每 10 分钟查询一次。已知有更新的正式发布版本时，该次工具结果的末尾多出一段文本：
+
+```text
+agent-peer <v> is available (this host runs <c>). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
+```
+
+`<v>` 是可用版本，`<c>` 是当前版本。同一个版本在一个会话中只提示一次；会话开着期间出了新版本，之后的工具调用会再提示一次。以工具错误结束的调用同样附带。查询失败或超时、Broker 是旧版而不支持该查询，或 `update.check` 关闭时，不附提示，工具结果保持原样。会话里没有安装更新的工具，更新要在终端运行 `agent-peer update`。
+
 ## 配置文件权限
 
 表中的“无”“读”“写”指调用方账户对 Broker 配置文件的访问级别。账户取自操作系统为本机 socket 另一端进程提供的凭据，不采信调用方的陈述。

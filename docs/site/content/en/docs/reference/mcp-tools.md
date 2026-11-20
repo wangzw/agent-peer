@@ -45,6 +45,16 @@ A Claude Code session reaches agent-peer through an MCP server named `peer`. Reg
 
 `get_config` returns `entries`, each with a `key` and a `value`. For a secret key the value is only `(set)` or `(not set)`. `set_config` returns the key with its `old_value` and `new_value`.
 
+### Update notice
+
+Each MCP server process queries the Broker for the update state on its first tool call, and then at most once every 10 minutes. When a newer formal release is known, that tool result ends with one more text block:
+
+```text
+agent-peer <v> is available (this host runs <c>). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
+```
+
+`<v>` is the available version and `<c>` is the current version. A session shows the notice once for a given version; if a newer release appears while the session stays open, a later tool call carries the notice again. A tool call that ends in a tool error still carries it. The notice is omitted and the tool result is unchanged when the query fails or times out, when the Broker does not support the query because it is an older Broker, or when `update.check` is off. The session has no tool that installs an update; run `agent-peer update` in a terminal.
+
 ## Config-file permission
 
 The permission column in the table names the level of access the calling account has to the Broker's configuration file. The account is taken from the process credentials the operating system reports for the local socket, not from anything the call says.

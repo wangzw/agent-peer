@@ -39,6 +39,14 @@ No. An account runs at most one Broker, and starting another one with a differen
 
 Starting with 0.1.1, the default alias no longer contains the listen port: on a host named `workstation`, a system Broker reports `workstation` instead of the old `workstation-17443`, and the user Broker of account alice reports `workstation.alice`. A Broker that you upgraded from 0.1.0 and never gave `broker.alias` therefore usually reports a different alias, and the agent addresses your peers see change with it, unless a peer already uses a local alias for it; a session that saved an old address has to use the new one. A peer handles a collision with an alias it already knows by giving the renamed Broker a local alias of its own, so an existing address does not start pointing to a different Broker. To keep the old alias, set `broker.alias` in the configuration file, for example back to `workstation-17443`. This is the same however you upgraded: with the online install command, with `install.sh` from a release archive, with `agent-peer update`, or by replacing the binary by hand.
 
+## How do I update agent-peer?
+
+Run `agent-peer update` in a terminal; for a system-level installation, run `sudo agent-peer update`. The command asks GitHub for the latest release, verifies the download, replaces the binary, and restarts the installed service; sessions that are already open must reconnect with `/mcp` or be restarted. See [Update agent-peer]({{< relref "guides/update.md" >}}).
+
+## Can I turn off update checks?
+
+Yes. Run `agent-peer config set update.check false`; the `Update` line and the session notice disappear immediately, and no further checks are made. See [Update agent-peer]({{< relref "guides/update.md" >}}) for how checks and updates work, or the [security model]({{< relref "security.md" >}}) for what a check sends to GitHub.
+
 ## How do two hosts start trusting each other?
 
 One host must be able to reach the other. On the host that can be reached, create a one-time pairing key with `create_pairing_key` or `agent-peer pairing-key create` and give it, with the displayed addresses, to the other host through a channel outside the system. The other host pairs with `connect_broker` or `agent-peer peer connect <address> --key <key>`, using that one-time key or a pre-provisioned static key configured on the accepting host, and from then on each side recognizes the other by fingerprint. See [Pairing]({{< relref "concepts/pairing.md" >}}) and [Pair two hosts]({{< relref "guides/pair-hosts.md" >}}).

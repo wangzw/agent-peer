@@ -12,3 +12,4 @@ weight: 4
 - [把 Broker 安装为服务]({{< relref "run-as-service.md" >}})：让 Broker 随登录或开机启动。
 - [运行系统级 Broker]({{< relref "system-broker.md" >}})：用一台主机上的 Broker 服务多个账户。
 - [以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}})：说明谁可以改什么。
+- [更新 agent-peer]({{< relref "update.md" >}})：用 `agent-peer update` 安装新版本。

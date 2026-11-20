@@ -67,6 +67,10 @@ pairing:
 | `link.keepalive_interval` | duration | `15s` | Keepalive probe interval. gRPC raises an interval below 10 seconds to 10 seconds. | Yes |
 | `link.keepalive_timeout` | duration | `10s` | Deadline for a keepalive reply. | Yes |
 | `log.level` | string | `info` | Run log level: `debug`, `info`, `warn` or `error`. | Yes |
+| `update.check` | boolean | `true` | Whether the Broker periodically checks GitHub for a newer formal release. When false, the Broker sends no check requests. | Yes |
+| `update.check_interval` | duration | `24h` | How often the Broker checks for a newer release. The minimum is `1h`. | Yes |
+
+The update check contacts GitHub. [Security model]({{< relref "docs/security" >}}) describes what it sends and what it receives. `agent-peer update` also contacts GitHub, but only when you run it.
 
 When `broker.alias` is not set, a system Broker uses the first segment of the system hostname, the part before the first `.`. A user Broker uses that segment, a `.`, and the name of the account that runs it, for example `workstation` and `workstation.alice`. The alias does not depend on the listen address, the listen port, or the advertised addresses. A character outside the alias character set is replaced with `-`. When the account name cannot be found, the decimal uid takes its place, for example `workstation.1000`. When the hostname cannot be found, the hostname part is `broker`. An alias longer than 24 characters is shortened first in its hostname part, which keeps at least 1 character, and, if it is still too long, then in its account part. After an upgrade from 0.1.0, a Broker without this key usually reports a different alias; a Broker that did not listen and whose hostname is already a single segment keeps the same alias. Set the key here to keep the old one, such as `workstation-17443`.
 
@@ -81,11 +85,12 @@ When `broker.alias` is not set, a system Broker uses the first segment of the sy
 - `broker.local_socket_group` must name a group that exists; startup fails when it does not.
 - `broker.local_socket_mode` accepts 3 or 4 octal digits, up to `0777`.
 - `pairing.static_key` accepts 16 to 128 characters; an empty value means no static key.
+- `update.check_interval` must be at least `1h`.
 
 A value that fails a check is rejected, and the configuration remains as it was.
 
 ## Changing the configuration
 
-`set_config` takes the new value as text and returns the old and new values. `agent-peer config set` does the same from the terminal and follows the same rules. When either changes a key that the template left commented out, it uncomments that line at the same position and writes the new value, leaving the rest of the file unchanged. When the file does not exist, the file it creates holds only that key. Neither can change `pairing.static_key`, and neither can change `broker.listen` while the Broker runs with `--listen`. When the file is edited by hand, the Broker applies the valid changes; a key whose value is invalid keeps its old value and the Broker writes an error to its log.
+`set_config` takes the new value as text and returns the old and new values. `agent-peer config set` does the same from the terminal and follows the same rules. When either changes a key that the template left commented out, it uncomments that line at the same position and writes the new value, leaving the rest of the file unchanged. When the file does not exist, the file it creates holds only that key. Neither can change `pairing.static_key`, and neither can change `broker.listen` while the Broker runs with `--listen`. A change to `update.check_interval` does not interrupt the current check cycle and applies from the next one. Setting `update.check` to false stops the checks and clears the reported version. When the file is edited by hand, the Broker applies the valid changes; a key whose value is invalid keeps its old value and the Broker writes an error to its log.
 
 The file locations and their permissions are listed under [Files and paths]({{< relref "docs/reference/files" >}}). Which topics sessions join by default is described under [Project configuration file]({{< relref "docs/reference/project-config" >}}).

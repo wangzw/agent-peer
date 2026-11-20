@@ -39,6 +39,14 @@ Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见
 
 从 0.1.1 起，默认别名不再包含监听端口：主机名为 `workstation` 的系统级 Broker 报出 `workstation`，不再是旧形式 `workstation-17443`；账户 alice 的用户级 Broker 报出 `workstation.alice`。因此，从 0.1.0 升级、又没有设置 `broker.alias` 的 Broker 别名通常会变，对端看到的 Agent 地址也随之改变，除非对端已经为它设了本地别名；保存了旧地址的会话要改用新地址。对端遇到与已有别名冲突时会自行处理：为改了别名的 Broker 生成一个本地别名，原有地址不会因此指向另一个 Broker。想沿用旧别名，就在配置文件里设置 `broker.alias`，例如设回 `workstation-17443`。无论用哪种方式升级，包括在线安装、归档里的 `install.sh`、`agent-peer update` 或手工替换二进制，情形都一样。
 
+## 怎样更新 agent-peer？
+
+在终端运行 `agent-peer update`；系统级安装要运行 `sudo agent-peer update`。命令向 GitHub 查询最新的正式发布版本，校验下载内容，替换二进制，并重启已安装的服务；已经打开的会话要用 `/mcp` 重连或重开后才会用上新版本。见[更新 agent-peer]({{< relref "guides/update.md" >}})。
+
+## 能关闭更新检查吗？
+
+能。运行 `agent-peer config set update.check false`，`Update` 一行和会话里的提示会立刻消失，之后不再检查。检查与更新的工作方式见[更新 agent-peer]({{< relref "guides/update.md" >}})，检查向 GitHub 发送什么见[安全模型]({{< relref "security.md" >}})。
+
 ## 两台主机如何开始互相信任？
 
 两台主机里至少要有一台能连到另一台。在对方能连上的那台主机上用 `create_pairing_key` 或 `agent-peer pairing-key create` 生成一次性配对密钥，连同显示的地址一起，通过系统之外的途径交给另一台。另一台用 `connect_broker` 或 `agent-peer peer connect <address> --key <key>` 配对，使用该一次性密钥或接受方配置的预置静态密钥，此后双方各凭指纹认对方。见[配对]({{< relref "concepts/pairing.md" >}})与[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。

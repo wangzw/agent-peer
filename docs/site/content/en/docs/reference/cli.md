@@ -22,6 +22,8 @@ Commands:
   peer connect <address> --key <key> [--alias <alias>]
                               pair with another Broker
   peer disconnect <broker>    remove a pairing
+  update [--yes]              update to the latest release and restart the
+                              installed service; --yes skips the question
   service install [--system]  install and start the Broker as a user-level service,
                               or system-level with --system
   service uninstall [--system]
@@ -54,6 +56,14 @@ Connects to a running Broker, without starting one, and prints two tables:
 - `Peers`: each peer's alias, fingerprint, this Broker's role, status, link state, advertised addresses and detail.
 
 An empty section is printed as `Agents: none` or `Peers: none`. Without read permission on the Broker's configuration file, only the caller's own agents are listed; peers and links are still shown.
+
+When a newer formal release is available, `agent-peer status` prints one more line at the end:
+
+```text
+Update: <v> available (current <c>); run agent-peer update
+```
+
+No newer release means no such line. Turning off `update.check` removes the line: the Broker stops checking and stops reporting an available version. [Configuration keys]({{< relref "docs/reference/configuration" >}}) lists the two update keys.
 
 ## agent-peer audit
 
@@ -133,6 +143,56 @@ Removes the pairing with a Broker and prints one line, `Disconnected <broker>`.
 - `broker` is the peer's alias or its full 64-character hexadecimal fingerprint.
 
 Requires write permission on the Broker's configuration file. A usage error exits with code 2; any other failure exits with code 1.
+
+## agent-peer update
+
+Checks GitHub for the latest formal release and, after confirmation, replaces the running binary and restarts the installed service.
+
+```text
+usage: agent-peer update [--yes]
+```
+
+The command queries GitHub directly and does not contact a Broker, so it works with no Broker running. It replaces the file that the executable resolves to, so a symbolic link keeps pointing at the updated file. Replacing a system-level installation, which lives in a root-owned directory, requires `sudo agent-peer update`; that run restarts only the system-level service.
+
+- `--yes` skips the confirmation question. Without it the command asks `Update to <v>? [y/N]` and accepts `y` or `yes`, in any case, as confirmation. When standard input is not a terminal, the command refuses to run without `--yes`.
+
+The command proceeds in this order:
+
+1. Refuses a version that is not a formal release. A binary built from source without a release version, which reports `agent-peer dev`, cannot update itself.
+2. Locates the running executable and resolves symbolic links.
+3. Checks that it can write in the target's directory, before any download. Without permission it fails and suggests `sudo agent-peer update`.
+4. Refuses to continue when standard input is not a terminal and `--yes` is not given.
+5. Queries the latest formal release; drafts and prereleases are ignored. When the current version is already the latest, it prints `agent-peer <c> is up to date` and exits with code 0.
+6. Prints the current and available versions, the release page when there is one, and the confirmation question.
+7. Downloads the archive for this platform and `checksums.txt`, verifies the archive's SHA-256, extracts the regular file named `agent-peer`, and runs the new binary's `--version` to confirm that it reports the expected version.
+8. Writes the new binary next to the target, gives it the same owner and mode as the old one, and renames it into place. The old version is not kept.
+9. Restarts the installed service at the caller's level: the system-level service when run as root, the user-level service otherwise. Without an installed service it asks you to restart the running Broker yourself.
+10. Reminds you that open Claude Code sessions must reconnect with `/mcp` or be restarted.
+
+The output of a successful update looks like this. `Release:` appears only when the release has a URL.
+
+```text
+agent-peer 0.1.1 is installed; version 0.1.2 is available.
+Release: https://github.com/wangzw/agent-peer/releases/tag/v0.1.2
+Update to 0.1.2? [y/N] y
+agent-peer 0.1.2 is installed.
+Restarted the agent-peer service.
+User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.
+Open Claude Code sessions must reconnect with /mcp or be restarted to use the new version.
+```
+
+With `--yes` the question is not printed. When the user answers `n`, the command prints `Update canceled; the binary and service were not changed.` and exits with code 0. Without an installed service, the restart line is replaced by `The Broker is not installed as a service; restart it to use the new version.`
+
+Failures are written to standard error with the prefix `agent-peer update: `. The messages include:
+
+- `version "dev" is not a release build; only release builds can update themselves`
+- `cannot write to <dir>: ...`, followed by `run "sudo agent-peer update" to update a system-level installation`
+- `standard input is not a terminal; run "agent-peer update --yes" to update without asking`
+- `checksum mismatch for <archive>`
+- `downloaded binary reported "<x>", want "agent-peer <v>"`
+- `restarting the service: ...`
+
+A usage error exits with code 2. Any other failure exits with code 1. A successful update, an up-to-date result and a canceled update all exit with code 0.
 
 ## agent-peer service install
 

@@ -12,3 +12,4 @@ These guides walk through the tasks agent-peer is built for. Each one starts fro
 - [Run the Broker as a service]({{< relref "run-as-service.md" >}}): keep the Broker running at login or at boot.
 - [Run a system Broker]({{< relref "system-broker.md" >}}): serve several accounts on one host.
 - [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}): explain who can change what.
+- [Update agent-peer]({{< relref "update.md" >}}): install newer releases with `agent-peer update`.

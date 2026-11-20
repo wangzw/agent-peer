@@ -67,6 +67,10 @@ pairing:
 | `link.keepalive_interval` | 时长 | `15s` | 保活探测的间隔。gRPC 会把小于 10 秒的间隔提高到 10 秒。 | 可以 |
 | `link.keepalive_timeout` | 时长 | `10s` | 保活探测的应答期限。 | 可以 |
 | `log.level` | 字符串 | `info` | 运行日志级别：`debug`、`info`、`warn` 或 `error`。 | 可以 |
+| `update.check` | 布尔 | `true` | Broker 是否周期检查 GitHub 上是否有更新的正式发布版本。为 `false` 时不发出检查请求。 | 可以 |
+| `update.check_interval` | 时长 | `24h` | Broker 检查新版本的间隔。下限为 `1h`。 | 可以 |
+
+更新检查会访问 GitHub。[安全模型]({{< relref "docs/security" >}})说明它发送什么、接收什么。`agent-peer update` 也访问 GitHub，但只在你运行它时。
 
 未设置 `broker.alias` 时，系统级 Broker 取系统主机名的第一段，即第一个 `.` 之前的部分；用户级 Broker 取这一段、`.` 和运行它的账户名，例如 `workstation` 与 `workstation.alice`。别名与监听地址、监听端口和对外地址都无关。不在别名字符集内的字符换成 `-`。账户名查不到时用十进制 uid 代替，例如 `workstation.1000`。主机名取不到时，主机名部分取 `broker`。别名超过 24 个字符时先截短主机名部分，主机名部分至少保留 1 个字符，仍然超长再截短账户名部分。从 0.1.0 升级后，没有设置此项的 Broker 别名通常会变；不监听、主机名本来就是单个段的 Broker 除外，它的别名不变。要沿用旧别名就在这里设置此项，例如设回 `workstation-17443`。
 
@@ -81,11 +85,12 @@ pairing:
 - `broker.local_socket_group` 必须指向存在的组，不存在时启动失败。
 - `broker.local_socket_mode` 接受 3 或 4 位八进制数，最大 `0777`。
 - `pairing.static_key` 接受 16 至 128 个字符；空值表示不设静态密钥。
+- `update.check_interval` 不得小于 `1h`。
 
 未通过检查的值会被拒绝，配置保持原样。
 
 ## 修改配置
 
-`set_config` 以文本接收新值，返回旧值与新值。`agent-peer config set` 在终端做同样的事，规则相同。两者修改模板中写成注释的键时，都在注释所在位置取消注释并写入新值，文件其余内容不变。文件不存在时，新建的文件只写这一项。两者都不能修改 `pairing.static_key`，在 Broker 以 `--listen` 运行时也都不能修改 `broker.listen`。手工编辑文件时，Broker 采纳其中合法的改动；某个键的值不合法时，该键保留旧值，Broker 向日志写入一条错误。
+`set_config` 以文本接收新值，返回旧值与新值。`agent-peer config set` 在终端做同样的事，规则相同。两者修改模板中写成注释的键时，都在注释所在位置取消注释并写入新值，文件其余内容不变。文件不存在时，新建的文件只写这一项。两者都不能修改 `pairing.static_key`，在 Broker 以 `--listen` 运行时也都不能修改 `broker.listen`。修改 `update.check_interval` 不会中断当前检查周期，新值从下一个周期起生效。把 `update.check` 设为 `false` 会停止检查，并清除已报告的可用版本。手工编辑文件时，Broker 采纳其中合法的改动；某个键的值不合法时，该键保留旧值，Broker 向日志写入一条错误。
 
 文件位置与权限见[文件与路径]({{< relref "docs/reference/files" >}})。会话默认加入哪些 topic 见[项目配置文件]({{< relref "docs/reference/project-config" >}})。

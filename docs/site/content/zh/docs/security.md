@@ -54,3 +54,19 @@ agent-peer 写入时不带回复地址，所以经同一个用户级 Broker，�
 ## 操作系统账户是隔离边界
 
 用户级 Broker 只服务本账户，拒绝其他账户的调用。系统级 Broker 服务获准使用它的账户，并且只接受调用方账户所拥有的 inbox socket 的登记。同一个账户内部不再有进一步的隔离。
+
+## 更新检查会访问 GitHub
+
+每个 Broker 在启动后不久检查一次 GitHub 上有没有更新的正式发布版本，此后默认每 24 小时检查一次。`agent-peer update` 命令直接向 GitHub 查询，不经过 Broker。
+
+检查与下载全程只走 HTTPS。检查只访问 GitHub；下载可能被 GitHub 重定向到它的存储主机，按主机名放行的环境要把两者都放行。检查是向 `https://api.github.com/repos/wangzw/agent-peer/releases/latest` 发出的一个普通 GET 请求，不带额外请求头；仓库名 `wangzw/agent-peer` 写死在二进制里。执行更新时，命令按你确认过的 tag 取该版本，再从该版本的发布附件下载地址取得发布包与 `checksums.txt`。两种请求都不携带主机名、账户名、Agent 身份、配对信息或配置内容。
+
+检查失败只写一条 Debug 级日志，不影响其他功能；检查结果只保存在内存里，Broker 重启后不再保留。要停止检查，执行：
+
+```sh
+agent-peer config set update.check false
+```
+
+设置生效后，`agent-peer status` 里的 `Update` 一行和会话里的提示会立刻消失。没有外网的主机关掉检查即可；`agent-peer update` 只在你手动执行时才访问网络。命令读取标准的代理环境变量；系统级更新如何保留它们，见[更新 agent-peer]({{< relref "guides/update.md" >}})。
+
+只有你能安装新版本。会话无法触发更新；`agent-peer update` 会先征求确认，你输入 y 或 yes，或者加上 `--yes` 之后才安装。命令在替换二进制之前用 SHA-256 把发布包与 `checksums.txt` 比对，解压时只取名为 `agent-peer` 的普通文件，并运行新二进制的 `--version`，输出符合预期才继续。替换之前的任何一步失败，原有的二进制与服务都保持原样；替换之后重启服务失败时，新二进制已经装好，按报错手动重启服务即可，见[更新 agent-peer]({{< relref "guides/update.md" >}})。系统级安装需要管理员权限：执行 `sudo agent-peer update`，命令会在下载任何内容之前先检查目标目录的写权限。

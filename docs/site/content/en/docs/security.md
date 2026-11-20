@@ -54,3 +54,19 @@ agent-peer writes without a reply address, so everything written through one use
 ## The operating-system account is the isolation boundary
 
 A user Broker serves only its own account and rejects calls from other accounts. A system Broker serves the accounts allowed to use it, and accepts a registration only for an inbox socket owned by the calling account. Within one account there is no further separation.
+
+## Update checks contact GitHub
+
+Each Broker checks GitHub for a newer formal release shortly after it starts, then every 24 hours by default. The `agent-peer update` command queries GitHub directly and does not go through a Broker.
+
+Checks and downloads use HTTPS only. A check goes to GitHub. A download may be redirected from GitHub to its storage host, so a host-name allowlist must include both. A check is an ordinary GET with no extra request headers to `https://api.github.com/repos/wangzw/agent-peer/releases/latest`; the repository `wangzw/agent-peer` is fixed in the binary. When you run an update, the command fetches that release by the tag you confirmed, then downloads the archive and `checksums.txt` from the release's asset download addresses. Neither request carries a host name, account name, agent identity, pairing data or configuration.
+
+A failed check writes one debug-level log line and changes nothing else, and a check result is held in memory only until the Broker restarts. To stop the checks, run:
+
+```sh
+agent-peer config set update.check false
+```
+
+The `Update` line in `agent-peer status` and the notice in a session disappear as soon as the setting takes effect. On a host without network access, turning the checks off is enough; `agent-peer update` contacts GitHub only when you run it. The command reads the standard proxy environment variables; [Update agent-peer]({{< relref "guides/update.md" >}}) shows how to keep them across `sudo`.
+
+Only you can install a release. A session cannot start an update; `agent-peer update` asks for confirmation and installs only after you answer y or yes, or pass `--yes`. Before it replaces anything, it compares the archive with `checksums.txt` using SHA-256, extracts only a regular file named `agent-peer`, and runs the new binary's `--version`, accepting it only when the output reports the expected version. If any step before the replacement fails, the existing binary and the service are left unchanged; if restarting the service fails after the replacement, the new binary is already installed. [Update agent-peer]({{< relref "guides/update.md" >}}) describes how to restart the service. A system-level installation requires administrator rights: run `sudo agent-peer update`, and the command checks write permission on the target directory before downloading anything.
