@@ -2,6 +2,8 @@ package broker
 
 import (
 	"context"
+	"errors"
+	"io"
 	"slices"
 	"strings"
 	"sync"
@@ -39,6 +41,13 @@ func callTestListBrokers(t *testing.T, client localpb.LocalClient) (*localpb.Lis
 
 // rejectedRegister opens a Register stream, sends the first frame for f and
 // returns the error the stream receives.
+//
+// A rejected connection is answered with a trailers-only version_mismatch, so
+// Header returns once the Broker has refused the stream. Waiting for that
+// answer before the first Send makes the refusal win the race on every runner:
+// Send then reports io.EOF because the stream already ended, and the caller
+// must read the real status from Recv. Without the wait the interleaving
+// depends on scheduling, and macOS runners hit it intermittently.
 func rejectedRegister(t *testing.T, client localpb.LocalClient, f *fakesession.Fake) error {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -47,10 +56,17 @@ func rejectedRegister(t *testing.T, client localpb.LocalClient, f *fakesession.F
 	if err != nil {
 		return err
 	}
+	// Header reports no error for a trailers-only response; the status is left
+	// for Recv.
+	_, _ = stream.Header()
 	if err := stream.Send(&localpb.RegisterRequest{
 		InboxSocketPath: f.SocketPath(),
 		ClaudeConfigDir: f.ConfigDir(),
-	}); err != nil {
+	}); err != nil && !errors.Is(err, io.EOF) {
+		// A bidi Send reports io.EOF when the Broker had already ended the
+		// stream, and carries no status of its own. That is the normal outcome
+		// for a rejected connection once the refusal has arrived, so fall
+		// through to Recv, which holds the real error.
 		return err
 	}
 	_, err = stream.Recv()
