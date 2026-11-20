@@ -44,6 +44,9 @@ const (
 	// prints it. It runs as root, where the system configuration file grants
 	// write permission without changing the file mode.
 	systemPairKeyRole = "system-pair-key"
+	// systemUpdateStatusRole reads the version the system Broker runs and prints
+	// it. It runs as root, where the system socket admits the caller.
+	systemUpdateStatusRole = "system-update-status"
 
 	// serviceStartBound bounds the wait for launchd to start the Broker after
 	// install. RunAtLoad starts it immediately; the bound leaves room for a
@@ -78,6 +81,8 @@ func TestMain(m *testing.M) {
 		os.Exit(runAccessCheckRole())
 	case getConfigRole:
 		os.Exit(runGetConfigRole())
+	case systemUpdateStatusRole:
+		os.Exit(runSystemUpdateStatusRole())
 	}
 	// These tests uninstall the real io.github.wangzw.agent-peer services. A
 	// developer machine may have them installed for everyday use, so refuse to
@@ -118,6 +123,27 @@ func runSystemPairKeyRole() int {
 		return 1
 	}
 	fmt.Println(resp.GetKey())
+	return 0
+}
+
+// runSystemUpdateStatusRole prints the version the system Broker reports. The
+// test runs this binary as root so the system socket admits the caller.
+func runSystemUpdateStatusRole() int {
+	oracle, err := node.DialOracle(systemSocketPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "system-update-status: %v\n", err)
+		return 1
+	}
+	defer func() { _ = oracle.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	resp, err := oracle.UpdateStatus(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "system-update-status: %v\n", err)
+		return 1
+	}
+	fmt.Println(resp.GetCurrentVersion())
 	return 0
 }
 
