@@ -242,6 +242,27 @@ The command checks write permission on the binary's directory before downloading
 
 An update does not reconnect sessions that are already open. Reconnect the MCP server in each session with `/mcp`, or restart the session, so that it runs the new version.
 
+### Administering a system-level Broker without root
+
+Installing a system-level Broker creates the `agent-peer` group and gives the configuration file to it. On a fresh install the install script asks whether to add the account that ran it to the group; answer `y`, or pass `--join-admin-group` to add it without asking. Log in again, or run `newgrp agent-peer`, before using the group membership. Set another group name at install time with `--admin-group <name>`.
+
+Members of the group run the commands that need write permission on the configuration file without `sudo`:
+
+```sh
+agent-peer pairing-key create
+agent-peer config set broker.alias buildbox
+agent-peer peer connect <address> --key <key>
+```
+
+The group is trusted as if its members could edit the configuration file by hand; it does not make them root. Installing and uninstalling the system-level service still needs root.
+
+For an existing installation, give the file to the group with the command the install output prints:
+
+```sh
+sudo chgrp agent-peer /etc/agent-peer/config.yaml
+sudo chmod 0660 /etc/agent-peer/config.yaml
+```
+
 ### Files
 
 | File | User-level | System-level |

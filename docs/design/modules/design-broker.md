@@ -104,7 +104,7 @@ service Local {
 | `agent-peer peer connect <address> --key <key> [--alias <alias>]` | `Connect` | 发起配对（`REQ-broker-config-039`） |
 | `agent-peer peer disconnect <broker>` | `Disconnect` | 解除配对（`REQ-broker-config-039`） |
 | `agent-peer update [--yes]` | — | 检查并安装本项目的新版本；直接查询 GitHub，不依赖 Broker，`--yes` 跳过询问（`REQ-update-004` 至 `REQ-update-006`） |
-| `agent-peer service install [--system]` | — | 安装并立即启动用户级服务，或系统级服务；此后的登录或系统启动由服务管理器负责（`REQ-broker-config-015`） |
+| `agent-peer service install [--system] [--admin-group <名称>]` | — | 安装并立即启动用户级服务，或系统级服务；此后的登录或系统启动由服务管理器负责。系统级安装创建管理组并让新配置文件的属组为它（`REQ-broker-config-015`、`REQ-broker-config-043`） |
 | `agent-peer service uninstall [--system]` | — | 停止并卸载服务，保留配置、身份与审计日志 |
 
 `peer connect` 的 `<address>` 与 `connect_broker` 工具相同，写成 `address:port` 或 `hostname(address:port)`；`peer disconnect` 的 `<broker>` 与 `disconnect_broker` 工具相同，写别名或 64 位十六进制指纹。每个终端命令都支持 `-h` 与 `--help`；参数错误时打印该命令的用法，并以用法错误的退出码（2）结束。
@@ -154,7 +154,9 @@ macOS 上，用户级 plist 写到 `~/Library/LaunchAgents/io.github.wangzw.agen
 
 `--system` 时按解析符号链接后的真实路径检查二进制及其每一级目录：属主必须是 root，组与其他人不可写，二进制对其他人可执行，各级目录对其他人可进入；二进制位于临时目录下时，用户级与系统级都拒绝安装。
 
-安装时，该级别的配置文件不存在就生成一份列出全部配置项的模板。系统级写到 `/etc/agent-peer/config.yaml`，以 root 为属主、`0` 为属组、`0600` 为权限，内容为 `config.Template(config.ModeSystem)`；用户级写到 `~/.agent-peer/config.yaml`，以本账户为属主、`0600` 为权限，内容为 `config.Template(config.ModeUser)`，所在目录不存在时按数据目录的规则创建。两者都以独占方式创建（`O_EXCL`），文件已存在时不改动；本机已有的配置文件不迁移，也不改写。安装输出写明“已生成配置文件 <路径>”或“沿用已有配置文件 <路径>”（`REQ-broker-config-040`）。
+安装时，该级别的配置文件不存在就生成一份列出全部配置项的模板。系统级写到 `/etc/agent-peer/config.yaml`，以 root 为属主、管理组为属组、`0660` 为权限，内容为 `config.Template(config.ModeSystem)`；用户级写到 `~/.agent-peer/config.yaml`，以本账户为属主、`0600` 为权限，内容为 `config.Template(config.ModeUser)`，所在目录不存在时按数据目录的规则创建。两者都以独占方式创建（`O_EXCL`），文件已存在时不改动；本机已有的配置文件不迁移，也不改写。安装输出写明“已生成配置文件 <路径>”或“沿用已有配置文件 <路径>”（`REQ-broker-config-040`）。
+
+系统级安装创建管理组：组不存在时 Linux 执行 `groupadd --system <名称>`，macOS 用 `dseditgroup` 创建；组已存在时直接使用，不改成员。组名默认为 `agent-peer`，由 `--admin-group` 指定；建组失败时安装失败，并且不改动配置文件。配置文件已存在时，内容、属组与权限都不动，安装输出给出把已有文件交给管理组的命令 `chgrp <组> <路径> && chmod 0660 <路径>`。发布包内的安装脚本询问是否把执行安装的账户加入该组，默认不加入（[ADR-admin-group](../../adr/adr-admin-group.md)，`REQ-broker-config-043`）。
 
 `service uninstall` 先停止并卸载服务，成功后才删除服务定义；停止失败时保留文件并返回错误。Linux 上执行 `systemctl --user disable --now agent-peer.service`，系统级去掉 `--user`，删除单元文件后执行 `daemon-reload`；`daemon-reload` 失败时恢复单元文件，使下一次卸载仍可完成。macOS 上执行 `launchctl bootout <域>/io.github.wangzw.agent-peer`，再删除 plist，bootout 的错误处理与安装相同。判断是否已安装看两样：单元文件或 plist 存在，或服务管理器仍有启用、加载状态；文件已删除但服务仍在加载的照样卸载。配置、身份与审计日志保留。没有安装过时命令直接成功并报告未安装，因此可以重复执行。`--system` 需要 root。
 
@@ -291,6 +293,8 @@ macOS 上，身份切换不经过 `setgroups`：Darwin 的 `setgroups` 与 `init
 Linux 上，账户与组经 `getent` 取自系统的账户数据库，来源由 NSS 配置决定，LDAP、SSSD、extrausers 等来源的账户同样可以派生权限检查进程。查询使用绝对路径 `/usr/bin/getent` 或 `/bin/getent`，子进程环境只给 `LANG=C`，账户名或 uid 之前加 `--`，单次调用限时 5 秒。应答要求恰好一行且与请求一致；getent 报告不存在时按账户数据库中没有该账户处理，找不到 getent、超时、其他退出码或格式异常时退回 `os/user` 并记一条 Warn，此时只有本地文件来源可见（[ADR-account-database-source](../../adr/adr-account-database-source.md)）。
 
 管理员把系统级 Broker 配置文件的写权限授予某个组，即把管理操作委托给该组的账户。判定结果不缓存，文件权限与组成员关系的变更都对下一次调用生效。系统级 Broker 的配置文件在安装系统级服务时创建；文件不存在时，需要权限的调用一律返回 `permission_denied`。
+
+系统级安装创建管理组并让新配置文件的属组为它，管理员也可以用 `chgrp` 与 `chmod` 把已有文件交给一个组（[ADR-admin-group](../../adr/adr-admin-group.md)，`REQ-broker-config-043`）。管理组等同于可以手工编辑配置文件，不获得配置文件以外的能力。`broker.listen` 的端口小于 1024 时，只在配置文件只有 root 可写时才生效：经 `SetConfig` 修改而调用方不是 root 的返回 `permission_denied`；文件可被组或其他人写入时，热加载保留旧值并记 Warn 与 `config_rejected` 审计，启动时拒绝启动。配置目录 `/etc/agent-peer` 以 root 为属主、组不可写，配置文件写入以 `O_NOFOLLOW` 打开，细节见 [config](design-config.md)。直接编辑配置文件触发的重载没有账户归属，审计的 `account` 与 `actor` 为空。系统级的 `agent-peer update` 仍需 sudo：它替换属 root 的二进制，不在本单元的委托范围内。
 
 权限判定由本机接口的 gRPC 拦截器执行，一元调用与流式调用分别由对应的拦截器判定：按调用的完整方法名查表，表项与外部接口契约中的权限表对应，拦截器经服务端选项挂到本机服务上。用户级 Broker 的检查器恒允许，不读文件；系统级的检查器派生权限检查进程，对配置文件做一次读或写的访问检查。表外的调用返回 `internal`；检查器自身失败也返回 `internal`，不放行。权限不足时返回 `permission_denied`，说明缺的是读权限还是写权限，并给出配置文件的路径。`Status` 不因缺少读权限而拒绝：拦截器把读判定记在调用的上下文上，`Status` 据此只省略其他账户的 Agent，对端与链路照常返回。
 

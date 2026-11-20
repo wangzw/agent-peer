@@ -54,6 +54,7 @@
 |---|
 | [Broker 配置经工具读写，确认交给 Claude Code](adr-config-through-tools.md) |
 | [管理操作以调用方对配置文件的权限为准](adr-management-by-config-file-permission.md) |
+| [系统级 Broker 的管理组委托](adr-admin-group.md) |
 
 ## 更新
 
