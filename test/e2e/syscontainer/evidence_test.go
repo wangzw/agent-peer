@@ -105,7 +105,7 @@ func TestCollectBootEvidence(t *testing.T) {
 		}
 		return ""
 	}
-	got := collectBootEvidence("proj", "/compose.yaml", run,
+	got := collectBootEvidence("proj", "/compose.yaml", "systemd", run,
 		func() string { return "MemAvailable: 1 kB" },
 		func() string { return "/proc/sys/kernel/pid_max: 1" })
 

@@ -259,6 +259,52 @@ func Run(t *testing.T, svc Service, extraEnv ...string) {
 	if InContainer() {
 		t.Fatalf("syscontainer: Run was called inside the container")
 	}
+	c := newTestContainer(t, extraEnv...)
+
+	argv := []string{
+		testBinaryPath + "/" + filepath.Base(testBinary),
+		"-test.run", runTestFlag(t.Name()),
+		"-test.v",
+		"-test.count=1",
+	}
+
+	var out []byte
+	var err error
+	switch svc {
+	case Plain:
+		args := []string{"compose", "-p", c.project, "-f", c.composeFile, "run", "--rm", "-T"}
+		args = append(args, c.forwardEnvArgs()...)
+		args = append(args, string(Plain))
+		args = append(args, argv...)
+		out, err = c.command(args...).CombinedOutput()
+	case Systemd:
+		if out, err = c.command("compose", "-p", c.project, "-f", c.composeFile, "up", "-d", "systemd").CombinedOutput(); err != nil {
+			t.Fatalf("syscontainer: starting systemd in %s: %v\n%s", c.project, err, strings.TrimSpace(string(out)))
+		}
+		c.waitSystemd("systemd")
+		args := []string{"compose", "-p", c.project, "-f", c.composeFile, "exec", "-T"}
+		args = append(args, c.forwardEnvArgs()...)
+		args = append(args, "systemd")
+		args = append(args, argv...)
+		out, err = c.command(args...).CombinedOutput()
+	default:
+		t.Fatalf("syscontainer: unknown service %q", svc)
+	}
+
+	if len(out) > 0 {
+		t.Logf("syscontainer: output of %s in %s:\n%s", t.Name(), c.project, strings.TrimSpace(string(out)))
+	}
+	if err != nil {
+		t.Fatalf("syscontainer: %s failed inside the %s container: %v", t.Name(), svc, err)
+	}
+}
+
+// newTestContainer allocates a subnet, derives a compose project for the test,
+// and builds the container handle Run and RunPairTest drive. extraEnv entries
+// are added to the compose environment and forwarded to the inner process. The
+// project is torn down when the test ends.
+func newTestContainer(t *testing.T, extraEnv ...string) *container {
+	t.Helper()
 	if testBinary == "" {
 		t.Fatalf("syscontainer: Main was not called, so there is no test binary to run")
 	}
@@ -292,6 +338,61 @@ func Run(t *testing.T, svc Service, extraEnv ...string) {
 		forward: env,
 	}
 	t.Cleanup(c.down)
+	return c
+}
+
+// pairHostA and pairHostB are the compose services a pair run starts. hostA
+// carries the system Broker; hostB is its equal and carries the Broker that
+// pairs from the other host.
+const (
+	pairHostA Service = "systemd"
+	pairHostB Service = "hostB"
+)
+
+// RunPair is the TestMain entry point of a package that runs one of its tests
+// on two hosts. Inside either pair container it runs the selected tests as the
+// role the container carries. On the test host it builds the test binary and
+// runs the package's tests as Main does; the test that needs both hosts calls
+// RunPairTest from its body, because only a *testing.T can build the image and
+// own the teardown.
+//
+// opts is the same value the test passes to RunPairTest. Inside a pair
+// container RunPair checks that the shared directory the harness forwarded
+// matches it, so a misconfigured TestMain fails before the test body runs.
+func RunPair(m *testing.M, opts PairOptions) int {
+	if InContainer() {
+		if InPair() && PairSharedDir() != opts.SharedDir {
+			fmt.Fprintf(os.Stderr, "syscontainer: the pair shared directory is %q, want %q\n",
+				PairSharedDir(), opts.SharedDir)
+			return 1
+		}
+		return m.Run()
+	}
+	return Main(m)
+}
+
+// RunPairTest runs the current test on hostA and hostB at the same time and
+// fails t when either side fails. Both containers come from one compose
+// project on one internal network, so hostA resolves by name as hostA and
+// hostB as hostB. The two roles exchange data through opts.SharedDir, a volume
+// mounted at the same path in both containers.
+func RunPairTest(t *testing.T, opts PairOptions) {
+	t.Helper()
+	if InContainer() {
+		t.Fatalf("syscontainer: RunPairTest runs on the host")
+	}
+	if !filepath.IsAbs(opts.SharedDir) {
+		t.Fatalf("syscontainer: the pair shared directory %q is not an absolute container path", opts.SharedDir)
+	}
+
+	c := newTestContainer(t)
+	up := c.command("compose", "-p", c.project, "-f", c.composeFile,
+		"up", "-d", string(pairHostA), string(pairHostB))
+	if out, err := up.CombinedOutput(); err != nil {
+		t.Fatalf("syscontainer: starting the pair in %s: %v\n%s", c.project, err, strings.TrimSpace(string(out)))
+	}
+	c.waitSystemd(string(pairHostA))
+	c.waitSystemd(string(pairHostB))
 
 	argv := []string{
 		testBinaryPath + "/" + filepath.Base(testBinary),
@@ -300,33 +401,48 @@ func Run(t *testing.T, svc Service, extraEnv ...string) {
 		"-test.count=1",
 	}
 
-	var out []byte
-	switch svc {
-	case Plain:
-		args := []string{"compose", "-p", project, "-f", c.composeFile, "run", "--rm", "-T"}
-		args = append(args, c.forwardEnvArgs()...)
-		args = append(args, string(Plain))
-		args = append(args, argv...)
-		out, err = c.command(args...).CombinedOutput()
-	case Systemd:
-		if out, err = c.command("compose", "-p", project, "-f", c.composeFile, "up", "-d", "systemd").CombinedOutput(); err != nil {
-			t.Fatalf("syscontainer: starting systemd in %s: %v\n%s", project, err, strings.TrimSpace(string(out)))
-		}
-		c.waitSystemd()
-		args := []string{"compose", "-p", project, "-f", c.composeFile, "exec", "-T"}
-		args = append(args, c.forwardEnvArgs()...)
-		args = append(args, "systemd")
-		args = append(args, argv...)
-		out, err = c.command(args...).CombinedOutput()
-	default:
-		t.Fatalf("syscontainer: unknown service %q", svc)
+	type pairResult struct {
+		role Role
+		out  []byte
+		err  error
+	}
+	hosts := []struct {
+		role    Role
+		service Service
+	}{
+		{RoleA, pairHostA},
+		{RoleB, pairHostB},
+	}
+	results := make(chan pairResult, len(hosts))
+	for _, host := range hosts {
+		host := host
+		go func() {
+			args := []string{"compose", "-p", c.project, "-f", c.composeFile, "exec", "-T"}
+			args = append(args, c.forwardEnvArgs()...)
+			args = append(args, "-e", PairRoleEnv+"="+string(host.role), "-e", pairSharedEnv+"="+opts.SharedDir)
+			for _, entry := range opts.ExtraEnv {
+				args = append(args, "-e", entry)
+			}
+			args = append(args, string(host.service))
+			args = append(args, argv...)
+			out, err := c.command(args...).CombinedOutput()
+			results <- pairResult{role: host.role, out: out, err: err}
+		}()
 	}
 
-	if len(out) > 0 {
-		t.Logf("syscontainer: output of %s in %s:\n%s", t.Name(), project, strings.TrimSpace(string(out)))
+	var failed []string
+	for range hosts {
+		result := <-results
+		if len(result.out) > 0 {
+			t.Logf("syscontainer: output of %s on host %s:\n%s",
+				t.Name(), result.role, strings.TrimSpace(string(result.out)))
+		}
+		if result.err != nil {
+			failed = append(failed, string(result.role))
+		}
 	}
-	if err != nil {
-		t.Fatalf("syscontainer: %s failed inside the %s container: %v", t.Name(), svc, err)
+	if len(failed) > 0 {
+		t.Fatalf("syscontainer: %s failed on host %s", t.Name(), strings.Join(failed, ", "))
 	}
 }
 
@@ -365,7 +481,7 @@ func (c *container) command(args ...string) *exec.Cmd {
 // and why a container was rebuilt. The path is repeated in the Makefile.
 const systemdRebuildLedger = "/tmp/ape2e-systemd-rebuilds.log"
 
-// waitSystemd waits until the container's systemd reports running or degraded.
+// waitSystemd waits until service's systemd reports running or degraded.
 // systemctl --wait blocks until the state settles, so a probe returns either a
 // settled state or, when its own bound expires, the stall.
 //
@@ -374,7 +490,7 @@ const systemdRebuildLedger = "/tmp/ape2e-systemd-rebuilds.log"
 // including the probe, the rebuild and the stop before it, shares one
 // systemdReadyBound context. Evidence collection after that budget is given up
 // has its own bound and does not extend it.
-func (c *container) waitSystemd() {
+func (c *container) waitSystemd(service string) {
 	ctx, cancel := context.WithTimeout(context.Background(), systemdReadyBound)
 	defer cancel()
 
@@ -384,10 +500,10 @@ func (c *container) waitSystemd() {
 
 	for {
 		if ctx.Err() != nil {
-			c.failSystemdBoot(lastState)
+			c.failSystemdBoot(service, lastState)
 		}
 
-		probe := c.probeSystemd(ctx)
+		probe := c.probeSystemd(ctx, service)
 		if probe.ready {
 			return
 		}
@@ -395,7 +511,7 @@ func (c *container) waitSystemd() {
 			lastState = probe.state
 		}
 		if ctx.Err() != nil {
-			c.failSystemdBoot(lastState)
+			c.failSystemdBoot(service, lastState)
 		}
 
 		observation := systemdBootObservation{
@@ -405,33 +521,33 @@ func (c *container) waitSystemd() {
 		switch {
 		case probe.exited:
 			observation.exited = true
-			if code, logs, err := c.containerExit(ctx); err == nil {
+			if code, logs, err := c.containerExit(ctx, service); err == nil {
 				observation.exitCode = code
 				observation.logsEmpty = strings.TrimSpace(logs) == ""
 			}
 		case probe.timedOut:
 			observation.probeTimedOut = true
-			observation.state = c.systemdCurrentState(ctx)
+			observation.state = c.systemdCurrentState(ctx, service)
 			lastState = fmt.Sprintf("probe timed out after %s, state %q", systemdProbeBound, observation.state)
 		}
 
 		if shouldRebuildSystemd(observation) {
 			rebuilds++
 			reason := rebuildReason(observation)
-			c.recordRebuild(reason)
-			c.t.Logf("syscontainer: %s: %s; recreating the container (%d of %d)",
-				c.project, reason, rebuilds, systemdBootRebuilds)
+			c.recordRebuild(service, reason)
+			c.t.Logf("syscontainer: %s service %s: %s; recreating the container (%d of %d)",
+				c.project, service, reason, rebuilds, systemdBootRebuilds)
 			// Keep the evidence of the failed boot before the container is
 			// replaced.
-			c.logBootEvidence()
-			c.recreateSystemd(ctx)
+			c.logBootEvidence(service)
+			c.recreateSystemd(ctx, service)
 			continue
 		}
 		if observation.exited {
 			// A container whose process 1 is gone does not come back on its
 			// own. Any exit that is not the observed 255-with-empty-logs is a
 			// real failure, so report it now instead of waiting out the bound.
-			c.failSystemdBoot(lastState)
+			c.failSystemdBoot(service, lastState)
 		}
 
 		select {
@@ -451,20 +567,20 @@ func rebuildReason(o systemdBootObservation) string {
 }
 
 // failSystemdBoot writes the evidence and ends the test at the readiness bound.
-func (c *container) failSystemdBoot(lastState string) {
-	c.logBootEvidence()
-	c.t.Fatalf("systemd to finish booting: not within %s (last state: %s)", systemdReadyBound, lastState)
+func (c *container) failSystemdBoot(service, lastState string) {
+	c.logBootEvidence(service)
+	c.t.Fatalf("%s to finish booting: not within %s (last state: %s)", service, systemdReadyBound, lastState)
 }
 
 // probeSystemd runs one readiness probe under the shared context. The probe's
 // own bound is shorter than the readiness bound, and a probe that expires
 // while the outer context is still alive is the timeout that can precede a
 // rebuild.
-func (c *container) probeSystemd(ctx context.Context) systemdProbeResult {
+func (c *container) probeSystemd(ctx context.Context, service string) systemdProbeResult {
 	probeCtx, cancel := context.WithTimeout(ctx, systemdProbeBound)
 	defer cancel()
 	cmd := exec.CommandContext(probeCtx, "docker",
-		"compose", "-p", c.project, "-f", c.composeFile, "exec", "-T", "systemd",
+		"compose", "-p", c.project, "-f", c.composeFile, "exec", "-T", service,
 		"systemctl", "is-system-running", "--wait")
 	cmd.Env = c.env
 	out, err := cmd.CombinedOutput()
@@ -475,11 +591,11 @@ func (c *container) probeSystemd(ctx context.Context) systemdProbeResult {
 // systemdCurrentState reads the state without --wait, which reports the current
 // text instead of blocking. It confirms that a timed-out probe was looking at a
 // system that was still initializing.
-func (c *container) systemdCurrentState(ctx context.Context) string {
+func (c *container) systemdCurrentState(ctx context.Context, service string) string {
 	probeCtx, cancel := context.WithTimeout(ctx, systemdProbeBound)
 	defer cancel()
 	cmd := exec.CommandContext(probeCtx, "docker",
-		"compose", "-p", c.project, "-f", c.composeFile, "exec", "-T", "systemd",
+		"compose", "-p", c.project, "-f", c.composeFile, "exec", "-T", service,
 		"systemctl", "is-system-running")
 	cmd.Env = c.env
 	out, err := cmd.CombinedOutput()
@@ -490,11 +606,11 @@ func (c *container) systemdCurrentState(ctx context.Context) string {
 	return text
 }
 
-// containerID returns the project's systemd container id, including an exited
-// one.
-func (c *container) containerID(ctx context.Context) (string, error) {
+// containerID returns the project's container id for service, including an
+// exited one.
+func (c *container) containerID(ctx context.Context, service string) (string, error) {
 	cmd := exec.CommandContext(ctx, "docker",
-		"compose", "-p", c.project, "-f", c.composeFile, "ps", "-aq", "systemd")
+		"compose", "-p", c.project, "-f", c.composeFile, "ps", "-aq", service)
 	cmd.Env = c.env
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -505,8 +621,8 @@ func (c *container) containerID(ctx context.Context) (string, error) {
 
 // containerExit returns process 1's exit code and docker logs for a container
 // that compose reported as not running.
-func (c *container) containerExit(ctx context.Context) (int, string, error) {
-	id, err := c.containerID(ctx)
+func (c *container) containerExit(ctx context.Context, service string) (int, string, error) {
+	id, err := c.containerID(ctx, service)
 	if err != nil {
 		return 0, "", err
 	}
@@ -536,29 +652,29 @@ func (c *container) containerExit(ctx context.Context) (int, string, error) {
 // in place, keeping the project's network. Both commands share the readiness
 // context. A failure is reported rather than fatal, so the wait continues and
 // the final state still explains the outcome.
-func (c *container) recreateSystemd(ctx context.Context) {
-	if id, err := c.containerID(ctx); err == nil && id != "" {
+func (c *container) recreateSystemd(ctx context.Context, service string) {
+	if id, err := c.containerID(ctx, service); err == nil && id != "" {
 		stop := exec.CommandContext(ctx, "docker", "stop", "--timeout", "1", id)
 		stop.Env = c.env
 		if out, err := stop.CombinedOutput(); err != nil {
-			c.t.Logf("syscontainer: stopping the systemd container in %s: %v\n%s",
-				c.project, err, strings.TrimSpace(string(out)))
+			c.t.Logf("syscontainer: stopping the %s container in %s: %v\n%s",
+				service, c.project, err, strings.TrimSpace(string(out)))
 		}
 	}
 	up := exec.CommandContext(ctx, "docker",
-		"compose", "-p", c.project, "-f", c.composeFile, "up", "-d", "--force-recreate", "systemd")
+		"compose", "-p", c.project, "-f", c.composeFile, "up", "-d", "--force-recreate", service)
 	up.Env = c.env
 	if out, err := up.CombinedOutput(); err != nil {
-		c.t.Logf("syscontainer: recreating the systemd container in %s: %v\n%s",
-			c.project, err, strings.TrimSpace(string(out)))
+		c.t.Logf("syscontainer: recreating the %s container in %s: %v\n%s",
+			service, c.project, err, strings.TrimSpace(string(out)))
 	}
 }
 
 // recordRebuild appends one line to systemdRebuildLedger. The ledger is
 // appended to with O_APPEND, so concurrent suites do not lose each other's
 // lines.
-func (c *container) recordRebuild(reason string) {
-	line := fmt.Sprintf("%s %s %s\n", time.Now().UTC().Format(time.RFC3339), c.project, reason)
+func (c *container) recordRebuild(service, reason string) {
+	line := fmt.Sprintf("%s %s %s %s\n", time.Now().UTC().Format(time.RFC3339), c.project, service, reason)
 	f, err := os.OpenFile(systemdRebuildLedger, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		c.t.Logf("syscontainer: recording the rebuild: %v", err)

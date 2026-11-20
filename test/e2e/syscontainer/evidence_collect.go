@@ -20,9 +20,9 @@ const systemdEvidenceBound = 10 * time.Second
 // logBootEvidence writes the state of the systemd container to the test log. It
 // runs while the container still exists, before the deferred teardown removes
 // it.
-func (c *container) logBootEvidence() {
+func (c *container) logBootEvidence(service string) {
 	c.t.Helper()
-	c.t.Logf("syscontainer: %s", c.bootEvidence())
+	c.t.Logf("syscontainer: %s", c.bootEvidence(service))
 }
 
 // bootEvidence collects the state that explains why systemd did not become
@@ -30,11 +30,11 @@ func (c *container) logBootEvidence() {
 // the readiness bound is given up and does not extend it. Every command's error
 // text becomes part of the evidence, so a container that is already gone still
 // leaves a record.
-func (c *container) bootEvidence() string {
+func (c *container) bootEvidence(service string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), systemdEvidenceBound)
 	defer cancel()
 	run := func(args ...string) string { return c.docker(ctx, args...) }
-	return collectBootEvidence(c.project, c.composeFile, run, readHostMemory, readHostPids)
+	return collectBootEvidence(c.project, c.composeFile, service, run, readHostMemory, readHostPids)
 }
 
 // docker runs one docker command under ctx and returns its combined output. The

@@ -129,12 +129,12 @@ func writeEvidenceSection(b *strings.Builder, name, text string) {
 // collectBootEvidence runs the diagnostic commands through run and formats
 // their output. run, hostMemory and hostPids are parameters so that the
 // collection can be tested with fake command results.
-func collectBootEvidence(project, composeFile string, run func(args ...string) string, hostMemory, hostPids func() string) string {
+func collectBootEvidence(project, composeFile, service string, run func(args ...string) string, hostMemory, hostPids func() string) string {
 	var e bootEvidence
 
-	id := strings.TrimSpace(run("compose", "-p", project, "-f", composeFile, "ps", "-aq", "systemd"))
+	id := strings.TrimSpace(run("compose", "-p", project, "-f", composeFile, "ps", "-aq", service))
 	if id == "" {
-		e.State = "docker compose ps -aq systemd returned no container"
+		e.State = "docker compose ps -aq " + service + " returned no container"
 		e.Logs = run("compose", "-p", project, "-f", composeFile, "ps", "-a")
 	} else {
 		e.State = run("inspect", "--format", "{{json .State}}", id)
