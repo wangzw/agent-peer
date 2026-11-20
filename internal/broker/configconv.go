@@ -73,6 +73,8 @@ func toAuditEventKind(k config.EventKind) localpb.AuditEventKind {
 		return localpb.AuditEventKind_AUDIT_EVENT_KIND_REJECTED_BY_PEER
 	case config.EventLocalAliasAssigned:
 		return localpb.AuditEventKind_AUDIT_EVENT_KIND_LOCAL_ALIAS_ASSIGNED
+	case config.EventConfigRejected:
+		return localpb.AuditEventKind_AUDIT_EVENT_KIND_CONFIG_REJECTED
 	default:
 		return localpb.AuditEventKind_AUDIT_EVENT_KIND_UNSPECIFIED
 	}
@@ -119,6 +121,8 @@ func configErrorCode(err error) localpb.ErrorCode {
 		errors.Is(err, config.ErrInvalidCombination),
 		errors.Is(err, config.ErrTooManyAddresses):
 		return localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT
+	case errors.Is(err, config.ErrLowPortDenied):
+		return localpb.ErrorCode_ERROR_CODE_PERMISSION_DENIED
 	default:
 		return localpb.ErrorCode_ERROR_CODE_INTERNAL
 	}

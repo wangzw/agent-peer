@@ -34,7 +34,7 @@ func TestSetConfigAlias(t *testing.T) {
 		t.Fatalf("Set calls = %d, want 1", len(tb.cfg.setCalls))
 	}
 	call := tb.cfg.setCalls[0]
-	wantActor := config.Actor{Account: "alice", Agent: address}
+	wantActor := config.Actor{UIDKnown: true, UID: uint32(os.Geteuid()), Account: "alice", Agent: address}
 	if call.Actor != wantActor {
 		t.Errorf("Set actor = %+v, want %+v", call.Actor, wantActor)
 	}
@@ -287,4 +287,28 @@ func TestSetConfigUnknownKey(t *testing.T) {
 			t.Errorf("Set calls = %d, want 0", len(tb.cfg.setCalls))
 		}
 	})
+}
+
+// TestSetConfigLowPortDenied checks the wire error for the privileged-port
+// rule: the configuration layer refuses the change for a non-root caller, and
+// SetConfig reports it as permission_denied with the explanation intact.
+func TestSetConfigLowPortDenied(t *testing.T) {
+	tb := newTestBroker(t)
+	tb.cfg.setErr = fmt.Errorf("%w: changing broker.listen to a port below 1024 requires root", config.ErrLowPortDenied)
+	ctx := auditCallerContext(1000, "ana")
+
+	_, err := tb.b.SetConfig(ctx, &localpb.SetConfigRequest{
+		Key:   "broker.listen",
+		Value: ":80",
+	})
+	detail := errorDetailOf(t, err)
+	if detail.GetCode() != localpb.ErrorCode_ERROR_CODE_PERMISSION_DENIED {
+		t.Errorf("code = %v, want PERMISSION_DENIED", detail.GetCode())
+	}
+	if !strings.Contains(detail.GetMessage(), "port below 1024") {
+		t.Errorf("message %q does not explain the privileged port", detail.GetMessage())
+	}
+	if len(tb.cfg.setCalls) != 1 {
+		t.Errorf("Set calls = %d, want 1", len(tb.cfg.setCalls))
+	}
 }

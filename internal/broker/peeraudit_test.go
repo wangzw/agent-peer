@@ -71,13 +71,17 @@ func auditRegister(t *testing.T, tb *testBroker, name string) (id, address strin
 
 func TestAuditActorEmptyAgent(t *testing.T) {
 	tb := newTestBroker(t)
-	ctx := auditCallerContext(uint32(os.Geteuid()), "alice")
+	// A fixed non-root uid keeps the assertion meaningful when the test process
+	// runs as root: the actor must carry the caller's identity, not the
+	// process's uid.
+	const callerUID = 1234
+	ctx := auditCallerContext(callerUID, "alice")
 
 	actor, err := tb.b.auditActor(ctx, "")
 	if err != nil {
 		t.Fatalf("auditActor: %v", err)
 	}
-	want := config.Actor{Account: "alice"}
+	want := config.Actor{UIDKnown: true, UID: callerUID, Account: "alice"}
 	if actor != want {
 		t.Fatalf("auditActor = %+v, want %+v", actor, want)
 	}
@@ -94,6 +98,9 @@ func TestAuditActorRegisteredAgent(t *testing.T) {
 	actor, err := tb.b.auditActor(ctx, id)
 	if err != nil {
 		t.Fatalf("auditActor: %v", err)
+	}
+	if !actor.UIDKnown || actor.UID != uint32(os.Geteuid()) {
+		t.Fatalf("AuditActor identity = (%v, %d), want the caller uid %d", actor.UIDKnown, actor.UID, os.Geteuid())
 	}
 	if actor.Account != "alice" {
 		t.Fatalf("AuditActor.Account = %q, want %q", actor.Account, "alice")

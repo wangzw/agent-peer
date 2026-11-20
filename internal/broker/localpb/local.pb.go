@@ -357,6 +357,7 @@ const (
 	AuditEventKind_AUDIT_EVENT_KIND_CONNECTION_REJECTED  AuditEventKind = 9
 	AuditEventKind_AUDIT_EVENT_KIND_REJECTED_BY_PEER     AuditEventKind = 10
 	AuditEventKind_AUDIT_EVENT_KIND_LOCAL_ALIAS_ASSIGNED AuditEventKind = 11
+	AuditEventKind_AUDIT_EVENT_KIND_CONFIG_REJECTED      AuditEventKind = 12
 )
 
 // Enum value maps for AuditEventKind.
@@ -374,6 +375,7 @@ var (
 		9:  "AUDIT_EVENT_KIND_CONNECTION_REJECTED",
 		10: "AUDIT_EVENT_KIND_REJECTED_BY_PEER",
 		11: "AUDIT_EVENT_KIND_LOCAL_ALIAS_ASSIGNED",
+		12: "AUDIT_EVENT_KIND_CONFIG_REJECTED",
 	}
 	AuditEventKind_value = map[string]int32{
 		"AUDIT_EVENT_KIND_UNSPECIFIED":          0,
@@ -388,6 +390,7 @@ var (
 		"AUDIT_EVENT_KIND_CONNECTION_REJECTED":  9,
 		"AUDIT_EVENT_KIND_REJECTED_BY_PEER":     10,
 		"AUDIT_EVENT_KIND_LOCAL_ALIAS_ASSIGNED": 11,
+		"AUDIT_EVENT_KIND_CONFIG_REJECTED":      12,
 	}
 )
 
@@ -3403,7 +3406,7 @@ const file_internal_broker_localpb_local_proto_rawDesc = "" +
 	"\x13LINK_STATE_REJECTED\x10\x06*R\n" +
 	"\vWarningKind\x12\x1c\n" +
 	"\x18WARNING_KIND_UNSPECIFIED\x10\x00\x12%\n" +
-	"!WARNING_KIND_FINGERPRINT_MISMATCH\x10\x01*\xcd\x03\n" +
+	"!WARNING_KIND_FINGERPRINT_MISMATCH\x10\x01*\xf3\x03\n" +
 	"\x0eAuditEventKind\x12 \n" +
 	"\x1cAUDIT_EVENT_KIND_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bAUDIT_EVENT_KIND_CONFIG_SET\x10\x01\x12(\n" +
@@ -3417,7 +3420,8 @@ const file_internal_broker_localpb_local_proto_rawDesc = "" +
 	"$AUDIT_EVENT_KIND_CONNECTION_REJECTED\x10\t\x12%\n" +
 	"!AUDIT_EVENT_KIND_REJECTED_BY_PEER\x10\n" +
 	"\x12)\n" +
-	"%AUDIT_EVENT_KIND_LOCAL_ALIAS_ASSIGNED\x10\v*\xf2\x03\n" +
+	"%AUDIT_EVENT_KIND_LOCAL_ALIAS_ASSIGNED\x10\v\x12$\n" +
+	" AUDIT_EVENT_KIND_CONFIG_REJECTED\x10\f*\xf2\x03\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bERROR_CODE_INVALID_ARGUMENT\x10\x01\x12\x18\n" +

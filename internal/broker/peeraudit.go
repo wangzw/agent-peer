@@ -21,7 +21,7 @@ func (b *Broker) auditActor(ctx context.Context, agentID string) (config.Actor, 
 		return config.Actor{}, Errorf(localpb.ErrorCode_ERROR_CODE_INTERNAL, "caller identity is missing")
 	}
 	if agentID == "" {
-		return config.Actor{Account: caller.Username}, nil
+		return config.Actor{UIDKnown: true, UID: caller.UID, Account: caller.Username}, nil
 	}
 	a, err := b.agentFor(ctx, agentID)
 	if err != nil {
@@ -30,7 +30,7 @@ func (b *Broker) auditActor(ctx context.Context, agentID string) (config.Actor, 
 	b.mu.Lock()
 	address := b.addressOf(a)
 	b.mu.Unlock()
-	return config.Actor{Account: caller.Username, Agent: address}, nil
+	return config.Actor{UIDKnown: true, UID: caller.UID, Account: caller.Username, Agent: address}, nil
 }
 
 // pairingKeyCreatedEvent is the audit record for a generated one-time pairing
