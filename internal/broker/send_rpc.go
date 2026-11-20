@@ -2,8 +2,10 @@ package broker
 
 import (
 	"context"
+	"errors"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/pairing"
 )
 
 // Send serves the Local Send RPC. The caller must be a registered Agent of its
@@ -25,7 +27,49 @@ func (b *Broker) Send(ctx context.Context, req *localpb.SendRequest) (*localpb.S
 	}
 
 	if err := b.deps.Delivery.Send(ctx, viewOf(snap), req.GetToAddress(), req.GetMessage()); err != nil {
-		return nil, toStatus(err)
+		return nil, toStatus(b.decoratePeerUnreachable(err, req.GetToAddress()))
 	}
 	return &localpb.SendResponse{}, nil
+}
+
+// decoratePeerUnreachable appends the local-only reason to a peer_unreachable
+// error, but only when this Broker is the acceptor for that peer. A local-only
+// Broker keeps no listener, so an acceptor-side peer cannot reach it; a peer
+// this side dials is unaffected by the missing listener, and its failure has
+// another cause.
+func (b *Broker) decoratePeerUnreachable(err error, toAddress string) error {
+	var e *Error
+	if !errors.As(err, &e) || e.Code != localpb.ErrorCode_ERROR_CODE_PEER_UNREACHABLE {
+		return err
+	}
+	degraded := b.degradedState()
+	if degraded == nil ||
+		degraded.Level != localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY ||
+		degraded.Reason == "" {
+		return err
+	}
+	if !b.sendPeerIsAcceptor(toAddress) {
+		return err
+	}
+	e.Message += "; " + degraded.Reason
+	return err
+}
+
+// sendPeerIsAcceptor reports whether the target address names a peer this
+// Broker accepted the pairing for. A caller address without an alias, an
+// unknown alias, and a dialer peer all return false.
+func (b *Broker) sendPeerIsAcceptor(toAddress string) bool {
+	addr, ok := parseTarget(toAddress)
+	if !ok || addr.Alias == "" || b.deps.Delivery == nil {
+		return false
+	}
+	peers := b.deps.Delivery.deps.Peers
+	if peers == nil {
+		return false
+	}
+	peer, ok := peers.ResolveAlias(addr.Alias)
+	if !ok {
+		return false
+	}
+	return peers.Role(peer) == pairing.RoleAcceptor
 }

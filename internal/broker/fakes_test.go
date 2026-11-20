@@ -149,6 +149,7 @@ type fakeConfig struct {
 	loads        []fakeLoadCall
 	loadErr      error
 	probeErr     error
+	lowPortErr   error
 	setErr       error
 	parseErr     error
 	readAuditErr error
@@ -185,6 +186,14 @@ func (f *fakeConfig) setValue(key string, v config.Value) {
 	for _, cb := range callbacks {
 		cb(old, v)
 	}
+}
+
+// setLoadErr changes the next Load result under the lock, so a test can drive
+// a retry while Run is already calling Load from another goroutine.
+func (f *fakeConfig) setLoadErr(err error) {
+	f.mu.Lock()
+	f.loadErr = err
+	f.mu.Unlock()
 }
 
 func (f *fakeConfig) LoadCalls() []fakeLoadCall {
@@ -299,11 +308,26 @@ func (f *fakeConfig) Validate(key string, check func(old, new config.Value) erro
 
 func (f *fakeConfig) ProbeListen(string) error { return f.probeErr }
 
+func (f *fakeConfig) CheckLowPort() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lowPortErr
+}
+
 func (f *fakeConfig) Subscribe(key string, onChange func(old, new config.Value)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.subscribedKeys = append(f.subscribedKeys, key)
 	f.subscribers[key] = append(f.subscribers[key], onChange)
+}
+
+// setValueQuietly changes a value without calling subscribers, as a change
+// whose notification was delivered while the listener was suppressed would
+// leave it: current in the configuration, never forwarded.
+func (f *fakeConfig) setValueQuietly(key string, v config.Value) {
+	f.mu.Lock()
+	f.values[key] = v
+	f.mu.Unlock()
 }
 
 // fireKey calls the callbacks registered for key without changing the stored

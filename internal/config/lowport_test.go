@@ -215,27 +215,62 @@ func systemLoadCore(t *testing.T, home string, rootOnly bool) (*core, string) {
 	return c, configFile
 }
 
-// TestLoadLowPortFailsWhenFileGroupWritable covers the startup refusal: a
-// system Broker whose configuration file grants a privileged port but can be
-// written by another account fails to load.
-func TestLoadLowPortFailsWhenFileGroupWritable(t *testing.T) {
+// TestLoadLetsLowPortThroughToTheBindStep covers the startup split: Load
+// accepts a privileged port even when the configuration file is writable by
+// another account, and CheckLowPort refuses it when the Broker is about to
+// bind.
+func TestLoadLetsLowPortThroughToTheBindStep(t *testing.T) {
 	home := t.TempDir()
 	c, path := systemLoadCore(t, home, false)
 	if err := os.WriteFile(path, []byte("broker:\n  listen: 127.0.0.1:80\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	err := c.load(ModeSystem, "")
+	if err := c.load(ModeSystem, ""); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	err := c.checkLowPortAtStartup()
 	if !errors.Is(err, ErrLowPortDenied) {
-		t.Fatalf("load error = %v, want ErrLowPortDenied", err)
+		t.Fatalf("checkLowPortAtStartup error = %v, want ErrLowPortDenied", err)
 	}
 	if !strings.Contains(err.Error(), "chmod g-w") {
 		t.Errorf("startup error %q does not explain how to fix the file", err)
 	}
 }
 
+// TestCheckLowPortReadsTheLoadedCore covers the exported entry point the
+// broker calls in its listen step.
+func TestCheckLowPortReadsTheLoadedCore(t *testing.T) {
+	if err := CheckLowPort(); !errors.Is(err, ErrNotLoaded) {
+		t.Fatalf("CheckLowPort before Load = %v, want ErrNotLoaded", err)
+	}
+
+	home := t.TempDir()
+	c, path := systemLoadCore(t, home, false)
+	if err := os.WriteFile(path, []byte("broker:\n  listen: 127.0.0.1:80\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.load(ModeSystem, ""); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	global.mu.Lock()
+	old := global.core
+	global.core = c
+	global.mu.Unlock()
+	t.Cleanup(func() {
+		global.mu.Lock()
+		global.core = old
+		global.mu.Unlock()
+	})
+
+	if err := CheckLowPort(); !errors.Is(err, ErrLowPortDenied) {
+		t.Fatalf("CheckLowPort = %v, want ErrLowPortDenied", err)
+	}
+}
+
 // TestLoadLowPortSucceedsWhenFileRootOnly covers the allowed startup: the same
-// configuration loads when the file can be written only by root.
+// configuration loads and the bind-step check accepts it when the file can be
+// written only by root.
 func TestLoadLowPortSucceedsWhenFileRootOnly(t *testing.T) {
 	home := t.TempDir()
 	c, path := systemLoadCore(t, home, true)
@@ -248,5 +283,8 @@ func TestLoadLowPortSucceedsWhenFileRootOnly(t *testing.T) {
 	}
 	if got := c.effectiveListen.port; got != 80 {
 		t.Fatalf("effective listen port = %d, want 80", got)
+	}
+	if err := c.checkLowPortAtStartup(); err != nil {
+		t.Fatalf("checkLowPortAtStartup: %v", err)
 	}
 }

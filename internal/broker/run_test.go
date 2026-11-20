@@ -762,8 +762,10 @@ func TestRunComponentFailureReportsReason(t *testing.T) {
 	if n := countString(list, "C1.Stop"); n != 1 {
 		t.Errorf("C1.Stop called %d times, want 1", n)
 	}
-	if n := countString(list, "C2.Stop"); n != 0 {
-		t.Errorf("C2.Stop called %d times, want 0", n)
+	// The failing component is stopped too, so nothing it built survives a
+	// failed startup.
+	if n := countString(list, "C2.Stop"); n != 1 {
+		t.Errorf("C2.Stop called %d times, want 1", n)
 	}
 	if _, statErr := os.Stat(rt.socketPath()); !os.IsNotExist(statErr) {
 		t.Errorf("broker.sock exists after a component failure")

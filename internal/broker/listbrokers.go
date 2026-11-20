@@ -42,7 +42,10 @@ func (b *Broker) ListBrokers(_ context.Context, _ *localpb.ListBrokersRequest) (
 		}
 	}
 	sortBrokerInfos(out)
-	return &localpb.ListBrokersResponse{Brokers: out}, nil
+	return &localpb.ListBrokersResponse{
+		Brokers: out,
+		Local:   &localpb.LocalBrokerState{Degraded: b.degradedState()},
+	}, nil
 }
 
 // knownPeer reports whether the fingerprint already has an entry, or belongs

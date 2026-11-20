@@ -35,6 +35,9 @@ type ConfigSource interface {
 	Validate(key string, check func(old, new config.Value) error)
 	// ProbeListen checks whether the Broker can listen on addr.
 	ProbeListen(addr string) error
+	// CheckLowPort applies the privileged-port rule to the loaded
+	// configuration. The broker calls it in the listen-binding step.
+	CheckLowPort() error
 	// Subscribe registers a callback for changes to a key. It panics if
 	// called before Load.
 	Subscribe(key string, onChange func(old, new config.Value))
@@ -87,6 +90,8 @@ func (packageConfig) Validate(key string, check func(old, new config.Value) erro
 }
 
 func (packageConfig) ProbeListen(addr string) error { return config.ProbeListen(addr) }
+
+func (packageConfig) CheckLowPort() error { return config.CheckLowPort() }
 
 func (packageConfig) Subscribe(key string, onChange func(old, new config.Value)) {
 	config.Subscribe(key, onChange)

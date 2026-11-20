@@ -156,7 +156,41 @@ var (
 	// below 1024 because the change was not made by root or the configuration
 	// file can be written by another account.
 	ErrLowPortDenied = errors.New("config: a listen port below 1024 requires root and a configuration file that only root can write")
+	// ErrDataUnavailable reports that the data directory or the audit log
+	// cannot be used. A Broker started with --allow-degraded runs diagnostics
+	// only for this class instead of exiting.
+	ErrDataUnavailable = errors.New("config: data directory or audit log unavailable")
 )
+
+// DataUnavailableError classifies a failed Load whose cause is the data
+// directory or the audit log. Every other startup check has already passed:
+// the paths are resolved, the runtime directory is usable, the file was read
+// and parsed, and the values and the advertised addresses were prepared. The
+// error text names no configuration value. LocalSocketGroup and
+// LocalSocketMode carry the loaded broker.local_socket_group and
+// broker.local_socket_mode, so a system Broker can bind its local socket with
+// the configured group and permissions while it runs diagnostics only.
+type DataUnavailableError struct {
+	Paths            PathSet
+	LocalSocketGroup string
+	LocalSocketMode  string
+	Err              error
+}
+
+func (e *DataUnavailableError) Error() string {
+	if e.Err == nil {
+		return ErrDataUnavailable.Error()
+	}
+	return ErrDataUnavailable.Error() + ": " + e.Err.Error()
+}
+
+// Unwrap matches both ErrDataUnavailable and the concrete cause.
+func (e *DataUnavailableError) Unwrap() []error {
+	if e.Err == nil {
+		return []error{ErrDataUnavailable}
+	}
+	return []error{ErrDataUnavailable, e.Err}
+}
 
 // global is the package singleton. Tests install their own core through
 // installTestCore, which serializes the replacement with globalTestMu.

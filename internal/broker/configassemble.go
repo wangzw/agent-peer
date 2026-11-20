@@ -81,6 +81,10 @@ type configComponent struct {
 	// changes instead of forwarding them to components that are closing.
 	stopped atomic.Bool
 
+	// suppressed is set while Run's listen retry owns binding: the component
+	// must not bind the address a second time from a broker.listen change.
+	suppressed atomic.Bool
+
 	// boundMu guards bound and boundKnown, which record the address the link is
 	// listening on: the startup bind Run reported, then every successful
 	// rebind. Holding it across Listen also serializes rebinds.
@@ -147,6 +151,9 @@ func (c *configComponent) isBound() bool {
 // after AfterReady reconciled the same value, is skipped instead of binding the
 // address a second time and failing with EADDRINUSE.
 func (c *configComponent) rebind(address string) error {
+	if c.suppressed.Load() {
+		return nil
+	}
 	c.boundMu.Lock()
 	defer c.boundMu.Unlock()
 	if c.boundKnown && c.bound == address {
@@ -158,6 +165,13 @@ func (c *configComponent) rebind(address string) error {
 	c.bound = address
 	c.boundKnown = true
 	return nil
+}
+
+// suppressListenRebind turns the component's own broker.listen rebinding off
+// or on. Run turns it off while its listen retry owns the address and back on
+// after the retry binds successfully.
+func (c *configComponent) suppressListenRebind(suppress bool) {
+	c.suppressed.Store(suppress)
 }
 
 // Stop stops forwarding configuration changes. A change config delivers after

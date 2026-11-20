@@ -39,6 +39,10 @@ type Broker struct {
 	refreshOne func(a *agent)
 	lastAlias  string // last broker.alias value read successfully, guarded by mu
 
+	// degradedMu guards degraded, the state a --allow-degraded run reports.
+	degradedMu sync.Mutex
+	degraded   *localpb.DegradedState
+
 	// configDirChecks limits an account to one unfinished ownership check.
 	// It has its own lock so a check never takes Broker.mu.
 	configDirChecks configDirCheckSet

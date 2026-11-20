@@ -27,11 +27,6 @@ func (c *core) load(mode Mode, listenOverride string) error {
 	if err := c.checkRuntimeForLoad(); err != nil {
 		return err
 	}
-	if !c.skipDataCheck {
-		if err := c.prepareDataDirs(paths); err != nil {
-			return err
-		}
-	}
 
 	doc, err := readConfigFile(paths.ConfigFile)
 	if err != nil {
@@ -49,20 +44,24 @@ func (c *core) load(mode Mode, listenOverride string) error {
 	if err := c.validateLoadedValues(); err != nil {
 		return err
 	}
-	// Bind a privileged port only when the configuration file that asked for
-	// it cannot be written by another account. The failure is a startup
-	// failure, so the Broker exits instead of running with a port that a group
-	// administrator could have chosen.
-	if err := c.checkLowPortAtStartup(); err != nil {
-		return err
-	}
 	if err := c.prepareAdvertised(); err != nil {
 		return err
 	}
 
+	// The data directory is checked after every configuration check and after
+	// the advertised addresses are prepared, so a DataUnavailableError always
+	// means the configuration itself was usable and can be reused by a degraded
+	// run. Only this check and the audit log open enter that class; every other
+	// failure above is a configuration failure.
+	if !c.skipDataCheck {
+		if err := c.prepareDataDirs(paths); err != nil {
+			return c.dataUnavailable(paths, err)
+		}
+	}
+
 	audit, err := openAudit(paths.AuditLog, c.now, c.logger)
 	if err != nil {
-		return err
+		return c.dataUnavailable(paths, err)
 	}
 	c.audit = audit
 	if c.notify == nil {
@@ -72,6 +71,19 @@ func (c *core) load(mode Mode, listenOverride string) error {
 		c.startBackground()
 	}
 	return nil
+}
+
+// dataUnavailable wraps a data-directory or audit-log failure. The socket
+// group and mode are copied from the already adopted values so a system Broker
+// can still bind its local socket while it runs diagnostics only; they are not
+// part of the error text.
+func (c *core) dataUnavailable(paths PathSet, err error) error {
+	return &DataUnavailableError{
+		Paths:            paths,
+		LocalSocketGroup: c.values["broker.local_socket_group"].String,
+		LocalSocketMode:  c.values["broker.local_socket_mode"].String,
+		Err:              err,
+	}
 }
 
 // checkRuntimeForLoad creates and checks the runtime directory. Tests replace

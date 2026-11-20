@@ -2,7 +2,9 @@ package broker
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"sync"
 	"time"
@@ -88,6 +90,14 @@ func (a *directoryAssembler) assembleWith(dd directory.Deps, cp cardPairing, cfg
 	}
 	d, err := open(dd)
 	if err != nil {
+		// The directory file is the only file Open reads from the data
+		// directory. A failure to read it wraps a *fs.PathError; a wiring
+		// error such as a missing identity, "links is required" or "config has
+		// no data directory" does not, and stays fatal.
+		var pathErr *fs.PathError
+		if errors.As(err, &pathErr) {
+			err = wrapDataUnavailable(dataKindDirectory, err)
+		}
 		return nil, fmt.Errorf("opening the directory: %w", err)
 	}
 	d.OnCard(func(fp pairing.Fingerprint, addrs []config.AdvertisedAddr) {

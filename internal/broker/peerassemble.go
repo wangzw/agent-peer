@@ -2,6 +2,7 @@ package broker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/wangzw/agent-peer/internal/link"
@@ -50,6 +51,15 @@ func (a *peerAssembler) Assemble(ctx context.Context, cfg ConfigSource, deps *De
 	lt := &lateTransport{}
 	store, concrete, err := a.openPairing(lt)
 	if err != nil {
+		// Only the identity files and the peer table live in the data
+		// directory. A configuration read failure in this package is a
+		// different class and stays fatal.
+		switch {
+		case errors.Is(err, pairing.ErrIdentity):
+			err = wrapDataUnavailable(dataKindIdentity, err)
+		case errors.Is(err, pairing.ErrStore):
+			err = wrapDataUnavailable(dataKindPeers, err)
+		}
 		return nil, fmt.Errorf("loading identity and peer table: %w", err)
 	}
 

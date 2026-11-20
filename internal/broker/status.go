@@ -13,6 +13,17 @@ import (
 // configuration file gets only the agents it owns; the peers and their
 // connection states stay visible. Status needs no agent identity.
 func (b *Broker) Status(ctx context.Context, req *localpb.StatusRequest) (*localpb.StatusResponse, error) {
+	current := b.deps.Version
+	if degraded := b.degradedState(); degraded != nil &&
+		degraded.Level == localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY {
+		// Diagnostics only: the Broker has no agent table or peers, so the
+		// caller gets the version and the failure and nothing else.
+		return &localpb.StatusResponse{
+			CurrentVersion: current,
+			Degraded:       degraded,
+		}, nil
+	}
+
 	b.mu.Lock()
 	agents := make([]*localpb.AgentStatusEntry, 0, len(b.agents))
 	for _, a := range b.agents {
@@ -52,7 +63,6 @@ func (b *Broker) Status(ctx context.Context, req *localpb.StatusRequest) (*local
 
 	// The available version comes from the periodic check. It is empty for a
 	// non-release build, which never checks.
-	current := b.deps.Version
 	available, _ := b.availableUpdate()
 	if !isReleaseVersion(current) {
 		available = ""
@@ -62,5 +72,6 @@ func (b *Broker) Status(ctx context.Context, req *localpb.StatusRequest) (*local
 		Peers:            peers,
 		AvailableVersion: available,
 		CurrentVersion:   current,
+		Degraded:         b.degradedState(),
 	}, nil
 }

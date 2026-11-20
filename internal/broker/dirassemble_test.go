@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"slices"
 	"strings"
 	"testing"
@@ -115,6 +116,41 @@ func TestDirectoryAssemblerIdentityErrorFailsStartup(t *testing.T) {
 			}
 			if openCalled {
 				t.Error("Assemble opened the directory despite the identity error")
+			}
+		})
+	}
+}
+
+// TestDirectoryAssemblerOnlyWrapsDataFileErrors pins the data-directory class:
+// a failure to read directory.json is degradable, while a wiring failure from
+// Open stays fatal.
+func TestDirectoryAssemblerOnlyWrapsDataFileErrors(t *testing.T) {
+	tb := newTestBroker(t)
+	asm := &Assembly{Pairing: &pairing.Pairing{}, Link: &link.Link{}}
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"unreadable directory file", &fs.PathError{Op: "open", Path: "/data/directory.json", Err: errors.New("permission denied")}, true},
+		{"links is required", errors.New("directory: links is required"), false},
+		{"no data directory", errors.New("directory: config has no data directory"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &directoryAssembler{
+				open:        func(directory.Deps) (directoryHandle, error) { return nil, tc.err },
+				newIdentity: func(*pairing.Pairing) (directory.Identity, error) { return nil, nil },
+			}
+			_, err := a.Assemble(context.Background(), tb.cfg, &Deps{}, asm)
+			if err == nil {
+				t.Fatal("Assemble succeeded, want the open failure")
+			}
+			if got := errors.Is(err, config.ErrDataUnavailable); got != tc.want {
+				t.Fatalf("errors.Is(err, ErrDataUnavailable) = %v, want %v (error: %v)", got, tc.want, err)
+			}
+			if !strings.Contains(err.Error(), "opening the directory") {
+				t.Errorf("error %q no longer names the directory open step", err)
 			}
 		})
 	}

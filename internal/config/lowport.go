@@ -71,6 +71,22 @@ func (c *core) rejectReloadedLowPort(old, next Value) bool {
 	return true
 }
 
+// CheckLowPort applies the startup rule for a privileged listen port against
+// the loaded configuration. A system Broker accepts a port below 1024 only
+// while the configuration file can be written by root alone; a command-line
+// --listen override and a non-system mode are exempt. Broker calls it in the
+// listen-binding step, so a refusal is treated as a listen failure and a
+// degraded run can keep serving locally.
+func CheckLowPort() error {
+	c := currentCore()
+	if c == nil {
+		return ErrNotLoaded
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.checkLowPortAtStartup()
+}
+
 // checkLowPortAtStartup refuses to start a system Broker on a privileged port
 // while the configuration file can be written by another account. The message
 // names both remedies so the operator can either restrict the file or choose a

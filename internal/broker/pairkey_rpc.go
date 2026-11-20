@@ -18,6 +18,15 @@ import (
 // that does not listen cannot accept a dial, so key creation fails there with
 // invalid_argument and tells the caller to create the key on the other side.
 func (b *Broker) CreatePairingKey(ctx context.Context, req *localpb.CreatePairingKeyRequest) (*localpb.CreatePairingKeyResponse, error) {
+	if degraded := b.degradedState(); degraded != nil &&
+		degraded.Level == localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY {
+		msg := degraded.Reason
+		if degraded.Fix != "" {
+			msg += "; " + degraded.Fix
+		}
+		return nil, toStatus(Errorf(localpb.ErrorCode_ERROR_CODE_BROKER_DEGRADED, "%s", msg))
+	}
+
 	actor, err := b.auditActor(ctx, req.GetAgentId())
 	if err != nil {
 		return nil, toStatus(err)
