@@ -35,6 +35,9 @@ type Options struct {
 	// loop uses it to tell a user-level Broker whose socket is gone from one
 	// whose socket still answers.
 	probe func(context.Context, string) probeResult
+	// updateStatus replaces the Broker query made by the update hint; nil means
+	// brokerUpdateStatus. Tests use it to avoid a Broker.
+	updateStatus updateStatusSource
 }
 
 // Run serves the MCP server "peer" until ctx is done or the client closes the
@@ -102,6 +105,21 @@ func Run(ctx context.Context, opts Options) error {
 
 	h := &handlers{st: st, topics: mem, log: log}
 	server := newMCPServer(version, h, log)
+
+	// The update hint decorates a tool result with the version the Broker
+	// reports as available. It queries at most once per updateRecheckInterval,
+	// never repeats a version, and never changes the result on its own: a
+	// failed, missing or unresponsive Broker only costs the hint.
+	updateStatus := opts.updateStatus
+	if updateStatus == nil {
+		updateStatus = brokerUpdateStatus(st)
+	}
+	server.AddReceivingMiddleware((&updateHint{
+		source:          updateStatus,
+		timeout:         updateStatusTimeout,
+		log:             log,
+		fallbackCurrent: version,
+	}).middleware)
 
 	after := opts.after
 	if after == nil {

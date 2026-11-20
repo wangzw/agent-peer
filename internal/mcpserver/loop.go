@@ -199,6 +199,7 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff) (stop bool
 			s.Detail = ""
 			s.Remedy = ""
 			s.Client = client
+			s.Conn = cc
 		})
 
 		_ = d.register(ctx, client, d.first, d.st, d.onComplete, d.log)
@@ -249,13 +250,14 @@ func loopFailureStatus(ctx context.Context, d loopDeps, t target, detail string)
 }
 
 // loopSetStatus replaces the connection status with one that has no usable
-// client.
+// client or connection.
 func loopSetStatus(st *statusStore, phase Phase, detail, remedy string, client localpb.LocalClient) {
 	st.Update(func(s *Status) {
 		s.Phase = phase
 		s.Detail = detail
 		s.Remedy = remedy
 		s.Client = client
+		s.Conn = nil
 	})
 }
 

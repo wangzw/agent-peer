@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"sync"
 
+	"google.golang.org/grpc"
+
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
 )
 
@@ -30,11 +32,14 @@ const (
 
 // Status is a snapshot of the background connection state.
 type Status struct {
-	Phase         Phase
-	Detail        string
-	Remedy        string              // PhaseVersionMismatch only: the "To fix it, ..." clause for the selected kind
-	Client        localpb.LocalClient // non-nil only in PhaseConnected
-	AgentID       string              // non-empty only after registration_complete
+	Phase  Phase
+	Detail string
+	Remedy string              // PhaseVersionMismatch only: the "To fix it, ..." clause for the selected kind
+	Client localpb.LocalClient // non-nil only in PhaseConnected
+	// Conn is the gRPC connection behind Client, used by the update hint to
+	// call UpdateStatus. It is non-nil only in PhaseConnected.
+	Conn          *grpc.ClientConn
+	AgentID       string // non-empty only after registration_complete
 	Address       string
 	NotRegistered localpb.NotRegisteredReason // last reason the Broker sent; UNSPECIFIED if none yet
 	// NotRegisteredDetail is the Broker's specific explanation of
