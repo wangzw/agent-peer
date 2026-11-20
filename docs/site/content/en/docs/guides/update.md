@@ -1,7 +1,7 @@
 ---
 title: Update agent-peer
 linkTitle: Update agent-peer
-weight: 7
+weight: 8
 ---
 
 agent-peer checks for newer releases of itself, and you install them from a terminal or from a session when you choose to. The check is automatic; an installation asks for confirmation by default unless you pass `--yes`, and a session asks by default for your approval of the `update_broker` call. Upgrading also changes the default alias of a Broker that has no `broker.alias` set, so the agent addresses your peers see can change; see [Why did agent addresses change after upgrading?]({{< relref "/docs/faq" >}}).

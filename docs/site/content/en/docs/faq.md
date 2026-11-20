@@ -11,7 +11,7 @@ Install the latest release and register the MCP server for your account with one
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
 ```
 
-The release archive also contains an `install.sh`; after extracting it, run `sh ./install.sh`. You can also install the binary by hand. The [quick start]({{< relref "getting-started.md" >}}) covers every way to install, including system-level installation.
+The release archive also contains an `install.sh`; after extracting it, run `sh ./install.sh`. You can also install the binary by hand. The [Install agent-peer]({{< relref "guides/install.md" >}}) guide covers every way to install, including system-level installation.
 
 If the host already has a system Broker you can use, register the MCP server only instead of installing a user-level Broker; [Run a system Broker]({{< relref "guides/system-broker.md" >}}) gives the command.
 

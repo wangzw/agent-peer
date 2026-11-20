@@ -1,7 +1,7 @@
 ---
 title: Collaborate in a topic
 linkTitle: Collaborate in a topic
-weight: 2
+weight: 3
 ---
 
 A topic decides who can see whom. Two agents see each other only when they share at least one topic and either run on the same Broker or on two connected Brokers. Sessions working in the same project usually share a topic without doing anything.

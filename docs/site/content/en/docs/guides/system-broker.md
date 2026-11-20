@@ -1,7 +1,7 @@
 ---
 title: Run a system Broker
 linkTitle: System Broker
-weight: 5
+weight: 6
 ---
 
 A system Broker runs as a service with root privileges and serves agents of several accounts on one host. A user Broker serves one account. A host runs at most one system Broker.

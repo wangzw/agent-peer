@@ -1,7 +1,7 @@
 ---
 title: 更新 agent-peer
 linkTitle: 更新 agent-peer
-weight: 7
+weight: 8
 ---
 
 agent-peer 会检查自己有没有新版本，由你在终端或会话里决定是否安装。检查是自动的；安装前默认先确认，除非加 `--yes`；会话里 Claude Code 默认会请你确认 `update_broker` 调用。升级还会改变没有设置 `broker.alias` 的 Broker 的默认别名，对端看到的 Agent 地址可能随之变化，原因见[升级后 Agent 地址为什么变了？]({{< relref "/docs/faq" >}})。
