@@ -38,10 +38,15 @@ const (
 // Process exit codes. They are split by cause so a service manager and the
 // subprocess tests can tell the failures apart.
 const (
-	exitOK                = 0
-	exitFailure           = 1
-	exitUsage             = 2
-	exitAlreadyRunning    = 3
+	exitOK             = 0
+	exitFailure        = 1
+	exitUsage          = 2
+	exitAlreadyRunning = 3
+	// exitServiceDegraded reports that the service is installed and running
+	// but its Broker runs degraded. Only service install, start and restart
+	// use it; it shares 3 with exitAlreadyRunning, which belongs to the broker
+	// command.
+	exitServiceDegraded   = 3
 	exitListenUnavailable = 4
 	exitInvalidConfig     = 5
 	exitInSession         = 6

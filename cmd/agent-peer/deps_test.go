@@ -211,3 +211,33 @@ func TestExitCodeForTable(t *testing.T) {
 		}
 	}
 }
+
+// TestExitServiceDegraded pins the code the service commands return for a
+// degraded Broker. It is distinct from the generic failure and usage codes so
+// the install script can tell "installed but degraded" from both.
+func TestExitServiceDegraded(t *testing.T) {
+	if exitServiceDegraded != 3 {
+		t.Fatalf("exitServiceDegraded = %d, want 3", exitServiceDegraded)
+	}
+	for _, other := range []struct {
+		name string
+		code int
+	}{
+		{"exitFailure", exitFailure},
+		{"exitUsage", exitUsage},
+	} {
+		if exitServiceDegraded == other.code {
+			t.Errorf("exitServiceDegraded shares %d with %s", other.code, other.name)
+		}
+	}
+	if exitServiceDegraded != exitAlreadyRunning {
+		t.Errorf("exitServiceDegraded = %d, want the documented shared value %d of exitAlreadyRunning", exitServiceDegraded, exitAlreadyRunning)
+	}
+	// Only failAlreadyRunning reaches the shared value; no other broker start
+	// failure may report a degraded service command's code.
+	for f := failOther; f <= failSystemUnavailable; f++ {
+		if got := exitCodeFor(f); got == exitServiceDegraded && f != failAlreadyRunning {
+			t.Errorf("exitCodeFor(%d) = %d, want only failAlreadyRunning to share %d", f, got, exitServiceDegraded)
+		}
+	}
+}
