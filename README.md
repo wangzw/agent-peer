@@ -245,7 +245,10 @@ A session can start the same upgrade with the `update_broker` tool. Claude Code 
 
 When the update runs through the Broker, the Broker restarts and open sessions reconnect to it automatically. The MCP server inside a session that is already open keeps running the old binary until you reconnect it with `/mcp` or restart the session. A local replacement does not start or restart anything; the new binary takes effect the next time the Broker starts.
 
-Downloads use the proxy environment variables of the process that performs them: the update command for a user-level installation, the Broker for a system-level one.
+Downloads use the proxy environment variables of the process that performs them. A system-level Broker reads them from its service environment:
+
+- Linux: run `sudo systemctl edit agent-peer.service`, add `[Service]` and `Environment=HTTPS_PROXY=http://proxy.example:8080` (plus `HTTP_PROXY` and `NO_PROXY` as needed), then restart the service. The drop-in survives a reinstall.
+- macOS: add an `EnvironmentVariables` dictionary to `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist` with `HTTPS_PROXY` and any other variables, then boot the service out and in again. A reinstall rewrites the plist, so add the dictionary again afterwards.
 
 ### Administering a system-level Broker without root
 

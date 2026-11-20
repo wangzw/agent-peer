@@ -451,6 +451,13 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 
 下载使用 `http.DefaultTransport`，它读取代理环境变量。用户级更新由命令下载，代理变量取自命令的环境；系统级更新由 Broker 下载，代理变量取自 Broker 服务进程的环境。
 
+系统级 Broker 的代理变量要写在服务的环境里：
+
+- Linux：`sudo systemctl edit agent-peer.service`，在生成的 drop-in 中写入 `[Service]` 与 `Environment=HTTPS_PROXY=http://proxy.example:8080`，需要时再加 `HTTP_PROXY` 与 `NO_PROXY`，然后 `sudo systemctl restart agent-peer.service`。`service install` 只重写主单元文件，drop-in 在重装后仍然保留。
+- macOS：在 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist` 的顶层字典中加入 `EnvironmentVariables` 字典，写入 `HTTPS_PROXY` 等变量，然后执行 `sudo launchctl bootout system/io.github.wangzw.agent-peer` 与 `sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`。`service install` 每次重写 plist，重装后需要重新加入这一项。
+
+用户级服务在服务管理器下执行 `ApplyUpdate` 时同理：Linux 用 `systemctl --user edit agent-peer.service`，macOS 改 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`，重装后同样需要重新加入。
+
 ### 委托升级
 
 Broker 处理 `ApplyUpdate`：
