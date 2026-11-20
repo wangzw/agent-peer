@@ -113,6 +113,32 @@ func TestPreflight(t *testing.T) {
 			want:      "Not sent: this session is not registered as an agent: registration is still in progress (code: not_registered)",
 		},
 		{
+			name: "connected degraded with an agent needed",
+			status: Status{
+				Phase:               PhaseConnected,
+				NotRegistered:       localpb.NotRegisteredReason_NOT_REGISTERED_REASON_BROKER_DEGRADED,
+				NotRegisteredDetail: "config parse failed",
+			},
+			tool:      "list_agents",
+			kind:      callGeneric,
+			needAgent: true,
+			want:      "list_agents failed: config parse failed (code: broker_degraded)",
+		},
+		{
+			// A tool that does not need an identity reaches the Broker, which
+			// answers broker_degraded itself.
+			name: "connected degraded without needAgent",
+			status: Status{
+				Phase:               PhaseConnected,
+				NotRegistered:       localpb.NotRegisteredReason_NOT_REGISTERED_REASON_BROKER_DEGRADED,
+				NotRegisteredDetail: "config parse failed",
+			},
+			tool:      "list_brokers",
+			kind:      callGeneric,
+			needAgent: false,
+			wantNoErr: true,
+		},
+		{
 			// mcpserver design:146: the six management tools work before
 			// registration completes.
 			name: "connected not registered without needAgent",
@@ -259,6 +285,23 @@ func TestPreflightNotRegisteredReasons(t *testing.T) {
 	}
 }
 
+// TestPreflightBrokerDegradedWithoutDetail checks the sentence and code when a
+// degraded Broker sends no detail of its own.
+func TestPreflightBrokerDegradedWithoutDetail(t *testing.T) {
+	h := newHandlers(Status{
+		Phase:         PhaseConnected,
+		NotRegistered: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_BROKER_DEGRADED,
+	})
+	_, err := h.preflight("list_agents", callGeneric, true)
+	if err == nil {
+		t.Fatal("preflight returned no error")
+	}
+	want := "list_agents failed: the Broker runs degraded with diagnostics only; it cannot serve this call until the startup failure is fixed (code: broker_degraded)"
+	if got := err.Error(); got != want {
+		t.Errorf("preflight error = %q, want %q", got, want)
+	}
+}
+
 // TestPreflightNotRegisteredDetail checks that a Broker-supplied detail wins
 // over the general sentence for the reason, and that a missing detail keeps
 // that sentence.
@@ -397,6 +440,33 @@ func TestRPCError(t *testing.T) {
 			kind:      callGeneric,
 			err:       detailStatus(codes.FailedPrecondition, &localpb.ErrorDetail{Code: localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH, Message: "incompatible"}),
 			wantExact: "list_agents failed: incompatible (code: version_mismatch)",
+		},
+		{
+			// A peer Broker that went offline refuses the delivery itself, so the
+			// sender learns why resending is pointless.
+			name: "send to an offline peer",
+			tool: "send_message",
+			kind: callSend,
+			err: detailStatus(codes.FailedPrecondition, &localpb.ErrorDetail{
+				Code:                         localpb.ErrorCode_ERROR_CODE_BROKER_OFFLINE,
+				Message:                      "Broker hostB is offline and refuses messages from other hosts",
+				OriginatingBrokerFingerprint: fp,
+			}),
+			wantExact: "Not sent: Broker hostB is offline and refuses messages from other hosts (code: broker_offline) (reported by Broker " + fpHex + "). " + textPeerOffline,
+		},
+		{
+			name:      "create a pairing key on a local-only Broker",
+			tool:      "create_pairing_key",
+			kind:      callGeneric,
+			err:       detailStatus(codes.FailedPrecondition, &localpb.ErrorDetail{Code: localpb.ErrorCode_ERROR_CODE_BROKER_DEGRADED, Message: "listen address :17443 is unavailable; fix broker.listen"}),
+			wantExact: "create_pairing_key failed: listen address :17443 is unavailable; fix broker.listen (code: broker_degraded)",
+		},
+		{
+			name:      "a call the degraded Broker refuses",
+			tool:      "list_brokers",
+			kind:      callGeneric,
+			err:       detailStatus(codes.FailedPrecondition, &localpb.ErrorDetail{Code: localpb.ErrorCode_ERROR_CODE_BROKER_DEGRADED, Message: "config parse failed"}),
+			wantExact: "list_brokers failed: config parse failed (code: broker_degraded)",
 		},
 	}
 

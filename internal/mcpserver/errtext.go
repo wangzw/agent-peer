@@ -43,6 +43,7 @@ const (
 	textSendLost    = "lost contact with the Broker before it answered; the message may have been delivered, and sending it again may deliver it twice"
 	textConnectLost = "lost contact with the Broker before it answered; the pairing may still have completed, check list_brokers"
 	textGenericLost = "the Broker did not answer: %s"
+	textPeerOffline = "the other Broker is offline and refuses messages from other hosts; sending the same message again will not deliver it. Tell the other user by another means if you can."
 
 	textNeedRead  = "The calling account needs read permission on the Broker's config file"
 	textNeedWrite = "The calling account needs write permission on the Broker's config file"
@@ -99,6 +100,8 @@ func notRegisteredReason(r localpb.NotRegisteredReason, detail string) string {
 		return "the inbox socket is not owned by this account"
 	case localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SOCKET_PATH_MISSING:
 		return "the session had no inbox socket when this MCP server started; reconnect the MCP server with /mcp"
+	case localpb.NotRegisteredReason_NOT_REGISTERED_REASON_BROKER_DEGRADED:
+		return "the Broker runs degraded with diagnostics only; it cannot serve this call until the startup failure is fixed"
 	default:
 		return "registration is still in progress"
 	}
@@ -129,6 +132,8 @@ func rpcError(tool string, kind callKind, perm permNeed, err error) error {
 		out += ". " + textNeedRead
 	case d.GetCode() == localpb.ErrorCode_ERROR_CODE_PERMISSION_DENIED && perm == permWrite:
 		out += ". " + textNeedWrite
+	case d.GetCode() == localpb.ErrorCode_ERROR_CODE_BROKER_OFFLINE:
+		out += ". " + textPeerOffline
 	}
 	return errors.New(out)
 }

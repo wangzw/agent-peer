@@ -86,6 +86,18 @@ func regWaitUntil(t *testing.T, what string, cond func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
+// regConsistently asserts that cond holds throughout a bounded window.
+func regConsistently(t *testing.T, what string, window time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(window)
+	for time.Now().Before(deadline) {
+		if !cond() {
+			t.Fatalf("%s did not hold throughout %s", what, window)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func TestRunRegistration(t *testing.T) {
 	t.Run("sends the first frame verbatim", func(t *testing.T) {
 		for _, tc := range []struct {
@@ -184,6 +196,63 @@ func TestRunRegistration(t *testing.T) {
 			}
 		case <-time.After(3 * time.Second):
 			t.Fatal("onComplete was not called again after the second completion")
+		}
+
+		run.conn.End()
+		if err := run.wait(t); err == nil {
+			t.Fatal("runRegistration returned nil after the stream ended")
+		}
+	})
+
+	t.Run("a broker_degraded not_registered records the detail and keeps the stream open", func(t *testing.T) {
+		calls := make(chan string, 4)
+		run := startRegRun(t, &localpb.RegisterRequest{}, func(_ context.Context, _ localpb.LocalClient, agentID string, _ bool) {
+			calls <- agentID
+		})
+
+		if err := run.conn.Send(&localpb.RegisterResponse{
+			Event: &localpb.RegisterResponse_NotRegistered{
+				NotRegistered: &localpb.RegistrationProblem{
+					Reason: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_BROKER_DEGRADED,
+					Detail: "config parse failed",
+				},
+			},
+		}); err != nil {
+			t.Fatalf("sending not_registered: %v", err)
+		}
+		regWaitUntil(t, "the degraded reason", func() bool {
+			st := run.st.Get()
+			return st.AgentID == "" &&
+				st.NotRegistered == localpb.NotRegisteredReason_NOT_REGISTERED_REASON_BROKER_DEGRADED &&
+				st.NotRegisteredDetail == "config parse failed"
+		})
+		// The stream must stay open after the event. Wait out a short window
+		// instead of sampling once, so a close that follows the event is still
+		// caught.
+		regConsistently(t, "the Register stream stays open after the degraded not_registered", 100*time.Millisecond, func() bool {
+			select {
+			case <-run.conn.Done():
+				return false
+			default:
+				return true
+			}
+		})
+
+		// A later completion clears the degraded state, as it does any other
+		// not_registered reason.
+		if err := run.conn.Complete("id1", "me@h", false); err != nil {
+			t.Fatalf("sending registration_complete: %v", err)
+		}
+		select {
+		case got := <-calls:
+			if got != "id1" {
+				t.Fatalf("onComplete got %q, want id1", got)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("onComplete was not called within 3s")
+		}
+		if st := run.st.Get(); st.NotRegistered != localpb.NotRegisteredReason_NOT_REGISTERED_REASON_UNSPECIFIED || st.NotRegisteredDetail != "" {
+			t.Fatalf("status after re-registration = (%v, %q), want UNSPECIFIED and no detail", st.NotRegistered, st.NotRegisteredDetail)
 		}
 
 		run.conn.End()
