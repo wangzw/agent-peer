@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -84,7 +85,7 @@ const (
 // the user-level service runs, and the fake Claude Code CLI receives exactly
 // one "mcp add --scope user peer -- <path> mcp". A second run must succeed and
 // must not add the MCP server again.
-func TestRemoteInstallUser(t *testing.T) {
+func TestREQBrokerConfig042_RemoteInstallUser(t *testing.T) {
 	if !syscontainer.InContainer() {
 		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{})
 		return
@@ -118,12 +119,14 @@ func TestRemoteInstallUser(t *testing.T) {
 	remoteInstallRequireMCPAdd(t, binary)
 }
 
-// TestRemoteInstallSystem installs through the remote script as an ordinary
-// account with "sudo sh -s -- --system" and checks the system-level outcome:
-// the binary is root-owned in /usr/local/bin and reports the release version,
-// the system-level service runs, and the fake Claude Code CLI receives one
-// registration for SUDO_USER with the system binary.
-func TestRemoteInstallSystem(t *testing.T) {
+// TestREQBrokerConfig042_RemoteInstallSystem installs through the remote script
+// as an ordinary account, answers the level question with y, and checks the
+// system-level outcome: the packaged script reruns itself through sudo inside
+// the temporary directory, the binary is root-owned in /usr/local/bin and
+// reports the release version, the system-level service runs, and the fake
+// Claude Code CLI receives one registration for SUDO_USER with the system
+// binary.
+func TestREQBrokerConfig042_RemoteInstallSystem(t *testing.T) {
 	if !syscontainer.InContainer() {
 		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{})
 		return
@@ -138,10 +141,12 @@ func TestRemoteInstallSystem(t *testing.T) {
 	}
 	script := remoteInstallDownloadScript(t, base)
 
-	res := remoteInstallRun(t, remoteInstallAccount, env, script, "sudo", "sh", "-s", "--", "--system")
+	res := runInstallScriptWithTerminal(t, remoteInstallAccount, env, remoteInstallHome(t), "y\n", "sh", script)
 	if res.ExitCode != 0 {
-		t.Fatalf("system-level remote install: exit %d\nstdout:\n%s\nstderr:\n%s",
-			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
+		t.Fatalf("system-level remote install: exit %d\n%s", res.ExitCode, res.Output)
+	}
+	if !strings.Contains(res.Output, installLevelPrompt) {
+		t.Errorf("the terminal did not show %q:\n%s", installLevelPrompt, res.Output)
 	}
 
 	uid, gid, mode := fileOwnerAndMode(t, releaseBinary)
@@ -165,7 +170,7 @@ func TestRemoteInstallSystem(t *testing.T) {
 
 // TestRemoteInstallPinnedVersion runs the remote script with "--version" and
 // checks that the archive for the pinned release was installed, not latest.
-func TestRemoteInstallPinnedVersion(t *testing.T) {
+func TestREQBrokerConfig042_RemoteInstallPinnedVersion(t *testing.T) {
 	if !syscontainer.InContainer() {
 		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{
 			extraVersions: []string{remoteInstallPinnedVersion},
@@ -194,7 +199,7 @@ func TestRemoteInstallPinnedVersion(t *testing.T) {
 // not have. The download fails, and the remote script must report that the
 // version was not found, leave the host untouched and clean its temporary
 // directory.
-func TestRemoteInstallUnknownVersion(t *testing.T) {
+func TestREQBrokerConfig042_RemoteInstallUnknownVersion(t *testing.T) {
 	if !syscontainer.InContainer() {
 		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{})
 		return
@@ -219,7 +224,7 @@ func TestRemoteInstallUnknownVersion(t *testing.T) {
 // TestRemoteInstallArchiveWithoutInstallScript serves an archive that has the
 // binary but no install.sh. The remote script must report the version as not
 // found instead of running a half install, and leave the host untouched.
-func TestRemoteInstallArchiveWithoutInstallScript(t *testing.T) {
+func TestREQBrokerConfig042_RemoteInstallArchiveWithoutInstallScript(t *testing.T) {
 	if !syscontainer.InContainer() {
 		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{omitInstallScript: true})
 		return
@@ -256,7 +261,7 @@ func remoteInstallRequireNotFound(t *testing.T, res syscontainer.Result, version
 // script wraps its body in. The truncated file defines the function but never
 // runs it, so the host is untouched and the fake release service sees no
 // request at all.
-func TestRemoteInstallTruncatedScript(t *testing.T) {
+func TestREQBrokerConfig042_RemoteInstallTruncatedScript(t *testing.T) {
 	if !syscontainer.InContainer() {
 		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{})
 		return
@@ -282,7 +287,7 @@ func TestRemoteInstallTruncatedScript(t *testing.T) {
 // the archive and checks that the remote script aborts without touching the
 // host: no binary, service unit, MCP registration or configuration file, and no
 // leftover temporary directory.
-func TestRemoteInstallChecksumMismatch(t *testing.T) {
+func TestREQBrokerConfig042_RemoteInstallChecksumMismatch(t *testing.T) {
 	if !syscontainer.InContainer() {
 		remoteInstallRunInContainer(t, remoteInstallReleaseOptions{badChecksum: true})
 		return
@@ -738,6 +743,13 @@ func remoteInstallDownloadScript(t *testing.T, base string) string {
 func remoteInstallRun(t *testing.T, account string, env []string, stdinPath, name string, args ...string) syscontainer.Result {
 	t.Helper()
 	cmd := syscontainer.Command(account, env, name, args...)
+	// A new session has no controlling terminal, so an install without a level
+	// option exercises the no-terminal choice instead of blocking on the
+	// terminal that runs the tests.
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setsid = true
 	if stdinPath != "" {
 		f, err := os.Open(stdinPath)
 		if err != nil {

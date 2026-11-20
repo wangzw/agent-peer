@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -72,6 +74,11 @@ const (
 	installSystemConfigDir = "/etc/agent-peer"
 	installUserUnitPath    = installHome + "/.config/systemd/user/agent-peer.service"
 	installSystemUnitPath  = "/etc/systemd/system/agent-peer.service"
+
+	// installLevelPrompt and installUpgradePrompt are the questions the script
+	// asks on the controlling terminal.
+	installLevelPrompt   = "Install system-wide (all accounts)? [y/N]"
+	installUpgradePrompt = "Upgrade the system-wide installation? [Y/n]"
 )
 
 // installArchiveReadme stands in for the user-facing README a release archive
@@ -182,6 +189,394 @@ func TestREQBrokerConfig041_SystemInstallScript(t *testing.T) {
 		assertInstallMCPAdd(t, 1, installSystemPrefix, installUID, installHome)
 		assertInstallMCPGet(t, 2, installUID, installHome)
 	})
+}
+
+// TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemWide answers the level
+// question with y and checks that the ordinary account gets a system-level
+// install, with the MCP server registered for that account.
+func TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemWide(t *testing.T) {
+	if !syscontainer.InContainer() {
+		stageInstallArchive(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	installFakeClaude(t)
+	archive := prepareInstallArchive(t)
+	removePreinstalledSystemBinary(t)
+	configureInstallSudo(t)
+
+	t.Run("REQ-broker-config-044 y installs system-wide", func(t *testing.T) {
+		res := runInstallScriptWithTerminal(t, installAccount, installUserEnv(), archive, "y\n", "sh", "./install.sh")
+		if res.ExitCode != 0 {
+			t.Fatalf("install with y on the terminal: exit %d\n%s", res.ExitCode, res.Output)
+		}
+		if !strings.Contains(res.Output, installLevelPrompt) {
+			t.Errorf("the terminal did not show %q:\n%s", installLevelPrompt, res.Output)
+		}
+		assertSystemInstall(t)
+		assertInstallMCPAdd(t, 1, installSystemPrefix, installUID, installHome)
+
+		again := runInstallScriptWithTerminal(t, installAccount, installUserEnv(), archive, "y\n", "sh", "./install.sh")
+		if again.ExitCode != 0 {
+			t.Fatalf("second install with y on the terminal: exit %d\n%s", again.ExitCode, again.Output)
+		}
+		if !strings.Contains(again.Output, installUpgradePrompt) {
+			t.Errorf("the terminal did not show %q:\n%s", installUpgradePrompt, again.Output)
+		}
+		assertSystemInstall(t)
+		assertInstallMCPAdd(t, 1, installSystemPrefix, installUID, installHome)
+		assertInstallMCPGet(t, 2, installUID, installHome)
+	})
+}
+
+// TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser presses Enter at the
+// level question and checks that the account gets a user-level install.
+func TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser(t *testing.T) {
+	if !syscontainer.InContainer() {
+		stageInstallArchive(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	installFakeClaude(t)
+	archive := prepareInstallArchive(t)
+	startInstallUserManager(t)
+
+	t.Run("REQ-broker-config-044 enter installs user-level", func(t *testing.T) {
+		res := runInstallScriptWithTerminal(t, installAccount, installUserEnv(), archive, "\n", "sh", "./install.sh")
+		if res.ExitCode != 0 {
+			t.Fatalf("install with Enter on the terminal: exit %d\n%s", res.ExitCode, res.Output)
+		}
+		if !strings.Contains(res.Output, installLevelPrompt) {
+			t.Errorf("the terminal did not show %q:\n%s", installLevelPrompt, res.Output)
+		}
+		assertUserInstall(t)
+		assertInstallMCPAdd(t, 1, installUserPrefix, installUID, installHome)
+		if _, err := os.Stat(installSystemUnitPath); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the user-level install left the system unit %s behind: %v", installSystemUnitPath, err)
+		}
+		if procs := syscontainer.Pids("agent-peer", "broker", "--system"); len(procs) != 0 {
+			t.Errorf("the user-level install started system Brokers: %v", procs)
+		}
+	})
+}
+
+// TestREQBrokerConfig045_InstallScriptRootDoesNotAsk runs the script as root without
+// any arguments and checks that it installs system-wide without a level
+// question.
+func TestREQBrokerConfig045_InstallScriptRootDoesNotAsk(t *testing.T) {
+	if !syscontainer.InContainer() {
+		stageInstallArchive(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	installFakeClaude(t)
+	archive := prepareInstallArchive(t)
+	removePreinstalledSystemBinary(t)
+
+	t.Run("REQ-broker-config-045 root installs system-wide without asking", func(t *testing.T) {
+		res := runInstallScriptAs(t, "root", nil, archive, "sh", "./install.sh")
+		if res.ExitCode != 0 {
+			t.Fatalf("root install: exit %d\nstdout:\n%s\nstderr:\n%s",
+				res.ExitCode, res.Stdout, res.Stderr)
+		}
+		combined := res.Stdout + res.Stderr
+		for _, prompt := range []string{installLevelPrompt, installUpgradePrompt} {
+			if strings.Contains(combined, prompt) {
+				t.Errorf("the root install asked %q:\n%s", prompt, combined)
+			}
+		}
+		assertSystemInstall(t)
+		if _, err := os.Stat(installUserUnitPath); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the root install left a user unit at %s: %v", installUserUnitPath, err)
+		}
+	})
+}
+
+// TestREQBrokerConfig046_InstallScriptWithoutTerminal runs the script in a new session
+// without a controlling terminal and checks that it installs user-level without
+// waiting for input.
+func TestREQBrokerConfig046_InstallScriptWithoutTerminal(t *testing.T) {
+	if !syscontainer.InContainer() {
+		stageInstallArchive(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	installFakeClaude(t)
+	archive := prepareInstallArchive(t)
+	startInstallUserManager(t)
+
+	t.Run("REQ-broker-config-046 no terminal installs user-level", func(t *testing.T) {
+		// runInstallScriptAs starts the command in a new session with stdin on
+		// /dev/null, the same shape as "setsid sh ./install.sh </dev/null".
+		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive, "sh", "./install.sh")
+		if res.ExitCode != 0 {
+			t.Fatalf("no-terminal install: exit %d\nstdout:\n%s\nstderr:\n%s",
+				res.ExitCode, res.Stdout, res.Stderr)
+		}
+		combined := res.Stdout + res.Stderr
+		if strings.Contains(combined, installLevelPrompt) {
+			t.Errorf("the no-terminal install asked the level question:\n%s", combined)
+		}
+		assertUserInstall(t)
+		if _, err := os.Stat(installSystemUnitPath); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the no-terminal install left the system unit %s behind: %v", installSystemUnitPath, err)
+		}
+	})
+}
+
+// TestREQBrokerConfig047_InstallScriptUpgradePrompt installs the system-level service first,
+// then checks the upgrade question: Enter upgrades it and keeps the existing
+// configuration, while n leaves everything unchanged.
+func TestREQBrokerConfig047_InstallScriptUpgradePrompt(t *testing.T) {
+	if !syscontainer.InContainer() {
+		stageInstallArchive(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	installFakeClaude(t)
+	archive := prepareInstallArchive(t)
+	removePreinstalledSystemBinary(t)
+	configureInstallSudo(t)
+	runSystemInstallScript(t, archive)
+	assertSystemInstall(t)
+
+	configPath := filepath.Join(installSystemConfigDir, "config.yaml")
+	configBefore := readFile(t, configPath)
+
+	t.Run("REQ-broker-config-047 enter upgrades the system-wide install", func(t *testing.T) {
+		res := runInstallScriptWithTerminal(t, installAccount, installUserEnv(), archive, "\n", "sh", "./install.sh")
+		if res.ExitCode != 0 {
+			t.Fatalf("upgrade with Enter on the terminal: exit %d\n%s", res.ExitCode, res.Output)
+		}
+		if !strings.Contains(res.Output, installUpgradePrompt) {
+			t.Errorf("the terminal did not show %q:\n%s", installUpgradePrompt, res.Output)
+		}
+		if strings.Contains(res.Output, installLevelPrompt) {
+			t.Errorf("the terminal showed the install question instead of the upgrade question:\n%s", res.Output)
+		}
+		if !strings.Contains(res.Output, "upgraded from ") {
+			t.Errorf("the upgrade did not report the replaced version:\n%s", res.Output)
+		}
+		assertSystemInstall(t)
+		if got := readFile(t, configPath); got != configBefore {
+			t.Errorf("the upgrade changed the configuration:\n got: %q\nwant: %q", got, configBefore)
+		}
+		assertInstallMCPAdd(t, 1, installSystemPrefix, installUID, installHome)
+	})
+
+	t.Run("REQ-broker-config-047 n leaves the installation unchanged", func(t *testing.T) {
+		beforeHash := sha256.Sum256([]byte(readFile(t, installSystemPrefix)))
+		res := runInstallScriptWithTerminal(t, installAccount, installUserEnv(), archive, "n\n", "sh", "./install.sh")
+		if res.ExitCode != 0 {
+			t.Fatalf("declining the upgrade: exit %d\n%s", res.ExitCode, res.Output)
+		}
+		if !strings.Contains(res.Output, installUpgradePrompt) {
+			t.Errorf("the terminal did not show %q:\n%s", installUpgradePrompt, res.Output)
+		}
+		if !strings.Contains(res.Output, "--user") {
+			t.Errorf("declining the upgrade did not point at --user:\n%s", res.Output)
+		}
+		if got := readFile(t, configPath); got != configBefore {
+			t.Errorf("declining the upgrade changed the configuration:\n got: %q\nwant: %q", got, configBefore)
+		}
+		if afterHash := sha256.Sum256([]byte(readFile(t, installSystemPrefix))); afterHash != beforeHash {
+			t.Errorf("declining the upgrade replaced the system binary")
+		}
+		waitInstallUnitState(t, "root", nil, "active")
+	})
+}
+
+// TestREQBrokerConfig048_InstallScriptBothFlags checks that giving both level
+// options is a usage error that changes nothing.
+func TestREQBrokerConfig048_InstallScriptBothFlags(t *testing.T) {
+	if !syscontainer.InContainer() {
+		stageInstallArchive(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	archive := prepareInstallArchive(t)
+	removePreinstalledSystemBinary(t)
+
+	t.Run("REQ-broker-config-048 both flags are a usage error", func(t *testing.T) {
+		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive,
+			"sh", "./install.sh", "--system", "--user")
+		if res.ExitCode != 2 {
+			t.Fatalf("--system --user: exit %d, want 2\nstdout:\n%s\nstderr:\n%s",
+				res.ExitCode, res.Stdout, res.Stderr)
+		}
+		if !strings.Contains(res.Stdout+res.Stderr, "--system and --user cannot be used together") {
+			t.Errorf("the usage error does not name the conflict:\n%s", res.Stdout+res.Stderr)
+		}
+		for _, path := range []string{installUserPrefix, installSystemPrefix, installUserUnitPath, installSystemUnitPath} {
+			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("the usage error left %s behind: %v", path, err)
+			}
+		}
+	})
+}
+
+// TestREQBrokerConfig048_InstallScriptUserFlag checks that --user skips the
+// level question and installs for the account.
+func TestREQBrokerConfig048_InstallScriptUserFlag(t *testing.T) {
+	if !syscontainer.InContainer() {
+		stageInstallArchive(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	installFakeClaude(t)
+	archive := prepareInstallArchive(t)
+	startInstallUserManager(t)
+
+	t.Run("REQ-broker-config-048 --user skips the question", func(t *testing.T) {
+		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive,
+			"sh", "./install.sh", "--user")
+		if res.ExitCode != 0 {
+			t.Fatalf("--user: exit %d\nstdout:\n%s\nstderr:\n%s",
+				res.ExitCode, res.Stdout, res.Stderr)
+		}
+		if combined := res.Stdout + res.Stderr; strings.Contains(combined, installLevelPrompt) {
+			t.Errorf("--user asked the level question:\n%s", combined)
+		}
+		assertUserInstall(t)
+		assertInstallMCPAdd(t, 1, installUserPrefix, installUID, installHome)
+	})
+}
+
+// TestREQBrokerConfig048_InstallScriptSystemFlag checks that --system skips the
+// level question, runs the script through sudo and installs system-wide.
+func TestREQBrokerConfig048_InstallScriptSystemFlag(t *testing.T) {
+	if !syscontainer.InContainer() {
+		stageInstallArchive(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	installFakeClaude(t)
+	archive := prepareInstallArchive(t)
+	removePreinstalledSystemBinary(t)
+	configureInstallSudo(t)
+
+	t.Run("REQ-broker-config-048 --system skips the question", func(t *testing.T) {
+		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive,
+			"sh", "./install.sh", "--system")
+		if res.ExitCode != 0 {
+			t.Fatalf("--system: exit %d\nstdout:\n%s\nstderr:\n%s",
+				res.ExitCode, res.Stdout, res.Stderr)
+		}
+		if combined := res.Stdout + res.Stderr; strings.Contains(combined, installLevelPrompt) {
+			t.Errorf("--system asked the level question:\n%s", combined)
+		}
+		assertSystemInstall(t)
+		assertInstallMCPAdd(t, 1, installSystemPrefix, installUID, installHome)
+	})
+}
+
+// TestREQBrokerConfig050_InstallScriptUserSummary checks the summary a
+// user-level install prints and that the printed commands run. The summary is
+// produced by service install, so it must be there after a successful install.
+func TestREQBrokerConfig050_InstallScriptUserSummary(t *testing.T) {
+	if !syscontainer.InContainer() {
+		stageInstallArchive(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	installFakeClaude(t)
+	archive := prepareInstallArchive(t)
+	startInstallUserManager(t)
+
+	t.Run("REQ-broker-config-050 user-level summary", func(t *testing.T) {
+		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive,
+			"sh", "./install.sh", "--user")
+		if res.ExitCode != 0 {
+			t.Fatalf("user-level install: exit %d\nstdout:\n%s\nstderr:\n%s",
+				res.ExitCode, res.Stdout, res.Stderr)
+		}
+		assertInstallScriptSummary(t, res.Stdout, "user-level", "login", map[string]string{
+			"binary:":    installUserPrefix,
+			"config:":    installHome + "/.agent-peer/config.yaml (generated)",
+			"run log:":   "journalctl --user -u agent-peer.service",
+			"audit log:": installHome + "/.agent-peer/audit.log",
+			"start:":     "agent-peer service start",
+			"stop:":      "agent-peer service stop",
+			"restart:":   "agent-peer service restart",
+			"uninstall:": "agent-peer uninstall",
+		})
+		assertInstallScriptCommandsRun(t, res.Stdout, installAccount,
+			append(installUserEnv(), "PATH="+installHome+"/.local/bin:"+installPath), installHome)
+	})
+}
+
+// TestREQBrokerConfig050_InstallScriptSystemSummary checks the same summary for
+// a system-level install.
+func TestREQBrokerConfig050_InstallScriptSystemSummary(t *testing.T) {
+	if !syscontainer.InContainer() {
+		stageInstallArchive(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	installFakeClaude(t)
+	archive := prepareInstallArchive(t)
+	removePreinstalledSystemBinary(t)
+	configureInstallSudo(t)
+
+	t.Run("REQ-broker-config-050 system-level summary", func(t *testing.T) {
+		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive,
+			"sh", "./install.sh", "--system")
+		if res.ExitCode != 0 {
+			t.Fatalf("system-level install: exit %d\nstdout:\n%s\nstderr:\n%s",
+				res.ExitCode, res.Stdout, res.Stderr)
+		}
+		assertInstallScriptSummary(t, res.Stdout, "system-level", "boot", map[string]string{
+			"binary:":    installSystemPrefix,
+			"config:":    installSystemConfigDir + "/config.yaml (generated)",
+			"run log:":   "journalctl -u agent-peer.service",
+			"audit log:": systemAuditPath,
+			"start:":     "sudo agent-peer service start",
+			"stop:":      "sudo agent-peer service stop",
+			"restart:":   "sudo agent-peer service restart",
+			"uninstall:": "agent-peer uninstall",
+		})
+		assertInstallScriptCommandsRun(t, res.Stdout, "root", nil, "/")
+	})
+}
+
+// assertInstallScriptSummary checks the summary the install script printed and
+// that every path it names exists. It uses the same summary parser as the
+// service-install tests.
+func assertInstallScriptSummary(t *testing.T, output, level, start string, wants map[string]string) {
+	t.Helper()
+	assertInstallSummary(t, output, level, start, wants)
+	for _, label := range []string{"binary:", "config:", "audit log:"} {
+		path := strings.Fields(summaryValue(t, output, label))[0]
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("the summary prints %s, but it does not exist: %v", path, err)
+		}
+	}
+}
+
+// assertInstallScriptCommandsRun runs the start, stop, restart and uninstall
+// commands exactly as the install script printed them. A user-level install
+// needs its prefix on PATH; a system-level install runs them as root, so the
+// printed sudo prefix is dropped.
+func assertInstallScriptCommandsRun(t *testing.T, output, account string, env []string, dir string) {
+	t.Helper()
+	for _, label := range []string{"start:", "stop:", "restart:", "uninstall:"} {
+		args := printedCommandArgs(t, summaryValue(t, output, label))
+		res := runInstallScriptAs(t, account, env, dir, "agent-peer", args...)
+		if res.ExitCode != 0 {
+			t.Errorf("agent-peer %s from the summary: exit %d\nstdout:\n%s\nstderr:\n%s",
+				strings.Join(args, " "), res.ExitCode, res.Stdout, res.Stderr)
+		}
+	}
 }
 
 // installClaudeCall is one invocation recorded by the fake claude.
@@ -347,7 +742,7 @@ func removePreinstalledSystemBinary(t *testing.T) {
 func configureInstallSudo(t *testing.T) {
 	t.Helper()
 
-	entry := installAccount + " ALL=(ALL) NOPASSWD: ALL\n"
+	entry := "Defaults !use_pty\n" + installAccount + " ALL=(ALL) NOPASSWD: ALL\n"
 	if err := os.WriteFile(installSudoersPath, []byte(entry), 0o440); err != nil {
 		t.Fatalf("writing %s: %v", installSudoersPath, err)
 	}
@@ -372,19 +767,19 @@ func startInstallUserManager(t *testing.T) {
 	waitUserManager(t, installUID)
 }
 
-// assertInstallScriptRefusesRoot runs the script through sudo without --system
-// and checks that it refuses the user-level install as root and leaves the host
+// assertInstallScriptRefusesRoot runs the script through sudo with --user and
+// checks that root cannot take the user-level path and that the host stays
 // unchanged: no binary, no unit, no MCP registration, no configuration.
 func assertInstallScriptRefusesRoot(t *testing.T, archive string) {
 	t.Helper()
 
-	res := runInstallScriptAs(t, installAccount, installUserEnv(), archive, "sudo", "-n", "sh", "./install.sh")
+	res := runInstallScriptAs(t, installAccount, installUserEnv(), archive, "sudo", "-n", "sh", "./install.sh", "--user")
 	if res.ExitCode == 0 {
-		t.Fatalf("sudo sh ./install.sh as %s exited 0, want a refusal\nstdout: %s\nstderr: %s",
+		t.Fatalf("sudo sh ./install.sh --user as %s exited 0, want a refusal\nstdout: %s\nstderr: %s",
 			installAccount, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 	combined := res.Stdout + res.Stderr
-	for _, want := range []string{"must not run as root", "sudo sh ./install.sh --system"} {
+	for _, want := range []string{"must not run as root", "drop --user"} {
 		if !strings.Contains(combined, want) {
 			t.Errorf("output = %q, want it to contain %q", combined, want)
 		}
@@ -435,6 +830,13 @@ func runInstallScriptAs(t *testing.T, account string, env []string, dir, name st
 
 	cmd := syscontainer.Command(account, env, name, args...)
 	cmd.Dir = dir
+	// A new session has no controlling terminal, so a run without --system or
+	// --user exercises the no-terminal level choice instead of blocking on the
+	// terminal that runs the tests.
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setsid = true
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -449,6 +851,53 @@ func runInstallScriptAs(t *testing.T, account string, env []string, dir, name st
 	}
 	res.ExitCode = exitErr.ExitCode()
 	return res
+}
+
+// installTerminalResult is a command's output and exit code when it runs under
+// a pseudo-terminal.
+type installTerminalResult struct {
+	Output   string
+	ExitCode int
+}
+
+// runInstallScriptWithTerminal runs name with args as account under a
+// pseudo-terminal, so the install script can read /dev/tty for its level and
+// admin group questions. answer is typed on that terminal, and the command's
+// own standard input is /dev/null, the way a piped install sees it.
+func runInstallScriptWithTerminal(t *testing.T, account string, env []string, dir, answer, name string, args ...string) installTerminalResult {
+	t.Helper()
+
+	if _, err := exec.LookPath("script"); err != nil {
+		t.Fatalf("script(1) is required to run the level prompt: %v", err)
+	}
+	inner := name
+	for _, arg := range args {
+		inner += " " + installShellQuote(arg)
+	}
+	inner += " </dev/null"
+
+	cmd := syscontainer.Command(account, env, "script", "-q", "-e", "-c", inner, "/dev/null")
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(answer)
+	var output strings.Builder
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	err := cmd.Run()
+	res := installTerminalResult{Output: output.String()}
+	if err == nil {
+		return res
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("running %s under a terminal as %s: %v", name, account, err)
+	}
+	res.ExitCode = exitErr.ExitCode()
+	return res
+}
+
+// installShellQuote returns a single-quoted shell word.
+func installShellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
 
 // assertUserInstall checks the binary, the version output and the running user

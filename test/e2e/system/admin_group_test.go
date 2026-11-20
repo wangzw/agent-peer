@@ -71,6 +71,31 @@ func TestREQBrokerConfig043_SystemInstallAdminGroup(t *testing.T) {
 	configureInstallSudo(t)
 	agSeedGroup(t)
 
+	// The acceptance answers the level question and the admin-group question
+	// on the same terminal. Run the archive's script without a level flag so
+	// that it asks, re-executes itself through sudo and then asks for the
+	// group.
+	t.Run("the level and group questions share one terminal", func(t *testing.T) {
+		agAssertNotInGroup(t, installAccount)
+		res := runInstallScriptWithTerminal(t, installAccount, installUserEnv(), installArchiveDir,
+			"y\ny\n", "sh", "./install.sh")
+		if res.ExitCode != 0 {
+			t.Fatalf("sh ./install.sh with y,y on a terminal: exit %d\n%s", res.ExitCode, res.Output)
+		}
+		if !strings.Contains(res.Output, installLevelPrompt) {
+			t.Errorf("the terminal did not show %q:\n%s", installLevelPrompt, res.Output)
+		}
+		if !agAskedToJoin(res.Output) {
+			t.Errorf("the install did not ask whether to join %s on the same terminal:\n%s", agGroup, res.Output)
+		}
+		agWaitSystemBroker(t)
+		agAssertConfigFile(t)
+		agAssertInGroup(t, installAccount)
+
+		// The subtests below start from an account outside the group.
+		agRunRoot(t, "gpasswd", "-d", installAccount, agGroup)
+	})
+
 	t.Run("default without a terminal leaves the group unchanged", func(t *testing.T) {
 		baseline := agGroupLine(t)
 		res := agRunInstall(t, "", false)
