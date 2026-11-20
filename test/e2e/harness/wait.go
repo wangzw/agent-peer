@@ -13,11 +13,12 @@ const pollInterval = 50 * time.Millisecond
 // RegistrationReportBound is how long a test waits for the Broker's
 // not_registered event when a session name is unusable. The Broker reports a
 // registration that has not completed after registrationWait, which is 10
-// seconds (internal/broker/register.go; design-broker.md:78); the two extra
-// seconds let the event reach the MCP server process before the test gives up.
-// This is the one wait that exceeds the three-second bound, because the bound
-// is set by the product's own timer.
-const RegistrationReportBound = 12 * time.Second
+// seconds (internal/broker/register.go; design-broker.md:78); two extra seconds
+// let the event reach the MCP server process before the test gives up. The
+// bound is set by the product's own timer, not the three-second test bound, and
+// it must also leave room to retry one stalled poll call, so it is at least
+// ToolCallWaitBound (fourteen seconds).
+const RegistrationReportBound = ToolCallWaitBound
 
 // Eventually calls cond immediately and then every 50ms until cond reports
 // success or bound elapses. The first success returns. If the bound expires
@@ -47,8 +48,9 @@ func Eventually(t testing.TB, bound time.Duration, what string, cond func() (ok 
 // cannot serve as this wait.
 func WaitRegistered(t testing.TB, s *Session, bound time.Duration) {
 	t.Helper()
+	deadline := time.Now().Add(bound)
 	Eventually(t, bound, "the session is registered", func() (bool, string) {
-		r, err := s.CallErrWithin(ToolCallPollBound, "list_agents", nil)
+		r, err := s.PollCall(t, deadline, "list_agents", nil)
 		if err != nil {
 			return false, err.Error()
 		}
@@ -75,8 +77,9 @@ func WaitRegistered(t testing.TB, s *Session, bound time.Duration) {
 // session. Among the identity-free tools, list_brokers is the cheapest read.
 func WaitConnected(t testing.TB, s *Session, bound time.Duration) {
 	t.Helper()
+	deadline := time.Now().Add(bound)
 	Eventually(t, bound, "the session is connected to its Broker", func() (bool, string) {
-		r, err := s.CallErrWithin(ToolCallPollBound, "list_brokers", nil)
+		r, err := s.PollCall(t, deadline, "list_brokers", nil)
 		if err != nil {
 			return false, err.Error()
 		}

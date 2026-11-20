@@ -92,8 +92,8 @@ func TestLocalRegistration(t *testing.T) {
 		registrationWaitRegistered(t, observer, "observer")
 
 		refs := map[string]bool{}
-		harness.Eventually(t, 3*time.Second, "both agents named twin carry a ref", func() (bool, string) {
-			out, state := registrationListAgentsInWait(t, observer, nil)
+		registrationEventually(t, harness.ToolCallWaitBound, "both agents named twin carry a ref", func(deadline time.Time) (bool, string) {
+			out, state := registrationListAgentsInWait(t, observer, deadline, nil)
 			if state != "" {
 				return false, state
 			}
@@ -116,8 +116,8 @@ func TestLocalRegistration(t *testing.T) {
 
 		// A lone twin no longer needs the ref.
 		second.End(t)
-		harness.Eventually(t, 3*time.Second, "the remaining twin carries no ref", func() (bool, string) {
-			out, state := registrationListAgentsInWait(t, observer, nil)
+		registrationEventually(t, harness.ToolCallWaitBound, "the remaining twin carries no ref", func(deadline time.Time) (bool, string) {
+			out, state := registrationListAgentsInWait(t, observer, deadline, nil)
 			if state != "" {
 				return false, state
 			}
@@ -152,8 +152,8 @@ func TestLocalRegistration(t *testing.T) {
 			first.Fake().SocketPath():  true,
 			second.Fake().SocketPath(): true,
 		}
-		harness.Eventually(t, 3*time.Second, "the twin refs are the prefixes of their agent IDs", func() (bool, string) {
-			out, state := registrationListAgentsInWait(t, observer, nil)
+		registrationEventually(t, harness.ToolCallWaitBound, "the twin refs are the prefixes of their agent IDs", func(deadline time.Time) (bool, string) {
+			out, state := registrationListAgentsInWait(t, observer, deadline, nil)
 			if state != "" {
 				return false, state
 			}
@@ -180,8 +180,8 @@ func TestLocalRegistration(t *testing.T) {
 		odd := registrationSession(t, host, "a<b", workspace)
 		defer odd.End(t)
 		var refBefore string
-		harness.Eventually(t, 3*time.Second, "the cleaned name ab carries a ref", func() (bool, string) {
-			out, state := registrationListAgentsInWait(t, observer, nil)
+		registrationEventually(t, harness.ToolCallWaitBound, "the cleaned name ab carries a ref", func(deadline time.Time) (bool, string) {
+			out, state := registrationListAgentsInWait(t, observer, deadline, nil)
 			if state != "" {
 				return false, state
 			}
@@ -197,8 +197,8 @@ func TestLocalRegistration(t *testing.T) {
 
 		odd.Fake().Rename("c<d")
 		odd.Fake().SetSessionID("after-clear")
-		harness.Eventually(t, 3*time.Second, "the ref survives a rename and a conversation clear", func() (bool, string) {
-			out, state := registrationListAgentsInWait(t, observer, nil)
+		registrationEventually(t, harness.ToolCallWaitBound, "the ref survives a rename and a conversation clear", func(deadline time.Time) (bool, string) {
+			out, state := registrationListAgentsInWait(t, observer, deadline, nil)
 			if state != "" {
 				return false, state
 			}
@@ -228,8 +228,8 @@ func TestLocalRegistration(t *testing.T) {
 		registrationJoin(t, b, "t2")
 
 		want := []string{"github.com/org/repo", "t1", "t2"}
-		harness.Eventually(t, 3*time.Second, "b's shared topics are the intersection", func() (bool, string) {
-			out, state := registrationListAgentsInWait(t, a, nil)
+		registrationEventually(t, harness.ToolCallWaitBound, "b's shared topics are the intersection", func(deadline time.Time) (bool, string) {
+			out, state := registrationListAgentsInWait(t, a, deadline, nil)
 			if state != "" {
 				return false, state
 			}
@@ -279,12 +279,12 @@ func TestLocalRegistration(t *testing.T) {
 		// @ or *" sentence cannot satisfy any of these cases.
 		rejected := func(s *harness.Session, name, detail string, listed func(addr string) bool) {
 			t.Helper()
-			harness.Eventually(t, harness.RegistrationReportBound, fmt.Sprintf("session name %q is reported unusable", name), func() (bool, string) {
+			registrationEventually(t, harness.RegistrationReportBound, fmt.Sprintf("session name %q is reported unusable", name), func(deadline time.Time) (bool, string) {
 				// Bounded like every call a wait makes: a stalled call costs one
 				// poll, and its transport error is a retryable state, so the
 				// wait keeps observing until its own bound instead of failing
 				// from a sixty-second call.
-				r, err := s.CallErrWithin(harness.ToolCallPollBound, "list_agents", nil)
+				r, err := s.PollCall(t, deadline, "list_agents", nil)
 				if err != nil {
 					return false, err.Error()
 				}
@@ -323,8 +323,8 @@ func TestLocalRegistration(t *testing.T) {
 		})
 
 		at.Fake().SetName("ab")
-		harness.Eventually(t, 3*time.Second, "the renamed session receives registration complete on the same connection", func() (bool, string) {
-			out, state := registrationListAgentsInWait(t, at, nil)
+		registrationEventually(t, harness.ToolCallWaitBound, "the renamed session receives registration complete on the same connection", func(deadline time.Time) (bool, string) {
+			out, state := registrationListAgentsInWait(t, at, deadline, nil)
 			if state != "" {
 				return false, state
 			}
@@ -436,9 +436,9 @@ func registrationWorkspace(t *testing.T) string {
 func registrationWaitRegistered(t *testing.T, s *harness.Session, name string) mcpserver.ListAgentsOut {
 	t.Helper()
 	var out mcpserver.ListAgentsOut
-	harness.Eventually(t, 3*time.Second, "the session is registered and lists itself", func() (bool, string) {
+	registrationEventually(t, harness.ToolCallWaitBound, "the session is registered and lists itself", func(deadline time.Time) (bool, string) {
 		var state string
-		out, state = registrationListAgentsInWait(t, s, nil)
+		out, state = registrationListAgentsInWait(t, s, deadline, nil)
 		if state != "" {
 			return false, state
 		}
@@ -462,17 +462,28 @@ func registrationListAgents(t *testing.T, s *harness.Session, args map[string]an
 }
 
 // registrationListAgentsInWait calls list_agents from inside an Eventually. The
-// call is bounded by ToolCallPollBound, not by the harness's sixty-second call
-// bound, so one stalled call costs a poll of the wait instead of outliving it.
-// A tool error or a transport failure is returned as a state string so the wait
-// retries it instead of failing the test inside the condition.
-func registrationListAgentsInWait(t *testing.T, s *harness.Session, args map[string]any) (mcpserver.ListAgentsOut, string) {
+// call is bounded by ToolCallPollBound and by the time the wait has left, not
+// by the harness's sixty-second call bound, so one stalled call costs a poll of
+// the wait instead of outliving it. A tool error or a transport failure is
+// returned as a state string so the wait retries it instead of failing the test
+// inside the condition.
+func registrationListAgentsInWait(t *testing.T, s *harness.Session, deadline time.Time, args map[string]any) (mcpserver.ListAgentsOut, string) {
 	t.Helper()
-	r, err := s.CallErrWithin(harness.ToolCallPollBound, "list_agents", args)
+	r, err := s.PollCall(t, deadline, "list_agents", args)
 	if err != nil {
 		return mcpserver.ListAgentsOut{}, err.Error()
 	}
 	return registrationDecodeListAgents(t, r)
+}
+
+// registrationEventually runs harness.Eventually and hands the condition the
+// wait's deadline, so every tool call it makes is clamped to the time the wait
+// has left. A wait that makes such a call uses at least
+// harness.ToolCallWaitBound, or one stall consumes the whole wait.
+func registrationEventually(t *testing.T, bound time.Duration, what string, cond func(deadline time.Time) (bool, string)) {
+	t.Helper()
+	deadline := time.Now().Add(bound)
+	harness.Eventually(t, bound, what, func() (bool, string) { return cond(deadline) })
 }
 
 // registrationDecodeListAgents decodes a list_agents result. A tool error is
@@ -493,8 +504,8 @@ func registrationDecodeListAgents(t *testing.T, r harness.Result) (mcpserver.Lis
 // registering.
 func registrationJoin(t *testing.T, s *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "join_topic "+name+" succeeds", func() (bool, string) {
-		r, err := s.CallErrWithin(harness.ToolCallPollBound, "join_topic", map[string]any{"name": name})
+	registrationEventually(t, harness.ToolCallWaitBound, "join_topic "+name+" succeeds", func(deadline time.Time) (bool, string) {
+		r, err := s.PollCall(t, deadline, "join_topic", map[string]any{"name": name})
 		if err != nil {
 			return false, err.Error()
 		}

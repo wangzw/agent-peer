@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"syscall"
 	"testing"
@@ -27,12 +28,24 @@ const oracleBound = 3 * time.Second
 // still returns its error result.
 const sessionCallBound = 60 * time.Second
 
-// ToolCallPollBound bounds one MCP tool call made from inside a test wait. A
-// local tool call answers at once, and the project-wide three-second wait
-// covers the Broker round trip it makes. It is far below sessionCallBound on
-// purpose: a call a wait makes must not outlive the wait itself, or one stalled
-// call turns a bounded wait into a sixty-second hang.
-const ToolCallPollBound = 3 * time.Second
+// ToolCallPollBound bounds one MCP tool call made from inside a test wait. The
+// bound must cover more than the tool's own work: the update-hint middleware
+// runs inside the same tools/call after the handler and queries the Broker with
+// updateStatusTimeout, three seconds (internal/mcpserver/updatehint.go:21). A
+// call bounded at three seconds would therefore be cut off while the hint was
+// still being answered, and because a timed-out query is retried by the next
+// call, a loaded Broker would fail every poll of the wait. Seven seconds leave
+// the handler its project-wide three-second budget plus a second of margin on
+// top of the hint. It stays far below sessionCallBound, so a stalled call
+// cannot turn a bounded wait into a sixty-second hang.
+const ToolCallPollBound = 7 * time.Second
+
+// ToolCallWaitBound is the shortest total bound an Eventually that makes a
+// poll-bounded call should use: two poll bounds, so one stalled call leaves a
+// second poll to observe the state the first could not. A shorter wait may
+// still make the call (PollCall clamps it to the time the wait has left), but
+// one stall then consumes the whole wait instead of being retried.
+const ToolCallWaitBound = 2 * ToolCallPollBound
 
 // LocalOptions configures a node that runs its processes directly on the
 // machine running the tests.
@@ -353,11 +366,28 @@ func (s *Session) CallErr(tool string, args map[string]any) (Result, error) {
 	return s.impl.callErrWithin(sessionCallBound, tool, args)
 }
 
-// CallErrWithin is CallErr bounded by bound instead of sessionCallBound. A call
-// made from inside a wait uses ToolCallPollBound, so a stalled call costs one
-// poll of the wait rather than outliving it. A bound of zero or less means no
-// bound beyond the call's own.
+// CallErrWithin is CallErr bounded by bound instead of sessionCallBound. A
+// bound of zero or less means no bound beyond the call's own. A call made from
+// inside a wait uses PollCall instead, which also clamps the bound to the time
+// the wait has left.
 func (s *Session) CallErrWithin(bound time.Duration, tool string, args map[string]any) (Result, error) {
+	return s.impl.callErrWithin(bound, tool, args)
+}
+
+// PollCall invokes a tool from inside a wait. The call is bounded by
+// ToolCallPollBound and, when the wait has less time left, by the time left to
+// deadline, so a stalled call never outlives the wait that made it. A transport
+// or protocol failure is returned as an error instead of failing the test, so
+// the wait can poll again.
+func (s *Session) PollCall(t testing.TB, deadline time.Time, tool string, args map[string]any) (Result, error) {
+	t.Helper()
+	bound := ToolCallPollBound
+	if left := time.Until(deadline); left < bound {
+		if left <= 0 {
+			return Result{}, fmt.Errorf("harness: session %s: calling %s: no time left in the wait", s.name, tool)
+		}
+		bound = left
+	}
 	return s.impl.callErrWithin(bound, tool, args)
 }
 
