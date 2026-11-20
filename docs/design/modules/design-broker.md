@@ -735,7 +735,7 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 配置读写与审计的本机调用 | 已实现 | `internal/broker/configrpc.go`、`internal/broker/auditrpc.go` |
 | 终端命令 | 已实现 | `cmd/agent-peer`、`internal/mcpserver/termcmd`、`cmd/agent-peer/service_cmd.go` |
 | 更新检查与自我更新 | 已实现 | `internal/broker/updatecheck.go`（`startUpdateChecks`、`checkForUpdate`、`UpdateStatus`）、`internal/broker/update/`（`Latest`、`Newer`、`Apply`）、`internal/broker/update_rpc.go`（`ApplyUpdate`、`detectServiceManager`、`runningUnderServiceManager`）、`internal/broker/service/mainpid.go`（`MainPID`）、`cmd/agent-peer/update_cmd.go`、`cmd/agent-peer/update_rpc.go` |
-| 降级运行 | 未实现 | — |
+| 降级运行 | 已实现 | `internal/broker/run.go`（`Run` 的降级分支与仅诊断重试）、`internal/broker/degradedstate.go`（`degradedStateFor`、降级状态）、`internal/broker/degradedsvc.go`（仅诊断服务）、`internal/broker/listenretry.go`（监听重试）、`internal/broker/diagwatch.go`（配置文件目录监视）、`internal/broker/datafault.go`（数据目录类失败） |
 | 状态行输出 | 未实现 | — |
 | 下线时拒绝投递 | 未实现 | — |
 | `offline` 与 `online` 命令 | 未实现 | — |

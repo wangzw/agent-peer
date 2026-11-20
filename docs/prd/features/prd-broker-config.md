@@ -468,8 +468,8 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 不带 `--allow-degraded` 启动的 Broker，在启动的任何一步失败时必须在标准错误输出原因并以非零退出码结束。
 
 - **验收**：在终端以 `agent-peer broker` 分别制造配置文件无法解析、监听地址被占用、身份文件不可读三种失败，每次进程都退出，退出码非零，标准错误的最后一行写明原因，运行时目录中没有留下本机 socket。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-056 foreground failures exit`
 
 ### REQ-broker-config-057
 
@@ -485,7 +485,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 - **验收**：另一个进程占用 17443 端口时以 `--allow-degraded` 和默认配置启动 Broker：两个会话登记成功、加入同一 topic 后互发消息成功；会话调用 `create_pairing_key` 返回 `broker_degraded`，说明含 `:17443` 与 `broker.listen`；本机不在任何端口上监听；`agent-peer status` 输出该故障；向本方作为接受方的对端发送时返回 `peer_unreachable`，说明末尾附降级原因。另把系统级 Broker 的监听端口设为 1024 以下并让配置文件可被组写入，启动后同样进入仅本机降级，`status` 的修复提示含 `chmod g-w` 或改用 1024 以上的端口。
 - **状态**：未实现
-- **端到端测试**：未实现
+- **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-058 local only keeps local features`；peer_unreachable 附带降级原因由单元测试 `internal/broker/degradedrpc_test.go` 的 `TestPeerUnreachableReasonOnlyForAcceptor` 覆盖
 
 ### REQ-broker-config-059
 
@@ -500,24 +500,24 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 带 `--allow-degraded` 的 Broker 在取得账户锁之前失败时，必须与不带该参数时一样退出。
 
 - **验收**：以 `--allow-degraded` 分别在会话的进程树内启动、以非 root 带 `--system` 启动、在已有实例持有账户锁时启动，三种情况进程都以 `REQ-broker-config-056` 的方式退出，原有实例不受影响。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-060 before-lock failures exit`
 
 ### REQ-broker-config-061
 
 降级运行中，Broker 必须在配置文件发生变化时立即重试失败的那一步，并每分钟重试一次；重试成功后不重启进程即退出降级运行。重试失败时只在原因发生变化时写运行日志。
 
 - **验收**：以 `--allow-degraded` 启动、审计日志所在目录不可写；恢复该目录的权限后不重启 Broker，60 秒内 `agent-peer status` 不再报告故障。另以默认配置启动、17443 端口被占用；把 `broker.listen` 改为空闲端口后，不重启 Broker，60 秒内 `agent-peer status` 不再报告故障，Broker 在新端口上监听，进程号不变。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-059 diagnostics from the audit log`、`TestDegradedRun/REQ-broker-config-061 recovery listens on the new port`
 
 ### REQ-broker-config-062
 
 降级运行中监听地址无法绑定时，Broker 必须以不超过 1 分钟的间隔重试绑定，地址可用后不重启进程即开始监听。
 
 - **验收**：以 `--allow-degraded` 启动时 17443 端口被占用；结束占用该端口的进程，不改配置，2 分钟内另一台主机能连上该 Broker 的 17443 端口，`agent-peer status` 不再报告故障，Broker 的进程号不变。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-062 listen retry reaches the address`
 
 ### REQ-broker-config-063
 
