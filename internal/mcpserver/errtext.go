@@ -18,6 +18,7 @@ const (
 	callGeneric callKind = iota
 	callSend
 	callConnect
+	callUpdate
 )
 
 // permNeed is the config-file permission a tool call requires.
@@ -58,6 +59,8 @@ func openingPhrase(tool string, kind callKind) string {
 		return "Not sent"
 	case callConnect:
 		return "Not connected"
+	case callUpdate:
+		return textUpdateFailed
 	default:
 		return tool + " failed"
 	}
@@ -109,7 +112,7 @@ func rpcError(tool string, kind callKind, perm permNeed, err error) error {
 		case callConnect:
 			return toolError("Not connected", textConnectLost, localpb.ErrorCode_ERROR_CODE_INTERNAL)
 		default:
-			return toolError(tool+" failed", fmt.Sprintf(textGenericLost, rpcMessage(err)), localpb.ErrorCode_ERROR_CODE_INTERNAL)
+			return toolError(openingPhrase(tool, kind), fmt.Sprintf(textGenericLost, rpcMessage(err)), localpb.ErrorCode_ERROR_CODE_INTERNAL)
 		}
 	}
 

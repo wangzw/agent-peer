@@ -28,6 +28,7 @@ type stubToolSet struct {
 	createPairingKey func(context.Context, NoArgs) (CreatePairingKeyOut, error)
 	getConfig        func(context.Context, GetConfigIn) (GetConfigOut, error)
 	setConfig        func(context.Context, SetConfigIn) (SetConfigOut, error)
+	updateBroker     func(context.Context, NoArgs) (UpdateBrokerOut, error)
 }
 
 func (s *stubToolSet) ListAgents(ctx context.Context, in ListAgentsIn) (ListAgentsOut, error) {
@@ -105,6 +106,13 @@ func (s *stubToolSet) SetConfig(ctx context.Context, in SetConfigIn) (SetConfigO
 		return SetConfigOut{}, nil
 	}
 	return s.setConfig(ctx, in)
+}
+
+func (s *stubToolSet) UpdateBroker(ctx context.Context, in NoArgs) (UpdateBrokerOut, error) {
+	if s.updateBroker == nil {
+		return UpdateBrokerOut{}, nil
+	}
+	return s.updateBroker(ctx, in)
 }
 
 // connectTestClient starts a server over an in-memory transport and returns a
@@ -213,7 +221,7 @@ func TestToolsList(t *testing.T) {
 	want := []string{
 		"list_agents", "send_message", "list_topics", "join_topic", "leave_topic",
 		"list_brokers", "connect_broker", "disconnect_broker", "create_pairing_key",
-		"get_config", "set_config",
+		"get_config", "set_config", "update_broker",
 	}
 	if len(tools) != len(want) {
 		t.Fatalf("got %d tools, want %d", len(tools), len(want))
@@ -261,7 +269,7 @@ func TestToolsList(t *testing.T) {
 	}
 
 	// Tools without parameters carry no properties.
-	for _, name := range []string{"list_topics", "list_brokers", "create_pairing_key"} {
+	for _, name := range []string{"list_topics", "list_brokers", "create_pairing_key", "update_broker"} {
 		props, required = schemaProps(t, tools[name])
 		if len(props) != 0 {
 			t.Errorf("%s properties = %v, want none", name, keys(props))
@@ -290,12 +298,13 @@ func TestToolsList(t *testing.T) {
 		}
 	}
 
-	// Read-only hints: four true, seven false (REQ-broker-config-004).
+	// Read-only hints: four true, eight false (REQ-broker-config-004).
 	readOnly := map[string]bool{
 		"list_agents": true, "send_message": false, "list_topics": true,
 		"join_topic": false, "leave_topic": false, "list_brokers": true,
 		"connect_broker": false, "disconnect_broker": false,
 		"create_pairing_key": false, "get_config": true, "set_config": false,
+		"update_broker": false,
 	}
 	for name, wantRO := range readOnly {
 		tool := tools[name]
@@ -306,6 +315,12 @@ func TestToolsList(t *testing.T) {
 		if tool.Annotations.ReadOnlyHint != wantRO {
 			t.Errorf("%s ReadOnlyHint = %v, want %v", name, tool.Annotations.ReadOnlyHint, wantRO)
 		}
+	}
+
+	// update_broker replaces the Broker and restarts it, so it must be declared
+	// destructive and be a separate authorization decision (REQ-update-008).
+	if ann := tools["update_broker"].Annotations; ann == nil || ann.DestructiveHint == nil || !*ann.DestructiveHint {
+		t.Errorf("update_broker DestructiveHint = %v, want true", ann)
 	}
 
 	// disconnect_broker's broker parameter explains aliases and fingerprints.
@@ -469,6 +484,14 @@ func TestToolResultFieldNames(t *testing.T) {
 				Note:      "n",
 			}, nil
 		},
+		updateBroker: func(context.Context, NoArgs) (UpdateBrokerOut, error) {
+			return UpdateBrokerOut{
+				FromVersion: "v0.1.0",
+				ToVersion:   "v0.1.1",
+				Restarting:  true,
+				Result:      "r",
+			}, nil
+		},
 	}
 	cs := connectTestClient(t, ts)
 
@@ -528,6 +551,16 @@ func TestToolResultFieldNames(t *testing.T) {
 	}
 	if shown, ok := pairing["shown_addresses"].([]any); !ok || len(shown) != 1 || shown[0] != "h:1" {
 		t.Errorf("shown_addresses = %v, want [h:1]", pairing["shown_addresses"])
+	}
+
+	update := structuredMap(t, callTool(t, cs, "update_broker", nil))
+	for _, field := range []string{"from_version", "to_version", "restarting", "result"} {
+		if _, ok := update[field]; !ok {
+			t.Errorf("update_broker has no %s: %v", field, update)
+		}
+	}
+	if update["from_version"] != "v0.1.0" || update["to_version"] != "v0.1.1" || update["restarting"] != true {
+		t.Errorf("update_broker result = %v", update)
 	}
 }
 

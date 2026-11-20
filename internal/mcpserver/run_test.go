@@ -232,8 +232,8 @@ func TestRunHandshakeWithoutBroker(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = cs.Close() })
 
-	if got := len(listTools(t, cs)); got != 11 {
-		t.Fatalf("ListTools returned %d tools, want 11", got)
+	if got := len(listTools(t, cs)); got != 12 {
+		t.Fatalf("ListTools returned %d tools, want 12", got)
 	}
 }
 

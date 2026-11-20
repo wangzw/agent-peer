@@ -162,6 +162,16 @@ type SetConfigOut struct {
 	New string `json:"new_value"`
 }
 
+// UpdateBrokerOut is the result of update_broker. The three version fields
+// mirror the Broker's ApplyUpdate reply; an empty to_version means the Broker
+// is already current. Result carries the sentence shown to the model.
+type UpdateBrokerOut struct {
+	FromVersion string `json:"from_version"`
+	ToVersion   string `json:"to_version"`
+	Restarting  bool   `json:"restarting"`
+	Result      string `json:"result"`
+}
+
 // toolSet is what newMCPServer exposes as MCP tools. *handlers implements it.
 type toolSet interface {
 	ListAgents(ctx context.Context, in ListAgentsIn) (ListAgentsOut, error)
@@ -175,9 +185,10 @@ type toolSet interface {
 	CreatePairingKey(ctx context.Context, in NoArgs) (CreatePairingKeyOut, error)
 	GetConfig(ctx context.Context, in GetConfigIn) (GetConfigOut, error)
 	SetConfig(ctx context.Context, in SetConfigIn) (SetConfigOut, error)
+	UpdateBroker(ctx context.Context, in NoArgs) (UpdateBrokerOut, error)
 }
 
-// newMCPServer declares the "peer" MCP server with all eleven tools and the
+// newMCPServer declares the "peer" MCP server with all twelve tools and the
 // instructions that tell the model how to use them. log receives the panic
 // reports of the tool handlers; nil disables them.
 func newMCPServer(version string, ts toolSet, log *slog.Logger) *mcp.Server {
@@ -218,6 +229,10 @@ func newMCPServer(version string, ts toolSet, log *slog.Logger) *mcp.Server {
 	addTool(s, log, "set_config",
 		"Change this Broker's configuration; requires write permission on the Broker's config file.",
 		false, ts.SetConfig)
+	addDestructiveTool(s, log, "update_broker",
+		"Upgrade this Broker to the latest agent-peer release and restart it; requires write permission on the Broker's config file. "+
+			"The connection recovers automatically, and this session's MCP server uses the new version only after the session is reopened.",
+		ts.UpdateBroker)
 	return s
 }
 
@@ -228,6 +243,20 @@ func addTool[In, Out any](s *mcp.Server, log *slog.Logger, name, description str
 		Name:        name,
 		Description: description,
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: readOnly},
+	}, safe(name, log, h))
+}
+
+// addDestructiveTool registers a tool that changes state in a way the tool
+// itself cannot undo. The destructive hint makes the client present it as its
+// own authorization decision, which for update_broker is the last confirmation
+// before the Broker is replaced and restarted.
+func addDestructiveTool[In, Out any](s *mcp.Server, log *slog.Logger, name, description string,
+	h func(context.Context, In) (Out, error)) {
+	destructive := true
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        name,
+		Description: description,
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: &destructive},
 	}, safe(name, log, h))
 }
 
