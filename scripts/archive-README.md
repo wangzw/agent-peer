@@ -78,7 +78,13 @@ For an existing installation, give the file to the group with `chgrp agent-peer 
 agent-peer update
 ```
 
-For a system-level installation, use `sudo agent-peer update`.
+The command asks for confirmation, then downloads, checks and installs the latest official release. For a user-level installation it replaces the binary and restarts the service.
+
+For a system-level installation, run the same command as an account that administers the Broker, without `sudo`: the Broker replaces its own binary and the service manager restarts it. The account needs write permission on the Broker's configuration file.
+
+A session can also start the upgrade with the `update_broker` tool. Claude Code asks for confirmation before the call runs, and that confirmation is the last manual check before the upgrade.
+
+After an update the Broker restarts and open sessions reconnect to it automatically. The MCP server inside an already open session keeps running the old binary until you reconnect it with `/mcp` or restart the session.
 
 ## Uninstall
 

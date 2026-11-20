@@ -43,8 +43,11 @@ MCP 服务的名字是 `peer`，模型看到的工具全名是 `mcp__peer__<工�
 | `create_pairing_key` | 无 | 否 | 写 | 一次性配对密钥及其失效时间；另行展示本机 Broker 的地址，写作 `主机名(地址:端口)`，对外地址列表有多项时一并列出，为空时说明没有可展示的地址、需要用户自行告知对方连接地址；本 Broker 不监听时返回错误，提示由对方生成密钥、本方发起配对 | `REQ-broker-pairing-005`、`REQ-broker-pairing-025`、`REQ-broker-pairing-028`、`REQ-broker-pairing-036`、`REQ-broker-config-021` |
 | `get_config` | `key?` | 是 | 读 | 配置项及其当前值；密钥类配置项只给出是否已设置 | `REQ-broker-config-001`、`REQ-broker-config-022`、`REQ-broker-pairing-030` |
 | `set_config` | `key`、`value` | 否 | 写 | 修改前后的值；修改密钥类配置项一律失败 | `REQ-broker-config-002`、`REQ-broker-config-021`、`REQ-broker-config-029`、`REQ-broker-pairing-031` |
+| `update_broker` | 无 | 否 | 写 | 升级前的版本、目标版本与 Broker 是否即将重启；已是最新版本时目标版本为空 | `REQ-update-008` |
 
 权限一栏为“无”的工具不以对配置文件的任何权限为前提（`REQ-broker-config-023`）。权限不足的调用得到 `permission_denied`，转给模型的文字说明所缺的是读权限还是写权限。这一判定与 Claude Code 对工具调用的权限确认各自独立，一次调用要两者都通过才执行。
+
+`update_broker` 的声明带 `readOnlyHint=false` 与 `destructiveHint=true`，模型看到的说明写明它把 Broker 升级到本项目最新的正式版本并重启 Broker，并且需要对配置文件有写权限（`REQ-broker-config-004`、`REQ-update-008`）。
 
 `list_agents` 的过滤条件均为可选，同时给出时须全部满足。`topic` 按精确匹配筛选，保留共同 topic 中含有该 topic 的条目；`broker` 与 Agent 地址中 `@` 后的生效别名精确匹配；`name` 先按名字规范化规则规范化过滤值，再与 Agent 当前规范化后的名字精确比较。过滤只决定返回哪些条目，不改变每个条目列出的共同 topic。
 
@@ -60,6 +63,9 @@ MCP 服务的名字是 `peer`，模型看到的工具全名是 `mcp__peer__<工�
 - `create_pairing_key`：`key`、`expires_at`、`shown_addresses`、`note`。
 - `get_config`：`entries`；每项有 `key`、`value`。
 - `set_config`：`key`、`old_value`、`new_value`。
+- `update_broker`：`from_version`、`to_version`、`restarting`。
+
+`update_broker` 在收到 Broker 的应答后立即返回，不在工具调用中等待重启。成功时的文字为 `Upgrading the Broker from <from> to <to>; the Broker restarts and the connection recovers automatically. Reopen this session to use the new MCP server.`；已经是最新版本时为 `The Broker is already up to date (<from>).`
 
 状态写成 `idle`、`busy`、`waiting`、`shell`，未知状态省略；指纹写成小写十六进制；时间写成 UTC 的 RFC 3339。出错的结果只有文字，不带结构化内容；错误码与来源 Broker 以 ` (code: <错误码名>)`、` (reported by Broker <指纹>)` 后缀给出。
 
@@ -156,7 +162,7 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 追加的文本为：
 
 ```
-agent-peer <v> is available (this host runs <c>). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
+agent-peer <v> is available (this Broker runs <c>). Ask the agent to call update_broker, or run `agent-peer update` in a terminal.
 ```
 
 其中 `<v>` 是可用版本，`<c>` 是当前版本。
@@ -166,6 +172,8 @@ agent-peer <v> is available (this host runs <c>). Update it with `agent-peer upd
 Broker 返回的错误码转成一句以结果开头的文字，随后附上错误码和可采取的做法，例如名字有歧义时列出候选地址，附上消歧标识，目标是曾用名时给出现在的地址，权限不足时指出所缺的权限。Broker 不可达或登记未完成时，工具调用立即返回说明原因的错误，不在 MCP 服务进程内排队。
 
 错误文字的固定格式是 `开头短语: 说明 (code: <错误码名>)`，开头短语与说明之间是 `: `；涉及远端 Broker 时再接 ` (reported by Broker <64 位小写十六进制指纹>)`，有附加提示时提示接在最后。开头短语由错误码与调用它的工具确定，不取自 Broker 给出的说明：错误码为 `delivery_unknown` 时一律为 `Delivery unknown`，其余按工具取默认值，`send_message` 为 `Not sent`，`connect_broker` 为 `Not connected`，其他工具为 `<工具名> failed`。Broker 的说明若已以 `Not sent: `、`Delivery unknown: ` 或 `Not connected: ` 之一开头，先去掉这个开头短语，再按上述规则加上正确的短语。未连接、正在连接与没有可用 Broker 这些本机状态产生的错误用 `internal` 码，登记未完成用 `not_registered`，版本不兼容用 `version_mismatch`。登记未完成的说明优先取 Broker 事件里的 `detail`，它点名具体原因；`detail` 为空时按原因枚举使用固定句子，因此本进程连接不发送 `detail` 的旧 Broker 时，文字与之前一致。`send_message` 的请求发出后连接中断，按结果未知处理，开头为 `Delivery unknown`，说明消息可能已送达、重发可能使对方收到两份；`connect_broker` 的同情形以 `Not connected` 开头，说明配对可能已完成，可查看 `list_brokers`。
+
+`update_broker` 的错误开头短语为 `Upgrade failed`。`permission_denied` 的说明原样保留，包括配置文件路径；`failed_precondition` 的说明之后追加 ``Run `agent-peer update` in a terminal instead.``；`aborted` 的说明写明已有一次升级在进行。
 
 | 情形 | 工具调用得到 |
 |---|---|
@@ -193,3 +201,4 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 | 仓库地址的规范化 | 已实现 | `internal/mcpserver/remote.go`（`normalizeRemote`） |
 | 工具调用转发与错误转换 | 已实现 | `internal/mcpserver/handlers_messaging.go`、`handlers_topics.go`、`handlers_brokers.go`、`handlers_config.go`（`handlers` 的各工具方法）、`internal/mcpserver/errtext.go`（`rpcError`、`codeName`） |
 | 更新提示 | 已实现 | `internal/mcpserver/updatehint.go`（`updateHint`、`middleware`、`take`）、`internal/mcpserver/update_status.go`（`brokerUpdateStatus`、`queryUpdateStatus`）、`internal/mcpserver/run.go` |
+| 升级工具 | 未实现 | — |

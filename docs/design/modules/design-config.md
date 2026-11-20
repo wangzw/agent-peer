@@ -283,6 +283,8 @@ type PathSet struct {
 | `rejected_by_peer` | 本方的连接遭对方以“不是对端”拒绝 |
 | `local_alias_assigned` | 系统为某个对端生成了本地别名 |
 | `config_rejected` | 配置文件的重载拒绝了一个会让管理组取得超出编辑文件能力的值 |
+| `update_applied` | Broker 完成了自我更新，记录调用方账户与新旧版本 |
+| `update_failed` | Broker 的自我更新失败，记录原因 |
 
 直接编辑配置文件触发的 `config_file_changed` 与 `config_rejected` 没有账户归属，`account` 与 `actor` 为空；经本机接口的修改记录调用方账户。审计日志不记录配对密钥的值、消息正文和消息的收发（`REQ-broker-config-008`）。密钥类配置项的变化只记键名，见“密钥类配置项”。
 

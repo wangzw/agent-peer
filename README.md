@@ -196,6 +196,7 @@ On a system-level Broker, by default, an ordinary account has no write permissio
 | `create_pairing_key` | Create a one-time pairing key and return it with its expiry time, together with this Broker's addresses to give to the other side. |
 | `get_config` | Read configuration keys and their current values; for a secret key, report only whether it is set. |
 | `set_config` | Change a configuration key and return the old and new values; changing a secret key always fails. |
+| `update_broker` | Upgrade this Broker to the latest official release and restart it, returning the from and to versions; report that it is already up to date when there is no newer release. Claude Code asks for confirmation before the call runs. |
 
 ### Terminal commands
 
@@ -209,7 +210,7 @@ On a system-level Broker, by default, an ordinary account has no write permissio
 | `agent-peer peer list` | List every known Broker with its alias, fingerprint, whether it is a peer, status, direction and addresses. |
 | `agent-peer peer connect <address> --key <key> [--alias <alias>]` | Pair with another Broker at `address`, written `address:port` or `hostname(address:port)`, using a pairing key, with an optional local alias. |
 | `agent-peer peer disconnect <broker>` | Remove the pairing with a Broker, named by alias or fingerprint. |
-| `agent-peer update [--yes]` | Check GitHub for a newer release, download and verify it, replace this binary, and restart the installed service; `--yes` skips the confirmation question. |
+| `agent-peer update [--system] [--yes]` | Check GitHub for a newer release and install it; a user-level installation replaces this binary and restarts the service, and a system-level one has the Broker replace its own binary for the service manager to restart. `--yes` skips the confirmation question. |
 | `agent-peer service install [--system]` | Install the Broker as a user-level service started at login, or as a system-level service started at boot, and start it immediately. |
 | `agent-peer service uninstall [--system]` | Stop and remove the installed service. Configuration, identity and audit logs are kept, and the command can be repeated when nothing is installed. |
 | `agent-peer broker [--system] [--listen <addr>]` | Run a Broker in the foreground; `--system` selects the system-level form and requires root, and `--listen` overrides the configured listen address for this run only. |
@@ -230,17 +231,21 @@ Run the update in a terminal:
 agent-peer update
 ```
 
-The command prints the current and available versions and asks for confirmation. It then downloads the release archive for this platform, checks it against `checksums.txt`, verifies that the new binary reports the expected version, replaces this binary, and restarts the Broker when it is installed as a service. `--yes` skips the question and is required when standard input is not a terminal. When no service is installed, restart the running Broker yourself after the update.
+The command prints the current and available versions and asks for confirmation. For a user-level installation it downloads the release archive for this platform, checks it against `checksums.txt`, verifies that the new binary reports the expected version, replaces this binary, and restarts the user-level service. `--yes` skips the question and is required when standard input is not a terminal. When no service is installed, restart the running Broker yourself after the update.
 
-For a system-level installation, run the command with `sudo`:
+For a system-level installation, run the command as an account that administers the Broker, without `sudo`:
 
 ```sh
-sudo agent-peer update
+agent-peer update
 ```
 
-The command checks write permission on the binary's directory before downloading anything, so an ordinary account fails immediately and is told to use `sudo`. `sudo` drops proxy environment variables by default; when a proxy is needed, keep them with `sudo -E` or an `env_keep` entry such as `env_keep += "HTTP_PROXY HTTPS_PROXY NO_PROXY"`.
+The Broker then downloads, checks and replaces its own binary, and the service manager restarts it. Root can run the same command. The account needs write permission on the Broker's configuration file; an account without it is refused before anything is downloaded. The command succeeds only after the Broker reports the new version.
 
-An update does not reconnect sessions that are already open. Reconnect the MCP server in each session with `/mcp`, or restart the session, so that it runs the new version.
+A session can start the same upgrade with the `update_broker` tool. Claude Code asks for confirmation before the call runs. Do not add `update_broker` to an auto-approve list: that confirmation is the last manual check before an upgrade, and for a system-level installation the Broker replaces a binary that runs as root.
+
+After an update the Broker restarts, and open sessions reconnect to it automatically. The MCP server inside a session that is already open keeps running the old binary until you reconnect it with `/mcp` or restart the session.
+
+Downloads use the proxy environment variables of the process that performs them: the update command for a user-level installation, the Broker for a system-level one.
 
 ### Administering a system-level Broker without root
 
