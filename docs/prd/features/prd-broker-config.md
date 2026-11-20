@@ -540,32 +540,32 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 Broker 的下线状态必须保存在配置中，Broker 重启后保持重启前的状态。
 
 - **验收**：把 Broker 设为下线后重启它，`agent-peer status` 仍报告下线，对端向它的 Agent 发送仍被拒绝；在配置文件中把 `broker.offline` 改为 `false`，不重启，对端的发送成功，审计日志新增一条该配置项的变更记录。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-broker-config-065 state survives restart and a file edit`
 
 ### REQ-broker-config-066
 
 用户必须能在终端执行 `agent-peer offline` 与 `agent-peer online` 使 Broker 下线与上线，权限与修改配置相同。
 
 - **验收**：以对配置文件有写权限的账户执行 `agent-peer offline`，命令成功，`agent-peer status` 报告下线；执行 `agent-peer online` 后报告上线；以没有写权限的账户执行，返回权限不足并给出配置文件路径，状态不变；审计日志记录每次变化与执行的账户。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-broker-config-066 terminal commands`；`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig021_WriteNeedsConfigWritePermission`（没有写权限时 `offline` 与 `online` 返回 `permission_denied` 并给出配置文件路径，配置文件不变）
 
 ### REQ-broker-config-067
 
 Agent 必须能用工具 `set_broker_online` 使所连 Broker 下线或上线，该工具必须能独立于修改配置获得授权。
 
 - **验收**：会话调用 `set_broker_online`，参数 `online` 为假，调用成功，Broker 下线；为真时上线。在 Claude Code 权限设置中只放行该工具时，调用它不触发确认，`set_config` 触发确认。对配置文件没有写权限的账户调用返回 `permission_denied`。工具声明不带只读标记。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-broker-config-067 tool changes the state`；`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig021_WriteNeedsConfigWritePermission`（没有写权限时返回 `permission_denied`）；`test/e2e/config_tools_test.go` 的 `TestConfigToolAnnotations`（声明为非只读）。Claude Code 按工具单独授权、只放行它时不触发确认，属于 Claude Code 的权限行为，不在端到端中验证，由 `internal/mcpserver/tools_test.go` 的工具声明测试覆盖声明层面
 
 ### REQ-broker-config-068
 
 本机终端查看状态与列出 Broker 时，必须显示本 Broker 是否下线。
 
 - **验收**：Broker 下线后，`agent-peer status` 与 `agent-peer peer list` 的输出各有一行说明本 Broker 已下线及上线的命令，会话中 `list_brokers` 的结果带本 Broker 的下线状态；上线后这些说明消失。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-broker-config-068 status shows the state`（`Status.offline`、`ListBrokers.local.offline`，以及 `agent-peer status` 与 `peer list` 的下线状态行；上线后状态行消失）
 
 ## 数据需求
 

@@ -331,24 +331,24 @@ Agent 的名字经接收方会话对署名的清洗后与原名不同时，该 A
 下线的 Broker 必须以 `broker_offline` 拒绝对端发来的每一条消息，不写入任何会话。
 
 - **验收**：B 下线后，A 上与 B 上 Agent 同在一个 topic 的 Agent 向它发送，调用返回以 `Not sent` 开头、错误码为 `broker_offline` 的错误，说明由 B 报告；B 上的目标会话没有收到消息。B 上线后同一发送成功。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-agent-messaging-039 peer delivery is refused`
 
 ### REQ-agent-messaging-040
 
 Broker 下线期间，它与对端之间的链路、链路的重新建立、topic 成员关系的交换与名录对账必须照常进行，新的配对也必须照常完成。
 
 - **验收**：B 下线后，A 列出 Broker 时 B 仍为已连接；断开再恢复两台主机之间的网络，链路重新建立；B 上新加入共同 topic 的 Agent 出现在 A 上 Agent 的列表中；B 公开时，C 经 A 仍能收到 B 的名片。另一台主机凭有效配对密钥向 B 发起配对成功，链路建立；向 B 上 Agent 的发送仍按 `REQ-agent-messaging-039` 被拒绝。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-agent-messaging-040 links and topics continue`、`TestBrokerOffline/pairing works while offline` 与 `TestBrokerOfflineDirectory`（三节点：公开的对端下线后，第三个 Broker 仍经共同对端收到它的名片与新公开的 topic）
 
 ### REQ-agent-messaging-041
 
 Broker 下线不得影响本机 Agent 之间的发送，也不得影响本机 Agent 向对端上 Agent 的发送。
 
 - **验收**：B 下线后，B 上的两个 Agent 互发消息成功；B 上的 Agent 向 A 上的 Agent 发送成功；A 上的 Agent 回复 B 上的 Agent，被 `REQ-agent-messaging-039` 拒绝。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-agent-messaging-041 local and outgoing sends continue`
 
 ## 数据需求
 

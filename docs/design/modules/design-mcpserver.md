@@ -220,5 +220,5 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 | 更新提示 | 已实现 | `internal/mcpserver/updatehint.go`（`updateHint`、`middleware`、`take`）、`internal/mcpserver/update_status.go`（`brokerUpdateStatus`、`queryUpdateStatus`）、`internal/mcpserver/run.go` |
 | 升级工具 | 已实现 | `internal/mcpserver/handlers_update.go`（`UpdateBroker`、`updateBrokerError`）、`internal/mcpserver/tools.go`（`UpdateBrokerOut`、`addDestructiveTool`） |
 | 默认 topic 的无名加入与退出 | 未实现 | — |
-| `set_broker_online` | 未实现 | — |
+| `set_broker_online` | 已实现 | `internal/mcpserver/tools.go`（`SetBrokerOnlineIn`、`SetBrokerOnlineOut`、`toolSet.SetBrokerOnline`、注册）、`internal/mcpserver/handlers_config.go`（`SetBrokerOnline`）、`internal/mcpserver/instructions.go` |
 | `broker_degraded` 与 `broker_offline` 的错误文字 | 已实现 | `internal/mcpserver/errtext.go`（`codeName`、`notRegisteredReason`）、`internal/mcpserver/state.go`（`preflight`）、`internal/mcpserver/register.go`（登记原因） |
