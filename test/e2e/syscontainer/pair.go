@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -88,26 +89,72 @@ func pairFailureName(role Role) string {
 	return "failed-" + string(role)
 }
 
-// PairGuard records this host's failure in the shared directory. The test calls
-// it first; a failing test then tells the other host before the process exits,
-// and PairAwait turns that record into a failure on the other side. A process
-// killed without unwinding leaves no record, which is why PairAwait also has
-// its own bound.
-func PairGuard(t *testing.T) {
+// pairGuardsMu guards pairGuards, the set of tests that armed a PairGuard.
+var (
+	pairGuardsMu sync.Mutex
+	pairGuards   = make(map[*testing.T]bool)
+)
+
+// markPairGuard records whether t has an armed PairGuard.
+func markPairGuard(t *testing.T, armed bool) {
+	pairGuardsMu.Lock()
+	defer pairGuardsMu.Unlock()
+	if armed {
+		pairGuards[t] = true
+		return
+	}
+	delete(pairGuards, t)
+}
+
+// pairGuardArmed reports whether t armed a PairGuard.
+func pairGuardArmed(t *testing.T) bool {
+	pairGuardsMu.Lock()
+	defer pairGuardsMu.Unlock()
+	return pairGuards[t]
+}
+
+// requirePairGuard fails the test when it did not arm a PairGuard first.
+// "defer PairGuard(t)()" evaluates PairGuard now and defers the returned
+// function; the common mistake, "defer PairGuard(t)" without the last pair,
+// defers PairGuard itself, so the guard arms only when the test returns and the
+// other host waits out its bound. PairWrite and PairAwait check the arm so that
+// omission fails at once.
+func requirePairGuard(t *testing.T, what string) {
+	t.Helper()
+	if !pairGuardArmed(t) {
+		t.Fatalf("syscontainer: %s needs the failure guard; write defer PairGuard(t)() at the start of the test", what)
+	}
+}
+
+// PairGuard records this host's failure in the shared directory. The test
+// defers the returned function, which runs as the test goroutine unwinds at the
+// failure, before any t.Cleanup call, so the other host learns of the failure
+// without waiting out its own bound. t.Failed still reports false while a panic
+// unwinds, so the returned function recovers the panic, writes the record and
+// panics again with the same value. A panic outside the test goroutine runs no
+// deferred call here, and a process killed without unwinding runs none at all,
+// so PairAwait's own bound has to cover those cases.
+func PairGuard(t *testing.T) func() {
 	t.Helper()
 	role := PairRole()
 	if role == "" {
 		t.Fatalf("syscontainer: PairGuard runs inside a pair container as role A or B")
 	}
-	t.Cleanup(func() {
-		if !t.Failed() {
+	markPairGuard(t, true)
+	return func() {
+		markPairGuard(t, false)
+		panicked := recover()
+		if panicked == nil && !t.Failed() {
 			return
 		}
 		message := fmt.Sprintf("host %s failed", role)
 		if err := writePairFile(PairSharedDir(), pairFailureName(role), []byte(message)); err != nil {
 			t.Logf("syscontainer: recording the failure of host %s: %v", role, err)
 		}
-	})
+		if panicked != nil {
+			panic(panicked)
+		}
+	}
 }
 
 // PairWrite writes data to name inside the shared directory. The write goes to
@@ -115,6 +162,7 @@ func PairGuard(t *testing.T) {
 // reads a partial file.
 func PairWrite(t *testing.T, name string, data []byte) {
 	t.Helper()
+	requirePairGuard(t, "PairWrite")
 	if err := writePairFile(PairSharedDir(), name, data); err != nil {
 		t.Fatalf("syscontainer: writing %s to the shared directory: %v", name, err)
 	}
@@ -127,6 +175,7 @@ func PairWrite(t *testing.T, name string, data []byte) {
 // failure named.
 func PairAwait(t *testing.T, name string, bound time.Duration) []byte {
 	t.Helper()
+	requirePairGuard(t, "PairAwait")
 	dir := PairSharedDir()
 	if dir == "" {
 		t.Fatalf("syscontainer: PairAwait runs inside a pair container")

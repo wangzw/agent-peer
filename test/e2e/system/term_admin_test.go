@@ -139,7 +139,7 @@ func TestREQBrokerConfig039_TerminalAdminCommands(t *testing.T) {
 // termAdminHostA runs the accepting side: the system Broker, the refused
 // session, the terminal commands root performs, and host A's audit assertions.
 func termAdminHostA(t *testing.T) {
-	syscontainer.PairGuard(t)
+	defer syscontainer.PairGuard(t)()
 
 	// Root creates the key in host A's terminal, then writes the address and
 	// key into the shared directory for host B. The Broker names itself by its
@@ -256,7 +256,7 @@ func termAdminHostA(t *testing.T) {
 // termAdminHostB runs the dialing side: host B's own user-level Broker and the
 // terminal command that pairs it with host A.
 func termAdminHostB(t *testing.T) {
-	syscontainer.PairGuard(t)
+	defer syscontainer.PairGuard(t)()
 
 	syscontainer.StartUserBroker(t, "peer", "--listen", termAdminPeerListen)
 	peerEnv := []string{"AGENT_PEER_TEST_SOCKET=" + syscontainer.UserSocketPath(t, "peer")}

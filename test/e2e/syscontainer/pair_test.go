@@ -87,10 +87,55 @@ func TestPairAwaitReadsTheOtherHostsFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(PairRoleEnv, string(RoleA))
 	t.Setenv(pairSharedEnv, dir)
+	defer PairGuard(t)()
 	if err := writePairFile(dir, "connected", []byte("connected\n")); err != nil {
 		t.Fatalf("writePairFile: %v", err)
 	}
 	if got, want := string(PairAwait(t, "connected", time.Second)), "connected\n"; got != want {
 		t.Errorf("PairAwait returned %q, want %q", got, want)
+	}
+}
+
+func TestPairGuardArmsAndDisarms(t *testing.T) {
+	t.Setenv(PairRoleEnv, string(RoleA))
+	t.Setenv(pairSharedEnv, t.TempDir())
+	if pairGuardArmed(t) {
+		t.Fatal("the test starts with the failure guard armed")
+	}
+	guard := PairGuard(t)
+	if !pairGuardArmed(t) {
+		t.Fatal("PairGuard did not arm the guard")
+	}
+	guard()
+	if pairGuardArmed(t) {
+		t.Fatal("the guard stayed armed after it ran")
+	}
+}
+
+func TestPairGuardRecordsAPanic(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(PairRoleEnv, string(RoleA))
+	t.Setenv(pairSharedEnv, dir)
+
+	// A panic in the test goroutine leaves t.Failed false while it unwinds, so
+	// the guard must recover it, write the marker and panic again.
+	func() {
+		defer func() {
+			if recovered := recover(); recovered != "boom" {
+				t.Errorf("recovered %v, want the guard to panic again with boom", recovered)
+			}
+		}()
+		func() {
+			defer PairGuard(t)()
+			panic("boom")
+		}()
+	}()
+
+	data, err := os.ReadFile(filepath.Join(dir, pairFailureName(RoleA)))
+	if err != nil {
+		t.Fatalf("reading the failure marker: %v", err)
+	}
+	if got, want := string(data), "host A failed"; got != want {
+		t.Errorf("failure marker = %q, want %q", got, want)
 	}
 }
