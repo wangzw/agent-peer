@@ -36,10 +36,11 @@ func (b *syncBuffer) String() string {
 // fakeClock is a Clock whose time only moves through Advance. Callbacks run
 // synchronously, in deadline order, outside the clock's lock.
 type fakeClock struct {
-	mu     sync.Mutex
-	now    time.Time
-	seq    int
-	timers []*fakeTimer
+	mu      sync.Mutex
+	now     time.Time
+	seq     int
+	created int
+	timers  []*fakeTimer
 }
 
 type fakeTimer struct {
@@ -64,8 +65,31 @@ func (c *fakeClock) AfterFunc(d time.Duration, f func()) Timer {
 	defer c.mu.Unlock()
 	t := &fakeTimer{clock: c, at: c.now.Add(d), seq: c.seq, f: f}
 	c.seq++
+	c.created++
 	c.timers = append(c.timers, t)
 	return t
+}
+
+// createdTimers returns how many timers have been registered so far. A test
+// uses it to wait until the code under test has scheduled a timer.
+func (c *fakeClock) createdTimers() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.created
+}
+
+// pendingTimers returns how many registered timers have neither fired nor been
+// stopped. A test uses it to tell whether a window is still open.
+func (c *fakeClock) pendingTimers() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, t := range c.timers {
+		if !t.stopped && !t.fired {
+			n++
+		}
+	}
+	return n
 }
 
 // Stop reports whether it prevented the callback from running.

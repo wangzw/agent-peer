@@ -9,31 +9,61 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// configDirWatchDebounce is how long the watcher waits after the last change
+// before waking the retry, so a burst of writes from one save is reported once.
+const configDirWatchDebounce = 50 * time.Millisecond
+
+// configDirSource supplies the directory events the watcher consumes.
+type configDirSource interface {
+	Events() <-chan fsnotify.Event
+	Errors() <-chan error
+	Close() error
+}
+
+// fsnotifySource is the production source, backed by one fsnotify watcher.
+type fsnotifySource struct{ w *fsnotify.Watcher }
+
+func (s fsnotifySource) Events() <-chan fsnotify.Event { return s.w.Events }
+func (s fsnotifySource) Errors() <-chan error          { return s.w.Errors }
+func (s fsnotifySource) Close() error                  { return s.w.Close() }
+
 // configDirWatch reports changes to the configuration file while a degraded
 // Broker runs diagnostics only. config's own watcher never starts when Load
 // fails, so the degraded loop watches the directory itself.
 type configDirWatch struct {
 	events chan struct{}
 
-	fsw  *fsnotify.Watcher
-	log  *slog.Logger
-	stop chan struct{}
-	done chan struct{}
-	once sync.Once
+	source configDirSource
+	log    *slog.Logger
+	clock  Clock
+	stop   chan struct{}
+	done   chan struct{}
+	once   sync.Once
+}
+
+// newConfigDirWatch builds a watcher over source. A nil clock uses the system
+// clock; tests inject one to advance the debounce themselves.
+func newConfigDirWatch(source configDirSource, log *slog.Logger, clock Clock) *configDirWatch {
+	if log == nil {
+		log = slog.Default()
+	}
+	if clock == nil {
+		clock = SystemClock()
+	}
+	return &configDirWatch{
+		events: make(chan struct{}, 1),
+		source: source,
+		log:    log,
+		clock:  clock,
+		stop:   make(chan struct{}),
+		done:   make(chan struct{}),
+	}
 }
 
 // startConfigDirWatch watches dir for changes to configFile. A watcher that
 // cannot be created is logged and inert; the minute retry still runs.
 func startConfigDirWatch(configFile string, log *slog.Logger) *configDirWatch {
-	if log == nil {
-		log = slog.Default()
-	}
-	w := &configDirWatch{
-		events: make(chan struct{}, 1),
-		log:    log,
-		stop:   make(chan struct{}),
-		done:   make(chan struct{}),
-	}
+	w := newConfigDirWatch(nil, log, nil)
 	if configFile == "" {
 		close(w.done)
 		return w
@@ -52,7 +82,7 @@ func startConfigDirWatch(configFile string, log *slog.Logger) *configDirWatch {
 		close(w.done)
 		return w
 	}
-	w.fsw = fsw
+	w.source = fsnotifySource{fsw}
 	go w.run(baseName(configFile))
 	return w
 }
@@ -62,16 +92,16 @@ func baseName(path string) string { return filepath.Base(path) }
 func (w *configDirWatch) run(name string) {
 	defer close(w.done)
 	var (
-		timer  *time.Timer
-		timing <-chan time.Time
+		timer  Timer
+		timing <-chan struct{}
 	)
 	arm := func() {
-		if timer == nil {
-			timer = time.NewTimer(50 * time.Millisecond)
-		} else {
-			timer.Reset(50 * time.Millisecond)
+		if timer != nil {
+			timer.Stop()
 		}
-		timing = timer.C
+		ch := make(chan struct{})
+		timer = w.clock.AfterFunc(configDirWatchDebounce, func() { close(ch) })
+		timing = ch
 	}
 	for {
 		select {
@@ -79,9 +109,9 @@ func (w *configDirWatch) run(name string) {
 			if timer != nil {
 				timer.Stop()
 			}
-			_ = w.fsw.Close()
+			_ = w.source.Close()
 			return
-		case ev, ok := <-w.fsw.Events:
+		case ev, ok := <-w.source.Events():
 			if !ok {
 				return
 			}
@@ -92,7 +122,7 @@ func (w *configDirWatch) run(name string) {
 				continue
 			}
 			arm()
-		case err, ok := <-w.fsw.Errors:
+		case err, ok := <-w.source.Errors():
 			if !ok {
 				return
 			}
@@ -102,8 +132,8 @@ func (w *configDirWatch) run(name string) {
 			// A watcher error only costs the immediate retry; the minute
 			// tick still drives the loop.
 		case <-timing:
-			// arm reinstalls timing on the next change; keep it nil until then
-			// so a stale firing cannot wake the loop twice.
+			// arm installs a new timer on the next change; keep timing nil until
+			// then so a stale firing cannot wake the loop twice.
 			timing = nil
 			select {
 			case w.events <- struct{}{}:
@@ -118,7 +148,7 @@ func (w *configDirWatch) stopNow() {
 		return
 	}
 	w.once.Do(func() {
-		if w.fsw != nil {
+		if w.source != nil {
 			close(w.stop)
 		}
 	})
