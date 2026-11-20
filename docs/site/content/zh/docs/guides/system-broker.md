@@ -8,13 +8,13 @@ weight: 6
 
 ## 安装并启用
 
-把二进制装进 root 拥有、组和其他人不可写的目录，再以 root 安装服务；手动命令见[把 Broker 安装为服务]({{< relref "run-as-service.md" >}})。从解压后的发布包里执行 `sudo sh ./install.sh --system`，可以一步完成这两件事；没有发布包时，用在线系统级命令效果相同：
+把二进制装进 root 拥有、组和其他人不可写的目录，并以 root 安装服务。安装命令会一次完成这两件事：对它的级别询问回答 y。请在需要使用系统级 Broker 的 Claude Code 所属的账户下执行。安装只为执行安装的账户注册 MCP 服务，即使它经 `sudo` 重新执行自己也是这个账户。安装会立即启动 Broker，此后它随开机启动。
 
 ```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --system
+curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
 ```
 
-请在需要使用系统级 Broker 的 Claude Code 所属的账户下执行：安装只为执行 `sudo` 的账户注册 MCP 服务。安装会立即启动 Broker，此后它随开机启动。
+[安装 agent-peer]({{< relref "install.md" >}})介绍这个询问以及其他安装方式；手动命令见[把 Broker 安装为服务]({{< relref "run-as-service.md" >}})。
 
 系统级 Broker 取的是 root 的账户锁。如果 root 名下已有用户级 Broker 在运行，系统级安装会被拒绝，并提示先停掉它。
 
@@ -22,13 +22,13 @@ curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install
 
 ## 允许账户使用它
 
-每个账户各自注册 MCP 服务；注册按账户进行，不按主机进行。系统级安装已经为执行 `sudo` 的账户注册好。其他账户只需注册 MCP 服务，用安装后二进制的绝对路径：
+每个账户各自注册 MCP 服务；注册按账户进行，不按主机进行。系统级安装已经为执行安装的账户注册好。其他账户只需注册 MCP 服务，用安装后二进制的绝对路径：
 
 ```sh
 claude mcp add --scope user peer -- /usr/local/bin/agent-peer mcp
 ```
 
-不要在这些账户上执行用户级安装：用户级安装会装上用户级服务，这个账户的会话就会改用它的用户级 Broker，不再使用系统级 Broker。如果已经装了，用 `agent-peer service uninstall` 卸载用户级服务。
+不要在这些账户上执行安装命令。主机上已有系统级服务时，安装命令会改问是否升级系统级安装，回答 n 不改动主机；只有带 `--user`，或者在没有终端时执行，才会装出用户级 Broker，装了以后本账户的会话改用它。已经有用户级安装的，用 [`agent-peer uninstall`]({{< relref "/docs/reference/cli" >}}#agent-peer-uninstall) 卸掉；卸载会删掉本账户的 MCP 注册，之后要重新执行上面的注册命令。
 
 会话通过本机 socket 访问系统级 Broker：Linux 上是 `/run/agent-peer/broker.sock`，macOS 上是 `/var/run/agent-peer/broker.sock`。两个设置决定哪些账户能连接：
 

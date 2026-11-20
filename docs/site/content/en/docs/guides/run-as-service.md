@@ -6,7 +6,7 @@ weight: 5
 
 A Claude Code session connects to a Broker but never starts one. You start a Broker either by installing it as a service or by running it in a terminal. A service starts the Broker right away, starts it at login or at boot, keeps it running, and brings it back after a machine restart.
 
-The install script in the release archive and the online install command already install and start the service by default, so you mainly need this page for a manual installation, for an install with `--no-service`, or for a later reinstall of the service alone. The sections on stopping a Broker you started in a terminal and on uninstalling a service apply to every installation.
+The install command already installs and starts the service, so this page covers a manual installation or installing the service after `--no-service`. The sections on stopping a Broker you started in a terminal and on uninstalling a service apply to every installation.
 
 ## Stop a Broker you started in a terminal
 
@@ -32,7 +32,7 @@ The unit or plist runs `agent-peer broker` as that account. It starts when the a
 
 ## Install a system-level service
 
-A system-level install runs as root and makes the Broker start at boot. From an extracted release archive, `sudo sh ./install.sh --system` installs the binary and the service in one step, and so does the online system-level command in [Getting Started]({{< relref "/docs/getting-started" >}}). The steps below do the two parts by hand. The script also asks whether to add the account that ran `sudo` to the admin group. [The admin group]({{< relref "management-permissions.md" >}}#the-admin-group) covers the group, the answer and the options that control the question.
+A system-level install runs as root and makes the Broker start at boot. Answering y to the install command's level question installs the binary and the service in one step, and so does running it as root; [Install agent-peer]({{< relref "install.md" >}}) covers the question. The steps below do the two parts by hand. The script also asks whether to add the account that ran the install to the admin group. [The admin group]({{< relref "management-permissions.md" >}}#the-admin-group) covers the group, the answer and the options that control the question.
 
 The binary must be in a directory that root owns and that group and others cannot write, such as `/usr/local/bin`. The service starts the binary as root, so an ordinary account that can modify the binary or one of its parent directories could take over the service:
 

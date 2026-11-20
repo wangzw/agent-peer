@@ -31,7 +31,7 @@ weight: 7
 
 `agent-peer service install --system` 默认会创建 `agent-peer` 组（不存在时），已存在的组直接使用，不改成员。用 `--admin-group <name>` 可以改用别的组名：组名只能以小写字母或下划线开头，其后只能是小写字母、数字、下划线或连字符。新生成的配置文件属于该组，权限为 `0660`，所以组成员不用 `sudo` 就能管理 Broker。这个组的可信程度等同于“能手工编辑配置文件”，它不等于 root。
 
-发布包里的安装脚本会询问是否把执行 `sudo` 的账户加入该组，默认不加入。`--join-admin-group` 不询问直接加入，`--no-admin-group` 既不询问也不加入。没有终端时，脚本不加入任何账户，并打印加入组的命令。Broker 每次判定权限都从账户数据库读取账户的组，所以经 Broker 做的管理操作，加入组后下一次调用就生效。要让本账户自己的进程带上新的成员关系，例如直接编辑配置文件，先重新登录或执行 `newgrp agent-peer`。要把别的账户加入组，Linux 上执行 `sudo usermod -aG agent-peer <account>`，macOS 上执行 `sudo dseditgroup -o edit -a <account> -t user agent-peer`；设置过 `--admin-group` 时，把命令里的 `agent-peer` 换成那个组名。
+安装脚本会询问是否把执行安装的账户加入该组，默认不加入。`--join-admin-group` 不询问直接加入，`--no-admin-group` 既不询问也不加入。没有终端时，脚本不加入任何账户，并打印加入组的命令。Broker 每次判定权限都从账户数据库读取账户的组，所以经 Broker 做的管理操作，加入组后下一次调用就生效。要让本账户自己的进程带上新的成员关系，例如直接编辑配置文件，先重新登录或执行 `newgrp agent-peer`。要把别的账户加入组，Linux 上执行 `sudo usermod -aG agent-peer <account>`，macOS 上执行 `sudo dseditgroup -o edit -a <account> -t user agent-peer`；设置过 `--admin-group` 时，把命令里的 `agent-peer` 换成那个组名。
 
 已有安装用安装输出给出的命令把文件交给这个组：
 

@@ -219,7 +219,7 @@ The new binary takes effect the next time the Broker starts.
 
 ## agent-peer service install
 
-写入并启用服务定义，然后立即启动 Broker。它会等 Broker 应答，最多等 20 秒；超时会使安装失败，并给出服务日志的位置。重新安装会用新的二进制替换正在运行的 Broker。
+写入并启用服务定义，然后立即启动 Broker。它会等 Broker 应答，最多等 20 秒；超时会使安装失败，并给出服务日志的位置。重新安装会用新的二进制替换正在运行的 Broker。输出给出级别、二进制路径、版本、配置文件路径、运行日志与审计日志的位置，以及启动、停止、重启与卸载 Broker 的命令；各项见[安装 agent-peer]({{< relref "/docs/guides/install" >}}#安装输出)。
 
 - 不带 `--system` 时安装用户级服务，账户登录时启动 Broker。不能以 root 运行。在 macOS 上只能在图形登录会话里运行。`~/.agent-peer/config.yaml` 不存在时，生成这个文件，属主为执行安装的账户，权限 `0600`；已存在的文件不改动。
 - 带 `--system` 时安装系统级服务，开机时启动 Broker。必须以 root 运行。组 `agent-peer` 不存在时，命令新建它；已存在时直接使用，不改动成员。`/etc/agent-peer/config.yaml` 不存在时，生成这个文件，属主为 `root`，组为 `agent-peer`，权限 `0660`；已存在的文件不改动。`--admin-group <name>` 只在带 `--system` 时有效，用于改用另一个组；组名只能以小写字母或下划线开头，其后只能是小写字母、数字、下划线或连字符。

@@ -100,8 +100,8 @@ Broker 重启后，连接会自动恢复。发起调用的会话里，MCP 服务
 
 | 安装方式 | 命令 | 处理方式 |
 |---|---|---|
-| 用户级：在线安装、`sh ./install.sh`，或手工放进 `~/.local/bin` 的二进制 | `agent-peer update` | 装有服务时，Broker 替换自己的二进制，服务管理器重启它；没有服务时，命令替换二进制，下次启动时生效。 |
-| 系统级：带 `--system` 的在线安装、`sudo sh ./install.sh --system`，或手工 `sudo install` 到 `/usr/local/bin` | 管理组成员且本账户没有运行用户级 Broker 时用 `agent-peer update`；其余情形用 `sudo agent-peer update`；不在组内的，也可以先加入管理组 | Broker 替换自己的二进制，服务管理器重启它。 |
+| 用户级：对系统级询问回答 n 或带 `--user` 的安装命令，或手工放进 `~/.local/bin` 的二进制 | `agent-peer update` | 装有服务时，Broker 替换自己的二进制，服务管理器重启它；没有服务时，命令替换二进制，下次启动时生效。 |
+| 系统级：带 `--system` 或对级别询问回答 y 的安装命令，或以 root 运行，或手工 `sudo install` 到 `/usr/local/bin` | 管理组成员且本账户没有运行用户级 Broker 时用 `agent-peer update`；其余情形用 `sudo agent-peer update`；不在组内的，也可以先加入管理组 | Broker 替换自己的二进制，服务管理器重启它。 |
 | 没有正在运行的 Broker | `agent-peer update` | 命令替换二进制，不启动也不重启任何服务。 |
 
 用 `-ldflags` 以发布版本号从源码构建的二进制，按它所属安装方式对应的一行处理。不带 `-ldflags` 从源码构建的二进制报出的版本是 `dev`；它不是正式发布版本，命令会拒绝执行，并给出 `version "dev" is not a release build; only release builds can update themselves`。要就地更新，请安装正式发布版本。

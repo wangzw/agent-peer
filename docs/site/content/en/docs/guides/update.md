@@ -100,8 +100,8 @@ When the Broker applies an update, it restarts and its connections recover autom
 
 | Installation | Command | What happens |
 |---|---|---|
-| User-level: the online install, `sh ./install.sh`, or a binary you placed in `~/.local/bin` | `agent-peer update` | With a service, the Broker replaces its binary and the service manager restarts it. Without one, the command replaces the binary and it takes effect at the next start. |
-| System-level: the online install with `--system`, `sudo sh ./install.sh --system`, or a manual `sudo install` into `/usr/local/bin` | `agent-peer update` for a member of the admin group with no user-level Broker running; otherwise `sudo agent-peer update`, or join the group if the account is outside it | The Broker replaces its binary and the service manager restarts it. |
+| User-level: the install command answered n to the system-wide question or run with `--user`, or a binary you placed in `~/.local/bin` | `agent-peer update` | With a service, the Broker replaces its binary and the service manager restarts it. Without one, the command replaces the binary and it takes effect at the next start. |
+| System-level: the install command with `--system` or answered y at the level question, or run as root, or a manual `sudo install` into `/usr/local/bin` | `agent-peer update` for a member of the admin group with no user-level Broker running; otherwise `sudo agent-peer update`, or join the group if the account is outside it | The Broker replaces its binary and the service manager restarts it. |
 | No running Broker | `agent-peer update` | The command replaces the binary, and nothing is started or restarted. |
 
 A binary built from source with the release version in `-ldflags` follows the row for the installation it belongs to. A binary built without `-ldflags` reports the version `dev`; it is not a release build, and the command refuses with `version "dev" is not a release build; only release builds can update themselves`. Install a release to update in place.

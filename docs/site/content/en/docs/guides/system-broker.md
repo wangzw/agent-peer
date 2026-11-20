@@ -8,13 +8,13 @@ A system Broker runs as a service with root privileges and serves agents of seve
 
 ## Install and enable it
 
-Install the binary in a directory that root owns and that group and others cannot write, then install the service as root; [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the manual commands. From an extracted release archive, `sudo sh ./install.sh --system` does both in one step; without an archive, the online system-level command does the same:
+Install the binary in a directory that root owns and that group and others cannot write, and install the service as root. The install command does both: answer y to its level question. Run it from the account whose Claude Code should use the system Broker. The install registers the MCP server only for the account that ran it, including when it re-runs itself through `sudo`. It starts the Broker immediately, and it starts at boot from then on.
 
 ```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --system
+curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
 ```
 
-Run it from the account whose Claude Code should use the system Broker: the install registers the MCP server only for the account that invoked `sudo`. It starts the Broker immediately, and it starts at boot from then on.
+[Install agent-peer]({{< relref "install.md" >}}) covers the question and the other ways to install; [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the manual commands.
 
 The system Broker takes root's account lock. If a user Broker is already running as root, the system-level install refuses and asks you to stop it first.
 
@@ -22,13 +22,13 @@ The system Broker uses `/etc/agent-peer/config.yaml`, `/var/log/agent-peer/audit
 
 ## Let accounts use it
 
-Each account registers the MCP server for itself; registration is per account, not per host. The system-level install registers it for the account that invoked `sudo`. Other accounts need only the registration, with the installed binary's absolute path:
+Each account registers the MCP server for itself; registration is per account, not per host. The system-level install registers it for the account that ran the install. Other accounts need only the registration, with the installed binary's absolute path:
 
 ```sh
 claude mcp add --scope user peer -- /usr/local/bin/agent-peer mcp
 ```
 
-Do not run the user-level install on these accounts: it installs a user-level service, and the account's sessions then use its user Broker instead of the system Broker. If you already did, remove the user-level service with `agent-peer service uninstall`.
+Do not run the install command on these accounts. On a host that already has a system-level service, the install command asks whether to upgrade the system-level installation instead; answering n leaves the host unchanged; a user-level Broker is installed only with `--user` or when the command runs without a terminal, and the account's sessions then use it. If a user-level installation is already there, remove it with [`agent-peer uninstall`]({{< relref "/docs/reference/cli" >}}#agent-peer-uninstall); the uninstall also removes this account's MCP registration, so run the registration command above again.
 
 A session reaches the system Broker through the local socket `/run/agent-peer/broker.sock` on Linux, or `/var/run/agent-peer/broker.sock` on macOS. Two settings decide which accounts can connect:
 

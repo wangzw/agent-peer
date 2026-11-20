@@ -3,7 +3,7 @@ title: MCP tools
 weight: 1
 ---
 
-A Claude Code session reaches agent-peer through an MCP server named `peer`. The install script registers it for the account that runs it; with `--system` it registers it for the account that ran `sudo`, and when run as root without `sudo` it prints the command instead of registering. To register it by hand, run `claude mcp add --scope user peer -- agent-peer mcp`. The model then sees the tools as `mcp__peer__<tool>`, and permission rules use that name, for example `mcp__peer__send_message`.
+A Claude Code session reaches agent-peer through the MCP server `peer`, which the install registers for the account that runs it; a system-level installation registers it for the account that ran the install, including when the command re-runs itself through `sudo`, and prints the command instead of registering when run as root without `sudo`. To register it by hand, run `claude mcp add --scope user peer -- agent-peer mcp`. The model then sees the tools as `mcp__peer__<tool>`, and permission rules use that name, for example `mcp__peer__send_message`.
 
 ## Tools
 
