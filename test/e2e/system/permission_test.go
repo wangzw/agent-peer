@@ -568,8 +568,11 @@ func permNonEmptyLines(s string) []string {
 // permWaitRegistered waits until the session's MCP server has registered it.
 func permWaitRegistered(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "the session "+session.Account+" to register", func() (bool, string) {
-		text, isError := session.Call(t, "list_agents", map[string]any{})
+	harness.EventuallyPoll(t, 3*time.Second, "the session "+session.Account+" to register", func(deadline time.Time) (bool, string) {
+		text, isError, err := session.PollCall(t, deadline, "list_agents", map[string]any{})
+		if err != nil {
+			return false, err.Error()
+		}
 		return !isError, text
 	})
 }
@@ -577,9 +580,12 @@ func permWaitRegistered(t *testing.T, session *syscontainer.Session) {
 // permWaitConnected waits until the session's MCP server has reached a Broker.
 func permWaitConnected(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "the MCP server of "+session.Account+" to reach its Broker",
-		func() (bool, string) {
-			text, isError := session.Call(t, "list_brokers", map[string]any{})
+	harness.EventuallyPoll(t, 3*time.Second, "the MCP server of "+session.Account+" to reach its Broker",
+		func(deadline time.Time) (bool, string) {
+			text, isError, err := session.PollCall(t, deadline, "list_brokers", map[string]any{})
+			if err != nil {
+				return false, err.Error()
+			}
 			return !isError, text
 		})
 }

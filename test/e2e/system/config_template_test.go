@@ -340,8 +340,11 @@ func cteExerciseHotReload(t *testing.T, session *syscontainer.Session, lvl cteLe
 			counts["broker.alias"], values["broker.alias"], cteHotReloadAlias)
 	}
 
-	harness.Eventually(t, cteReloadBound, "broker.alias to take the hand-written value "+cteHotReloadAlias, func() (bool, string) {
-		text, isError := session.Call(t, "get_config", map[string]any{"key": "broker.alias"})
+	harness.EventuallyPoll(t, cteReloadBound, "broker.alias to take the hand-written value "+cteHotReloadAlias, func(deadline time.Time) (bool, string) {
+		text, isError, err := session.PollCall(t, deadline, "get_config", map[string]any{"key": "broker.alias"})
+		if err != nil {
+			return false, err.Error()
+		}
 		if isError {
 			return false, text
 		}
@@ -713,8 +716,11 @@ func cteDecodeOne(t *testing.T, text string) (string, error) {
 func cteWaitConnected(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
 
-	harness.Eventually(t, cteWaitBound, "the session of "+session.Account+" to reach the Broker", func() (bool, string) {
-		text, isError := session.Call(t, "get_config", map[string]any{"key": "broker.listen"})
+	harness.EventuallyPoll(t, cteWaitBound, "the session of "+session.Account+" to reach the Broker", func(deadline time.Time) (bool, string) {
+		text, isError, err := session.PollCall(t, deadline, "get_config", map[string]any{"key": "broker.listen"})
+		if err != nil {
+			return false, err.Error()
+		}
 		return !isError, text
 	})
 }

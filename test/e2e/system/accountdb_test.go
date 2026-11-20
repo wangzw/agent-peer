@@ -142,9 +142,12 @@ func adSocketModeGID(t *testing.T, path string) (os.FileMode, uint32) {
 // adWaitRegistered waits until the session has registered with its Broker.
 func adWaitRegistered(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
-	harness.Eventually(t, adRegisterBound, "the session "+session.Account+" to register",
-		func() (bool, string) {
-			text, isError := session.Call(t, "list_agents", map[string]any{})
+	harness.EventuallyPoll(t, adRegisterBound, "the session "+session.Account+" to register",
+		func(deadline time.Time) (bool, string) {
+			text, isError, err := session.PollCall(t, deadline, "list_agents", map[string]any{})
+			if err != nil {
+				return false, err.Error()
+			}
 			return !isError, text
 		})
 }

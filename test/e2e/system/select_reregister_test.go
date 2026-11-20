@@ -340,8 +340,11 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 		t.Fatalf("killing peer's user-level Broker %d: %v", userBroker.PID, err)
 	}
 
-	harness.Eventually(t, srLaunchBudget, "s1 reports that no Broker is available", func() (bool, string) {
-		text, isError := s1.Call(t, "list_agents", map[string]any{})
+	harness.EventuallyPoll(t, srLaunchBudget, "s1 reports that no Broker is available", func(deadline time.Time) (bool, string) {
+		text, isError, err := s1.PollCall(t, deadline, "list_agents", map[string]any{})
+		if err != nil {
+			return false, err.Error()
+		}
 		if !isError {
 			return false, "list_agents succeeded without a Broker"
 		}
@@ -361,8 +364,12 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 	// The user starts the Broker again in a terminal. The session reconnects to
 	// it without reconnecting the MCP server process.
 	syscontainer.StartUserBroker(t, "peer", "--listen", ":17444")
-	harness.Eventually(t, srLaunchBudget, "s1 registers again with the restarted user-level Broker", func() (bool, string) {
-		if _, isError := s1.Call(t, "list_agents", map[string]any{}); isError {
+	harness.EventuallyPoll(t, srLaunchBudget, "s1 registers again with the restarted user-level Broker", func(deadline time.Time) (bool, string) {
+		_, isError, err := s1.PollCall(t, deadline, "list_agents", map[string]any{})
+		if err != nil {
+			return false, err.Error()
+		}
+		if isError {
 			return false, "list_agents still fails"
 		}
 		return true, ""
@@ -431,7 +438,7 @@ func TestReregisterSystemBrokerReq037(t *testing.T) {
 	}
 
 	var newPID int
-	harness.Eventually(t, srRestartBudget, "systemd restarts the system Broker and s3 registers again", func() (bool, string) {
+	harness.EventuallyPoll(t, srRestartBudget, "systemd restarts the system Broker and s3 registers again", func(deadline time.Time) (bool, string) {
 		pid, err := srMainPID()
 		if err != nil {
 			return false, err.Error()
@@ -439,7 +446,11 @@ func TestReregisterSystemBrokerReq037(t *testing.T) {
 		if pid == 0 || pid == oldPID {
 			return false, fmt.Sprintf("MainPID is %d, want a pid other than %d", pid, oldPID)
 		}
-		if _, isError := s3.Call(t, "list_agents", map[string]any{}); isError {
+		_, isError, callErr := s3.PollCall(t, deadline, "list_agents", map[string]any{})
+		if callErr != nil {
+			return false, callErr.Error()
+		}
+		if isError {
 			return false, "list_agents still fails"
 		}
 		newPID = pid

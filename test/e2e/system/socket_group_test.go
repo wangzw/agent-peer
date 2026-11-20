@@ -72,8 +72,11 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 	if len(mcpBefore) == 0 {
 		t.Fatal("other has no MCP server process after charlie started")
 	}
-	harness.Eventually(t, sgNoBrokerBudget, "other's session reports that no Broker is available", func() (bool, string) {
-		text, isError := c.Call(t, "list_agents", map[string]any{})
+	harness.EventuallyPoll(t, sgNoBrokerBudget, "other's session reports that no Broker is available", func(deadline time.Time) (bool, string) {
+		text, isError, err := c.PollCall(t, deadline, "list_agents", map[string]any{})
+		if err != nil {
+			return false, err.Error()
+		}
 		if !isError {
 			return false, "list_agents succeeded without a Broker"
 		}
@@ -85,8 +88,12 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 		return true, ""
 	})
 	syscontainer.StartUserBroker(t, "other")
-	harness.Eventually(t, sgRegisterBudget, "charlie registers on the Broker the user started", func() (bool, string) {
-		if _, isError := c.Call(t, "list_agents", map[string]any{}); isError {
+	harness.EventuallyPoll(t, sgRegisterBudget, "charlie registers on the Broker the user started", func(deadline time.Time) (bool, string) {
+		_, isError, err := c.PollCall(t, deadline, "list_agents", map[string]any{})
+		if err != nil {
+			return false, err.Error()
+		}
+		if isError {
 			return false, "list_agents still fails"
 		}
 		return true, ""
@@ -317,8 +324,11 @@ func sgMCPPIDs(t *testing.T, account string) []int {
 
 func sgWaitRegistered(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "the session "+session.Account+" to register", func() (bool, string) {
-		text, isError := session.Call(t, "list_agents", map[string]any{})
+	harness.EventuallyPoll(t, 3*time.Second, "the session "+session.Account+" to register", func(deadline time.Time) (bool, string) {
+		text, isError, err := session.PollCall(t, deadline, "list_agents", map[string]any{})
+		if err != nil {
+			return false, err.Error()
+		}
 		return !isError, text
 	})
 }
@@ -326,9 +336,12 @@ func sgWaitRegistered(t *testing.T, session *syscontainer.Session) {
 // sgWaitConnected waits until the session's MCP server has reached a Broker.
 func sgWaitConnected(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "the MCP server of "+session.Account+" to reach its Broker",
-		func() (bool, string) {
-			text, isError := session.Call(t, "list_brokers", map[string]any{})
+	harness.EventuallyPoll(t, 3*time.Second, "the MCP server of "+session.Account+" to reach its Broker",
+		func(deadline time.Time) (bool, string) {
+			text, isError, err := session.PollCall(t, deadline, "list_brokers", map[string]any{})
+			if err != nil {
+				return false, err.Error()
+			}
 			return !isError, text
 		})
 }
