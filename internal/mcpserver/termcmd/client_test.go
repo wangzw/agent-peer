@@ -516,6 +516,69 @@ func TestRunConfigSetPermissionDeniedIncludesPath(t *testing.T) {
 	}
 }
 
+// TestRunSetOnline covers both directions: the stored broker.offline value is
+// the opposite of the requested state, and the success line reports the state
+// (REQ-broker-config-066).
+func TestRunSetOnline(t *testing.T) {
+	cases := []struct {
+		name     string
+		online   bool
+		wantVal  string
+		wantLine string
+	}{
+		{"offline", false, "true", "Broker is now offline\n"},
+		{"online", true, "false", "Broker is now online\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := fakelocal.SocketPath(t)
+			srv := fakelocal.Start(t, path, fakelocal.Handlers{
+				SetConfig: func(context.Context, *localpb.SetConfigRequest) (*localpb.SetConfigResponse, error) {
+					return &localpb.SetConfigResponse{
+						OldValue: &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: !tc.online}},
+						NewValue: &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: !tc.online}},
+					}, nil
+				},
+			})
+
+			var got bytes.Buffer
+			if err := RunSetOnline(t.Context(), fixedSelector(path), tc.online, &got); err != nil {
+				t.Fatalf("RunSetOnline: %v", err)
+			}
+			if got.String() != tc.wantLine {
+				t.Errorf("RunSetOnline output = %q, want %q", got.String(), tc.wantLine)
+			}
+			req := requestOf[*localpb.SetConfigRequest](t, srv, "SetConfig")
+			if req.GetKey() != "broker.offline" || req.GetValue() != tc.wantVal {
+				t.Errorf("SetConfig request = (%q, %q), want (%q, %q)", req.GetKey(), req.GetValue(), "broker.offline", tc.wantVal)
+			}
+		})
+	}
+}
+
+// TestRunSetOnlinePermissionDenied checks that a denied write is returned as a
+// permission error and nothing is printed.
+func TestRunSetOnlinePermissionDenied(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	fakelocal.Start(t, path, fakelocal.Handlers{
+		SetConfig: func(context.Context, *localpb.SetConfigRequest) (*localpb.SetConfigResponse, error) {
+			return nil, fakelocal.PermissionDenied("changing the configuration requires write permission on /etc/agent-peer/config.yaml")
+		},
+	})
+
+	var got bytes.Buffer
+	err := RunSetOnline(t.Context(), fixedSelector(path), false, &got)
+	if err == nil {
+		t.Fatal("RunSetOnline returned nil, want an error")
+	}
+	if !strings.HasPrefix(err.Error(), "permission_denied: ") {
+		t.Errorf("RunSetOnline error = %q, want it to start with %q", err, "permission_denied: ")
+	}
+	if got.Len() != 0 {
+		t.Errorf("RunSetOnline wrote %q, want nothing", got.String())
+	}
+}
+
 func TestRunPairingKeyCreate(t *testing.T) {
 	path := fakelocal.SocketPath(t)
 	resp := &localpb.CreatePairingKeyResponse{

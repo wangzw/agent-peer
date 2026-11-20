@@ -129,6 +129,33 @@ func RunConfigSet(ctx context.Context, sel Selector, key, value string, w io.Wri
 	return WriteConfigChange(w, key, resp.GetOldValue(), resp.GetNewValue())
 }
 
+// RunSetOnline connects to the selected Broker, sets broker.offline and
+// reports the new state in one line. Broker selection and error reporting are
+// the same as for config set.
+func RunSetOnline(ctx context.Context, sel Selector, online bool, w io.Writer) error {
+	client, closeConn, err := dial(ctx, sel)
+	if err != nil {
+		return err
+	}
+	defer closeConn()
+
+	callCtx, cancel := context.WithTimeout(ctx, UnaryTimeout)
+	defer cancel()
+
+	value, message := "true", "Broker is now offline"
+	if online {
+		value, message = "false", "Broker is now online"
+	}
+	if _, err := client.SetConfig(callCtx, &localpb.SetConfigRequest{
+		Key:   "broker.offline",
+		Value: value,
+	}); err != nil {
+		return errors.New(Describe(err))
+	}
+	_, err = fmt.Fprintln(w, message)
+	return err
+}
+
 // RunPairingKeyCreate connects to the selected Broker, creates a one-time
 // pairing key and writes the key, its expiry and the addresses to dial.
 func RunPairingKeyCreate(ctx context.Context, sel Selector, w io.Writer) error {
