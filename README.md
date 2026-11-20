@@ -10,6 +10,37 @@ Claude Code's built-in cross-session messaging covers sessions on one host. agen
 
 ## Install
 
+### One-command installation
+
+Install the latest release with one command:
+
+```sh
+curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
+```
+
+The script detects the platform and architecture, downloads the matching archive, verifies it against the release's `checksums.txt`, and runs the install script from the archive. For a system-level installation, run the same command with `sudo`; the MCP server is registered for the account that invoked `sudo`:
+
+```sh
+curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --system
+```
+
+To install a published version instead of the latest, pass `--version <version>` before any other option, using a published version number such as `0.1.1`. A version that does not exist makes the command fail with `version <version> not found` and leaves the host unchanged:
+
+```sh
+curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version <version>
+```
+
+Options that follow `--version <version>` are passed to the archive's install script.
+
+Piping the script to a shell carries the same trust as downloading the archive and running it by hand: the releases are not signed. To inspect the script first, download it, read it, and run it from the directory that holds it:
+
+```sh
+curl -fsSLO https://github.com/wangzw/agent-peer/releases/latest/download/install.sh
+sh install.sh
+```
+
+### Install from the archive
+
 agent-peer is distributed as a `tar.gz` archive on [GitHub Releases](https://github.com/wangzw/agent-peer/releases). Pick the archive for your platform and architecture:
 
 | Platform | Architecture | Archive |
@@ -48,7 +79,7 @@ mkdir agent-peer-0.1.0
 tar -xzf agent-peer_0.1.0_linux_arm64.tar.gz -C agent-peer-0.1.0
 ```
 
-### Install script
+#### Install script
 
 The archive contains `install.sh` at its root. Change into the directory that holds the extracted files and run it:
 
@@ -70,7 +101,7 @@ The script accepts these options:
 | `--no-service` | Do not install the Broker service. |
 | `--no-mcp` | Do not register the MCP server. |
 
-The script is safe to run again: it reinstalls the binary, restarts the service with it, and leaves an existing MCP registration in place. It never accesses the network; everything it installs comes from the extracted archive.
+The script is safe to run again: it reinstalls the binary, restarts the service with it, and leaves an existing MCP registration in place. The archive's install script never accesses the network; everything it installs comes from the extracted archive.
 
 ### Manual installation
 
@@ -116,7 +147,7 @@ Add `--system` to `service uninstall` for a system-level service. Configuration,
 
 ## Register the MCP server with Claude Code
 
-The [install script](#install-script) registers the server automatically; the steps here apply to a manual installation. Register the MCP server once for your account so that it is available in all your projects:
+The one-command and archive installations register the server automatically; the steps here apply to a manual installation. Register the MCP server once for your account so that it is available in all your projects:
 
 ```sh
 claude mcp add --scope user peer -- agent-peer mcp

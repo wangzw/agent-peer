@@ -144,7 +144,7 @@ service Local {
 
 `service install` 写入服务定义、启用服务并立即启动 Broker，随后用本机 socket 轮询 Broker 是否应答，上限为 20 秒。上限覆盖 Broker 自身的启动时间与 launchd 默认 10 秒的节流；超时使安装失败，错误给出服务日志的位置：Linux 为 `journalctl --user -u agent-peer.service`（系统级去掉 `--user`），macOS 为 `~/Library/Logs/agent-peer/broker.log`（系统级为 `/var/log/agent-peer/broker.log`）。
 
-发布包的安装脚本把二进制放进目标目录、以它调用 `service install`、为执行安装的用户注册 MCP 服务（`REQ-broker-config-041`）；服务定义的写入、启动与重装仍只由 `service install` 负责，它可重复执行，安装脚本因此不另做判断。
+发布包的安装脚本把二进制放进目标目录、以它调用 `service install`、为执行安装的用户注册 MCP 服务（`REQ-broker-config-041`）；服务定义的写入、启动与重装仍只由 `service install` 负责，它可重复执行，安装脚本因此不另做判断。远程安装脚本负责下载发布包、核对发布包的 sha256 并在解压后调用包内的 `install.sh`；权限检查、拒绝以 `root` 走用户级安装等判断仍由包内脚本负责（`REQ-broker-config-042`）。
 
 Linux 上，用户级单元写到 `~/.config/systemd/user/agent-peer.service`，系统级写到 `/etc/systemd/system/agent-peer.service`，随后依次执行 `systemctl --user daemon-reload`、`systemctl --user enable agent-peer.service` 与 `systemctl --user restart agent-peer.service`，系统级去掉 `--user`；`restart` 在服务未运行时启动它，重装时换上新的二进制。用户级的配置目录取 `XDG_CONFIG_HOME`，为空或不是绝对路径时取 `~/.config`。
 
