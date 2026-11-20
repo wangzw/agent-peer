@@ -10,7 +10,7 @@ import (
 // TestKeyTableCompleteAndDefaults walks every key so a wrong type, default or
 // missing entry in the table fails a test.
 func TestKeyTableCompleteAndDefaults(t *testing.T) {
-	if got, want := len(keyTable), 31; got != want {
+	if got, want := len(keyTable), 32; got != want {
 		t.Fatalf("key table has %d keys, want %d", got, want)
 	}
 	type expectation struct {
@@ -21,6 +21,7 @@ func TestKeyTableCompleteAndDefaults(t *testing.T) {
 		"broker.alias":                       {keyString, stringValue("")},
 		"broker.public":                      {keyBool, boolValue(false)},
 		"broker.listen":                      {keyString, stringValue(":17443")},
+		"broker.offline":                     {keyBool, boolValue(false)},
 		"broker.advertise":                   {keyString, stringValue("")},
 		"broker.advertise_extra":             {keyStringList, stringListValue(nil)},
 		"broker.address_check_interval":      {keyDuration, durationValue(time.Minute)},
@@ -200,6 +201,8 @@ func TestParseValue(t *testing.T) {
 		{"broker.alias", "host-1", stringValue("host-1")},
 		{"broker.listen", "", stringValue("")},
 		{"broker.public", "true", boolValue(true)},
+		{"broker.offline", "true", boolValue(true)},
+		{"broker.offline", "false", boolValue(false)},
 		{"pairing.max_failures", "7", intValue(7)},
 		{"send.request_timeout", "10m", durationValue(10 * time.Minute)},
 		{"broker.advertise_extra", "[a.example, b.example:8443]", stringListValue([]string{"a.example", "b.example:8443"})},
@@ -223,6 +226,7 @@ func TestParseValue(t *testing.T) {
 		{"no.such.key", "x"},
 		{"broker.public", "yes"},
 		{"broker.public", "1"},
+		{"broker.offline", "maybe"},
 		{"pairing.max_failures", "5.5"},
 		{"pairing.max_failures", "abc"},
 		{"send.request_timeout", "10"},

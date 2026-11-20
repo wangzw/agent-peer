@@ -232,3 +232,51 @@ func TestConfigSetFailsWhenFileCannotBeParsed(t *testing.T) {
 		t.Fatalf("Set overwrote the broken file:\n%s", data)
 	}
 }
+
+// TestBrokerOfflineKey covers the key the offline switch reads and writes: it
+// defaults to false, is not secret, and can be changed both in the file and
+// through Set.
+func TestBrokerOfflineKey(t *testing.T) {
+	t.Run("default and Set", func(t *testing.T) {
+		c, path := newValueCore(t, "", "")
+		installCoreForTest(t, c)
+
+		v, err := Get("broker.offline")
+		if err != nil {
+			t.Fatalf("Get(broker.offline): %v", err)
+		}
+		if v.Kind != KindBool || v.Bool {
+			t.Fatalf("default broker.offline = %+v, want a false bool", v)
+		}
+
+		if _, err := Set(Actor{Account: "ana", Agent: "hostA/ana"}, "broker.offline", boolValue(true)); err != nil {
+			t.Fatalf("Set(broker.offline): %v", err)
+		}
+		if v, err := Get("broker.offline"); err != nil || v.Kind != KindBool || !v.Bool {
+			t.Fatalf("Get(broker.offline) after Set = %+v, %v, want true", v, err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		doc, err := parseConfigFile(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := doc.values["broker.offline"]; !ok || !got.Bool {
+			t.Fatalf("file does not hold broker.offline: true:\n%s", data)
+		}
+		if n := countEvent(t, c, EventConfigSet, "broker.offline"); n != 1 {
+			t.Fatalf("config_set records for broker.offline = %d, want 1", n)
+		}
+	})
+
+	t.Run("from the configuration file", func(t *testing.T) {
+		c, _ := newValueCore(t, "broker:\n  offline: true\n", "")
+		installCoreForTest(t, c)
+
+		if v, err := Get("broker.offline"); err != nil || v.Kind != KindBool || !v.Bool {
+			t.Fatalf("Get(broker.offline) = %+v, %v, want true from the file", v, err)
+		}
+	})
+}

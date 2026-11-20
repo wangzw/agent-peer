@@ -22,6 +22,8 @@ broker:
   # No fixed default; this example is inactive.
   # File mode of the local socket; user mode always uses 0600. This key applies to the system Broker only.
   local_socket_mode: "0666"
+  # Refuse messages from other hosts while keeping links; agent-peer offline / online.
+  offline: false
   # Whether this Broker is public.
   public: false
 

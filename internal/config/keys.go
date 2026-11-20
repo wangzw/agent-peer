@@ -116,6 +116,10 @@ var keyTable = map[string]*keySpec{
 			return err
 		},
 	},
+	"broker.offline": {
+		Name: "broker.offline", Kind: keyBool, Default: boolValue(false),
+		Doc: "Refuse messages from other hosts while keeping links; agent-peer offline / online.",
+	},
 	"broker.advertise": {
 		Name: "broker.advertise", Kind: keyString, Default: stringValue(""),
 		Doc: "Addresses to advertise; valid forms are empty, host, host:port and :port.",

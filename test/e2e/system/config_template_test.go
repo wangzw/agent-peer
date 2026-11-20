@@ -60,6 +60,7 @@ var cteKeys = []cteKey{
 	{"broker.alias", "string"},
 	{"broker.public", "bool"},
 	{"broker.listen", "string"},
+	{"broker.offline", "bool"},
 	{"broker.advertise", "string"},
 	{"broker.advertise_extra", "list"},
 	{"broker.address_check_interval", "duration"},
