@@ -17,6 +17,8 @@ Broker 也可以使用用户或管理员写在配置文件里的预置静态密�
 
 两个 Broker 互为对端。新对端的别名如果与本 Broker 自己的别名相同，或已被另一个对端使用，发起方要先指定一个本地别名，配对才能完成：工具调用里用 `local_alias`，命令行上加 `--alias`。
 
+别名冲突有两种来源。默认别名只取主机名的第一段，所以主机名第一段相同的两台主机，例如 `workstation.example.com` 与 `workstation.example.net`，其系统级 Broker 会得到相同的别名，两台主机上同名账户的用户级 Broker 也会如此；配对这类 Broker 时就要指定本地别名。配对之后也可能出现冲突：对端更改别名（包括升级后默认别名发生变化）后，如果新别名与本 Broker 自己的别名或另一个对端的别名相同，本 Broker 会为它生成一个新的本地别名，既不同于本 Broker 自己的别名，也不与任何对端重复。已有的 Agent 地址仍然指向原来那个 Broker，不会改指另一个 Broker。
+
 配对关系在任一 Broker 重启后仍然保留。网络中断后重新建立链路，不需要配对密钥。
 
 别名与指纹见 [Broker]({{< relref "/docs/concepts/broker" >}})；配对之后建立连接见[链路]({{< relref "/docs/concepts/links" >}})；配对的操作步骤见[两台主机配对]({{< relref "/docs/guides/pair-hosts" >}})；`connect_broker` 与静态密钥见 [MCP 工具]({{< relref "/docs/reference/mcp-tools" >}})和[配置键]({{< relref "/docs/reference/configuration" >}})。

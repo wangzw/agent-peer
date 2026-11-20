@@ -13,13 +13,13 @@ A **system Broker** runs as a privileged system service. There is at most one pe
 
 A **user Broker** runs under an ordinary account and serves only that account's sessions. An account runs at most one instance. It is started by the user's service manager, or by the user in a terminal; the MCP server process only connects. An account that can use the host's system Broker needs no user Broker; a running user Broker takes precedence over the system Broker, unless the session's tool configuration names a Broker.
 
-Each instance has its own fingerprint, peers and configuration. Two Brokers on one host are independent Brokers on the network, not parts of one process.
+Each instance has its own fingerprint, peers and configuration. Two Brokers on one host are independent Brokers on the network, not parts of one process. Their default aliases differ; the rule is under Address and identity below. On a host whose hostname is `workstation.example.com`, the system Broker takes `workstation`, and the user Brokers of accounts alice and bob take `workstation.alice` and `workstation.bob`. These are three Brokers with three different aliases, and a list sorted by alias keeps the Brokers of one host together.
 
 ## Address and identity
 
 By default a Broker listens on port 17443 on all local addresses, IPv6 included when enabled. Other Brokers reach it at its advertised addresses, which by default are the addresses of the network interface that carries the default route. A Broker whose listen address is empty does not listen; it can only dial other Brokers.
 
-The fingerprint is the identity: a digest of the Broker's public key that does not change when the Broker restarts, renames itself or changes its listen address. The alias is the display name that appears after `@` in an agent address.
+The fingerprint is the identity: a digest of the Broker's public key that does not change when the Broker restarts, renames itself or changes its listen address. The alias is the display name that appears after `@` in an agent address. When `broker.alias` is not set, a system Broker takes the first segment of the host's hostname, the part before the first `.`, and a user Broker takes that segment, a `.` and the name of the account that runs it. The alias does not depend on the listen address, the port or the advertised addresses, so changing the port or stopping the listener leaves it unchanged. On a host named `workstation.example.com`, the system Broker is `workstation` and the user Broker of account alice is `workstation.alice`. [Configuration keys]({{< relref "/docs/reference/configuration" >}}) gives the full rule, including how characters outside the alias character set are replaced, what happens when the account name cannot be looked up, and how a long alias is shortened.
 
 A Broker is private by default. A public Broker publishes a broker card with its fingerprint, alias and advertised addresses, and every Broker in the connected network can learn it. Pairing with a public Broker is still a separate decision.
 

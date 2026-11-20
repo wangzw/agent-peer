@@ -9,7 +9,7 @@ An agent is a Claude Code session that has enabled the agent-peer tools and regi
 
 A Broker identifies an agent by the session's inbox socket, the local socket Claude Code binds for that session. The session's name gives the agent its name: agent-peer applies Claude Code's own name normalization, which removes control and format characters, trims whitespace, lowercases the text and replaces whitespace with `-`. A session whose name becomes empty, is empty after the attribution cleanup (the receiving side removes characters it cannot read in a sender name and truncates the result to 64 characters), or contains `@` or `*` cannot become an agent.
 
-An agent address combines the name, an optional disambiguator, `@` and the alias of the agent's Broker. The disambiguator appears when the name alone is not unique on that Broker or does not fit in a message attribution. The alias is the one the viewing side's Broker uses for the other Broker, so the same agent can have a different address on each Broker.
+An agent address combines the name, an optional disambiguator, `@` and the alias of the agent's Broker. The disambiguator appears when the name alone is not unique on that Broker or does not fit in a message attribution. The alias is the one the viewing side's Broker uses for the other Broker, so the same agent can have a different address on each Broker. In a default configuration the part after `@` is the Broker's default alias: an agent named `frontend` is `frontend@workstation` on the system Broker and `frontend@workstation.alice` on the user Broker of account alice.
 
 ## What an agent can do
 

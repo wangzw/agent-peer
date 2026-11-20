@@ -9,7 +9,7 @@ Agent 是启用了 agent-peer 工具并登记到本机 Broker 的 Claude Code �
 
 Broker 用会话的 inbox socket 识别 Agent，inbox socket 是 Claude Code 为该会话绑定的本机 socket。会话名决定 Agent 的名字：agent-peer 采用 Claude Code 自己的名字规范化规则，去掉控制字符与格式字符，去掉首尾空白，转为小写，并把空白换成 `-`。名字规范化后为空、经署名清洗后为空（接收方会去掉发送方名字里它读不出的字符，并截短到 64 个字符），或者含有 `@` 或 `*` 的会话不能成为 Agent。
 
-Agent 地址由名字、可选的消歧标识、`@` 和所在 Broker 的别名依次组成。名字在该 Broker 上不足以唯一确定这个 Agent，或者名字放不进消息署名时，地址里会带上消歧标识。别名是看到该地址一方的 Broker 对另一个 Broker 使用的别名，所以同一个 Agent 在不同 Broker 上的地址可以不同。
+Agent 地址由名字、可选的消歧标识、`@` 和所在 Broker 的别名依次组成。名字在该 Broker 上不足以唯一确定这个 Agent，或者名字放不进消息署名时，地址里会带上消歧标识。别名是看到该地址一方的 Broker 对另一个 Broker 使用的别名，所以同一个 Agent 在不同 Broker 上的地址可以不同。默认配置下，`@` 之后就是 Broker 的默认别名：名为 `frontend` 的 Agent 在系统级 Broker 上地址是 `frontend@workstation`，在账户 alice 的用户级 Broker 上地址是 `frontend@workstation.alice`。
 
 ## Agent 能做什么
 

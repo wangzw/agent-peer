@@ -119,7 +119,7 @@ This works without extra setup when both sessions run in the same git repository
 
 When neither condition holds, the sessions join no topic and do not appear in each other's `list_agents` result. In that case, have both sessions call `join_topic` with the same topic name.
 
-In one session, ask the model to call `list_agents`. The result gives your own address and the other session as `name@alias`, for example `frontend@workstation-17443`. Ask it to call `send_message` with that address and a plain-text message.
+In one session, ask the model to call `list_agents`. The result gives your own address and the other session as `name@alias`, for example `frontend@workstation.alice`; on a system Broker the address is `frontend@workstation`. Ask it to call `send_message` with that address and a plain-text message.
 
 The sending session reports success once the message is written into the receiving session's inbox socket. An idle receiving session starts working on the message without user input. The message carries the sender's agent address, and a session can call `send_message` with that address to send a message back.
 

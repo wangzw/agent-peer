@@ -18,7 +18,7 @@ Start a session in the working copy on each host and enable the agent-peer tools
 
 With no topics declared in a project configuration file, both sessions join the default topic for the repository. The topic comes from the git `origin` address, normalized to the lower-case host name followed by the repository path: `git@github.com:org/repo.git`, `ssh://git@GitHub.com:22/org/repo.git` and `https://github.com/org/repo` all become `github.com/org/repo`.
 
-In one session, ask the model to call `list_agents`. Besides your own address, the result lists the other agent with its address and the topics you share. The address ends with the other Broker's alias, such as `frontend@hostB-17443`.
+In one session, ask the model to call `list_agents`. Besides your own address, the result lists the other agent with its address and the topics you share. The address ends with the other Broker's alias, such as `frontend@hostB`. When the other side uses a user Broker, it looks like `frontend@hostB.alice`.
 
 ## Set the topic in the project
 

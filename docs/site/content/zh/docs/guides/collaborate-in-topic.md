@@ -18,7 +18,7 @@ topic 决定谁能看见谁。两个 Agent 至少同在一个 topic，并且位�
 
 项目配置文件没有声明 topic 时，两个会话都会加入该仓库的默认 topic。topic 取自 git `origin` 地址，规范化为小写主机名加仓库路径：`git@github.com:org/repo.git`、`ssh://git@GitHub.com:22/org/repo.git` 和 `https://github.com/org/repo` 都会变成 `github.com/org/repo`。
 
-在一个会话里让模型调用 `list_agents`。除了你自己的地址，结果还会列出另一个 Agent 的地址和你们共同的 topic。地址以对方的 Broker 别名结尾，例如 `frontend@hostB-17443`。
+在一个会话里让模型调用 `list_agents`。除了你自己的地址，结果还会列出另一个 Agent 的地址和你们共同的 topic。地址以对方的 Broker 别名结尾，例如 `frontend@hostB`。对方使用用户级 Broker 时，形如 `frontend@hostB.alice`。
 
 ## 在项目里指定 topic
 

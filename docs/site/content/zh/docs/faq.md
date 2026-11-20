@@ -31,6 +31,10 @@ Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见
 
 不能。一个账户至多运行一个 Broker，用另一个监听地址再启动一个会失败。见[Broker]({{< relref "concepts/broker.md" >}})。
 
+## 升级后 Agent 地址为什么变了？
+
+从 0.1.1 起，默认别名不再包含监听端口：主机名为 `workstation` 的系统级 Broker 报出 `workstation`，不再是旧形式 `workstation-17443`；账户 alice 的用户级 Broker 报出 `workstation.alice`。因此，从 0.1.0 升级、又没有设置 `broker.alias` 的 Broker 别名通常会变，对端看到的 Agent 地址也随之改变，除非对端已经为它设了本地别名；保存了旧地址的会话要改用新地址。对端遇到与已有别名冲突时会自行处理：为改了别名的 Broker 生成一个本地别名，原有地址不会因此指向另一个 Broker。想沿用旧别名，就在配置文件里设置 `broker.alias`，例如设回 `workstation-17443`。无论用哪种方式升级，包括在线安装、归档里的 `install.sh`、`agent-peer update` 或手工替换二进制，情形都一样。
+
 ## 两台主机如何开始互相信任？
 
 两台主机里至少要有一台能连到另一台。在对方能连上的那台主机上用 `create_pairing_key` 或 `agent-peer pairing-key create` 生成一次性配对密钥，连同显示的地址一起，通过系统之外的途径交给另一台。另一台用 `connect_broker` 或 `agent-peer peer connect <address> --key <key>` 配对，使用该一次性密钥或接受方配置的预置静态密钥，此后双方各凭指纹认对方。见[配对]({{< relref "concepts/pairing.md" >}})与[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。

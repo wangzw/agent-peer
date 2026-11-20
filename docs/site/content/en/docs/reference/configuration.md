@@ -9,7 +9,7 @@ Both deployment forms read one YAML file: `~/.agent-peer/config.yaml` for a user
 
 | Key | Type | Default | Meaning | `set_config`, `agent-peer config set` |
 |---|---|---|---|---|
-| `broker.alias` | string | derived | The alias this Broker reports. Derived from the system hostname and the effective listen address when not set. 1 to 24 characters from letters, digits, `.`, `-` and `_`. | Yes |
+| `broker.alias` | string | derived | The alias this Broker reports. Derived from the hostname and, for a user Broker, the account when not set. 1 to 24 characters from letters, digits, `.`, `-` and `_`. The default is described below the table. | Yes |
 | `broker.public` | boolean | `false` | Whether this Broker publishes a broker card and is visible to the whole connected network. | Yes |
 | `broker.listen` | string | `:17443` | The address and port to bind, written `host:port`, `:port` or `[v6]:port`. An empty host means every local address; an empty string means do not listen. | Yes, except under `--listen` |
 | `broker.advertise` | string | empty | Replaces the automatically detected advertised address. Accepted forms are empty, `host`, `host:port` and `:port`. `host` takes the listen port; `:port` takes the addresses of the default-route interfaces and requires listening on every address. A non-empty value requires a listen address. | Yes |
@@ -38,6 +38,8 @@ Both deployment forms read one YAML file: `~/.agent-peer/config.yaml` for a user
 | `link.keepalive_interval` | duration | `15s` | Keepalive probe interval. gRPC raises an interval below 10 seconds to 10 seconds. | Yes |
 | `link.keepalive_timeout` | duration | `10s` | Deadline for a keepalive reply. | Yes |
 | `log.level` | string | `info` | Run log level: `debug`, `info`, `warn` or `error`. | Yes |
+
+When `broker.alias` is not set, a system Broker uses the first segment of the system hostname, the part before the first `.`. A user Broker uses that segment, a `.`, and the name of the account that runs it, for example `workstation` and `workstation.alice`. The alias does not depend on the listen address, the listen port, or the advertised addresses. A character outside the alias character set is replaced with `-`. When the account name cannot be found, the decimal uid takes its place, for example `workstation.1000`. When the hostname cannot be found, the hostname part is `broker`. An alias longer than 24 characters is shortened first in its hostname part, which keeps at least 1 character, and, if it is still too long, then in its account part. After an upgrade from 0.1.0, a Broker without this key usually reports a different alias; a Broker that did not listen and whose hostname is already a single segment keeps the same alias. Set the key here to keep the old one, such as `workstation-17443`.
 
 ## Types and constraints
 
