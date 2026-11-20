@@ -4,20 +4,19 @@ linkTitle: 安装 agent-peer
 weight: 1
 ---
 
-本指南介绍安装指定版本、从发布包安装、安装脚本的选项、手动安装与从源码构建。一条命令的安装方式见[快速开始]({{< relref "/docs/getting-started" >}})；用 `agent-peer update` 保持更新，见[更新 agent-peer]({{< relref "update.md" >}})。
+本指南介绍安装级别、安装指定版本、从发布包安装、安装脚本的选项、安装输出、安装失败、手动安装与从源码构建。一条命令的安装方式见[快速开始]({{< relref "/docs/getting-started" >}})；用 `agent-peer update` 保持更新，见[更新 agent-peer]({{< relref "update.md" >}})。
+
+## 选择安装级别
+
+一条命令安装与发布包里的 `sh ./install.sh` 两种级别都能装。以 root 运行时，脚本不经询问直接装系统级。其他账户在终端里运行、又没有给出指定级别的选项时，会看到询问 `Install system-wide (all accounts)? [y/N]`：回答 y 经 `sudo` 安装为系统级，其他回答装成本账户的用户级。没有终端时，非 root 账户装用户级。主机上已有系统级服务时，询问改为 `Upgrade the system-wide installation? [Y/n]`：直接回车或回答 y 升级系统级安装，回答 n 时主机不做任何改动，以退出码 0 结束，并提示改用 `--user`。`--system` 与 `--user` 跳过询问；同时给出两个是用法错误，以 root 给出 `--user` 会被拒绝并提示去掉它。回答 y 之后 `sudo` 不可用时，脚本失败，并提示改用 `--user`。
+
+## 用一条命令安装
 
 安装指定版本时，先设好版本号，再传 `--version`：
 
 ```sh
 VERSION=0.2.0
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version "$VERSION"
-```
-
-系统级安装指定版本：
-
-```sh
-VERSION=0.2.0
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --version "$VERSION" --system
 ```
 
 `--version` 必须写在所有其他参数之前。它指定一个已发布的版本；这个版本没有可安装的发布包时，脚本中止并报 `version <version> not found`。其余参数原样传给发布包里的 `install.sh`，所以下一节的选项在这里同样可用。
@@ -79,26 +78,22 @@ cd agent-peer-${VERSION}
 sh ./install.sh
 ```
 
-系统级安装以 root 运行同一脚本，通常经 `sudo`：
+脚本会像在线命令一样询问级别；见[选择安装级别](#选择安装级别)。
 
-```sh
-VERSION=0.2.0
-cd agent-peer-${VERSION}
-sudo sh ./install.sh --system
-```
-
-用户级形式把二进制装到 `~/.local/bin`，安装并启动用户级 Broker 服务，并为你的账户注册 MCP 服务。系统级形式把二进制装到 `/usr/local/bin`，安装并启动系统级 Broker 服务，并为执行 `sudo` 的账户注册 MCP 服务；它还会创建 `agent-peer` 组，并询问是否把这个账户加入组内。管理组的含义、这个询问及其效果见[管理组]({{< relref "management-permissions.md" >}}#管理组)。
+用户级形式把二进制装到 `~/.local/bin`，安装并启动用户级 Broker 服务，并为你的账户注册 MCP 服务。系统级形式把二进制装到 `/usr/local/bin`，安装并启动系统级 Broker 服务，并为执行安装的账户注册 MCP 服务；它还会创建 `agent-peer` 组，并询问是否把这个账户加入组内。管理组的含义、这个询问及其效果见[管理组]({{< relref "management-permissions.md" >}}#管理组)。
 
 脚本接受这些选项：
 
 | 选项 | 作用 |
 |---|---|
+| `--system` | 不经级别询问装为系统级；不是 root 时，脚本经 `sudo` 重新执行自己。 |
+| `--user` | 不经级别询问装为本账户的用户级。不能与 `--system` 同时给出。 |
 | `--prefix <dir>` | 把二进制装到 `<dir>`，代替默认目录：用户级安装为 `~/.local/bin`，系统级安装为 `/usr/local/bin`。 |
 | `--no-service` | 不安装 Broker 服务。[启动 Broker](#启动-broker)。 |
 | `--no-mcp` | 不注册 MCP 服务。 |
 | `--admin-group <name>` | 改用组 `<name>` 管理系统级 Broker，代替默认的 `agent-peer` 组；组名只能以小写字母或下划线开头，其后只能是小写字母、数字、下划线或连字符。只在与 `--system` 同用时有效。 |
-| `--join-admin-group` | 不询问，直接把执行 `sudo` 的账户加入管理组。只在与 `--system` 同用时有效。 |
-| `--no-admin-group` | 不询问是否把执行 `sudo` 的账户加入管理组。只在与 `--system` 同用时有效。 |
+| `--join-admin-group` | 不询问，直接把执行安装的账户加入管理组。只在与 `--system` 同用时有效。 |
+| `--no-admin-group` | 不询问是否把执行安装的账户加入管理组。只在与 `--system` 同用时有效。 |
 
 `--join-admin-group` 与 `--no-admin-group` 同时给出是用法错误。
 
@@ -108,9 +103,17 @@ sudo sh ./install.sh --system
 
 对应级别的配置文件不存在时，由 `service install` 生成它，列出全部配置项：用户级服务是 `~/.agent-peer/config.yaml`，系统级服务是 `/etc/agent-peer/config.yaml`。[配置键]({{< relref "/docs/reference/configuration" >}})介绍这个文件。
 
-macOS 上，脚本自己清除二进制上的隔离属性，所以用浏览器下载也不需要额外步骤。用户级安装目录不在 `PATH` 上时，脚本会提示；把它加入 `PATH` 才能按名字运行 `agent-peer`。macOS 上的用户级服务需要图形登录会话；没有图形会话的主机改用 `--system` 或 `--no-service`。
+macOS 上，脚本自己清除二进制上的隔离属性，所以用浏览器下载也不需要额外步骤。用户级安装目录不在 `PATH` 上时，脚本会提示；把它加入 `PATH` 才能按名字运行 `agent-peer`。macOS 上的用户级服务需要图形登录会话；没有图形会话的主机改用系统级安装或 `--no-service`。
 
 系统级安装要求二进制所在目录及其每一级上级目录属主为 root，组与其他人都不可写。装了 Homebrew 的 Intel Mac 上，`/usr/local/bin` 属于你的账户，安装会被拒绝；先用 `sudo mkdir -p <dir>` 建一个 root 所有的目录，再用 `--prefix` 指定它。
+
+## 安装输出
+
+安装成功时，输出给出级别、二进制路径、版本、配置文件路径、运行日志位置、审计日志路径，以及启动、停止、重启与卸载 Broker 的命令。系统级安装的启动、停止、重启命令带 `sudo`。升级时还会给出升级前的版本。[文件与路径]({{< relref "/docs/reference/files" >}})列出配置、运行日志、审计日志与运行时目录的路径。
+
+安装失败时，输出写明原因：地址已被占用时给出地址、配置文件与 `broker.listen`；服务管理器报错时给出执行的命令与它的输出；权限不足时给出路径和缺少的权限；Broker 在启动阶段退出时给出运行日志里的原因。只有服务在运行、Broker 进入降级运行时，安装才保留服务、给出修复命令，并以退出码 3 结束；安装失败时写入或启用的服务，不会在开机或登录时自动启动。细节见 [agent-peer service install]({{< relref "/docs/reference/cli" >}}#agent-peer-service-install) 与 [FAQ 的端口一问]({{< relref "/docs/faq" >}}#端口被占用时会怎样)。
+
+卸载安装见 [agent-peer uninstall]({{< relref "/docs/reference/cli" >}}#agent-peer-uninstall)；启动、停止与重启服务见 [service start, stop and restart]({{< relref "/docs/reference/cli" >}}#agent-peer-service-start-stop-and-restart)。
 
 ## 手动安装
 

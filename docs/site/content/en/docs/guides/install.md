@@ -4,20 +4,19 @@ linkTitle: Install agent-peer
 weight: 1
 ---
 
-This guide covers installing a particular version, installing from the release archive, the install script's options, manual installation and building from source. [Getting Started]({{< relref "/docs/getting-started" >}}) gives the one-command installation; to keep an installation up to date with `agent-peer update`, see [Update agent-peer]({{< relref "update.md" >}}).
+This guide covers the install level, installing a particular version, installing from the release archive, the install script's options, the installation output, install failures, manual installation and building from source. [Getting Started]({{< relref "/docs/getting-started" >}}) gives the one-command installation; to keep an installation up to date with `agent-peer update`, see [Update agent-peer]({{< relref "update.md" >}}).
+
+## Choose the install level
+
+The one-command installation and the release archive's `sh ./install.sh` install either level. Run as root, the script installs system-wide without asking. Any other account with a terminal and no option that names the level is asked `Install system-wide (all accounts)? [y/N]`: `y` installs system-wide through `sudo`, and any other answer installs for that account. Without a terminal, a non-root account gets a user-level installation. When the host already has a system-level service, the question becomes `Upgrade the system-wide installation? [Y/n]`: pressing Enter or answering y upgrades the system-level installation, and answering n leaves the host unchanged, exits with code 0 and suggests `--user`. `--system` and `--user` skip the question; giving both is a usage error, and `--user` as root is refused with a message to drop it. If `sudo` is not available after a `y` answer, the script fails and suggests `--user`.
+
+## Install with one command
 
 To install a particular version, set it first and pass `--version`:
 
 ```sh
 VERSION=0.2.0
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version "$VERSION"
-```
-
-For a system-level installation of a particular version:
-
-```sh
-VERSION=0.2.0
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --version "$VERSION" --system
 ```
 
 `--version` must come before every other argument. It names a published version to install; when that version has no release archive to install, the script stops with `version <version> not found`. Every other argument is passed unchanged to the archive's `install.sh`, so the options in the next section work here as well.
@@ -79,26 +78,22 @@ cd agent-peer-${VERSION}
 sh ./install.sh
 ```
 
-For a system-level installation, run the same script as root, usually through `sudo`:
+The script asks for the level as the online command does; [Choose the install level](#choose-the-install-level) covers the question.
 
-```sh
-VERSION=0.2.0
-cd agent-peer-${VERSION}
-sudo sh ./install.sh --system
-```
-
-The user-level form installs the binary into `~/.local/bin`, installs and starts the user-level Broker service, and registers the MCP server for your account. The system-level form installs the binary into `/usr/local/bin`, installs and starts the system-level Broker service, and registers the MCP server for the account that ran `sudo`; it also creates the `agent-peer` group and asks whether to add that account to it. [The admin group]({{< relref "management-permissions.md" >}}#the-admin-group) covers the group, the question and its effect.
+The user-level form installs the binary into `~/.local/bin`, installs and starts the user-level Broker service, and registers the MCP server for your account. The system-level form installs the binary into `/usr/local/bin`, installs and starts the system-level Broker service, and registers the MCP server for the account that ran the install; it also creates the `agent-peer` group and asks whether to add that account to it. [The admin group]({{< relref "management-permissions.md" >}}#the-admin-group) covers the group, the question and its effect.
 
 The script accepts these options:
 
 | Option | Effect |
 |---|---|
+| `--system` | Install system-wide without the level question; the script re-runs itself through `sudo` when it is not root. |
+| `--user` | Install for your account without the level question. Cannot be combined with `--system`. |
 | `--prefix <dir>` | Install the binary into `<dir>` instead of the default, `~/.local/bin` for a user-level installation or `/usr/local/bin` for a system-level one. |
 | `--no-service` | Do not install the Broker service. [Start the Broker](#start-the-broker) yourself. |
 | `--no-mcp` | Do not register the MCP server. |
 | `--admin-group <name>` | Manage the system Broker through the group `<name>` instead of the default `agent-peer` group; the name may start only with a lowercase letter or an underscore and may contain only lowercase letters, digits, underscores and hyphens. Valid only with `--system`. |
-| `--join-admin-group` | Add the account that ran `sudo` to the admin group without asking. Valid only with `--system`. |
-| `--no-admin-group` | Do not ask whether to add the account that ran `sudo` to the admin group. Valid only with `--system`. |
+| `--join-admin-group` | Add the account that ran the install to the admin group without asking. Valid only with `--system`. |
+| `--no-admin-group` | Do not ask whether to add the account that ran the install to the admin group. Valid only with `--system`. |
 
 Giving both `--join-admin-group` and `--no-admin-group` is a usage error.
 
@@ -108,9 +103,17 @@ With `--no-mcp`, the script skips the registration, and you run the registration
 
 If the configuration file for the level does not exist, `service install` creates it with every configuration key listed: `~/.agent-peer/config.yaml` for a user-level service, and `/etc/agent-peer/config.yaml` for a system-level one. [Configuration keys]({{< relref "/docs/reference/configuration" >}}) describes the file.
 
-On macOS, the script clears the quarantine attribute from the binary itself, so a browser download needs no extra step. If the user-level install directory is not on `PATH`, the script says so; add it to `PATH` to run `agent-peer` by name. A user-level service on macOS needs a graphical login session; on a host without one, use `--system` or `--no-service`.
+On macOS, the script clears the quarantine attribute from the binary itself, so a browser download needs no extra step. If the user-level install directory is not on `PATH`, the script says so; add it to `PATH` to run `agent-peer` by name. A user-level service on macOS needs a graphical login session; on a host without one, install system-wide or use `--no-service`.
 
 A system-level installation requires the binary's directory and every directory above it to be owned by root and not writable by group or others. On an Intel Mac with Homebrew, `/usr/local/bin` belongs to your account, so the installation is refused; create a root-owned directory with `sudo mkdir -p <dir>` and pass it with `--prefix` instead.
+
+## Installation output
+
+A successful installation reports the level, the binary path, the version, the configuration file path, the location of the run log, the audit log path, and the commands to start, stop, restart and uninstall the Broker. The start, stop and restart commands use `sudo` for a system-level installation. An upgrade also reports the version it upgraded from. [Files and paths]({{< relref "/docs/reference/files" >}}) lists the configuration, run log, audit log and runtime paths.
+
+A failed installation names the cause: an address that is already in use is reported with the address, the configuration file and `broker.listen`; a service manager error gives the command and its output; missing permissions give the path and the missing permission; and a Broker that exits during startup gives the reason from its run log. Only when the service is running and the Broker has entered a degraded run does the install keep the service, give a fix command and exit with code 3; a service that a failed install wrote or enabled does not start at boot or login. [agent-peer service install]({{< relref "/docs/reference/cli" >}}#agent-peer-service-install) and [the port question in the FAQ]({{< relref "/docs/faq" >}}#what-happens-if-the-port-is-already-in-use) give the details.
+
+To remove an installation, see [agent-peer uninstall]({{< relref "/docs/reference/cli" >}}#agent-peer-uninstall); to start, stop or restart its service, see [service start, stop and restart]({{< relref "/docs/reference/cli" >}}#agent-peer-service-start-stop-and-restart).
 
 ## Install manually
 

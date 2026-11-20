@@ -12,21 +12,11 @@ agent-peer 运行在 macOS 与 Linux 上，支持 amd64 和 arm64；不支持原
 
 ## 安装
 
-用一条命令安装 agent-peer：
-
 ```sh
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
 ```
 
-这条命令下载适合本机的发布包，校验后安装二进制、把 Broker 安装为服务，并为你的账户注册 MCP 服务。重开已经打开的 Claude Code 会话，让它加载新的 MCP 服务，再用 `claude mcp get peer` 检查注册结果。
-
-系统级安装用同一条命令，加上 `sudo` 与 `--system`；用户级命令不要加 `sudo`：
-
-```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --system
-```
-
-[安装 agent-peer]({{< relref "guides/install.md" >}})介绍安装指定版本、从发布包安装、脚本的选项、手动安装与从源码构建。[更新 agent-peer]({{< relref "guides/update.md" >}})介绍如何保持更新。
+重开已经打开的 Claude Code 会话，再用 `claude mcp get peer` 检查注册结果。[安装 agent-peer]({{< relref "guides/install.md" >}})介绍系统级安装以及其他安装方式。
 
 ## 在同一台主机上互发消息
 

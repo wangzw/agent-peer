@@ -5,13 +5,13 @@ weight: 8
 
 ## 如何安装 agent-peer？
 
-用一条命令安装最新版本，并为你的账户注册 MCP 服务：
+这条命令安装最新版本，并为你的账户注册 MCP 服务；能询问时会问安装级别：
 
 ```sh
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
 ```
 
-发布包解压后也有一个 `install.sh`，在解压后的目录里运行 `sh ./install.sh`；也可以手动安装二进制。[安装 agent-peer]({{< relref "guides/install.md" >}})介绍各种安装方式，包括系统级安装。
+发布包解压后也有一个 `install.sh`，在解压后的目录里运行 `sh ./install.sh`，同样会询问级别；也可以手动安装二进制。[安装 agent-peer]({{< relref "guides/install.md" >}})介绍级别询问与各种安装方式，包括系统级安装。
 
 主机上已经有你能使用的系统级 Broker 时，只需注册 MCP 服务，不要安装用户级 Broker；命令见[运行系统级 Broker]({{< relref "guides/system-broker.md" >}})。
 

@@ -12,21 +12,11 @@ agent-peer runs on macOS and Linux, on amd64 and arm64; native Windows is not su
 
 ## Install
 
-Install agent-peer with one command:
-
 ```sh
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
 ```
 
-The command downloads the release for this host, verifies it, installs the binary, installs the Broker as a service and registers the MCP server for your account. Reopen any Claude Code session that is already open so that it loads the new server, and check the registration with `claude mcp get peer`.
-
-For a system-level installation, run the same command with `sudo` and `--system`; do not run the user-level command with `sudo`:
-
-```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --system
-```
-
-[Install agent-peer]({{< relref "guides/install.md" >}}) covers a particular version, the release archive, the script's options, manual installation and building from source. [Update agent-peer]({{< relref "guides/update.md" >}}) covers keeping it up to date.
+Reopen any Claude Code session that is already open, then check the registration with `claude mcp get peer`. [Install agent-peer]({{< relref "guides/install.md" >}}) covers system-level installation and the other ways to install.
 
 ## Send a message on one host
 
