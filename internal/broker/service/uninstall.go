@@ -47,10 +47,9 @@ func Uninstall(opts Options) (Result, error) {
 // restores it, so a later uninstall can finish.
 func uninstallLinux(opts Options, path string, res *Result) (Result, error) {
 	rootedPath := rooted(opts, path)
-	_, statErr := os.Lstat(rootedPath)
-	fileExists := statErr == nil
-	if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
-		return *res, fmt.Errorf("service: inspect %s: %w", path, statErr)
+	fileExists, err := serviceFileExists(opts, path)
+	if err != nil {
+		return *res, err
 	}
 
 	if _, err := opts.LookPath("systemctl"); err != nil {
@@ -59,7 +58,10 @@ func uninstallLinux(opts Options, path string, res *Result) (Result, error) {
 		}
 		return *res, nil
 	}
-	installed := fileExists || systemctlReportsInstalled(opts)
+	installed, err := Installed(opts)
+	if err != nil {
+		return *res, err
+	}
 	if !installed {
 		return *res, nil
 	}
@@ -94,24 +96,6 @@ func uninstallLinux(opts Options, path string, res *Result) (Result, error) {
 	return *res, nil
 }
 
-// systemctlReportsInstalled reports whether systemd still has the unit enabled
-// or running even though its file is gone.
-func systemctlReportsInstalled(opts Options) bool {
-	for _, args := range [][]string{
-		{"is-enabled", UnitName},
-		{"is-active", "--quiet", UnitName},
-	} {
-		argv := append([]string{}, args...)
-		if !opts.System {
-			argv = append([]string{"--user"}, argv...)
-		}
-		if _, err := opts.Run("systemctl", argv...); err == nil {
-			return true
-		}
-	}
-	return false
-}
-
 // uninstallDarwin boots the service out and removes its plist. A bootout
 // failure other than "not loaded" keeps the plist for a retry.
 func uninstallDarwin(opts Options, path string, res *Result) (Result, error) {
@@ -124,16 +108,15 @@ func uninstallDarwin(opts Options, path string, res *Result) (Result, error) {
 	}
 	res.Domain = domain
 
-	rootedPath := rooted(opts, path)
-	_, statErr := os.Lstat(rootedPath)
-	fileExists := statErr == nil
-	if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
-		return *res, fmt.Errorf("service: inspect %s: %w", path, statErr)
+	fileExists, err := serviceFileExists(opts, path)
+	if err != nil {
+		return *res, err
 	}
-	if !fileExists {
-		if domain == "" || !launchctlDomainLoaded(opts, domain) {
-			return *res, nil
-		}
+	// Without a gui domain a user-level service cannot be loaded, so there is
+	// nothing to uninstall and no label to ask about. Answer here instead of
+	// letting the missing domain stand in for a missing service.
+	if !fileExists && (domain == "" || !launchctlDomainLoaded(opts, domain)) {
+		return *res, nil
 	}
 
 	if domain != "" {
@@ -141,16 +124,11 @@ func uninstallDarwin(opts Options, path string, res *Result) (Result, error) {
 			return *res, err
 		}
 	}
+	rootedPath := rooted(opts, path)
 	if err := os.Remove(rootedPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return *res, fmt.Errorf("service: remove %s: %w", path, err)
 	}
 
 	res.Removed = true
 	return *res, nil
-}
-
-// launchctlDomainLoaded reports whether the service is loaded in domain.
-func launchctlDomainLoaded(opts Options, domain string) bool {
-	_, err := opts.Run("launchctl", "print", domain+"/"+Label)
-	return err == nil
 }

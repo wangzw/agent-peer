@@ -323,6 +323,31 @@ func TestUninstallDarwinWithoutGUIDomain(t *testing.T) {
 	}
 }
 
+func TestUninstallDarwinWithoutGUIDomainOrPlist(t *testing.T) {
+	opts := baseOptions(t)
+	opts.GOOS = "darwin"
+	opts.EUID = 501
+	opts.UID = 501
+	opts.Home = "/Users/alice"
+	var cmds []string
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		return nil, exitError(t, 113)
+	}
+
+	res, err := Uninstall(opts)
+	if err != nil {
+		t.Fatalf("Uninstall: %v", err)
+	}
+	if res.Removed {
+		t.Error("Removed = true, want false with no gui domain and no plist")
+	}
+	wantCmds := []string{"launchctl print gui/501"}
+	if !slices.Equal(cmds, wantCmds) {
+		t.Errorf("commands = %q, want %q; the label must not be queried without a domain", cmds, wantCmds)
+	}
+}
+
 func TestUninstallDarwinSystem(t *testing.T) {
 	opts := baseOptions(t)
 	opts.GOOS = "darwin"
