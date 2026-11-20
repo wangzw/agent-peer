@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  linux:
-    name: lint, generate and test
+  lint:
+    name: lint and generate
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -17,19 +17,76 @@ jobs:
         with:
           go-version: "1.27"
           cache: true
-      - name: Install buf
-        run: go install github.com/bufbuild/buf/cmd/buf@v1.75.0
-      - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
-      - name: Put the installed tools on PATH
-        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - name: Run the build gates
-        run: make lint proto-lint gen-check test JOBS=4
+      # Install the prebuilt releases instead of compiling from source with
+      # go install. The versions are the ones this job installed before.
+      - uses: bufbuild/buf-action@v1.7.0
+        with:
+          version: 1.75.0
+          setup_only: true
+      - uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.15.0
+          install-only: true
+      # The ubuntu-24.04 runner image ships shellcheck, so make lint calls it
+      # without an apt install. Print the version every run so a missing or
+      # changed tool fails here instead of inside the gate.
+      - name: Confirm shellcheck
+        run: shellcheck --version
+      - name: Run the lint and generation gates
+        run: make lint proto-lint gen-check
+
+  test:
+    name: test (linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+          cache: true
+      - name: Run the tests
+        run: make test JOBS=4
+
+  docs-check:
+    name: documentation
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # scripts/docs-check.sh runs the document standards checker from this
+      # skill path. The skill lives outside the repository, so fetch the pinned
+      # commit into the user-level location the script reads. A failed clone or
+      # a missing script fails this step rather than letting CI=true skip the
+      # check.
+      - name: Install the document standards checker
+        run: |
+          dir="$HOME/.claude/skills/document-standards"
+          git init -q "$dir"
+          git -C "$dir" remote add origin https://github.com/wangzw/document-standards.git
+          git -C "$dir" fetch -q --depth 1 origin ada039cd0d4476ec12e9e49c8c213706e75258de
+          git -C "$dir" checkout -q FETCH_HEAD
+          test -f "$dir/scripts/check_documents.py"
+      # mermaid-cli renders through Chromium; puppeteer downloads one during
+      # the install. Ubuntu 23.10 and later restrict unprivileged user
+      # namespaces, so the hosted runner cannot start Chromium's own sandbox
+      # and the render needs --no-sandbox from this configuration.
+      - name: Install Mermaid CLI
+        run: |
+          npm install -g @mermaid-js/mermaid-cli@12.2.0
+          mmdc --version
+          printf '{"args":["--no-sandbox"]}\n' > "$RUNNER_TEMP/puppeteer.json"
+      # CI renders every documentation file instead of the ones that differ
+      # from origin/main. On a push to main, checkout leaves origin/main at the
+      # pushed commit, so the changed set would always be empty. The full set
+      # is small (a dozen diagrams) and also covers a pull request that does
+      # not touch the documentation.
+      - name: Run the documentation gate
+        env:
+          DOCS_CHECK_ALL: "1"
+          DOCS_CHECK_PUPPETEER_CONFIG: ${{ runner.temp }}/puppeteer.json
+        run: make docs-check
 
   macos:
-    name: test
+    name: test (macOS)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7

@@ -4,6 +4,10 @@
 # unrenderable diagram is invisible to the reader and does not show up in a
 # text diff.
 #
+# DOCS_CHECK_ALL=1 renders every tracked documentation file instead of the
+# ones that differ from origin/main. CI uses it because a push to main leaves
+# origin/main at the pushed commit, which would make the changed set empty.
+#
 # A missing renderer or comparison base is an error, never a silent skip.
 set -euo pipefail
 
@@ -15,26 +19,48 @@ if ! command -v mmdc >/dev/null 2>&1; then
   exit 1
 fi
 
-base="origin/main"
-if ! git -C "$root" rev-parse --verify --quiet "$base" >/dev/null; then
-  {
-    echo "docs-check: $base not found; the Mermaid check compares changed documentation against origin/main."
-    echo "docs-check: fetch it with 'git fetch origin main' (HEAD is not used as a fallback)."
-  } >&2
-  exit 1
+if [ "${DOCS_CHECK_ALL:-}" = "1" ]; then
+  changed="$(git -C "$root" ls-files -- docs | grep -E '\.md$' || true)"
+  scope="the tracked documentation"
+  if [ -z "$changed" ]; then
+    echo "docs-check: no documentation found; nothing to render"
+    exit 0
+  fi
+else
+  base="origin/main"
+  if ! git -C "$root" rev-parse --verify --quiet "$base" >/dev/null; then
+    {
+      echo "docs-check: $base not found; the Mermaid check compares changed documentation against origin/main."
+      echo "docs-check: fetch it with 'git fetch origin main' (HEAD is not used as a fallback)."
+    } >&2
+    exit 1
+  fi
+
+  changed="$(
+    {
+      git -C "$root" diff --name-only "$base" -- docs
+      git -C "$root" ls-files --others --exclude-standard -- docs
+    } | sort -u | grep -E '\.md$' || true
+  )"
+  scope="the changed documentation"
+
+  if [ -z "$changed" ]; then
+    echo "docs-check: no documentation changed against $base; nothing to render"
+    exit 0
+  fi
 fi
 
-changed="$(
-  {
-    git -C "$root" diff --name-only "$base" -- docs
-    git -C "$root" ls-files --others --exclude-standard -- docs
-  } | sort -u | grep -E '\.md$' || true
-)"
-
-if [ -z "$changed" ]; then
-  echo "docs-check: no documentation changed against $base; nothing to render"
-  exit 0
-fi
+# DOCS_CHECK_PUPPETEER_CONFIG names a puppeteer configuration passed to mmdc.
+# CI uses it to add --no-sandbox: Ubuntu 23.10 and later restrict unprivileged
+# user namespaces, so the browser's own sandbox cannot start on a hosted
+# runner.
+render() {
+  if [ -n "${DOCS_CHECK_PUPPETEER_CONFIG:-}" ]; then
+    mmdc -q -p "$DOCS_CHECK_PUPPETEER_CONFIG" "$@"
+  else
+    mmdc -q "$@"
+  fi
+}
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -64,7 +90,7 @@ while IFS= read -r file; do
     rendered=$((rendered + 1))
     block="${diagram##*/block-}"
     block="${block%.mmd}"
-    if ! mmdc -q -i "$diagram" -o "$diagram.svg" >"$diagram.log" 2>&1; then
+    if ! render -i "$diagram" -o "$diagram.svg" >"$diagram.log" 2>&1; then
       failed=$((failed + 1))
       failed_files="$failed_files
   $file (block $block)"
@@ -75,7 +101,7 @@ while IFS= read -r file; do
 done <<< "$changed"
 
 if [ "$rendered" -eq 0 ]; then
-  echo "docs-check: no Mermaid diagrams in the changed documentation"
+  echo "docs-check: no Mermaid diagrams in $scope"
   exit 0
 fi
 
@@ -85,4 +111,4 @@ if [ "$failed" -gt 0 ]; then
   exit 1
 fi
 
-echo "docs-check: rendered $rendered Mermaid diagram(s) from the changed documentation"
+echo "docs-check: rendered $rendered Mermaid diagram(s) from $scope"
