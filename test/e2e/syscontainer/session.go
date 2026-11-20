@@ -14,6 +14,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/agent-peer/test/e2e/harness"
 )
 
 // mcpHandshakeBound is the upper bound for the MCP server handshake.
@@ -157,11 +158,20 @@ func (s *Session) Call(t *testing.T, tool string, args map[string]any) (text str
 	if err != nil {
 		t.Fatalf("syscontainer: calling %s as %s: %v", tool, s.Account, err)
 	}
-	var texts []string
-	for _, content := range result.Content {
-		if text, ok := content.(*mcp.TextContent); ok {
-			texts = append(texts, text.Text)
-		}
-	}
-	return strings.Join(texts, "\n"), result.IsError
+	return toolResultText(result)
+}
+
+// PollCall invokes a tool from inside a wait. The call is bounded by
+// harness.ToolCallPollBound and, when the wait has less time left, by the time
+// left until deadline, so a stalled call never outlives the wait that made it.
+// A deadline that has already passed makes no call and returns an error.
+//
+// A transport or protocol failure is returned as an error and logged with the
+// session, the tool, the elapsed time and the error instead of failing the
+// test, so the wait can poll again. The result has the same shape as Call's.
+func (s *Session) PollCall(t *testing.T, deadline time.Time, tool string, args map[string]any) (text string, isError bool, err error) {
+	t.Helper()
+	return pollCallWithin(s.Account, tool, deadline, harness.ToolCallPollBound, func(ctx context.Context) (*mcp.CallToolResult, error) {
+		return s.MCP.CallTool(ctx, &mcp.CallToolParams{Name: tool, Arguments: args})
+	}, t.Logf)
 }
