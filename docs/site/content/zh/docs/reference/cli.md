@@ -59,7 +59,7 @@ Commands:
 
 ## agent-peer mcp
 
-在进程的标准输入与标准输出上为一个 Claude Code 会话运行 MCP 服务。Claude Code 按 MCP 注册启动这个进程，通常不必手动运行。本账户有用户级 Broker 在运行时，会话使用这个用户级 Broker；否则，本账户有权连接系统级 Broker 时，会话使用系统级 Broker。选择规则与相关设置见[运行系统级 Broker]({{< relref "/docs/guides/system-broker" >}})。正在运行的用户级 Broker 优先于系统级 Broker；在能使用系统级 Broker 的账户上安装用户级服务，这些账户的会话就会改连用户级 Broker，不再使用系统级 Broker。没有 Broker 可用时，工具调用返回错误，说明该怎么做，具体提示分三种情形。第一次查找时用户级与系统级 Broker 都找不到，或者用户级 Broker 的 socket 消失、拒绝连接（例如被强杀之后），报的是同一条：先提示本机如有系统级 Broker 请管理员启动它，再给出两种用户级启动方法，即 `agent-peer service install` 与在 Claude Code 之外的终端里运行 `agent-peer broker`。原先连在系统级 Broker 上的会话断开后，只提示联系管理员。用户级 socket 还在应答，但握手或调用失败时，报告 Broker 不可用，并在后台重试，不给出启动方法。在会话里启动的 Broker 会以退出码 6 失败。
+在进程的标准输入与标准输出上为一个 Claude Code 会话运行 MCP 服务。Claude Code 按 MCP 注册启动这个进程，通常不必手动运行。本账户有用户级 Broker 在运行时，会话使用这个用户级 Broker；否则，本账户有权连接系统级 Broker 时，会话使用系统级 Broker。选择规则与相关设置见[运行系统级 Broker]({{< relref "/docs/guides/system-broker" >}})。正在运行的用户级 Broker 优先于系统级 Broker；在能使用系统级 Broker 的账户上安装用户级服务，这些账户的会话就会改连用户级 Broker，不再使用系统级 Broker。没有 Broker 可用时，工具调用返回说明下一步怎么做的错误，详见 [FAQ 的没有 Broker 一问]({{< relref "/docs/faq" >}}#没有-broker-在运行时会怎样)。
 
 ## agent-peer status
 

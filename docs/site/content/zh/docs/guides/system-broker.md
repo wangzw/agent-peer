@@ -46,7 +46,7 @@ claude mcp add --scope user peer -- /usr/local/bin/agent-peer mcp
 1. 本账户正在运行的用户级 Broker。
 2. 本账户有权使用的系统级 Broker。
 
-两者都不可用时，工具调用返回错误，说明该怎么做；MCP 服务进程不会启动 Broker。第一次查找时用户级与系统级 Broker 都找不到，或者用户级 Broker 的 socket 消失、拒绝连接（例如被强杀之后），报的是同一条：先提示本机如有系统级 Broker 请管理员启动它，再给出两种用户级启动方法。原先连在系统级 Broker 上的会话断开后，只提示联系管理员，不会提示启动用户级 Broker。用户级 socket 还在应答，但握手或调用失败时，报告 Broker 不可用，并在后台重试，不给出启动方法。因此，如果希望所有账户都用系统级 Broker，这些账户就不需要用户级 Broker；在这些账户上安装用户级服务，这些账户的会话就会改连用户级 Broker，不再使用系统级 Broker。
+两者都不可用时，工具调用返回说明下一步怎么做的错误，MCP 服务进程不会启动 Broker；详见 [FAQ 的没有 Broker 一问]({{< relref "/docs/faq" >}}#没有-broker-在运行时会怎样)。因此，如果希望所有账户都用系统级 Broker，这些账户就不需要用户级 Broker；在这些账户上安装用户级服务，这些账户的会话就会改连用户级 Broker，不再使用系统级 Broker。
 
 一个账户有权使用系统级 Broker，但它自己的用户级 Broker 正在运行，会话会登记到用户级 Broker 上。要让它的会话改用系统级 Broker，就不要在这个账户上运行用户级 Broker。
 

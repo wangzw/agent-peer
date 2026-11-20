@@ -41,7 +41,7 @@ Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见
 
 ## 没有 Broker 在运行时会怎样？
 
-工具调用返回错误，说明该怎么做，具体提示分三种情形。第一次查找时用户级与系统级 Broker 都找不到，或者用户级 Broker 的 socket 消失、拒绝连接（例如被强杀之后），报的是同一条：先提示本机如有系统级 Broker 请管理员启动它，再给出两种用户级启动方法。原先连在系统级 Broker 上的会话断开后，只提示联系管理员。用户级 socket 还在应答，但握手或调用失败时，报告 Broker 不可用，并在后台重试，不给出启动方法。启动 Broker 之后，会话不必重新连接 MCP 服务。需要 Broker 的终端命令，例如 `agent-peer peer list`，做法相同：只查找正在运行的 Broker，不会启动它。见[命令行]({{< relref "reference/cli.md" >}})。
+工具调用返回错误，说明该怎么做，具体视情形而定；MCP 服务进程不会启动 Broker。第一次查找时用户级与系统级 Broker 都找不到，或者用户级 Broker 的 socket 消失、拒绝连接（例如被强杀之后），报的是同一条：先提示本机如有系统级 Broker 请管理员启动它，再给出两种用户级启动方法，即 `agent-peer service install`，或在 Claude Code 之外的终端里运行 `agent-peer broker`。原先连在系统级 Broker 上的会话断开后，只提示联系管理员。用户级 socket 还在应答，但握手或调用失败时，报告 Broker 不可用，并说明 MCP 服务会在后台重试，不给出启动方法。启动 Broker 之后，会话不必重新连接 MCP 服务。需要 Broker 的终端命令，例如 `agent-peer peer list`，做法相同：只查找正在运行的 Broker，不会启动它。见[命令行]({{< relref "reference/cli.md" >}})。
 
 ## 一个账户能运行多个 Broker 吗？
 
