@@ -356,14 +356,20 @@ const (
 // RunPairTest from its body, because only a *testing.T can build the image and
 // own the teardown.
 //
-// opts is the same value the test passes to RunPairTest. Inside a pair
-// container RunPair checks that the shared directory the harness forwarded
-// matches it, so a misconfigured TestMain fails before the test body runs.
+// opts is the same value the test passes to RunPairTest. RunPair checks that
+// opts.SharedDir is PairSharedMount and, inside a pair container, that the
+// value the harness forwarded matches it, so a misconfigured TestMain fails
+// before the test body runs.
 func RunPair(m *testing.M, opts PairOptions) int {
+	if opts.SharedDir != PairSharedMount {
+		fmt.Fprintf(os.Stderr, "syscontainer: the pair shared directory is %q, want %q\n",
+			opts.SharedDir, PairSharedMount)
+		return 1
+	}
 	if InContainer() {
-		if InPair() && PairSharedDir() != opts.SharedDir {
+		if InPair() && PairSharedDir() != PairSharedMount {
 			fmt.Fprintf(os.Stderr, "syscontainer: the pair shared directory is %q, want %q\n",
-				PairSharedDir(), opts.SharedDir)
+				PairSharedDir(), PairSharedMount)
 			return 1
 		}
 		return m.Run()
@@ -381,8 +387,9 @@ func RunPairTest(t *testing.T, opts PairOptions) {
 	if InContainer() {
 		t.Fatalf("syscontainer: RunPairTest runs on the host")
 	}
-	if !filepath.IsAbs(opts.SharedDir) {
-		t.Fatalf("syscontainer: the pair shared directory %q is not an absolute container path", opts.SharedDir)
+	if opts.SharedDir != PairSharedMount {
+		t.Fatalf("syscontainer: the pair shared directory is %q, but the compose file mounts it at %s",
+			opts.SharedDir, PairSharedMount)
 	}
 
 	c := newTestContainer(t)

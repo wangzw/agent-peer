@@ -91,10 +91,6 @@ const (
 	// wildcard listen; the name is the network alias host B resolves.
 	termAdminAdvertise = "hostA:17443"
 
-	// termAdminSharedDir is the path both pair containers mount the same named
-	// volume at; it must match test/e2e/compose/system/compose.yaml.
-	termAdminSharedDir = "/shared"
-
 	// termAdminPairingFile carries host A's address and pairing key to host B.
 	// termAdminConnectedFile announces that host B paired, and
 	// termAdminDoneFile lets host B keep its Broker alive until host A has
@@ -106,7 +102,7 @@ const (
 
 // e2ePairOptions is the pair configuration TestMain and the test both pass to
 // the harness.
-var e2ePairOptions = syscontainer.PairOptions{SharedDir: termAdminSharedDir}
+var e2ePairOptions = syscontainer.PairOptions{SharedDir: syscontainer.PairSharedMount}
 
 // TestREQBrokerConfig039_TerminalAdminCommands runs the REQ-broker-config-039
 // acceptance on a system-level Broker: a session without write permission is

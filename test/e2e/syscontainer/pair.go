@@ -21,6 +21,12 @@ const (
 	// pairSharedEnv carries the shared directory path into a pair container.
 	// The value is the container path, not the host path.
 	pairSharedEnv = "AGENT_PEER_E2E_PAIR_SHARED"
+
+	// PairSharedMount is the container path test/e2e/compose/system/compose.yaml
+	// mounts the pair volume at. The compose file fixes the mount, so
+	// PairOptions.SharedDir must equal it: any other value names a directory
+	// neither host writes, and the exchange would fail only when a wait expires.
+	PairSharedMount = "/shared"
 )
 
 // Role is the host a pair test process runs on.
@@ -38,8 +44,8 @@ const (
 type PairOptions struct {
 	// SharedDir is the directory path mounted at the same location in both
 	// containers. The two roles exchange pairing files and completion markers
-	// there. It must be absolute; the host does not create it, the compose
-	// volume provides it.
+	// there. It must equal PairSharedMount; the host does not create it, the
+	// compose volume provides it.
 	SharedDir string
 	// ExtraEnv adds NAME=value entries to both container runs. A pair that
 	// needs an address the host chose at run time puts it here.
