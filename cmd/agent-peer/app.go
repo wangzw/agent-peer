@@ -27,8 +27,10 @@ Commands:
   peer disconnect <broker>    remove a pairing
   update [--yes]              update through the selected Broker, or replace
                               the user-level binary locally; --yes skips the question
-  service install [--system]  install and start the Broker as a user-level service,
-                              or system-level with --system
+  service install [--system] [--admin-group <name>]
+                              install and start the Broker as a user-level service,
+                              or system-level with --system; --admin-group names the
+                              group that administers the system-level Broker
   service uninstall [--system]
                               stop and remove the installed service; configuration,
                               identity and audit logs are kept

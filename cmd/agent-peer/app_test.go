@@ -103,6 +103,18 @@ func TestHelpPrintsUsageToStdout(t *testing.T) {
 	}
 }
 
+func TestUsageNamesServiceInstallFlags(t *testing.T) {
+	a, stdout, _, _ := newDispatchApp("dev")
+
+	if got := a.run(context.Background(), []string{"--help"}); got != exitOK {
+		t.Fatalf("run(--help) = %d, want %d", got, exitOK)
+	}
+	const want = "service install [--system] [--admin-group <name>]"
+	if !strings.Contains(stdout.String(), want) {
+		t.Errorf("usage does not contain %q:\n%s", want, stdout.String())
+	}
+}
+
 func TestUnknownCommand(t *testing.T) {
 	a, _, stderr, _ := newDispatchApp("dev")
 
