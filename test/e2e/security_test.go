@@ -509,10 +509,15 @@ func secWaitConnected(t *testing.T, node *harness.Node, alias string, bound time
 }
 
 // secJoin joins a topic, retrying while the session is still registering.
+// join_topic's handler may spend topicRPCTimeout before the update hint runs,
+// so the poll uses harness.TopicCallPollBound.
 func secJoin(t *testing.T, session *harness.Session, topic string) {
 	t.Helper()
-	harness.Eventually(t, secWaitBound, "join_topic "+topic, func() (bool, string) {
-		r := session.Call(t, "join_topic", map[string]any{"name": topic})
+	harness.EventuallyPoll(t, harness.TopicCallWaitBound, "join_topic "+topic, func(deadline time.Time) (bool, string) {
+		r, err := session.PollCallWithin(t, deadline, harness.TopicCallPollBound, "join_topic", map[string]any{"name": topic})
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}

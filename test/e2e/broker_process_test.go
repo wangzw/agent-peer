@@ -58,8 +58,11 @@ func TestBrokerProcessLocal(t *testing.T) {
 			return true, ""
 		})
 
-		harness.Eventually(t, brokerReadyBound, "list_agents names both ways to start a Broker", func() (bool, string) {
-			r := session.Call(t, "list_agents", nil)
+		harness.EventuallyPoll(t, brokerReadyBound, "list_agents names both ways to start a Broker", func(deadline time.Time) (bool, string) {
+			r, err := session.PollCall(t, deadline, "list_agents", nil)
+			if err != nil {
+				return false, err.Error()
+			}
 			if !r.IsError {
 				return false, "list_agents succeeded without a Broker"
 			}
@@ -83,8 +86,11 @@ func TestBrokerProcessLocal(t *testing.T) {
 		if !start.Running {
 			t.Fatalf("the explicit Broker did not start: exit code %d: %s", start.ExitCode, strings.TrimSpace(start.StderrLast))
 		}
-		harness.Eventually(t, brokerRecoverBound, "list_agents succeeds after the Broker starts", func() (bool, string) {
-			r := session.Call(t, "list_agents", nil)
+		harness.EventuallyPoll(t, brokerRecoverBound, "list_agents succeeds after the Broker starts", func(deadline time.Time) (bool, string) {
+			r, err := session.PollCall(t, deadline, "list_agents", nil)
+			if err != nil {
+				return false, err.Error()
+			}
 			if r.IsError {
 				return false, r.Text
 			}
@@ -141,9 +147,12 @@ func TestBrokerProcessLocal(t *testing.T) {
 		for i := range sessions {
 			sessions[i] = host.StartSession(t, harness.SessionSpec{Name: fmt.Sprintf("worker-%d", i), StartMCP: true})
 		}
-		harness.Eventually(t, brokerReadyBound, "the five sessions register on the one Broker", func() (bool, string) {
+		harness.EventuallyPoll(t, brokerReadyBound, "the five sessions register on the one Broker", func(deadline time.Time) (bool, string) {
 			for i, session := range sessions {
-				r := session.Call(t, "list_agents", nil)
+				r, err := session.PollCall(t, deadline, "list_agents", nil)
+				if err != nil {
+					return false, fmt.Sprintf("session worker-%d: %s", i, err.Error())
+				}
 				if r.IsError {
 					return false, fmt.Sprintf("session worker-%d: %s", i, r.Text)
 				}
@@ -325,8 +334,11 @@ func TestBrokerProcessInContainer(t *testing.T) {
 			t.Fatalf("the MCP server exposes %d tools, want 12: %v", len(tools), tools)
 		}
 
-		harness.Eventually(t, brokerReadyBound, "list_agents names the ways to start a Broker", func() (bool, string) {
-			r := session.Call(t, "list_agents", nil)
+		harness.EventuallyPoll(t, brokerReadyBound, "list_agents names the ways to start a Broker", func(deadline time.Time) (bool, string) {
+			r, err := session.PollCall(t, deadline, "list_agents", nil)
+			if err != nil {
+				return false, err.Error()
+			}
 			if !r.IsError {
 				return false, "list_agents succeeded while every address was taken"
 			}
@@ -359,8 +371,11 @@ func TestBrokerProcessInContainer(t *testing.T) {
 			t.Fatalf("the explicit Broker did not start: exit code %d: %s", brokerStart.ExitCode, strings.TrimSpace(brokerStart.StderrLast))
 		}
 
-		harness.Eventually(t, brokerRecoverBound, "list_agents succeeds after the Broker starts", func() (bool, string) {
-			r := session.Call(t, "list_agents", nil)
+		harness.EventuallyPoll(t, brokerRecoverBound, "list_agents succeeds after the Broker starts", func(deadline time.Time) (bool, string) {
+			r, err := session.PollCall(t, deadline, "list_agents", nil)
+			if err != nil {
+				return false, err.Error()
+			}
 			if r.IsError {
 				return false, r.Text
 			}
@@ -558,8 +573,11 @@ func bpListAgents(t *testing.T, session *harness.Session) (mcpserver.ListAgentsO
 // bpJoinTopic joins topic, retrying while the session is still registering.
 func bpJoinTopic(t *testing.T, session *harness.Session, topic string) {
 	t.Helper()
-	harness.Eventually(t, brokerReadyBound, "join_topic "+topic, func() (bool, string) {
-		r := session.Call(t, "join_topic", map[string]any{"name": topic})
+	harness.EventuallyPoll(t, harness.TopicCallWaitBound, "join_topic "+topic, func(deadline time.Time) (bool, string) {
+		r, err := session.PollCallWithin(t, deadline, harness.TopicCallPollBound, "join_topic", map[string]any{"name": topic})
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}

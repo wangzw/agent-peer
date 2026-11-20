@@ -404,13 +404,16 @@ func TestPublicTopicExpiresWithDeclarer(t *testing.T) {
 	defer b1.End(t)
 	a1 := aHost.StartSession(t, harness.SessionSpec{Name: "a1", StartMCP: true})
 	defer a1.End(t)
-	harness.Eventually(t, 3*time.Second, "a1 declares "+dxPublicTopic+" publicly",
-		func() (bool, string) {
-			r := a1.Call(t, "join_topic", map[string]any{
+	harness.EventuallyPoll(t, harness.TopicCallWaitBound, "a1 declares "+dxPublicTopic+" publicly",
+		func(deadline time.Time) (bool, string) {
+			r, err := a1.PollCallWithin(t, deadline, harness.TopicCallPollBound, "join_topic", map[string]any{
 				"name":        dxPublicTopic,
 				"public":      true,
 				"description": "ask infra",
 			})
+			if err != nil {
+				return false, err.Error()
+			}
 			if r.IsError {
 				return false, r.Text
 			}

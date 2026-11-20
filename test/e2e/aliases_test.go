@@ -548,8 +548,11 @@ func alListAgents(t *testing.T, s *harness.Session) mcpserver.ListAgentsOut {
 // alWaitAgentSuffix waits until s lists name with an address ending in suffix.
 func alWaitAgentSuffix(t *testing.T, s *harness.Session, name, suffix string, bound time.Duration) {
 	t.Helper()
-	harness.Eventually(t, bound, "the address of "+name+" ends with "+suffix, func() (bool, string) {
-		r := s.Call(t, "list_agents", map[string]any{})
+	harness.EventuallyPoll(t, bound, "the address of "+name+" ends with "+suffix, func(deadline time.Time) (bool, string) {
+		r, err := s.PollCall(t, deadline, "list_agents", map[string]any{})
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}
@@ -582,8 +585,11 @@ func alSelfAddress(t *testing.T, s *harness.Session, name string) string {
 func alWaitRemoteAgents(t *testing.T, s *harness.Session, firstName, secondName string) (string, string) {
 	t.Helper()
 	var first, second string
-	harness.Eventually(t, alRelinkBound, "both remote agents are listed", func() (bool, string) {
-		r := s.Call(t, "list_agents", map[string]any{})
+	harness.EventuallyPoll(t, alRelinkBound, "both remote agents are listed", func(deadline time.Time) (bool, string) {
+		r, err := s.PollCall(t, deadline, "list_agents", map[string]any{})
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}

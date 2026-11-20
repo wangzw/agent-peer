@@ -459,10 +459,15 @@ func lifecycleListTopics(t *testing.T, s *harness.Session) (mcpserver.ListTopics
 }
 
 // lifecycleJoin joins name, retrying while the session is still registering.
+// join_topic's handler may spend topicRPCTimeout before the update hint runs,
+// so the poll uses harness.TopicCallPollBound.
 func lifecycleJoin(t *testing.T, s *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "join_topic "+name+" succeeds", func() (bool, string) {
-		r := s.Call(t, "join_topic", map[string]any{"name": name})
+	harness.EventuallyPoll(t, harness.TopicCallWaitBound, "join_topic "+name+" succeeds", func(deadline time.Time) (bool, string) {
+		r, err := s.PollCallWithin(t, deadline, harness.TopicCallPollBound, "join_topic", map[string]any{"name": name})
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}

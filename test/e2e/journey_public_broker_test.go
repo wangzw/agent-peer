@@ -43,13 +43,24 @@ func journeyNodeAddr(c *harness.Cluster, node string) string {
 	return net.JoinHostPort(c.Addr(node, "net"), journeyBrokerPort)
 }
 
-// journeyCallOK retries a management tool that must succeed, covering the
-// short window in which a fresh MCP server process is still connecting.
+// journeyCallOK retries a tool that must succeed, covering the short window in
+// which a fresh MCP server process is still connecting. A topic tool spends
+// topicRPCTimeout inside the handler before the update hint runs, so it polls
+// with harness.TopicCallPollBound and the wait gets
+// harness.TopicCallWaitBound.
 func journeyCallOK(t *testing.T, session *harness.Session, tool string, args map[string]any, bound time.Duration) harness.Result {
 	t.Helper()
+	pollBound, waitBound := harness.ToolCallPollBound, bound
+	if brokerTopicTool(tool) {
+		pollBound, waitBound = harness.TopicCallPollBound, harness.TopicCallWaitBound
+	}
 	var result harness.Result
-	harness.Eventually(t, bound, "calling "+tool, func() (bool, string) {
-		result = session.Call(t, tool, args)
+	harness.EventuallyPoll(t, waitBound, "calling "+tool, func(deadline time.Time) (bool, string) {
+		var err error
+		result, err = session.PollCallWithin(t, deadline, pollBound, tool, args)
+		if err != nil {
+			return false, err.Error()
+		}
 		if result.IsError {
 			return false, result.Text
 		}
@@ -181,8 +192,11 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 		})
 
 		// Step 2: C sees A's public declaration.
-		harness.Eventually(t, discBound(1), "C sees A's public topic", func() (bool, string) {
-			r := scout.Call(t, "list_topics", nil)
+		harness.EventuallyPoll(t, harness.TopicCallWaitBound, "C sees A's public topic", func(deadline time.Time) (bool, string) {
+			r, err := scout.PollCall(t, deadline, "list_topics", nil)
+			if err != nil {
+				return false, err.Error()
+			}
 			if r.IsError {
 				return false, r.Text
 			}

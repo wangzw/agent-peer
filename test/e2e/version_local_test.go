@@ -118,8 +118,11 @@ func versionLocalSetup(t *testing.T) (*harness.Node, harness.BrokerStart, *harne
 	}
 
 	a := n.StartSession(t, harness.SessionSpec{Name: "a", StartMCP: true})
-	harness.Eventually(t, 3*time.Second, "a is registered", func() (bool, string) {
-		r := a.Call(t, "list_agents", nil)
+	harness.EventuallyPoll(t, 3*time.Second, "a is registered", func(deadline time.Time) (bool, string) {
+		r, err := a.PollCall(t, deadline, "list_agents", nil)
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}
@@ -132,8 +135,11 @@ func versionLocalSetup(t *testing.T) (*harness.Node, harness.BrokerStart, *harne
 		Env:      map[string]string{"AGENT_PEER_TEST_LOCAL_PROTOCOL_VERSION": "2"},
 	})
 
-	harness.Eventually(t, 3*time.Second, "b reports the local protocol version mismatch", func() (bool, string) {
-		r := b.Call(t, "list_agents", nil)
+	harness.EventuallyPoll(t, 3*time.Second, "b reports the local protocol version mismatch", func(deadline time.Time) (bool, string) {
+		r, err := b.PollCall(t, deadline, "list_agents", nil)
+		if err != nil {
+			return false, err.Error()
+		}
 		if !r.IsError {
 			return false, "list_agents succeeded"
 		}
@@ -213,8 +219,11 @@ func TestLocalVersionMismatchRecoveryReq016(t *testing.T) {
 
 	mcpBefore := versionLocalMCPPIDs(t, n)
 
-	harness.Eventually(t, versionLocalNoBrokerBudget, "b reports that no Broker is available", func() (bool, string) {
-		r := b.Call(t, "list_agents", nil)
+	harness.EventuallyPoll(t, versionLocalNoBrokerBudget, "b reports that no Broker is available", func(deadline time.Time) (bool, string) {
+		r, err := b.PollCall(t, deadline, "list_agents", nil)
+		if err != nil {
+			return false, err.Error()
+		}
 		if !r.IsError {
 			return false, "list_agents succeeded without a Broker"
 		}
@@ -238,8 +247,11 @@ func TestLocalVersionMismatchRecoveryReq016(t *testing.T) {
 		t.Fatalf("the replacement Broker did not start: exit code %d: %s", fresh.ExitCode, strings.TrimSpace(fresh.StderrLast))
 	}
 
-	harness.Eventually(t, versionLocalRecoveryBudget, "b recovers after a compatible Broker starts", func() (bool, string) {
-		r := b.Call(t, "list_agents", nil)
+	harness.EventuallyPoll(t, versionLocalRecoveryBudget, "b recovers after a compatible Broker starts", func(deadline time.Time) (bool, string) {
+		r, err := b.PollCall(t, deadline, "list_agents", nil)
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}

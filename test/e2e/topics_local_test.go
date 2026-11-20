@@ -357,20 +357,37 @@ func topicsListAgents(t *testing.T, s *harness.Session, args map[string]any) (mc
 	return out, ""
 }
 
+// brokerTopicTool reports whether tool is a topic tool that reaches the
+// Broker, whose handler may spend topicRPCTimeout before the update hint runs.
+// A wait polling it uses harness.TopicCallPollBound and, when the caller's
+// bound is shorter, harness.TopicCallWaitBound. list_topics is not one of them:
+// its handler makes no topic RPC and stays within the generic call bound, so it
+// polls like any other read-only tool.
+func brokerTopicTool(tool string) bool {
+	switch tool {
+	case "join_topic", "leave_topic":
+		return true
+	}
+	return false
+}
+
 // topicsJoin joins name and returns the resulting topic list, retrying while
 // the session is still registering.
 func topicsJoin(t *testing.T, s *harness.Session, name string) mcpserver.TopicsOut {
 	t.Helper()
 	var out mcpserver.TopicsOut
-	harness.Eventually(t, 3*time.Second, "join_topic "+name+" succeeds", func() (bool, string) {
-		r := s.Call(t, "join_topic", map[string]any{"name": name})
+	harness.EventuallyPoll(t, harness.TopicCallWaitBound, "join_topic "+name+" succeeds", func(deadline time.Time) (bool, string) {
+		r, err := s.PollCallWithin(t, deadline, harness.TopicCallPollBound, "join_topic", map[string]any{"name": name})
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}
-		var err error
-		out, err = harness.Decode[mcpserver.TopicsOut](string(r.Structured))
-		if err != nil {
-			return false, "decoding join_topic: " + err.Error()
+		var decErr error
+		out, decErr = harness.Decode[mcpserver.TopicsOut](string(r.Structured))
+		if decErr != nil {
+			return false, "decoding join_topic: " + decErr.Error()
 		}
 		return true, ""
 	})
@@ -380,8 +397,11 @@ func topicsJoin(t *testing.T, s *harness.Session, name string) mcpserver.TopicsO
 // topicsLeave leaves name, retrying while the session is still registering.
 func topicsLeave(t *testing.T, s *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "leave_topic "+name+" succeeds", func() (bool, string) {
-		r := s.Call(t, "leave_topic", map[string]any{"name": name})
+	harness.EventuallyPoll(t, harness.TopicCallWaitBound, "leave_topic "+name+" succeeds", func(deadline time.Time) (bool, string) {
+		r, err := s.PollCallWithin(t, deadline, harness.TopicCallPollBound, "leave_topic", map[string]any{"name": name})
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}

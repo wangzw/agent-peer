@@ -135,12 +135,23 @@ func discAgent(t *testing.T, d *discNode, name, workdir string) *harness.Session
 
 // discCallOK retries a tool that must succeed until it does or the bound
 // expires. The MCP server may still be wiring itself to the Broker right after
-// it starts, which it reports as an internal error asking for a retry.
+// it starts, which it reports as an internal error asking for a retry. A topic
+// tool spends topicRPCTimeout inside the handler before the update hint runs,
+// so it polls with harness.TopicCallPollBound and the wait gets
+// harness.TopicCallWaitBound.
 func discCallOK(t *testing.T, s *harness.Session, tool string, args map[string]any, bound time.Duration) harness.Result {
 	t.Helper()
+	pollBound, waitBound := harness.ToolCallPollBound, bound
+	if brokerTopicTool(tool) {
+		pollBound, waitBound = harness.TopicCallPollBound, harness.TopicCallWaitBound
+	}
 	var result harness.Result
-	harness.Eventually(t, bound, "calling "+tool, func() (bool, string) {
-		result = s.Call(t, tool, args)
+	harness.EventuallyPoll(t, waitBound, "calling "+tool, func(deadline time.Time) (bool, string) {
+		var err error
+		result, err = s.PollCallWithin(t, deadline, pollBound, tool, args)
+		if err != nil {
+			return false, err.Error()
+		}
 		if result.IsError {
 			return false, result.Text
 		}
