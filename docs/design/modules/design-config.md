@@ -414,5 +414,5 @@ type PathSet struct {
 | 配置文件模板的生成 | 已实现 | `internal/config/template.go`（`Template`、`templateExamples`、`templateSections`） |
 | 修改配置项时替换注释占位行 | 已实现 | `internal/config/file.go`（`replacePlaceholderLine`、`setKey`） |
 | 审计日志的追加、合并与读取 | 已实现 | `internal/config/audit.go`（`openAudit`、`append`、`mergeLocked`、`flushExpiredLocked`、`read`、`terminatePartialLine`） |
-| `broker.offline` 配置项 | 未实现 | — |
-| `Load` 失败的分类与绑定前的低端口检查 | 未实现 | — |
+| `broker.offline` 配置项 | 已实现 | `internal/config/keys.go`（`keyTable` 中的 `broker.offline`） |
+| `Load` 失败的分类与绑定前的低端口检查 | 已实现 | `internal/config/api.go`（`ErrDataUnavailable`、`DataUnavailableError`）、`internal/config/lowport.go`（`CheckLowPort`、`checkLowPortAtStartup`） |
