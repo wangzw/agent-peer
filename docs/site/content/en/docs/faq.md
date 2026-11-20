@@ -35,11 +35,11 @@ A user Broker reads `~/.agent-peer/config.yaml` and a system Broker reads `/etc/
 
 ## Which platforms are supported?
 
-macOS and Linux, on amd64 and arm64. Native Windows is not supported. See [design choices and caveats]({{< relref "limitations.md" >}}).
+macOS and Linux, on amd64 and arm64. Native Windows is not supported. See [known limitations]({{< relref "limitations.md" >}}).
 
 ## Which Claude Code version do I need?
 
-Claude Code v2.1.224 or later. See [design choices and caveats]({{< relref "limitations.md" >}}) for how agent-peer depends on Claude Code.
+Claude Code v2.1.224 or later. See [known limitations]({{< relref "limitations.md" >}}) for how agent-peer depends on Claude Code.
 
 ## Is there a central server?
 
@@ -87,7 +87,7 @@ Yes. Links use TLS 1.3 with self-signed certificates, and a Broker's identity is
 
 ## Can I send files or session context?
 
-No. Messages carry plain text only; files, session history, and context are not transferred. See [design choices and caveats]({{< relref "limitations.md" >}}).
+No. Messages carry plain text only; files, session history, and context are not transferred. See [known limitations]({{< relref "limitations.md" >}}).
 
 ## Does a successful send mean the other agent read the message?
 
@@ -111,4 +111,4 @@ Use `agent-peer status` for agents, topics, peers, and links, and `agent-peer au
 
 ## Can a headless session receive messages?
 
-A headless session that also skips permission prompts cannot. The message is held first and then dropped because the sender declares no permission category, while the sending side has already returned success. See [design choices and caveats]({{< relref "limitations.md" >}}) for the caveats that apply.
+A headless session that also skips permission prompts cannot. The message is held first and then dropped because the sender declares no permission category, while the sending side has already returned success. See [known limitations]({{< relref "limitations.md" >}}).

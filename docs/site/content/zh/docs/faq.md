@@ -35,11 +35,11 @@ rm ~/.local/bin/agent-peer
 
 ## 支持哪些平台？
 
-macOS 与 Linux，支持 amd64 与 arm64。不支持原生 Windows。见[设计取舍与注意事项]({{< relref "limitations.md" >}})。
+macOS 与 Linux，支持 amd64 与 arm64。不支持原生 Windows。见[已知限制]({{< relref "limitations.md" >}})。
 
 ## 需要哪个版本的 Claude Code？
 
-Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见[设计取舍与注意事项]({{< relref "limitations.md" >}})。
+Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见[已知限制]({{< relref "limitations.md" >}})。
 
 ## 有中心服务器吗？
 
@@ -87,7 +87,7 @@ topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会�
 
 ## 能发送文件或会话上下文吗？
 
-不能。消息只传纯文本，文件、会话历史与上下文都不传。见[设计取舍与注意事项]({{< relref "limitations.md" >}})。
+不能。消息只传纯文本，文件、会话历史与上下文都不传。见[已知限制]({{< relref "limitations.md" >}})。
 
 ## 发送成功就代表对方读到了吗？
 
@@ -111,4 +111,4 @@ Broker 启动失败，并报告该地址不可用。它不会另选地址或端�
 
 ## 无界面会话能收到消息吗？
 
-以无界面方式运行且跳过权限确认的会话不能。接收方的 Claude Code 先把消息暂扣，随后因发送方没有声明权限类别而丢弃，而发送方那边已经返回成功。适用的注意事项见[设计取舍与注意事项]({{< relref "limitations.md" >}})。
+以无界面方式运行且跳过权限确认的会话不能。接收方的 Claude Code 先把消息暂扣，随后因发送方没有声明权限类别而丢弃，而发送方那边已经返回成功。见[已知限制]({{< relref "limitations.md" >}})。

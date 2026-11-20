@@ -36,7 +36,7 @@ Sessions on the same host can also use the tools to message each other. The path
 
 agent-peer runs on macOS and Linux, on amd64 and arm64. Native Windows is not supported.
 
-Claude Code v2.1.224 or later is required. See [design choices and caveats]({{< relref "limitations.md" >}}) for how agent-peer depends on Claude Code.
+Claude Code v2.1.224 or later is required. See [known limitations]({{< relref "limitations.md" >}}) for how agent-peer depends on Claude Code.
 
 ## Next steps
 

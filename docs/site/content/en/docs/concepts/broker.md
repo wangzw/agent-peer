@@ -9,7 +9,7 @@ A Broker is the daemon on a host that registers the agent sessions it serves, ke
 
 A Broker runs in one of two forms.
 
-A **system Broker** runs as a privileged system service. There is at most one per host, and it serves the sessions of every account on the host that is allowed to use it. An administrator installs it.
+A **system Broker** runs as a privileged system service. There is at most one per host, and it serves the sessions of every account on the host that is allowed to use it. An administrator installs it. Accounts and groups come from the system's account database: on Linux the Broker queries it through `getent`, which follows the NSS configuration, and falls back to the local files with a warning when `getent` is missing, fails or returns output it cannot validate.
 
 A **user Broker** runs under an ordinary account and serves only that account's sessions. An account runs at most one instance. It is started by the user's service manager, or by the user in a terminal; the MCP server process only connects. An account that can use the host's system Broker needs no user Broker; a running user Broker takes precedence over the system Broker.
 

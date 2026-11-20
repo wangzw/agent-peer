@@ -28,6 +28,8 @@ agent-peer 0.2.1 is available (this Broker runs 0.2.0). Ask the agent to call up
 
 ## 更新二进制
 
+`agent-peer update` 只安装更新的正式发布版本，不能指定版本，也不能回退。
+
 在终端运行：
 
 ```sh

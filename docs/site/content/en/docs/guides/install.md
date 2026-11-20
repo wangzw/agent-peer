@@ -116,7 +116,7 @@ A system-level installation requires the binary's directory and every directory 
 
 Download, verify and extract the archive as described in the previous section, then install the binary by hand. The commands below run from the directory that contains the extracted `agent-peer-${VERSION}` directory, so run `cd ..` first if you entered it in the previous section.
 
-On macOS, a browser download carries the quarantine attribute, and macOS blocks the binary until it is removed. Clear it from the extracted binary if a browser downloaded the archive:
+On macOS, a browser download carries the quarantine attribute, and because the binaries are not signed or notarized, macOS blocks the binary until the attribute is removed. Clear it from the extracted binary if a browser downloaded the archive:
 
 ```sh
 VERSION=0.2.0

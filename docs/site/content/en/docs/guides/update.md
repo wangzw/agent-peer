@@ -28,6 +28,8 @@ Two configuration keys control the check: `update.check` turns it on and off, an
 
 ## Update the binary
 
+`agent-peer update` installs only a newer formal release; you cannot choose a version or roll back.
+
 Run the command in a terminal:
 
 ```sh

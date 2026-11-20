@@ -36,7 +36,7 @@ flowchart LR
 
 agent-peer 运行在 macOS 与 Linux 上，支持 amd64 和 arm64。不支持原生 Windows。
 
-需要 Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见[设计取舍与注意事项]({{< relref "limitations.md" >}})。
+需要 Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见[已知限制]({{< relref "limitations.md" >}})。
 
 ## 下一步
 
