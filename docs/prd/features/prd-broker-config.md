@@ -133,7 +133,7 @@ MCP 服务进程不得启动任何 Broker。会话按 `REQ-broker-config-026` �
 
 - **验收**：在系统级 Broker 上，以对配置文件没有写权限的账户在会话中生成配对密钥，被拒绝；以管理员身份在终端执行生成配对密钥的命令，输出密钥、失效时间和本机对外地址，另一台主机在终端凭这些信息发起配对成功，两边在终端列出 Broker 时都显示对方已连接。同样以管理员身份在终端读取并修改一个配置项、解除这个配对，都成功，审计日志依次记录这些操作和执行它们的账户。以没有写权限的账户执行修改配置的命令，返回权限不足，并给出配置文件的路径。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/term_admin_test.go` 的 `TestREQBrokerConfig039_TerminalAdminCommands`（发起配对的一方是与系统级 Broker 同一容器内另一账户的用户级 Broker，经回环地址连接）
+- **端到端测试**：`test/e2e/system/term_admin_test.go` 的 `TestREQBrokerConfig039_TerminalAdminCommands`
 
 ### REQ-broker-config-040
 

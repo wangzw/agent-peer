@@ -36,9 +36,8 @@ const (
 	// config set must name this path.
 	termAdminSystemConfig = "/etc/agent-peer/config.yaml"
 
-	// termAdminPeerListen is the user-level Broker's listen address. It stands
-	// in for the other host's Broker, so it must not collide with the system
-	// Broker's default :17443.
+	// termAdminPeerListen is host B's user-level Broker listen address. It must
+	// not collide with host A's system Broker default :17443.
 	termAdminPeerListen = ":17444"
 
 	// termAdminConfigKey is a configuration key the test reads and changes. It
@@ -50,33 +49,70 @@ const (
 	// termAdminDeniedConfigValue is the value the account without write
 	// permission asks for. The refusal must happen before it is applied.
 	termAdminDeniedConfigValue = "800"
+
+	// termAdminAdvertise is host A's advertised address. The internal network
+	// has no route out, so the Broker cannot derive a dialable address from its
+	// wildcard listen; the name is the network alias host B resolves.
+	termAdminAdvertise = "hostA:17443"
+
+	// termAdminSharedDir is the path both pair containers mount the same named
+	// volume at; it must match test/e2e/compose/system/compose.yaml.
+	termAdminSharedDir = "/shared"
+
+	// termAdminPairingFile carries host A's address and pairing key to host B.
+	// termAdminConnectedFile announces that host B paired, and
+	// termAdminDoneFile lets host B keep its Broker alive until host A has
+	// finished the audit and disconnect assertions.
+	termAdminPairingFile   = "pairing"
+	termAdminConnectedFile = "connected"
+	termAdminDoneFile      = "done"
 )
+
+// e2ePairOptions is the pair configuration TestMain and the test both pass to
+// the harness.
+var e2ePairOptions = syscontainer.PairOptions{SharedDir: termAdminSharedDir}
 
 // TestREQBrokerConfig039_TerminalAdminCommands runs the REQ-broker-config-039
 // acceptance on a system-level Broker: a session without write permission is
 // refused a pairing key, root creates the key and reads and changes a
-// configuration item in the terminal, a second Broker is paired from its own
+// configuration item in the terminal, a second host is paired from its own
 // terminal as peer, both terminals list it connected, and the audit log records
 // the operations in order under the account that ran them.
 //
-// The suite runs one container per test, so the second host is another Broker
-// in the same container: peer's user-level Broker. The terminal on that host
-// runs as peer and selects its Broker through AGENT_PEER_TEST_SOCKET; a Broker
-// socket may serve only its own account or root, so root cannot drive another
-// account's Broker.
+// The test runs on two containers that are separate hosts on one internal
+// network. Host A runs the system Broker and accepts the pairing. Host B runs
+// its own user-level Broker and dials host A using only the address and key
+// host A printed. The two sides meet in the shared directory and keep their
+// Brokers alive until the other side has finished; a failure on either side is
+// recorded there so the other side fails instead of running out its wait.
 func TestREQBrokerConfig039_TerminalAdminCommands(t *testing.T) {
 	if !syscontainer.InContainer() {
-		syscontainer.Run(t, syscontainer.Plain)
+		// The host side runs like the single-container cases: it starts its
+		// own project and subnet, so it can overlap the other tests.
+		t.Parallel()
+		syscontainer.RunPairTest(t, e2ePairOptions)
 		return
 	}
 
-	// The system Broker is host A. Peer's user-level Broker is host B. The
-	// system network has no default route, so the Broker derives no advertised
-	// address from its wildcard listen; name the loopback address explicitly so
-	// pairing-key create prints one that co-located host B can dial.
-	syscontainer.StartSystemBroker(t, "broker:\n  alias: sys\n  advertise: \"127.0.0.1:17443\"\n")
-	syscontainer.StartUserBroker(t, "peer", "--listen", termAdminPeerListen)
-	hostBEnv := []string{"AGENT_PEER_TEST_SOCKET=" + syscontainer.UserSocketPath(t, "peer")}
+	switch syscontainer.PairRole() {
+	case syscontainer.RoleA:
+		termAdminHostA(t)
+	case syscontainer.RoleB:
+		termAdminHostB(t)
+	default:
+		t.Fatalf("the pair test runs in a pair container as role A or B")
+	}
+}
+
+// termAdminHostA runs the accepting side: the system Broker, the refused
+// session, the terminal commands root performs, and host A's audit assertions.
+func termAdminHostA(t *testing.T) {
+	syscontainer.PairGuard(t)
+
+	// Root creates the key in host A's terminal, then writes the address and
+	// key into the shared directory for host B. The Broker names itself by its
+	// network alias so the key prints an address host B can dial.
+	syscontainer.StartSystemBroker(t, "broker:\n  alias: sys\n  advertise: \""+termAdminAdvertise+"\"\n")
 
 	// An account without write permission on the system configuration file is
 	// refused when it asks for a pairing key from its session.
@@ -88,29 +124,23 @@ func TestREQBrokerConfig039_TerminalAdminCommands(t *testing.T) {
 	}
 	termAdminRequireDenied(t, "create_pairing_key as other", text)
 
-	// Root creates the key in host A's terminal. The output must carry the key,
-	// its expiry and at least one address the other host can dial.
+	// The output must carry the key, its expiry and the advertised address host
+	// B can dial.
 	created := syscontainer.RunAs(t, "root", nil, "pairing-key", "create")
 	termAdminRequireOK(t, created, "agent-peer pairing-key create as root")
-	key, address := termAdminPairingKey(t, created.Stdout)
+	key, shown := termAdminPairingKey(t, created.Stdout)
+	address := termAdminAdvertisedAddress(t, shown)
 
-	// Neither side lists a peer yet, which also checks the empty listing.
+	// Host A lists no peer yet, which also checks the empty listing. The check
+	// runs before the key is published, so host B cannot have paired when it
+	// runs.
 	termAdminRequireNoBrokers(t, "root", nil, "host A")
-	termAdminRequireNoBrokers(t, "peer", hostBEnv, "host B")
+	syscontainer.PairWrite(t, termAdminPairingFile, []byte(address+"\n"+key+"\n"))
 
-	// Peer on host B pairs with host A using only the printed information.
-	connected := syscontainer.RunAs(t, "peer", hostBEnv, "peer", "connect", address, "--key", key)
-	termAdminRequireOK(t, connected, "agent-peer peer connect as peer on the other host")
-	pairedAlias, pairedFingerprint := termAdminConnectOutput(t, connected.Stdout)
-
-	// Both terminals list the other Broker as a connected peer. Host A accepted
-	// the pairing; host B dialed it.
+	// Host B pairs using only that information and says so. Host A accepted the
+	// pairing, so its row is the acceptor.
+	syscontainer.PairAwait(t, termAdminConnectedFile)
 	hostAPeer := termAdminWaitPeer(t, "root", nil, "host A", "acceptor")
-	hostBPeer := termAdminWaitPeer(t, "peer", hostBEnv, "host B", "dialer")
-	if hostBPeer.alias != pairedAlias || hostBPeer.fingerprint != pairedFingerprint {
-		t.Errorf("host B lists peer %q (%s), want the paired alias %q and fingerprint %s",
-			hostBPeer.alias, hostBPeer.fingerprint, pairedAlias, pairedFingerprint)
-	}
 
 	// Root reads and changes one configuration item of host A.
 	got := syscontainer.RunAs(t, "root", nil, "config", "get", termAdminConfigKey)
@@ -142,6 +172,9 @@ func TestREQBrokerConfig039_TerminalAdminCommands(t *testing.T) {
 		t.Fatalf("peer disconnect printed %q, want %q", got, wantDisconnect)
 	}
 
+	// The disconnect removed the pair, so host A lists no Broker again.
+	termAdminRequireNoBrokers(t, "root", nil, "host A")
+
 	// Host A's audit holds the operations in the order they happened and under
 	// the account that ran them. pairing_succeeded on this side is written by
 	// the accepting side, which has no executing account. The match is an
@@ -151,11 +184,6 @@ func TestREQBrokerConfig039_TerminalAdminCommands(t *testing.T) {
 		{event: "pairing_succeeded"},
 		{event: "config_set", account: "root"},
 		{event: "unpaired", account: "root"},
-	})
-	// Host B initiated the pairing, so its audit names peer, the account that
-	// ran the terminal command.
-	termAdminWaitAudit(t, "peer", hostBEnv, "host B", []termAdminEvent{
-		{event: "pairing_succeeded", account: "peer"},
 	})
 
 	// The account without write permission is refused a configuration change,
@@ -187,6 +215,71 @@ func TestREQBrokerConfig039_TerminalAdminCommands(t *testing.T) {
 			t.Errorf("host A's audit records %s by other, but the call was refused:\n%s", event, audit.Stdout)
 		}
 	}
+
+	// Host A has made every assertion that needs the link up. Host B may now
+	// stop keeping its Broker alive.
+	syscontainer.PairWrite(t, termAdminDoneFile, []byte("done\n"))
+}
+
+// termAdminHostB runs the dialing side: host B's own user-level Broker and the
+// terminal command that pairs it with host A.
+func termAdminHostB(t *testing.T) {
+	syscontainer.PairGuard(t)
+
+	syscontainer.StartUserBroker(t, "peer", "--listen", termAdminPeerListen)
+	peerEnv := []string{"AGENT_PEER_TEST_SOCKET=" + syscontainer.UserSocketPath(t, "peer")}
+
+	// Host B lists no peer yet, which also checks the empty listing.
+	termAdminRequireNoBrokers(t, "peer", peerEnv, "host B")
+
+	// Pair with host A using only the address and key host A printed.
+	data := syscontainer.PairAwait(t, termAdminPairingFile)
+	address, key := termAdminParsePairing(t, data)
+	connected := syscontainer.RunAs(t, "peer", peerEnv, "peer", "connect", address, "--key", key)
+	termAdminRequireOK(t, connected, "agent-peer peer connect as peer on the other host")
+	pairedAlias, pairedFingerprint := termAdminConnectOutput(t, connected.Stdout)
+
+	// Host B's terminal lists host A as a connected dialer peer, matching what
+	// peer connect printed.
+	hostBPeer := termAdminWaitPeer(t, "peer", peerEnv, "host B", "dialer")
+	if hostBPeer.alias != pairedAlias || hostBPeer.fingerprint != pairedFingerprint {
+		t.Errorf("host B lists peer %q (%s), want the paired alias %q and fingerprint %s",
+			hostBPeer.alias, hostBPeer.fingerprint, pairedAlias, pairedFingerprint)
+	}
+
+	// Host B initiated the pairing, so its audit names peer, the account that
+	// ran the terminal command.
+	termAdminWaitAudit(t, "peer", peerEnv, "host B", []termAdminEvent{
+		{event: "pairing_succeeded", account: "peer"},
+	})
+	syscontainer.PairWrite(t, termAdminConnectedFile, []byte("connected\n"))
+
+	// Keep host B's Broker alive until host A has listed the peer and run the
+	// disconnect, so the assertions there see the link still up.
+	syscontainer.PairAwait(t, termAdminDoneFile)
+
+	// Host A unpaired, and pairing drops the link when the removed entry is not
+	// replaced. Host B may take a moment to observe the closed link, so wait for
+	// its listing to stop showing a connected row.
+	harness.Eventually(t, termAdminCallWait, "host B's peer list to stop showing the other Broker connected",
+		func() (bool, string) {
+			res := syscontainer.RunAs(t, "peer", peerEnv, "peer", "list")
+			if res.ExitCode != 0 {
+				return false, fmt.Sprintf("exit %d: %s", res.ExitCode, res.Stderr)
+			}
+			return !termAdminHasConnectedRow(res.Stdout), res.Stdout
+		})
+}
+
+// termAdminParsePairing splits the shared pairing file into the address and
+// key host A wrote.
+func termAdminParsePairing(t *testing.T, data []byte) (address, key string) {
+	t.Helper()
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) != 2 || lines[0] == "" || lines[1] == "" {
+		t.Fatalf("the shared pairing file is %q, want an address line and a key line", data)
+	}
+	return lines[0], lines[1]
 }
 
 // termAdminEvent is one expected audit record. An empty account matches a
@@ -234,8 +327,8 @@ func termAdminWaitRegistered(t *testing.T, session *syscontainer.Session) {
 }
 
 // termAdminPairingKey checks the output of "pairing-key create" and returns the
-// key with the first address to dial.
-func termAdminPairingKey(t *testing.T, stdout string) (key, address string) {
+// key with every address it printed.
+func termAdminPairingKey(t *testing.T, stdout string) (key string, shown []string) {
 	t.Helper()
 
 	var expires string
@@ -250,9 +343,7 @@ func termAdminPairingKey(t *testing.T, stdout string) (key, address string) {
 		case trimmed == "Addresses:":
 			inAddresses = true
 		case inAddresses && trimmed != "":
-			if address == "" {
-				address = trimmed
-			}
+			shown = append(shown, trimmed)
 		}
 	}
 
@@ -272,10 +363,29 @@ func termAdminPairingKey(t *testing.T, stdout string) (key, address string) {
 	if !expiry.After(time.Now()) {
 		t.Errorf("pairing-key create printed the expiry %q, which is not in the future", expires)
 	}
-	if address == "" {
+	if len(shown) == 0 {
 		t.Fatalf("pairing-key create printed no address:\n%s", stdout)
 	}
-	return key, address
+	return key, shown
+}
+
+// termAdminAdvertisedAddress returns the printed address whose dial part is
+// termAdminAdvertise. The command prints each address as "name(host:port)", and
+// peer connect accepts that whole form. Any other printed address may be
+// unreachable from the other host, so the configured one must be present.
+func termAdminAdvertisedAddress(t *testing.T, shown []string) string {
+	t.Helper()
+	for _, entry := range shown {
+		dial := entry
+		if open := strings.LastIndex(entry, "("); open > 0 && strings.HasSuffix(entry, ")") {
+			dial = entry[open+1 : len(entry)-1]
+		}
+		if dial == termAdminAdvertise {
+			return entry
+		}
+	}
+	t.Fatalf("pairing-key create printed addresses %v, none dials %s", shown, termAdminAdvertise)
+	return ""
 }
 
 // termAdminRequireNoBrokers checks that "peer list" reports an empty listing.
@@ -284,7 +394,7 @@ func termAdminRequireNoBrokers(t *testing.T, account string, env []string, host 
 	res := syscontainer.RunAs(t, account, env, "peer", "list")
 	termAdminRequireOK(t, res, "agent-peer peer list as "+account+" on "+host)
 	if !strings.Contains(res.Stdout, "Brokers: none") {
-		t.Fatalf("%s's peer list does not print \"Brokers: none\" before pairing:\n%s", host, res.Stdout)
+		t.Fatalf("%s's peer list does not print \"Brokers: none\":\n%s", host, res.Stdout)
 	}
 }
 
@@ -356,6 +466,22 @@ func termAdminConnectedPeer(stdout, direction string) (termAdminPeerRow, bool) {
 		}
 	}
 	return termAdminPeerRow{}, false
+}
+
+// termAdminHasConnectedRow reports whether the listing holds any row whose
+// STATUS is connected, whichever side dialed.
+func termAdminHasConnectedRow(stdout string) bool {
+	for _, line := range strings.Split(stdout, "\n") {
+		fields := strings.Fields(line)
+		// ALIAS, FINGERPRINT, PEER, STATUS, DIRECTION, then the addresses.
+		if len(fields) < 6 || fields[0] == "ALIAS" {
+			continue
+		}
+		if fields[3] == "connected" {
+			return true
+		}
+	}
+	return false
 }
 
 // termAdminWaitAudit waits until the audit command's output holds wants as an
