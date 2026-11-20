@@ -12,10 +12,10 @@ To install the latest release with one command:
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
 ```
 
-The script detects the platform and architecture, downloads the matching archive, verifies it against the release's `checksums.txt`, and runs the install script from the archive. For a system-level Broker, run the same command with `sudo` from the account whose Claude Code should use the system Broker:
+The script detects the platform and architecture, downloads the matching archive, verifies it against the release's `checksums.txt`, and runs the install script from the archive. That script asks whether to install system-wide, serving every account on the host, or for your account only; pass `--system` or `--user` after `--` to skip the question. A system-level install reruns itself through sudo from the account whose Claude Code should use the system Broker:
 
 ```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --system
+curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --system
 ```
 
 `--version <version>` installs a published version instead of the latest and must come before any other option. A version that does not exist makes the command fail with `version <version> not found` and leaves the host unchanged.
@@ -26,16 +26,10 @@ Piping the script to a shell carries the same trust as downloading the archive a
 
 Extract the archive and run the install script from the extracted directory. The script installs the binary, installs the Broker as a service and starts it, and registers the MCP server with Claude Code for your account.
 
-For a user-level Broker, run it as your own account:
+Run it without a level option and it asks whether to install system-wide or for your account only. Pass `--system` or `--user` to skip the question; a system-level install reruns itself through sudo from the account whose Claude Code should use the system Broker:
 
 ```sh
 sh ./install.sh
-```
-
-For a system-level Broker, run it with `sudo` from the account whose Claude Code should use the system Broker:
-
-```sh
-sudo sh ./install.sh --system
 ```
 
 `--prefix <dir>` installs the binary in another directory, `--no-service` skips the service, and `--no-mcp` skips the MCP registration. Running the script again is safe: it replaces the binary, restarts the service, and does not register the MCP server twice.

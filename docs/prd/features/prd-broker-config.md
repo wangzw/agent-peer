@@ -148,16 +148,16 @@ MCP 服务进程不得启动任何 Broker。会话按 `REQ-broker-config-026` �
 发布包必须附带安装脚本，用户解压后执行一条命令即可完成安装：把二进制装到合适的位置，把 Broker 安装为服务并启动，为执行安装的用户在 Claude Code 中注册本系统的 MCP 服务。系统级安装由脚本自行经 sudo 取得管理员身份。重复执行安装脚本不得出错，也不得重复注册。
 
 - **验收**：在没有安装过本系统的 Linux 主机上，解压发布包，以普通账户执行安装脚本。之后在新的终端中，`agent-peer --version` 输出发布版本，该账户的用户级 Broker 正在运行，`claude mcp get peer` 显示已注册。以普通账户执行安装脚本并对级别询问回答 y，输入 sudo 密码后，系统级 Broker 正在运行，二进制位于 root 所有、组与其他人不可写的目录，执行 sudo 的账户在 Claude Code 中已注册 MCP 服务。每种方式各再执行一次，都成功，MCP 服务只注册一次。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig041_UserInstallScript`、`TestREQBrokerConfig041_SystemInstallScript`、`TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemWide`（对级别询问回答 y 的系统级安装）
 
 ### REQ-broker-config-042
 
 用户必须能用一条命令从本项目的 GitHub 正式发布在线安装：命令下载最新正式版本中本平台的发布包，校验后用发布包中的安装脚本完成安装。系统级安装执行同一条命令并对级别询问回答 y。用户可以指定要安装的版本。校验和不符或下载失败时，安装必须中止，主机上不得留下任何改动。
 
 - **验收**：在没有安装过本系统的 Linux 主机上，以普通账户执行一条在线安装命令，结果与在本地执行发布包内安装脚本相同；执行同一条命令并对级别询问回答 y，结果与本地系统级安装相同。指定一个已发布的版本时，安装的是该版本；指定一个不存在的版本时，命令以非零退出，报错 `version <v> not found`，主机上没有改动。让下载的发布包与校验和不符，命令以非零退出，二进制、服务、MCP 注册都没有改动，也没有留下临时文件。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/remote_install_test.go` 的 `TestREQBrokerConfig042_RemoteInstallUser`、`TestREQBrokerConfig042_RemoteInstallSystem`、`TestREQBrokerConfig042_RemoteInstallPinnedVersion`、`TestREQBrokerConfig042_RemoteInstallUnknownVersion`、`TestREQBrokerConfig042_RemoteInstallArchiveWithoutInstallScript`、`TestREQBrokerConfig042_RemoteInstallTruncatedScript`、`TestREQBrokerConfig042_RemoteInstallChecksumMismatch`
 
 ### REQ-broker-config-013
 
@@ -364,48 +364,48 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 安装系统级服务时，系统必须提供一个管理组：组不存在时创建，新生成的配置文件以该组为属组并授予组读写权限。管理组成员不经 root 或 sudo，即可执行需要配置文件读写权限的全部操作。用发布包内的安装脚本安装系统级服务时，脚本必须询问是否把执行安装的管理员账户加入管理组，默认不加入；无法询问时按不加入处理并给出加入的命令。
 
 - **验收**：在全新主机上以普通账户执行 `sh ./install.sh`，对级别询问回答 y 并输入 sudo 密码，对管理组询问回答 y，执行 sudo 的账户重新登录后，不经 sudo 在终端成功执行生成配对密钥、修改配置项、发起配对，审计记录的是该账户；对询问直接回车或在没有终端时执行，该账户不加入管理组，输出给出加入管理组的命令；带 `--join-admin-group` 执行时不询问直接加入；不在组内的普通账户执行同样的命令返回权限不足。配置文件已存在时重新安装，文件的属组与权限不变。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/admin_group_test.go` 的 `TestREQBrokerConfig043_SystemInstallAdminGroup`（测试环境以 NOPASSWD 配置 sudo；“输入 sudo 密码”一步由静态阅读安装脚本与 sudo 重新执行的用例共同覆盖）
 
 ### REQ-broker-config-044
 
 不带 `--system` 与 `--user`、能在终端询问的非 root 安装，必须询问 `Install system-wide (all accounts)? [y/N]`，回答 y 时经 sudo 完成系统级安装，其他回答完成用户级安装。
 
 - **验收**：在没有安装过本系统的主机上，以普通账户执行 `curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh`：出现这句询问；回答 y 并输入 sudo 密码后，系统级 Broker 正在运行，二进制位于 root 所有的目录，执行安装的账户在 Claude Code 中已注册 MCP 服务；在另一台主机上直接回车，该账户的用户级 Broker 正在运行，主机上没有系统级服务。解压发布包后执行 `sh ./install.sh`，结果相同。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemWide`、`TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser`；`test/e2e/system/remote_install_test.go` 的 `TestREQBrokerConfig042_RemoteInstallSystem`
 
 ### REQ-broker-config-045
 
 以 root 执行的安装必须不经询问完成系统级安装。
 
 - **验收**：以 root 执行一条在线安装命令，不带任何参数，安装过程不出现级别询问，结束后系统级 Broker 正在运行，主机上没有 root 的用户级服务。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig045_InstallScriptRootDoesNotAsk`
 
 ### REQ-broker-config-046
 
 无法在终端询问的非 root 安装必须不经询问完成用户级安装。
 
 - **验收**：以普通账户在没有控制终端的环境中执行一条在线安装命令，例如经 `setsid` 并把标准输入接到 `/dev/null`：命令不等待输入，结束后该账户的用户级 Broker 正在运行，主机上没有系统级服务。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig046_InstallScriptWithoutTerminal`
 
 ### REQ-broker-config-047
 
 主机上已安装系统级服务时，`REQ-broker-config-044` 的询问必须改为 `Upgrade the system-wide installation? [Y/n]`，直接回车或回答 y 时经 sudo 升级系统级安装；回答 n 时不得改动主机，命令以 0 退出，并提示另装用户级时带 `--user`。
 
 - **验收**：在已安装旧版本系统级服务的主机上，以普通账户执行一条在线安装命令：询问为这一句；直接回车并输入 sudo 密码后，系统级 Broker 以新版本运行，配置文件内容不变。在另一台同样的主机上回答 n：命令以 0 退出，二进制、服务与配置都没有变化，输出提示另装用户级时带 `--user`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig047_InstallScriptUpgradePrompt`
 
 ### REQ-broker-config-048
 
 带 `--user` 的安装必须不经询问完成用户级安装；带 `--system` 的安装必须不经级别询问完成系统级安装。
 
 - **验收**：以普通账户执行 `curl ... | sh -s -- --user`，不出现级别询问，结束后用户级 Broker 正在运行；以普通账户执行 `curl ... | sh -s -- --system`，不出现级别询问，脚本经 sudo 完成系统级安装；同时带两者时以用法错误退出，主机上没有改动；以 root 执行带 `--user` 的安装被拒绝，提示去掉 `--user`。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig048_InstallScriptBothFlags`、`TestREQBrokerConfig048_InstallScriptUserFlag`、`TestREQBrokerConfig048_InstallScriptSystemFlag`
 
 ### REQ-broker-config-049
 
@@ -421,7 +421,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 - **验收**：分别完成一次用户级安装与一次系统级安装，输出中逐项出现上述内容，其中的路径在主机上存在，给出的启动、停止、重启与卸载命令照抄执行都成功。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/install_summary_test.go` 的 `TestREQBrokerConfig050_SystemServiceInstallPrintsSummary`、`TestREQBrokerConfig050_UserServiceInstallPrintsSummary`（Linux：系统级与用户级，路径存在与沿用配置，并照抄汇总里的 start、stop、restart、uninstall 命令逐条执行成功）；`test/e2e/darwinservice/install_summary_test.go` 的 `TestREQBrokerConfig050_UserServiceInstallPrintsSummary`、`TestREQBrokerConfig050_SystemServiceInstallPrintsSummary`（macOS：用户级与系统级，同一组断言与照抄执行）
+- **端到端测试**：`test/e2e/system/install_summary_test.go` 的 `TestREQBrokerConfig050_SystemServiceInstallPrintsSummary`、`TestREQBrokerConfig050_UserServiceInstallPrintsSummary`（Linux：系统级与用户级，路径存在与沿用配置，并照抄汇总里的 start、stop、restart、uninstall 命令逐条执行成功）；`test/e2e/darwinservice/install_summary_test.go` 的 `TestREQBrokerConfig050_UserServiceInstallPrintsSummary`、`TestREQBrokerConfig050_SystemServiceInstallPrintsSummary`（macOS：用户级与系统级，同一组断言与照抄执行）；`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig050_InstallScriptUserSummary`、`TestREQBrokerConfig050_InstallScriptSystemSummary`（Linux：经发布包内的安装脚本完成用户级与系统级安装，汇总出现在脚本输出里，路径存在并照抄执行）
 
 ### REQ-broker-config-051
 

@@ -12,11 +12,13 @@ Documentation: <https://zhanwei.wang/agent-peer/> (English) and <https://zhanwei
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
 ```
 
-The command installs the binary, installs and starts the Broker as a service, and registers the MCP server for your account. Reopen any Claude Code session that is already open, and check the registration with `claude mcp get peer`. For a system-level installation that serves every account on the host, run the same command with `sudo`:
+The command installs the binary, installs and starts the Broker as a service, and registers the MCP server for your account. It asks whether to install system-wide, serving every account on the host, or for your account only. Pass `--system` or `--user` after `sh -s --` to skip the question:
 
 ```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --system
+curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --system
 ```
+
+Reopen any Claude Code session that is already open, and check the registration with `claude mcp get peer`.
 
 [Install agent-peer](https://zhanwei.wang/agent-peer/docs/guides/install/) covers a particular version, the release archive, the install script's options, manual installation and building from source.
 

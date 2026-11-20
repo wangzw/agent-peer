@@ -188,7 +188,7 @@ agent-peer <version> installed (<user-level|system-level>, starts at <login|boot
 
 发布包的安装脚本把二进制放进目标目录、以它调用 `service install`、为执行安装的用户注册 MCP 服务（`REQ-broker-config-041`）；服务定义的写入、启动与重装仍只由 `service install` 负责，它可重复执行，安装脚本因此不另做判断。远程安装脚本负责下载发布包、核对发布包的 sha256 并在解压后调用包内的 `install.sh`；权限检查、拒绝以 `root` 走用户级安装等判断仍由包内脚本负责（`REQ-broker-config-042`）。
 
-发布包的安装脚本在没有 `--system` 与 `--user` 时确定安装级别：当前是 root 时为系统级；能在终端询问时，主机上已有系统级服务定义则询问 `Upgrade the system-wide installation? [Y/n]`，否则询问 `Install system-wide (all accounts)? [y/N]`；无法询问时为用户级。同时给出 `--system` 与 `--user` 时以用法错误退出；以 root 执行 `--user` 时拒绝，提示去掉 `--user`。级别为系统级而当前不是 root 时，脚本以 `sudo sh <自身路径> --system <原参数>` 重新执行。`service install` 以 3 退出时，脚本继续注册 MCP 服务并输出自己的汇总，最后以 3 退出；脚本自己的汇总只列 MCP 注册与 PATH 两项，其余由 `service install` 输出，升级时在汇总之前输出 `upgraded from <旧版本>`，旧版本取替换前目标路径上二进制的 `--version`。`--no-service` 时脚本自己输出二进制路径与版本。对 `Upgrade the system-wide installation? [Y/n]` 回答 n 时，脚本不做任何改动，以 0 退出，并提示另装用户级时带 `--user`（`REQ-broker-config-044` 至 `REQ-broker-config-048`）。
+发布包的安装脚本在没有 `--system` 与 `--user` 时确定安装级别：当前是 root 时为系统级；能在终端询问时，主机上已有系统级服务定义则询问 `Upgrade the system-wide installation? [Y/n]`，否则询问 `Install system-wide (all accounts)? [y/N]`；无法询问时为用户级。同时给出 `--system` 与 `--user` 时以用法错误退出；以 root 执行 `--user` 时拒绝，提示去掉 `--user`。级别为系统级而当前不是 root 时，脚本以 `sudo sh <自身路径> --system <原参数>` 重新执行；主机上找不到 `sudo` 时以非零退出，说明需要 sudo，并提示改用 `--user` 装用户级。`service install` 以 3 退出时，脚本继续注册 MCP 服务并输出自己的汇总，最后以 3 退出；脚本自己的汇总只列 MCP 注册与 PATH 两项，其余由 `service install` 输出，升级时在汇总之前输出 `upgraded from <旧版本>`，旧版本取替换前目标路径上二进制的 `--version`。`--no-service` 时脚本自己输出二进制路径与版本。对 `Upgrade the system-wide installation? [Y/n]` 回答 n 时，脚本不做任何改动，以 0 退出，并提示另装用户级时带 `--user`（`REQ-broker-config-044` 至 `REQ-broker-config-048`）。
 
 升级只替换二进制，不改写服务定义。已安装的服务要重新执行 `service install`，才采用当前版本写入的服务定义与启动方式。
 
@@ -744,3 +744,4 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | `service start`、`stop`、`restart` | 已实现 | `internal/broker/service/control.go`（`Start`、`Stop`、`Restart`、`ErrNotInstalled`）、`cmd/agent-peer/service_cmd.go` |
 | `uninstall` | 已实现 | `cmd/agent-peer/uninstall_cmd.go`、`internal/broker/service/remove.go`、`internal/broker/service/admin_group.go` |
 | 安装汇总与降级检查 | 已实现 | `internal/broker/service/install.go`（`Install` 的降级检查、`waitStatus`、`waitReady` 的 `serviceManagerState`、`Result` 的 `Binary`/`RunLog`/`AuditLog`、`auditLogPath`）、`cmd/agent-peer/service_cmd.go`（`printInstalled`、`printServiceDegraded`） |
+| 安装脚本的级别询问与汇总 | 已实现 | `scripts/install.sh`（`usage` 与文件头注释、级别确定与询问、经 sudo 重新执行、透传 `service install` 的退出码 3、脚本侧汇总）、`scripts/remote-install.sh`（下载、校验与参数转发） |
