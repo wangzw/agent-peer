@@ -14,6 +14,8 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
 )
 
 const wantHint = "agent-peer 0.1.1 is available (this Broker runs 0.1.0). " +
@@ -338,6 +340,40 @@ func TestUpdateHintRetriesAfterConnectionNotReady(t *testing.T) {
 	second := callTool(t, cs, "list_agents", nil)
 	if !hasHint(second) {
 		t.Fatalf("second result lacks the hint after the connection became ready: %q", contentTexts(second))
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("UpdateStatus called %d times, want 2", got)
+	}
+}
+
+// TestUpdateHintSkipsDegradedBroker checks that a Broker which refuses the
+// update query because it runs degraded is handled like a failed query: no
+// hint, and the next tool call tries again.
+func TestUpdateHintSkipsDegradedBroker(t *testing.T) {
+	fail, err := status.New(codes.FailedPrecondition, "config parse failed").WithDetails(&localpb.ErrorDetail{
+		Code:    localpb.ErrorCode_ERROR_CODE_BROKER_DEGRADED,
+		Message: "config parse failed",
+	})
+	if err != nil {
+		t.Fatalf("building the error detail: %v", err)
+	}
+	var calls atomic.Int32
+	source := func(context.Context) (updateStatus, error) {
+		calls.Add(1)
+		return updateStatus{}, fail.Err()
+	}
+	ts := &stubToolSet{
+		listAgents: func(context.Context, ListAgentsIn) (ListAgentsOut, error) {
+			return ListAgentsOut{Self: "me@host"}, nil
+		},
+	}
+	cs := connectHintClient(t, ts, source, updateStatusTimeout)
+
+	for i := 0; i < 2; i++ {
+		res := callTool(t, cs, "list_agents", nil)
+		if hasHint(res) {
+			t.Fatalf("call %d carries a hint from a degraded Broker: %q", i+1, contentTexts(res))
+		}
 	}
 	if got := calls.Load(); got != 2 {
 		t.Errorf("UpdateStatus called %d times, want 2", got)
