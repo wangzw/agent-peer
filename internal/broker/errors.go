@@ -90,8 +90,11 @@ func grpcCode(code localpb.ErrorCode) codes.Code {
 		localpb.ErrorCode_ERROR_CODE_NOT_REGISTERED,
 		localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH,
 		localpb.ErrorCode_ERROR_CODE_NEEDS_LOCAL_ALIAS,
-		localpb.ErrorCode_ERROR_CODE_PAIRING_REJECTED:
+		localpb.ErrorCode_ERROR_CODE_PAIRING_REJECTED,
+		localpb.ErrorCode_ERROR_CODE_NOT_UNDER_SERVICE_MANAGER:
 		return codes.FailedPrecondition
+	case localpb.ErrorCode_ERROR_CODE_UPDATE_IN_PROGRESS:
+		return codes.Aborted
 	case localpb.ErrorCode_ERROR_CODE_PERMISSION_DENIED:
 		return codes.PermissionDenied
 	case localpb.ErrorCode_ERROR_CODE_PEER_UNREACHABLE,

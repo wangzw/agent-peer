@@ -209,6 +209,8 @@ func TestAuditEventKindMappingIsComplete(t *testing.T) {
 		config.EventRejectedByPeer,
 		config.EventLocalAliasAssigned,
 		config.EventConfigRejected,
+		config.EventUpdateApplied,
+		config.EventUpdateFailed,
 	}
 	seen := make(map[localpb.AuditEventKind]config.EventKind, len(kinds))
 	for _, kind := range kinds {

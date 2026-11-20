@@ -148,6 +148,7 @@ func TestAccessRulesMatchDesign(t *testing.T) {
 		localpb.Local_Audit_FullMethodName:            {need: AccessRead},
 		localpb.Local_Status_FullMethodName:           {need: AccessRead, filterOnDeny: true},
 		localpb.Local_UpdateStatus_FullMethodName:     {need: AccessNone},
+		localpb.Local_ApplyUpdate_FullMethodName:      {need: AccessWrite},
 		localpb.Local_SetConfig_FullMethodName:        {need: AccessWrite},
 		localpb.Local_CreatePairingKey_FullMethodName: {need: AccessWrite},
 		localpb.Local_Connect_FullMethodName:          {need: AccessWrite},
@@ -219,6 +220,7 @@ func TestNoneMethodsSkipChecker(t *testing.T) {
 func TestWriteDeniedDoesNotReachHandler(t *testing.T) {
 	methods := []string{
 		localpb.Local_SetConfig_FullMethodName,
+		localpb.Local_ApplyUpdate_FullMethodName,
 		localpb.Local_CreatePairingKey_FullMethodName,
 		localpb.Local_Connect_FullMethodName,
 		localpb.Local_Disconnect_FullMethodName,

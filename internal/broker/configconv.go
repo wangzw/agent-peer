@@ -75,6 +75,10 @@ func toAuditEventKind(k config.EventKind) localpb.AuditEventKind {
 		return localpb.AuditEventKind_AUDIT_EVENT_KIND_LOCAL_ALIAS_ASSIGNED
 	case config.EventConfigRejected:
 		return localpb.AuditEventKind_AUDIT_EVENT_KIND_CONFIG_REJECTED
+	case config.EventUpdateApplied:
+		return localpb.AuditEventKind_AUDIT_EVENT_KIND_UPDATE_APPLIED
+	case config.EventUpdateFailed:
+		return localpb.AuditEventKind_AUDIT_EVENT_KIND_UPDATE_FAILED
 	default:
 		return localpb.AuditEventKind_AUDIT_EVENT_KIND_UNSPECIFIED
 	}

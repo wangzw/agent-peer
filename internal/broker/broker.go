@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"sync"
+	"sync/atomic"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -48,6 +49,9 @@ type Broker struct {
 	updateAvailable  string
 	updateReleaseURL string
 	updateTimer      Timer
+	// updateBusy guards ApplyUpdate. It stays set after a successful install:
+	// the process is about to exit, so no second update may start.
+	updateBusy atomic.Bool
 
 	// downstream state
 }

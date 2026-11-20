@@ -98,6 +98,12 @@ func Run(ctx context.Context, opts RunOptions) error {
 	}
 	deps.LocalProtocolVersion = opts.LocalProtocolVersion
 	deps.Version = opts.Version
+	// RequestShutdown cancels runCtx rather than the caller's context: an
+	// ApplyUpdate success then takes the same shutdown path as a signal, and
+	// Run returns nil so the command exits with its normal code.
+	runCtx, stopRun := context.WithCancel(ctx)
+	defer stopRun()
+	deps.RequestShutdown = stopRun
 	cfg := deps.Config
 
 	var (
@@ -377,7 +383,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 	}
 	for {
 		select {
-		case <-ctx.Done():
+		case <-runCtx.Done():
 			shutdown()
 			return nil
 		case <-tick:

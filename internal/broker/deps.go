@@ -136,6 +136,19 @@ type Deps struct {
 	UpdateHTTPClient *http.Client
 	// LatestRelease looks up the latest formal release; nil: update.Latest.
 	LatestRelease func(ctx context.Context, c *http.Client, api string) (update.Release, error)
+	// ApplyRelease installs a release over the running binary; nil:
+	// update.Apply. ApplyUpdate uses it so tests can substitute an installer.
+	ApplyRelease func(ctx context.Context, o update.ApplyOptions) error
+	// ServiceManager reports whether this process runs under a service manager
+	// (systemd or launchd), which starts the Broker again after it exits. nil:
+	// detected from the process environment. ApplyUpdate refuses when it
+	// reports false, because nothing would start the new binary.
+	ServiceManager func() bool
+	// RequestShutdown asks the process to shut down normally. Run sets it to
+	// cancel the run context, so the process exits with its normal code and
+	// the service manager starts the installed binary. nil: ApplyUpdate
+	// refuses, because it could not complete the restart.
+	RequestShutdown func()
 
 	Pairing        PairingOps    // nil: peer management RPCs return internal; ListBrokers lists only the catalog's non-peers
 	PeerLinks      PeerLinks     // nil: peer management RPCs return internal; ListBrokers lists only the catalog's non-peers

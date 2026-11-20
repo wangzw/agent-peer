@@ -98,6 +98,8 @@ const (
 	// EventConfigRejected records an external configuration change that was
 	// refused, so no value was adopted.
 	EventConfigRejected EventKind = "config_rejected"
+	EventUpdateApplied  EventKind = "update_applied"
+	EventUpdateFailed   EventKind = "update_failed"
 )
 
 var allEventKinds = map[EventKind]bool{
@@ -113,6 +115,8 @@ var allEventKinds = map[EventKind]bool{
 	EventRejectedByPeer:     true,
 	EventLocalAliasAssigned: true,
 	EventConfigRejected:     true,
+	EventUpdateApplied:      true,
+	EventUpdateFailed:       true,
 }
 
 // Event is one audit record.

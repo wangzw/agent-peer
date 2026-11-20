@@ -172,6 +172,8 @@ func TestREQBrokerConfig007_AllEventKinds(t *testing.T) {
 		EventRejectedByPeer,
 		EventLocalAliasAssigned,
 		EventConfigRejected,
+		EventUpdateApplied,
+		EventUpdateFailed,
 	}
 	base := auditTestClock(t)
 	for index, kind := range kinds {

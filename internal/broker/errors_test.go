@@ -142,9 +142,11 @@ func TestToStatusCodeTable(t *testing.T) {
 		{localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH, "version_mismatch", codes.FailedPrecondition},
 		{localpb.ErrorCode_ERROR_CODE_QUOTA_EXCEEDED, "quota_exceeded", codes.ResourceExhausted},
 		{localpb.ErrorCode_ERROR_CODE_INTERNAL, "internal", codes.Internal},
+		{localpb.ErrorCode_ERROR_CODE_NOT_UNDER_SERVICE_MANAGER, "not_under_service_manager", codes.FailedPrecondition},
+		{localpb.ErrorCode_ERROR_CODE_UPDATE_IN_PROGRESS, "update_in_progress", codes.Aborted},
 	}
-	if len(cases) != 16 {
-		t.Fatalf("table covers %d error codes, want all 16", len(cases))
+	if len(cases) != 18 {
+		t.Fatalf("table covers %d error codes, want all 18", len(cases))
 	}
 
 	for _, tc := range cases {

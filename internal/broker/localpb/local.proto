@@ -23,6 +23,7 @@ service Local {
   rpc SetConfig(SetConfigRequest) returns (SetConfigResponse);
   rpc Status(StatusRequest) returns (StatusResponse);
   rpc UpdateStatus(UpdateStatusRequest) returns (UpdateStatusResponse);
+  rpc ApplyUpdate(ApplyUpdateRequest) returns (ApplyUpdateResponse);
   rpc Audit(AuditRequest) returns (stream AuditEvent);
 }
 
@@ -288,6 +289,20 @@ message UpdateStatusResponse {
   string release_url = 3;
 }
 
+// ApplyUpdateRequest carries no version and no source: the Broker always
+// installs the newest formal release it finds.
+message ApplyUpdateRequest {}
+
+message ApplyUpdateResponse {
+  // from_version is the version the Broker runs now.
+  string from_version = 1;
+  // to_version is empty when no newer release exists, and nothing changed.
+  string to_version = 2;
+  // restarting is true when the new binary is installed and the Broker is
+  // about to exit so that the service manager starts it again.
+  bool restarting = 3;
+}
+
 message AgentStatusEntry {
   string agent_id = 1;
   string account = 2;
@@ -331,6 +346,8 @@ enum AuditEventKind {
   AUDIT_EVENT_KIND_REJECTED_BY_PEER = 10;
   AUDIT_EVENT_KIND_LOCAL_ALIAS_ASSIGNED = 11;
   AUDIT_EVENT_KIND_CONFIG_REJECTED = 12;
+  AUDIT_EVENT_KIND_UPDATE_APPLIED = 13;
+  AUDIT_EVENT_KIND_UPDATE_FAILED = 14;
 }
 
 message PeerRef {
@@ -355,6 +372,11 @@ enum ErrorCode {
   ERROR_CODE_VERSION_MISMATCH = 13;
   ERROR_CODE_QUOTA_EXCEEDED = 14;
   ERROR_CODE_INTERNAL = 15;
+  // ERROR_CODE_NOT_UNDER_SERVICE_MANAGER answers an update the Broker cannot
+  // supervise: without a service manager it cannot start the new binary again.
+  ERROR_CODE_NOT_UNDER_SERVICE_MANAGER = 16;
+  // ERROR_CODE_UPDATE_IN_PROGRESS answers a second update while one runs.
+  ERROR_CODE_UPDATE_IN_PROGRESS = 17;
 }
 
 message ErrorDetail {
