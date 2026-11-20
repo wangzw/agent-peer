@@ -137,6 +137,77 @@ func TestListBrokers(t *testing.T) {
 	}
 }
 
+// TestListBrokersLocalState checks the local field: the answering Broker's own
+// offline and degraded state, with an older Broker that leaves it unset read as
+// online and not degraded.
+func TestListBrokersLocalState(t *testing.T) {
+	const reason = "listen address :17443 is unavailable"
+	const fix = "agent-peer config set broker.listen <free address>"
+	cases := []struct {
+		name  string
+		local *localpb.LocalBrokerState
+		want  LocalBrokerOut
+	}{
+		{
+			name:  "online",
+			local: &localpb.LocalBrokerState{},
+			want:  LocalBrokerOut{},
+		},
+		{
+			name:  "offline",
+			local: &localpb.LocalBrokerState{Offline: true},
+			want:  LocalBrokerOut{Offline: true},
+		},
+		{
+			name: "local only",
+			local: &localpb.LocalBrokerState{Degraded: &localpb.DegradedState{
+				Level:  localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY,
+				Step:   "listen",
+				Reason: reason,
+				Fix:    fix,
+			}},
+			want: LocalBrokerOut{Degraded: &DegradedStateOut{
+				Level:  "local_only",
+				Reason: reason,
+				Fix:    fix,
+			}},
+		},
+		{
+			// An older Broker does not know the field at all.
+			name:  "older Broker without local state",
+			local: nil,
+			want:  LocalBrokerOut{},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := newBrokerHandlersForTest(t, "", fakelocal.Handlers{
+				ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
+					return &localpb.ListBrokersResponse{Local: tc.local}, nil
+				},
+			})
+
+			out, err := h.ListBrokers(context.Background(), NoArgs{})
+			if err != nil {
+				t.Fatalf("ListBrokers: %v", err)
+			}
+			if out.Local == nil {
+				t.Fatal("local is nil, want the answering Broker's state")
+			}
+			if out.Local.Offline != tc.want.Offline {
+				t.Errorf("offline = %v, want %v", out.Local.Offline, tc.want.Offline)
+			}
+			if tc.want.Degraded == nil {
+				if out.Local.Degraded != nil {
+					t.Errorf("degraded = %+v, want none", out.Local.Degraded)
+				}
+			} else if out.Local.Degraded == nil || *out.Local.Degraded != *tc.want.Degraded {
+				t.Errorf("degraded = %+v, want %+v", out.Local.Degraded, tc.want.Degraded)
+			}
+		})
+	}
+}
+
 // TestListBrokersBeforeRegistration checks that list_brokers reaches the
 // Broker even while the session has not completed registration
 // (REQ-broker-discovery-012, mcpserver design:146).

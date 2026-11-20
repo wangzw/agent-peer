@@ -30,11 +30,40 @@ func (h *handlers) ListBrokers(ctx context.Context, in NoArgs) (ListBrokersOut, 
 		return ListBrokersOut{}, rpcError("list_brokers", callGeneric, permNone, err)
 	}
 
-	out := ListBrokersOut{Brokers: make([]BrokerOut, 0, len(resp.GetBrokers()))}
+	out := ListBrokersOut{
+		Brokers: make([]BrokerOut, 0, len(resp.GetBrokers())),
+		Local:   localBrokerOut(resp.GetLocal()),
+	}
 	for _, b := range resp.GetBrokers() {
 		out.Brokers = append(out.Brokers, brokerOut(b))
 	}
 	return out, nil
+}
+
+// localBrokerOut turns the answering Broker's state into the tool result shape.
+// An older Broker leaves local unset, which reads as online and not degraded.
+func localBrokerOut(local *localpb.LocalBrokerState) *LocalBrokerOut {
+	out := &LocalBrokerOut{Offline: local.GetOffline()}
+	if degraded := local.GetDegraded(); degraded != nil {
+		out.Degraded = &DegradedStateOut{
+			Level:  degradedLevelOut(degraded.GetLevel()),
+			Reason: degraded.GetReason(),
+			Fix:    degraded.GetFix(),
+		}
+	}
+	return out
+}
+
+// degradedLevelOut renders a DegradedLevel for the tool result.
+func degradedLevelOut(level localpb.DegradedLevel) string {
+	switch level {
+	case localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY:
+		return "local_only"
+	case localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY:
+		return "diagnostics_only"
+	default:
+		return ""
+	}
 }
 
 // brokerOut turns one BrokerInfo into the tool result shape.

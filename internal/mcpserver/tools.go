@@ -99,6 +99,26 @@ type BrokerOut struct {
 // ListBrokersOut is the result of list_brokers.
 type ListBrokersOut struct {
 	Brokers []BrokerOut `json:"brokers"`
+	// Local is the state of the Broker that answered. It is set even when the
+	// Broker is online and not degraded, so a caller never has to guess what an
+	// absent value would mean.
+	Local *LocalBrokerOut `json:"local,omitempty"`
+}
+
+// LocalBrokerOut is the state of the Broker that answered, as opposed to its
+// peers.
+type LocalBrokerOut struct {
+	Offline  bool              `json:"offline"`
+	Degraded *DegradedStateOut `json:"degraded,omitempty"`
+}
+
+// DegradedStateOut says why a Broker runs degraded. Level is "local_only" or
+// "diagnostics_only"; the startup step is for display on the terminal and is
+// not repeated here.
+type DegradedStateOut struct {
+	Level  string `json:"level"`
+	Reason string `json:"reason"`
+	Fix    string `json:"fix,omitempty"`
 }
 
 // ConnectBrokerIn is the input of connect_broker.
