@@ -43,6 +43,12 @@ const (
 	selfUpdateRestartBound = 30 * time.Second
 	// selfUpdateAuditBound bounds the read of a local audit event.
 	selfUpdateAuditBound = 10 * time.Second
+	// selfUpdateStatusRPCTimeout bounds one UpdateStatus call on a local
+	// socket. The Broker answers in milliseconds; the bound covers a loaded
+	// container without hiding a hung call.
+	selfUpdateStatusRPCTimeout = 5 * time.Second
+	// selfUpdateListToolsTimeout bounds one MCP tools/list call.
+	selfUpdateListToolsTimeout = 10 * time.Second
 )
 
 // TestREQUpdate007_SystemUpdateByAdminGroup covers the first acceptance of
@@ -762,7 +768,7 @@ func selfUpdateWaitBrokerVersion(t *testing.T, socket, want string) {
 			return false, err.Error()
 		}
 		defer func() { _ = oracle.Close() }()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), selfUpdateStatusRPCTimeout)
 		defer cancel()
 		resp, err := oracle.UpdateStatus(ctx)
 		if err != nil {
@@ -819,7 +825,7 @@ func selfUpdateWaitConnected(t *testing.T, session *syscontainer.Session) {
 func selfUpdateRequireUpdateTool(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), selfUpdateListToolsTimeout)
 	defer cancel()
 	result, err := session.MCP.ListTools(ctx, nil)
 	if err != nil {

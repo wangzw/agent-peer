@@ -19,6 +19,11 @@ import (
 	"github.com/wangzw/agent-peer/internal/config"
 )
 
+// capturedBrokerWait bounds the wait for the component that captures the
+// running Broker in a Run test. Run reaches the component's Start during
+// startup, so the bound only guards against a startup that never got there.
+const capturedBrokerWait = 3 * time.Second
+
 // fixedRelease is a LatestRelease fake that always reports version.
 func fixedRelease(version string) func(context.Context, *http.Client, string) (update.Release, error) {
 	return func(context.Context, *http.Client, string) (update.Release, error) {
@@ -327,7 +332,7 @@ func TestRunRequestShutdownExitsNormally(t *testing.T) {
 	var b *Broker
 	select {
 	case b = <-captured:
-	case <-time.After(3 * time.Second):
+	case <-time.After(capturedBrokerWait):
 		t.Fatal("the component never received the Broker")
 	}
 	if b.deps.RequestShutdown == nil {
