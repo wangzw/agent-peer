@@ -44,7 +44,7 @@ sudo chmod 0660 /etc/agent-peer/config.yaml
 
 Use `0640` instead of `0660` to grant read access only.
 
-Two limits come with the group. A port below 1024 in `broker.listen` takes effect only while the configuration file can be written by root alone, so a group that can write the file cannot move the Broker to a privileged port; a file that already sets one makes the Broker refuse to start. A change made by editing the file directly is recorded in the audit log with no account, because only changes through the local socket carry the caller's account. Installing and uninstalling the system-level service still needs root.
+Two limits come with the group. A port below 1024 in `broker.listen` takes effect only while the configuration file can be written by root alone, so a group that can write the file cannot move the Broker to a privileged port. A file that a group or others can write and that sets such a port makes the Broker refuse to start; when the file is changed to that combination while the Broker runs, the Broker keeps the old value instead of applying the new port. A change made by editing the file directly is recorded in the audit log with no account, because only changes through the local socket carry the caller's account. Installing and uninstalling the system-level service still needs root.
 
 Being allowed to use the Broker and being allowed to manage it are separate. The settings in [Run a system Broker]({{< relref "system-broker.md" >}}) decide which accounts can connect to the local socket; the permissions on the configuration file decide which of them can read or change the Broker.
 

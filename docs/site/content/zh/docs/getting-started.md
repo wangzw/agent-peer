@@ -113,7 +113,7 @@ cd agent-peer-${VERSION}
 sudo sh ./install.sh --system
 ```
 
-用户级形式把二进制装到 `~/.local/bin`，安装并启动用户级 Broker 服务，并为你的账户注册 MCP 服务。系统级形式把二进制装到 `/usr/local/bin`，安装并启动系统级 Broker 服务，并为执行 `sudo` 的账户注册 MCP 服务。系统级安装还会创建 `agent-peer` 组，把新生成的配置文件的属组设为该组，并询问是否把执行 `sudo` 的账户加入该组；默认不加入，没有终端时脚本不加入该账户，并打印加入命令。管理组成员不用 `sudo` 就能管理系统级 Broker；经 Broker 的管理操作，新加入的成员关系从下一次调用起生效；本账户自己的进程（例如直接编辑配置文件）要重新登录或运行 `newgrp agent-peer` 之后才会用上新的成员关系。管理组见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)。
+用户级形式把二进制装到 `~/.local/bin`，安装并启动用户级 Broker 服务，并为你的账户注册 MCP 服务。系统级形式把二进制装到 `/usr/local/bin`，安装并启动系统级 Broker 服务，并为执行 `sudo` 的账户注册 MCP 服务。系统级安装还会创建 `agent-peer` 组，把新生成的配置文件的属组设为该组，并询问是否把执行 `sudo` 的账户加入该组；默认不加入，没有终端时脚本不加入该账户，并打印加入命令。执行 `sudo` 的账户已经在组内，或者脚本直接以 root 运行时，脚本不询问；只有回答 y 或 yes 才会加入。管理组成员不用 `sudo` 就能管理系统级 Broker；经 Broker 的管理操作，新加入的成员关系从下一次调用起生效；本账户自己的进程（例如直接编辑配置文件）要重新登录或运行 `newgrp agent-peer` 之后才会用上新的成员关系。管理组见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)。
 
 脚本接受这些选项：
 

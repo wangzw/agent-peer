@@ -32,7 +32,7 @@ agent-peer service install
 
 ## 安装系统级服务
 
-系统级安装以 root 运行，让 Broker 在开机时启动。从解压后的发布包里执行 `sudo sh ./install.sh --system`，可以一步装好二进制与服务；[快速开始]({{< relref "/docs/getting-started" >}})里的在线系统级命令效果相同。下面的步骤则手动完成这两部分。脚本还会询问是否把执行 `sudo` 的账户加入管理组，默认不加入；[管理组]({{< relref "management-permissions.md" >}}#管理组)介绍这个组以及控制这一询问的选项。
+系统级安装以 root 运行，让 Broker 在开机时启动。从解压后的发布包里执行 `sudo sh ./install.sh --system`，可以一步装好二进制与服务；[快速开始]({{< relref "/docs/getting-started" >}})里的在线系统级命令效果相同。下面的步骤则手动完成这两部分。脚本还会询问是否把执行 `sudo` 的账户加入管理组，默认不加入。执行 `sudo` 的账户已经在组内，或者脚本直接以 root 运行时，脚本不询问；只有回答 y 或 yes 才会加入。[管理组]({{< relref "management-permissions.md" >}}#管理组)介绍这个组以及控制这一询问的选项。
 
 二进制必须放在 root 拥有、且组和其他人不可写的目录里，例如 `/usr/local/bin`。服务以 root 身份运行这个二进制，能改动它或其上级目录的普通账户可能借此接管服务：
 
