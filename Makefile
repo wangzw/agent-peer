@@ -74,16 +74,39 @@ archive-check:
 proto-lint:
 	buf lint
 
+# The agentpeer_testenv round discovers what to run instead of naming it. A
+# package is included when its .GoFiles or .TestGoFiles differ under the tag,
+# and a test function is included when it is declared in a file whose
+# //go:build line requires agentpeer_testenv without negating it. A new hook
+# test is therefore executed without an edit here.
 test:
 	go build ./...
 	go vet ./...
 	go test -race -p $(JOBS) -parallel $(JOBS) ./...
-	root="$$(mktemp -d)"; home="$$(mktemp -d)"; \
+	@root="$$(mktemp -d)"; home="$$(mktemp -d)"; scratch="$$(mktemp -d)"; \
+	cleanup() { status=$$1; rm -rf "$$root" "$$home" "$$scratch"; exit $$status; }; \
+	go list -e -f '{{.ImportPath}}|{{join .GoFiles " "}}|{{join .TestGoFiles " "}}' ./... > "$$scratch/plain" || cleanup $$?; \
+	go list -e -tags agentpeer_testenv -f '{{.ImportPath}}|{{join .GoFiles " "}}|{{join .TestGoFiles " "}}' ./... > "$$scratch/tagged" || cleanup $$?; \
+	pkgs="$$(diff "$$scratch/plain" "$$scratch/tagged" | sed -n 's/^[<>] \([^|]*\)|.*/\1/p' | sort -u)"; \
+	$(GIT) ls-files '*.go' > "$$scratch/files" || cleanup $$?; \
+	tests=""; \
+	for file in $$(grep -v '^third_party/' "$$scratch/files"); do \
+		if awk '/^package / { exit 1 } /^\/\/go:build / { if ($$0 ~ /agentpeer_testenv/ && $$0 !~ /!agentpeer_testenv/) exit 0; exit 1 }' "$$file"; then \
+			for name in $$(sed -n 's/^func \(Test[A-Za-z0-9_]*\)(.*/\1/p' "$$file"); do \
+				if [ -z "$$tests" ]; then tests="$$name"; else tests="$$tests|$$name"; fi; \
+			done; \
+		fi; \
+	done; \
+	if [ -z "$$pkgs" ] || [ -z "$$tests" ]; then \
+		echo "test: no agentpeer_testenv hook tests found"; \
+		cleanup 0; \
+	fi; \
+	echo "test: agentpeer_testenv packages:$$pkgs"; \
+	echo "test: agentpeer_testenv tests:^($$tests)$$"; \
 	AGENT_PEER_TEST_RUNTIME_ROOT="$$root" AGENT_PEER_TEST_HOME="$$home" \
 		go test -race -count=1 -tags agentpeer_testenv -p $(JOBS) -parallel $(JOBS) \
-			-run 'TestTestRuntimeRoot|TestTestEnvHooksInstalled|TestRuntimeDirFromTestEnv|TestParseProtocolOverrides|TestProtocolOverridesInstalled|TestAPIBaseUsesTestOverride' \
-			./internal/config ./internal/mcpserver ./cmd/agent-peer ./internal/broker/update; \
-	status=$$?; rm -rf "$$root" "$$home"; exit $$status
+			-run "^($$tests)$$" $$pkgs; \
+	cleanup $$?
 	@if [ "$$(go env GOOS)" = darwin ]; then \
 		go -C $(CURDIR)/third_party/fsnotify test -race -count=1 -p $(JOBS) -parallel $(JOBS) -run '^Test(KqueueCloseDoesNotCloseAReusedDescriptor|AddWatchKeepsAnExistingDescriptorWhenReregisterFails|WriteAfterCreateIsReported)$$' ./; \
 	else \
