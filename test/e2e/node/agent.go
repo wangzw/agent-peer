@@ -540,6 +540,22 @@ func (a *Agent) EndSession(sessionID string) error {
 	})
 }
 
+// WaitNoConnections waits until a session's simulated session tracks no inbox
+// connection, up to timeout. It wakes when the fake accepts or drops a
+// connection, so it returns as soon as the last handler leaves its
+// connection. It exists for the end-to-end test harness only; the node agent
+// exposes it on the test control socket, not in product behaviour.
+func (a *Agent) WaitNoConnections(sessionID string, timeout time.Duration) (bool, error) {
+	var ok bool
+	err := Guard(func() {
+		ok = a.session(sessionID).session.Fake().WaitNoConnections(timeout)
+	})
+	if err != nil {
+		return false, err
+	}
+	return ok, nil
+}
+
 // InboxConnections reports how many peers are connected to a session's inbox
 // socket.
 func (a *Agent) InboxConnections(sessionID string) (int, error) {

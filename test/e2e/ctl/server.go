@@ -163,6 +163,20 @@ func (h *handler) handle(path string, body []byte) (any, error) {
 		}
 		return struct{}{}, nil
 
+	// The wait_no_conns endpoint serves the end-to-end test harness only: it
+	// lets a test observe a simulated session dropping its inbox connection
+	// without polling.
+	case "/v1/session/wait_no_conns":
+		req, err := decode[SessionWaitNoConnectionsRequest](body)
+		if err != nil {
+			return nil, err
+		}
+		ok, err := h.agent.WaitNoConnections(req.ID, time.Duration(req.TimeoutMS)*time.Millisecond)
+		if err != nil {
+			return nil, err
+		}
+		return SessionWaitNoConnectionsResult{OK: ok}, nil
+
 	case "/v1/session/inbox_conns":
 		req, err := decode[SessionIDRequest](body)
 		if err != nil {

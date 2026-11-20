@@ -40,6 +40,7 @@ type FakeSession interface {
 	Frames() []fakesession.Frame
 	WaitFrame(timeout time.Duration) (fakesession.Frame, bool)
 	WaitFrameN(n int, timeout time.Duration) (fakesession.Frame, bool)
+	WaitNoConnections(timeout time.Duration) bool
 	TakeErrors() []error
 	InjectBackgroundError(err error)
 	Close()
@@ -205,6 +206,24 @@ func (f *remoteFake) waitFrameN(n int, timeout time.Duration) (fakesession.Frame
 	}
 	f.mu.Unlock()
 	return remoteFrame(res.Frames[n-1]), true
+}
+
+// WaitNoConnections waits until the fake in the container tracks no inbox
+// connection. The node agent's fake wakes the wait when a handler leaves its
+// connection, so the answer does not depend on polling.
+func (f *remoteFake) WaitNoConnections(timeout time.Duration) bool {
+	f.tb.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout+fakeAnswerSlack)
+	defer cancel()
+	res, err := f.client.WaitNoConnections(ctx, ctl.SessionWaitNoConnectionsRequest{
+		ID:        f.info.ID,
+		TimeoutMS: timeout.Milliseconds(),
+	})
+	if err != nil {
+		f.tb.Fatalf("harness: session %s: waiting for no inbox connections: %v", f.name, err)
+		return false
+	}
+	return res.OK
 }
 
 // apply forwards one operation and fails the test when the node agent rejects

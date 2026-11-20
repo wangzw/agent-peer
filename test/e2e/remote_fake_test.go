@@ -3,7 +3,6 @@
 package e2e
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -12,9 +11,14 @@ import (
 	"github.com/wangzw/agent-peer/test/e2e/harness"
 )
 
-// containerFakeBound is the end-to-end wait bound for the fake proxy. No
-// product timer participates in these waits, so the plan's sum-of-timers-plus-
-// three-seconds convention reduces to the three-second test wait.
+// containerFakeBound bounds each event wait for the fake proxy. The waits are
+// event-driven: a frame wait wakes when the fake records a frame, and the
+// connection wait wakes when the fake drops its last connection. Both are
+// reached while the node agent reads or closes a simulated session's socket,
+// and no product timer participates. The bound is therefore a safety net for
+// a handler that never reaches the event, not a scheduling allowance, and the
+// project-wide three seconds (no product timer plus the test-only control
+// round trip) remains enough.
 const containerFakeBound = 3 * time.Second
 
 // containerInboxFrame is the frame the tests write into a container session's
@@ -35,26 +39,56 @@ func TestContainerSessionFakeProxy(t *testing.T) {
 
 		writeContainerInboxFrame(t, node, session.Fake().SocketPath(), containerInboxFrame)
 
-		// Wait until the fake took the connection and is holding it, so the
-		// Release below has something to release.
-		harness.Eventually(t, containerFakeBound, "the inbox connection is held open", func() (bool, string) {
-			n := session.InboxConnections(t)
-			return n == 1, fmt.Sprintf("InboxConnections() = %d, want 1", n)
-		})
-
-		session.Fake().Release()
-
+		// Wait for the frame, not for the connection count: the fake registers
+		// the held connection and the frame under one lock, so a frame observed
+		// here guarantees Release finds the hold. The kernel lists the accepted
+		// socket as soon as the client connects, which is before the handler
+		// reads the line; releasing on that count can arrive before the hold
+		// exists and be lost.
 		frame := session.WaitFrame(t, containerFakeBound)
 		if frame.MsgID != "m1" || frame.Content != "held" {
 			t.Fatalf("frame = {MsgID: %q, Content: %q}, want m1/held", frame.MsgID, frame.Content)
 		}
 
-		// The handler leaves the hold only when Release reaches the container;
-		// the connection therefore counts zero only after the release.
-		harness.Eventually(t, containerFakeBound, "the released connection closes", func() (bool, string) {
-			n := session.InboxConnections(t)
-			return n == 0, fmt.Sprintf("InboxConnections() = %d, want 0", n)
+		session.Fake().Release()
+
+		// The handler leaves the hold only when Release reaches the container.
+		// The fake wakes this wait when the released handler drops its
+		// connection, so a release that was lost or never arrived fails here.
+		if !session.Fake().WaitNoConnections(containerFakeBound) {
+			t.Fatalf("the released connection did not close within %s", containerFakeBound)
+		}
+	})
+
+	t.Run("release is not lost when the handler reads late", func(t *testing.T) {
+		// The delay pins the race this case exists for: the kernel lists the
+		// accepted connection at once, while the handler waits before reading
+		// the frame and registering the hold. A Release sent on the connection
+		// count alone therefore arrives before the hold exists and is
+		// discarded, leaving the handler blocked. Waiting for the frame first
+		// closes that window.
+		session := node.StartSession(t, harness.SessionSpec{
+			Name:      "late",
+			Mode:      fakesession.HoldOpen,
+			BusyDelay: 500 * time.Millisecond,
 		})
+		defer session.End(t)
+
+		writeContainerInboxFrame(t, node, session.Fake().SocketPath(), containerInboxFrame)
+
+		// The frame is recorded when the fake takes the connection and
+		// registers the hold. Waiting for it, rather than for the connection
+		// count, keeps Release from arriving before the hold exists.
+		frame := session.WaitFrame(t, containerFakeBound)
+		if frame.MsgID != "m1" || frame.Content != "held" {
+			t.Fatalf("frame = {MsgID: %q, Content: %q}, want m1/held", frame.MsgID, frame.Content)
+		}
+
+		session.Fake().Release()
+
+		if !session.Fake().WaitNoConnections(containerFakeBound) {
+			t.Fatalf("the released connection did not close within %s", containerFakeBound)
+		}
 	})
 
 	t.Run("set mode applies to the next connection", func(t *testing.T) {

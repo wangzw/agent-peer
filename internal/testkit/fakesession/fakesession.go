@@ -158,6 +158,7 @@ type Fake struct {
 
 	done    chan struct{}
 	frameCh chan struct{}
+	connCh  chan struct{}
 }
 
 // heldConn is a connection a HoldOpen handler is waiting to release.
@@ -189,6 +190,7 @@ func New(t testing.TB, opts Options) *Fake {
 		conns:     make(map[net.Conn]struct{}),
 		done:      make(chan struct{}),
 		frameCh:   make(chan struct{}, 1),
+		connCh:    make(chan struct{}, 1),
 	}
 
 	if f.configDir == "" {
@@ -450,6 +452,39 @@ func (f *Fake) waitFrameN(n int, timeout time.Duration) (Frame, bool) {
 	}
 }
 
+// WaitNoConnections waits until the fake tracks no connection, up to timeout.
+// It wakes on every connection the fake accepts and drops instead of polling
+// the count, so the wait returns as soon as the last handler leaves its
+// connection. A HoldOpen connection counts until Release or Close lets its
+// handler return. It reports false when a connection remains at the deadline.
+func (f *Fake) WaitNoConnections(timeout time.Duration) bool {
+	f.t.Helper()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		f.mu.Lock()
+		empty := len(f.conns) == 0
+		f.mu.Unlock()
+		if empty {
+			return true
+		}
+		select {
+		case <-f.connCh:
+		case <-timer.C:
+			// A close that raced with the deadline still counts.
+			f.mu.Lock()
+			empty := len(f.conns) == 0
+			f.mu.Unlock()
+			return empty
+		case <-f.done:
+			f.mu.Lock()
+			empty := len(f.conns) == 0
+			f.mu.Unlock()
+			return empty
+		}
+	}
+}
+
 // Close stops the listener, releases held connections, removes the socket, and
 // removes any temporary directory the fake created for it. It is idempotent.
 func (f *Fake) Close() {
@@ -475,6 +510,8 @@ func (f *Fake) Close() {
 	tempDir := f.ownedTempDir
 	f.ownedTempDir = ""
 	f.mu.Unlock()
+
+	f.signalConns()
 
 	if listener != nil {
 		_ = listener.Close()

@@ -360,6 +360,27 @@ func TestHoldOpenRelease(t *testing.T) {
 	}
 }
 
+func TestWaitNoConnections(t *testing.T) {
+	f := New(t, Options{PID: 6670, Mode: HoldOpen})
+	conn := dialFake(t, f)
+	writeAll(t, conn, userFrameLine(t, "msg-5", "api-worker", "hello")+"\n")
+
+	if _, ok := f.WaitFrame(waitTimeout); !ok {
+		t.Fatal("no frame received")
+	}
+	if f.WaitNoConnections(20 * time.Millisecond) {
+		t.Fatal("WaitNoConnections reported no connections while one is held")
+	}
+
+	f.Release()
+	closeWrite(t, conn)
+	// The wait is event-driven and returns as soon as the handler drops the
+	// connection; the allowance only covers a loaded test machine.
+	if !f.WaitNoConnections(3 * time.Second) {
+		t.Fatal("WaitNoConnections did not report the released connection closing")
+	}
+}
+
 func TestCloseReleasesHeldConnection(t *testing.T) {
 	f := New(t, Options{PID: 6650, Mode: HoldOpen})
 	conn := dialFake(t, f)

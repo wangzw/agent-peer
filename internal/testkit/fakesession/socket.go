@@ -167,11 +167,13 @@ func (f *Fake) setBackgroundError(err error) {
 // reports false when the fake is already closed.
 func (f *Fake) trackConn(conn net.Conn) bool {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	if f.closed {
+		f.mu.Unlock()
 		return false
 	}
 	f.conns[conn] = struct{}{}
+	f.mu.Unlock()
+	f.signalConns()
 	return true
 }
 
@@ -179,6 +181,15 @@ func (f *Fake) untrackConn(conn net.Conn) {
 	f.mu.Lock()
 	delete(f.conns, conn)
 	f.mu.Unlock()
+	f.signalConns()
+}
+
+// signalConns wakes WaitNoConnections after a connection was added or dropped.
+func (f *Fake) signalConns() {
+	select {
+	case f.connCh <- struct{}{}:
+	default:
+	}
 }
 
 // handle serves one accepted connection according to the current mode.

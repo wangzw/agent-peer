@@ -134,6 +134,20 @@ type InboxConnectionsResult struct {
 	N int `json:"n"`
 }
 
+// SessionWaitNoConnectionsRequest waits until a simulated session tracks no
+// inbox connection. It serves the end-to-end test harness only; no product
+// code sends or answers it.
+type SessionWaitNoConnectionsRequest struct {
+	ID        string `json:"id"`
+	TimeoutMS int64  `json:"timeout_ms,omitempty"`
+}
+
+// SessionWaitNoConnectionsResult reports whether the wait found no
+// connections before its timeout.
+type SessionWaitNoConnectionsResult struct {
+	OK bool `json:"ok"`
+}
+
 // BrokerStartRequest starts a Broker process.
 type BrokerStartRequest struct {
 	Args       []string          `json:"args,omitempty"`

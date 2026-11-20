@@ -109,6 +109,15 @@ func (c *Client) End(ctx context.Context, req SessionIDRequest) error {
 	return c.do(ctx, "/v1/session/end", req, nil)
 }
 
+// WaitNoConnections waits until a simulated session tracks no inbox
+// connection, for at most the request's timeout. The endpoint serves the
+// end-to-end test harness only.
+func (c *Client) WaitNoConnections(ctx context.Context, req SessionWaitNoConnectionsRequest) (SessionWaitNoConnectionsResult, error) {
+	var out SessionWaitNoConnectionsResult
+	err := c.do(ctx, "/v1/session/wait_no_conns", req, &out)
+	return out, err
+}
+
 // InboxConnections counts the peers connected to a session's inbox socket.
 func (c *Client) InboxConnections(ctx context.Context, req SessionIDRequest) (InboxConnectionsResult, error) {
 	var out InboxConnectionsResult
