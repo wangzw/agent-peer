@@ -8,6 +8,7 @@
 	<array>
 		<string>/usr/local/bin/agent-peer</string>
 		<string>broker</string>
+		<string>--allow-degraded</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>

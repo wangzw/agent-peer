@@ -9,6 +9,7 @@
 		<string>/usr/local/bin/agent-peer</string>
 		<string>broker</string>
 		<string>--system</string>
+		<string>--allow-degraded</string>
 	</array>
 	<key>UserName</key>
 	<string>root</string>

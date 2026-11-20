@@ -21,7 +21,7 @@ Documentation=https://github.com/wangzw/agent-peer
 
 [Service]
 Type=simple
-ExecStart=%s broker
+ExecStart=%s broker --allow-degraded
 Restart=always
 RestartSec=5
 UMask=0077
@@ -38,7 +38,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%s broker --system
+ExecStart=%s broker --system --allow-degraded
 Restart=always
 RestartSec=5
 UMask=0022
@@ -61,6 +61,7 @@ const launchAgentTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 	<array>
 		<string>%s</string>
 		<string>broker</string>
+		<string>--allow-degraded</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
@@ -89,6 +90,7 @@ const launchDaemonTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 		<string>%s</string>
 		<string>broker</string>
 		<string>--system</string>
+		<string>--allow-degraded</string>
 	</array>
 	<key>UserName</key>
 	<string>root</string>
