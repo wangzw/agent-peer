@@ -265,9 +265,9 @@ MCP 服务进程不得启动任何 Broker。会话按 `REQ-broker-config-026` �
 
 ### REQ-broker-config-026
 
-会话尚未选定 Broker 时，存在多个可用的 Broker 的，MCP 服务进程必须按以下顺序选择第一个可用的：会话的工具配置明确指定的 Broker；本账户下正在运行的用户级 Broker；本账户有权使用的系统级 Broker。
+会话尚未选定 Broker 时，存在多个可用的 Broker，MCP 服务进程必须按以下顺序选择第一个可用的：本账户下正在运行的用户级 Broker；本账户有权使用的系统级 Broker。
 
-- **验收**：主机上同时运行着系统级 Broker 和账户甲的用户级 Broker，系统级 Broker 监听 `:17443`，甲的用户级 Broker 监听 `:17444`。甲的会话在未作指定时登记在甲的用户级 Broker 上；甲的工具配置指定了系统级 Broker 时登记在系统级 Broker 上；没有用户级 Broker 的账户乙的会话登记在系统级 Broker 上。
+- **验收**：主机上同时运行着系统级 Broker 和账户甲的用户级 Broker，系统级 Broker 监听 `:17443`，甲的用户级 Broker 监听 `:17444`。甲的会话登记在甲的用户级 Broker 上；甲的用户级 Broker 停止后新开的会话登记在系统级 Broker 上；没有用户级 Broker 的账户乙的会话登记在系统级 Broker 上。会话的环境中设置 `AGENT_PEER_SOCKET` 不影响选择。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/select_reregister_test.go` 的 `TestSelectOrderReq026`
 

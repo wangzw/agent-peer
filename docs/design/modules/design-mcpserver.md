@@ -73,8 +73,6 @@ MCP 服务的使用说明随工具一起进入会话上下文。下列要点是�
 - 不要在短时间内向同一个 Agent 重复发送内容完全相同的消息：接收方会丢弃重复的那一条，而发送照样返回成功（[ADR-no-broker-rate-limiting](../../adr/adr-no-broker-rate-limiting.md)）。
 - 本会话中遭到拒绝或会遭到拦截的操作，不得请其他 Agent 代做。
 
-环境变量 `AGENT_PEER_SOCKET` 指定要连接的本机 socket，用于会话的工具配置明确选定某个 Broker 的情形。
-
 项目配置文件是工作区内的 `.agent-peer.yaml`，从会话工作目录向上逐级查找，以先找到的为准。查找时跟随符号链接：链接指向普通文件时按普通文件采用；链接悬空、或它指向的不是普通文件时，视作没有这个文件，继续向上查找。
 
 ```yaml
@@ -94,23 +92,22 @@ auto_join: true                               # 设为 false 时不自动加入�
 
 | 顺序 | 条件 | 连接 |
 |---|---|---|
-| 一 | 环境变量 `AGENT_PEER_SOCKET` 非空 | 它指定的本机 socket；连接不上即失败，不再往下找 |
-| 二 | 本账户的用户级 Broker 的本机 socket 上有进程应答 | 该 socket |
-| 三 | 系统级 Broker 的本机 socket 存在，本账户有权连接，且连接被接受 | 该 socket |
-| 四 | 以上都不成立 | 不连接；进入 `PhaseNoBroker`，工具调用返回错误 |
+| 一 | 本账户的用户级 Broker 的本机 socket 上有进程应答 | 该 socket |
+| 二 | 系统级 Broker 的本机 socket 存在，本账户有权连接，且连接被接受 | 该 socket |
+| 三 | 以上都不成立 | 不连接；进入 `PhaseNoBroker`，工具调用返回错误 |
 
-是否有可用的 Broker，以能否连上它的本机 socket 判定：socket 不存在、本账户无权连接或连接被拒绝，都算不可用。管理员用系统级 Broker 本机 socket 的文件权限限定哪些账户可以使用它（`REQ-broker-config-027`），无权连接的账户落到第四步。系统级 socket 存在、本账户有权连接而连接被拒绝时，在 10 秒内按退避重试连接；其间连上即选定系统级，10 秒后仍无应答视为不可用，落到第四步。已选定并登记在系统级 Broker 上的会话断开后不重新选定，只按退避重连同一个 socket。本账户已有用户级 Broker 在运行时，即使主机上另有系统级 Broker，也连接用户级的那个。root 账户的用户级与系统级 socket 是同一路径，按用户级处理，不重复探测。
+是否有可用的 Broker，以能否连上它的本机 socket 判定：socket 不存在、本账户无权连接或连接被拒绝，都算不可用。管理员用系统级 Broker 本机 socket 的文件权限限定哪些账户可以使用它（`REQ-broker-config-027`），无权连接的账户落到第三步。系统级 socket 存在、本账户有权连接而连接被拒绝时，在 10 秒内按退避重试连接；其间连上即选定系统级，10 秒后仍无应答视为不可用，落到第三步。已选定并登记在系统级 Broker 上的会话断开后不重新选定，只按退避重连同一个 socket。本账户已有用户级 Broker 在运行时，即使主机上另有系统级 Broker，也连接用户级的那个。root 账户的用户级与系统级 socket 是同一路径，按用户级处理，不重复探测。
 
-连上一个 socket 之后，在发出任何数据之前，本进程读取另一端进程的凭据，取得对端进程的有效 uid 并核对。本账户的用户级 Broker 的 socket，对端 uid 必须等于本进程的有效 uid；系统级 Broker 的 socket，对端 uid 必须为 0；`AGENT_PEER_SOCKET` 指定的 socket，对端 uid 必须等于本进程的有效 uid 或 0。不符的 socket 按不可用处理，错误文字写明路径与对端 uid。用户级的 socket 不符时直接报错；启动另一个 Broker 也无法绑定这个路径。选定之后建立连接时同样核对，socket 在选定之后被别的账户接管也不会用到。
+连上一个 socket 之后，在发出任何数据之前，本进程读取另一端进程的凭据，取得对端进程的有效 uid 并核对。本账户的用户级 Broker 的 socket，对端 uid 必须等于本进程的有效 uid；系统级 Broker 的 socket，对端 uid 必须为 0。不符的 socket 按不可用处理，错误文字写明路径与对端 uid。用户级的 socket 不符时直接报错；启动另一个 Broker 也无法绑定这个路径。选定之后建立连接时同样核对，socket 在选定之后被别的账户接管也不会用到。
 
 ### 没有可用的 Broker
 
-前三步都不成立时，MCP 服务进程不启动 Broker，进入 `PhaseNoBroker`，工具调用返回 `internal` 码的错误。错误文字先说明本机若有系统级 Broker，应请管理员启动它，再给出用户级的两种启动方法：以 `agent-peer service install` 安装并启用用户级服务，或者在 Claude Code 会话之外的终端里运行 `agent-peer broker`；在会话里启动的 Broker 在检查到自己在会话的进程树内时以退出码 6 失败。后台按连接退避重新执行完整的“选定 Broker”，不设单独的退避。用户改用其他监听地址并重新启动 Broker 后，下一次选定即可成功（`REQ-broker-config-024`、`REQ-broker-config-038`）。
+前两步都不成立时，MCP 服务进程不启动 Broker，进入 `PhaseNoBroker`，工具调用返回 `internal` 码的错误。错误文字先说明本机若有系统级 Broker，应请管理员启动它，再给出用户级的两种启动方法：以 `agent-peer service install` 安装并启用用户级服务，或者在 Claude Code 会话之外的终端里运行 `agent-peer broker`；在会话里启动的 Broker 在检查到自己在会话的进程树内时以退出码 6 失败。后台按连接退避重新执行完整的“选定 Broker”，不设单独的退避。用户改用其他监听地址并重新启动 Broker 后，下一次选定即可成功（`REQ-broker-config-024`、`REQ-broker-config-038`）。
 
 ### 启动与登记
 
 1. 启动后立即响应 Claude Code 的 MCP 握手，声明全部工具。握手不等待 Broker：Claude Code 在握手超过 30 秒未完成时把 MCP 服务标为失败，要用户手动重新连接（`REQ-agent-messaging-038`）。
-2. 在后台按“选定 Broker”连接 Broker，调用 `Hello` 比较本机协议版本。不兼容时不再登记，之后的每次工具调用都返回提示重启 Broker 的 `version_mismatch` 错误（`REQ-broker-config-016`）。连接不设空闲超时，不兼容后也不轮询 Broker，而是等这条连接离开 READY，即 Broker 退出或重启，再按重连规则连回并重新调用 `Hello`，兼容后开始登记。给模型的文字按选定的种类给出做法：用户级 Broker 提示以同一个 agent-peer 版本重启本账户的 Broker，并给出启动方法，即用 `agent-peer service install` 安装为用户级服务，或在会话之外的终端运行 `agent-peer broker`；系统级 Broker 提示请管理员以同一个版本重启系统服务；`AGENT_PEER_SOCKET` 指定的 Broker 提示以同一个版本重启该路径上的 Broker；这些情形都说明本会话会自行重连。
+2. 在后台按“选定 Broker”连接 Broker，调用 `Hello` 比较本机协议版本。不兼容时不再登记，之后的每次工具调用都返回提示重启 Broker 的 `version_mismatch` 错误（`REQ-broker-config-016`）。连接不设空闲超时，不兼容后也不轮询 Broker，而是等这条连接离开 READY，即 Broker 退出或重启，再按重连规则连回并重新调用 `Hello`，兼容后开始登记。给模型的文字按选定的种类给出做法：用户级 Broker 提示以同一个 agent-peer 版本重启本账户的 Broker，并给出启动方法，即用 `agent-peer service install` 安装为用户级服务，或在会话之外的终端运行 `agent-peer broker`；系统级 Broker 提示请管理员以同一个版本重启系统服务；这些情形都说明本会话会自行重连。
 3. 打开 `Register` 流，上行首帧带两项：环境变量 `CLAUDE_CODE_MESSAGING_SOCKET` 的值，可以为空；环境变量 `CLAUDE_CONFIG_DIR` 的值，可以为空。本进程不读会话注册表，记录的查找、等待与核对由 Broker 完成，见 [broker](design-broker.md)。
 4. 收到下行流发出的登记完成后，计算默认 topic 并逐个调用加入。下行流发出 `not_registered` 时记下原因，流保持打开，等待 Broker 此后发出登记完成。
 
@@ -122,7 +119,7 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 
 ### 重新登记
 
-`Register` 流断开后，`mcpserver` 按退避重连原来那个 Broker 并重新登记，不等下一次工具调用，也不改连其他 Broker（`REQ-broker-config-037`）。用户级 Broker 与系统级 Broker 都只按退避重连原来的本机 socket，不启动 Broker：用户级等待用户级的服务管理机制或用户把它重新启动，系统级等待系统的服务管理机制把它重新启动，都不从“选定 Broker”重新开始。`AGENT_PEER_SOCKET` 指定的 Broker 断开后同样只按退避重连同一 socket。重连失败时，用户级 Broker 的 socket 不存在或拒绝连接的，说明没有 Broker 在监听，工具调用返回与首次找不到相同的文字；Broker 被强杀而没有删除 socket 文件时同样如此。会话原本登记在系统级 Broker 上的，只说明系统级 Broker 不可用并请用户联系管理员，不提用户级启动方法。用户级 socket 有应答而握手或调用失败的，只说该 Broker 不可用并在后台重试（`REQ-broker-config-037`、`REQ-broker-config-038`）。登记首帧的两个环境变量只在进程启动时读取一次，此后每次重新登记使用同一对值。连接退避首次等待 250ms，此后每次翻倍，封顶 5 秒；只有收到登记完成才复位，`Hello` 成功不复位。
+`Register` 流断开后，`mcpserver` 按退避重连原来那个 Broker 并重新登记，不等下一次工具调用，也不改连其他 Broker（`REQ-broker-config-037`）。用户级 Broker 与系统级 Broker 都只按退避重连原来的本机 socket，不启动 Broker：用户级等待用户级的服务管理机制或用户把它重新启动，系统级等待系统的服务管理机制把它重新启动，都不从“选定 Broker”重新开始。重连失败时，用户级 Broker 的 socket 不存在或拒绝连接的，说明没有 Broker 在监听，工具调用返回与首次找不到相同的文字；Broker 被强杀而没有删除 socket 文件时同样如此。会话原本登记在系统级 Broker 上的，只说明系统级 Broker 不可用并请用户联系管理员，不提用户级启动方法。用户级 socket 有应答而握手或调用失败的，只说该 Broker 不可用并在后台重试（`REQ-broker-config-037`、`REQ-broker-config-038`）。登记首帧的两个环境变量只在进程启动时读取一次，此后每次重新登记使用同一对值。连接退避首次等待 250ms，此后每次翻倍，封顶 5 秒；只有收到登记完成才复位，`Hello` 成功不复位。
 
 重新登记以同一个 socket 路径进行，得到的 Agent 标识不变；消歧标识按当时本 Broker 上的 Agent 集合重新计算，集合未变时其他 Agent 手里的地址继续有效。登记完成后按原来的公开声明与简介重新加入本进程记着的全部 topic；Broker 撤销登记后再次发出登记完成时同样如此。默认 topic 只在本进程第一次收到登记完成时确定一次，结果先记入记忆再逐个加入，加入途中断开时下次仍能恢复。Broker 已改为不公开的，公开声明失败，该 topic 仍以不公开方式加入。带错误详情而被拒绝的不公开 topic 从记忆中删除，没有错误详情的错误（连接中断）保留，等下一次登记完成再试。本进程退出后，它记着的 topic 随之丢失：MCP 服务被停用后重新启用，新的进程只重新加入默认 topic。
 
@@ -172,7 +169,6 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 
 | 情形 | 工具调用得到 |
 |---|---|
-| `AGENT_PEER_SOCKET` 指定的 socket 连接不上 | 错误，说明该 socket 不可用；不改连其他 Broker |
 | 没有可用的 Broker | 错误；首次找不到时先请用户联系管理员启动系统级 Broker，再给出用户级两种启动方法；原本使用系统级 Broker 而断开的，只说明系统级 Broker 不可用并请用户联系管理员 |
 | 本机协议版本不兼容 | `version_mismatch`，提示重启 Broker |
 | Broker 连接不上，或正在重新连接 | 错误，说明 Broker 不可用、正在重试 |

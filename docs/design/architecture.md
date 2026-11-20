@@ -145,7 +145,7 @@ MCP 服务进程由 Claude Code 作为会话的子进程启动，生命周期与
 
 各类文件的位置随形态而定，完整的路径表见 [config](modules/design-config.md)：用户级的配置、数据与审计日志在账户的 `~/.agent-peer/` 下，系统级的分别在 `/etc/agent-peer/`、`/var/lib/agent-peer/` 与 `/var/log/agent-peer/` 下；运行时目录内有本机 socket 和账户锁，账户锁是保证同一账户至多运行一个 Broker 实例的锁文件；运行时目录只取决于账户，与形态、配置内容、监听地址和环境变量无关。系统级服务在 macOS 上是 launchd 的守护进程，在 Linux 上是 systemd 的系统单元；用户级服务在 macOS 上是 launchd 的用户代理，在 Linux 上是 systemd 的用户单元。两种服务都在安装时立即启动 Broker 并等待本机 socket 应答；卸载先停止服务再删除服务定义，配置、身份与审计日志保留。
 
-MCP 服务进程连接哪个 Broker 按固定的顺序确定：环境变量指定的、本账户正在运行的用户级 Broker、本账户有权连接的系统级 Broker，都没有时不启动 Broker，工具调用返回说明没有可用 Broker 及如何启动的错误，后台按连接退避重新选定（`REQ-broker-config-026`、`REQ-broker-config-038`）。MCP 服务进程不启动任何 Broker。
+MCP 服务进程连接哪个 Broker 按固定的顺序确定：本账户正在运行的用户级 Broker、本账户有权连接的系统级 Broker，都没有时不启动 Broker，工具调用返回说明没有可用 Broker 及如何启动的错误，后台按连接退避重新选定（`REQ-broker-config-026`、`REQ-broker-config-038`）。MCP 服务进程不启动任何 Broker。
 
 ## 数据流
 
@@ -297,7 +297,7 @@ Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间�
 - 向会话 inbox socket 的写入总以该会话所属账户的身份进行。
 - MCP 服务进程不启动任何 Broker，只连接正在运行的 Broker。
 - 远端发来的消息，署名中的别名取自接收方的对端表，不取自投递请求；本机发送的消息，署名中的别名是本机别名。
-- 只有 `inbox` 包引用 inbox 帧格式与会话注册表；`mcpserver` 从 Claude Code 的内部信息中只读取环境变量 `CLAUDE_CODE_MESSAGING_SOCKET` 与 `CLAUDE_CONFIG_DIR`，另读取本系统的 `AGENT_PEER_SOCKET`。
+- 只有 `inbox` 包引用 inbox 帧格式与会话注册表；`mcpserver` 从 Claude Code 的内部信息中只读取环境变量 `CLAUDE_CODE_MESSAGING_SOCKET` 与 `CLAUDE_CONFIG_DIR`。
 - 本项目自己的每个包只引用模块依赖图中自己的箭头所指的本项目包，图中没有环；标准库、外部依赖和 `third_party` 下纳入的源码不受此限。
 
 ## 实现状态
