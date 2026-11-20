@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
 	"github.com/wangzw/agent-peer/internal/config"
 )
 
@@ -2400,7 +2401,7 @@ func TestInstallReportsDegradedAfterReady(t *testing.T) {
 		{
 			name: "local only",
 			state: DegradedState{
-				Level:  "local_only",
+				Level:  localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY,
 				Step:   "listen",
 				Reason: "listen tcp :17443: bind: address already in use",
 				Fix:    "change broker.listen to another port",
@@ -2409,7 +2410,7 @@ func TestInstallReportsDegradedAfterReady(t *testing.T) {
 		{
 			name: "diagnostics only",
 			state: DegradedState{
-				Level:  "diagnostics_only",
+				Level:  localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY,
 				Step:   "audit",
 				Reason: "the audit log is not writable",
 				Fix:    "fix the permissions of ~/.agent-peer/audit.log",
@@ -2491,7 +2492,7 @@ func TestInstallDarwinReportsDegradedAfterReady(t *testing.T) {
 		return nil, nil
 	}
 	opts.Probe = probeAfterStart(&started, 4242)
-	state := DegradedState{Level: "local_only", Reason: "listener unavailable", Fix: "fix broker.listen"}
+	state := DegradedState{Level: localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY, Reason: "listener unavailable", Fix: "fix broker.listen"}
 	opts.StatusProbe = func(string) (DegradedState, bool, error) { return state, true, nil }
 
 	res, err := Install(opts)

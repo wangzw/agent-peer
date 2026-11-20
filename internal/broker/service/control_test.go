@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wangzw/agent-peer/internal/broker/localpb"
 )
 
 // writeInstalledUnit writes the unit file or plist opts names, so Installed
@@ -271,7 +273,7 @@ func TestStartReportsDegraded(t *testing.T) {
 		return nil, nil
 	}
 	opts.Probe = func(string) (int, bool) { return 4242, started }
-	want := DegradedState{Level: "local_only", Step: "listen", Reason: "listen :17443: address already in use", Fix: "change broker.listen"}
+	want := DegradedState{Level: localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY, Step: "listen", Reason: "listen :17443: address already in use", Fix: "change broker.listen"}
 	opts.StatusProbe = func(string) (DegradedState, bool, error) { return want, true, nil }
 
 	res, err := Start(opts)
@@ -749,7 +751,7 @@ func TestRestartDarwinReportsDegradedWithTheFullResult(t *testing.T) {
 	plist := writeInstalledUnit(t, opts)
 	fake.loaded = true
 	fake.pid = 111
-	want := DegradedState{Level: "diagnostics_only", Step: "audit", Reason: "audit log is not writable", Fix: "check the audit log path"}
+	want := DegradedState{Level: localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY, Step: "audit", Reason: "audit log is not writable", Fix: "check the audit log path"}
 	opts.StatusProbe = func(string) (DegradedState, bool, error) { return want, true, nil }
 
 	res, err := Restart(opts)

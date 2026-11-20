@@ -46,24 +46,12 @@ func localBrokerOut(local *localpb.LocalBrokerState) *LocalBrokerOut {
 	out := &LocalBrokerOut{Offline: local.GetOffline()}
 	if degraded := local.GetDegraded(); degraded != nil {
 		out.Degraded = &DegradedStateOut{
-			Level:  degradedLevelOut(degraded.GetLevel()),
+			Level:  localpb.DegradedLevelName(degraded.GetLevel()),
 			Reason: degraded.GetReason(),
 			Fix:    degraded.GetFix(),
 		}
 	}
 	return out
-}
-
-// degradedLevelOut renders a DegradedLevel for the tool result.
-func degradedLevelOut(level localpb.DegradedLevel) string {
-	switch level {
-	case localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY:
-		return "local_only"
-	case localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY:
-		return "diagnostics_only"
-	default:
-		return ""
-	}
 }
 
 // brokerOut turns one BrokerInfo into the tool result shape.

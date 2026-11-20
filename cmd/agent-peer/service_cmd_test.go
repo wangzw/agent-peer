@@ -283,7 +283,7 @@ func TestServiceInstallReportsDegraded(t *testing.T) {
 		{
 			name: "local only",
 			state: service.DegradedState{
-				Level:  "local_only",
+				Level:  service.DegradedLocalOnly,
 				Reason: "listen tcp :17443: bind: address already in use",
 				Fix:    "change broker.listen to another port",
 			},
@@ -293,7 +293,7 @@ func TestServiceInstallReportsDegraded(t *testing.T) {
 		{
 			name: "diagnostics only",
 			state: service.DegradedState{
-				Level:  "diagnostics_only",
+				Level:  service.DegradedDiagnosticsOnly,
 				Reason: "the data directory is not writable",
 				Fix:    "fix the permissions of ~/.agent-peer",
 			},

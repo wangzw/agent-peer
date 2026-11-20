@@ -20,10 +20,19 @@ import (
 // listening and should answer promptly.
 const statusProbeTimeout = 2 * time.Second
 
+// DegradedLevel is the wire enum the degraded state carries.
+type DegradedLevel = localpb.DegradedLevel
+
+// The degraded levels a Status response can carry.
+const (
+	DegradedLocalOnly       = localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY
+	DegradedDiagnosticsOnly = localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY
+)
+
 // DegradedState is the Status a degraded Broker reports, as the service
-// commands print it. Level is "local_only" or "diagnostics_only".
+// commands print it.
 type DegradedState struct {
-	Level  string
+	Level  localpb.DegradedLevel
 	Step   string
 	Reason string
 	Fix    string
@@ -41,8 +50,8 @@ type DegradedError struct {
 // summary still says why the Broker runs degraded.
 func (e *DegradedError) Error() string {
 	msg := "service: the Broker is running degraded"
-	if e.State.Level != "" {
-		msg += " (" + strings.ReplaceAll(e.State.Level, "_", " ") + ")"
+	if e.State.Level != localpb.DegradedLevel_DEGRADED_LEVEL_UNSPECIFIED {
+		msg += " (" + localpb.DegradedLevelLabel(e.State.Level) + ")"
 	}
 	if e.State.Reason != "" {
 		msg += ": " + e.State.Reason
@@ -83,7 +92,7 @@ func defaultStatusProbe(socketPath string) (DegradedState, bool, error) {
 		return DegradedState{}, false, nil
 	}
 	return DegradedState{
-		Level:  degradedLevelName(degraded.GetLevel()),
+		Level:  degraded.GetLevel(),
 		Step:   degraded.GetStep(),
 		Reason: degraded.GetReason(),
 		Fix:    degraded.GetFix(),
@@ -153,17 +162,4 @@ func isSystemSocket(path string) bool {
 		}
 	}
 	return false
-}
-
-// degradedLevelName renders a wire level as the text the service commands
-// print. An unknown level keeps the state degraded with an empty level.
-func degradedLevelName(level localpb.DegradedLevel) string {
-	switch level {
-	case localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY:
-		return "local_only"
-	case localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY:
-		return "diagnostics_only"
-	default:
-		return ""
-	}
 }

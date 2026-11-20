@@ -401,7 +401,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 					})
 					d.Logger.Error(EvStartupFailed, "error", wrapped.Error())
 					d.Logger.Info(EvDegradedEntered,
-						"level", degradedLevelName(listenState.Level),
+						"level", localpb.DegradedLevelName(listenState.Level),
 						"step", listenState.Step,
 						"reason", listenState.Reason,
 					)
@@ -579,7 +579,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 					}
 					if b.setDegraded(state) {
 						deps.Logger.Info(EvDegradedReasonChanged,
-							"level", degradedLevelName(state.Level),
+							"level", localpb.DegradedLevelName(state.Level),
 							"step", state.Step,
 							"reason", state.Reason,
 						)
@@ -749,7 +749,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 		case changed && !diagStarted:
 			deps.Logger.Error(EvStartupFailed, "error", sf.err.Error())
 			deps.Logger.Info(EvDegradedEntered,
-				"level", degradedLevelName(state.Level),
+				"level", localpb.DegradedLevelName(state.Level),
 				"step", state.Step,
 				"reason", state.Reason,
 			)
@@ -757,7 +757,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 			// Already serving diagnostics only: a retry that fails for a new
 			// reason updates the report instead of announcing another entry.
 			deps.Logger.Info(EvDegradedReasonChanged,
-				"level", degradedLevelName(state.Level),
+				"level", localpb.DegradedLevelName(state.Level),
 				"step", state.Step,
 				"reason", state.Reason,
 			)
@@ -879,17 +879,6 @@ func Run(ctx context.Context, opts RunOptions) error {
 		if err := enterDiagnostics(sf); err != nil {
 			return fatalDegraded(err)
 		}
-	}
-}
-
-func degradedLevelName(level localpb.DegradedLevel) string {
-	switch level {
-	case localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY:
-		return "local_only"
-	case localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY:
-		return "diagnostics_only"
-	default:
-		return "unspecified"
 	}
 }
 

@@ -91,7 +91,7 @@ func TestStatusProbeLocalOnly(t *testing.T) {
 		t.Fatal("degraded = false, want true")
 	}
 	want := DegradedState{
-		Level:  "local_only",
+		Level:  localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY,
 		Step:   "listen",
 		Reason: "broker.listen :17443 is in use",
 		Fix:    "change broker.listen",
@@ -117,7 +117,7 @@ func TestStatusProbeDiagnosticsOnly(t *testing.T) {
 		t.Fatal("degraded = false, want true")
 	}
 	want := DegradedState{
-		Level:  "diagnostics_only",
+		Level:  localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY,
 		Step:   "data directory",
 		Reason: "data directory is not writable",
 		Fix:    "fix the ownership of the data directory",
@@ -185,15 +185,9 @@ func TestStatusPeerAllowed(t *testing.T) {
 	}
 }
 
-func TestDegradedLevelNameUnknown(t *testing.T) {
-	if got := degradedLevelName(localpb.DegradedLevel(99)); got != "" {
-		t.Errorf("degradedLevelName(99) = %q, want the empty level", got)
-	}
-}
-
 func TestDegradedErrorIncludesReason(t *testing.T) {
 	err := (&DegradedError{State: DegradedState{
-		Level:  "diagnostics_only",
+		Level:  localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY,
 		Reason: "data directory is not writable",
 	}})
 	msg := err.Error()
@@ -229,7 +223,7 @@ func TestDefaultOptionsSetsStatusProbe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StatusProbe: %v", err)
 	}
-	if !degraded || state.Level != "local_only" || state.Step != "listen" {
+	if !degraded || state.Level != localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY || state.Step != "listen" {
 		t.Errorf("StatusProbe = %+v, degraded %t; want the fake Broker's local-only state", state, degraded)
 	}
 }

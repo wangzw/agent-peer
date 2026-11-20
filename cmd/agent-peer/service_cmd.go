@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/wangzw/agent-peer/internal/broker/service"
+	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
 )
 
 const serviceUsage = "usage: agent-peer service install [--system] [--admin-group <name>]\n" +
@@ -243,17 +244,10 @@ func (a *app) printInstalled(result service.Result, system bool) {
 	}
 }
 
-// printServiceDegraded reports a Broker that is installed and running but
-// degraded. The first two lines match status and peer list: the level as words,
-// then the command or edit that repairs it.
+// printServiceDegraded prints the two status lines the service commands share
+// with the terminal's degraded display.
 func (a *app) printServiceDegraded(state service.DegradedState) {
-	level := strings.ReplaceAll(state.Level, "_", " ")
-	if level != "" {
-		_, _ = fmt.Fprintf(a.stderr, "Broker: degraded (%s): %s\n", level, state.Reason)
-	} else {
-		_, _ = fmt.Fprintf(a.stderr, "Broker: degraded: %s\n", state.Reason)
-	}
-	_, _ = fmt.Fprintf(a.stderr, "Fix: %s\n", state.Fix)
+	_ = termcmd.WriteDegraded(a.stderr, state.Level, state.Reason, state.Fix)
 }
 
 // printUninstalled reports what uninstall removed, or that nothing was

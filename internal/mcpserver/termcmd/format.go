@@ -32,11 +32,11 @@ const emptyCell = "-"
 // Each section is sorted and its columns are aligned with text/tabwriter. An
 // empty section is written as "Agents: none" or "Peers: none".
 func WriteStatus(w io.Writer, resp *localpb.StatusResponse) error {
-	if resp.GetDegraded() != nil {
-		if err := writeDegradedState(w, resp.GetDegraded()); err != nil {
+	if degraded := resp.GetDegraded(); degraded != nil {
+		if err := WriteDegraded(w, degraded.GetLevel(), degraded.GetReason(), degraded.GetFix()); err != nil {
 			return err
 		}
-		if resp.GetDegraded().GetLevel() == localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY {
+		if degraded.GetLevel() == localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY {
 			return nil
 		}
 	}
@@ -108,27 +108,17 @@ func WriteStatus(w io.Writer, resp *localpb.StatusResponse) error {
 	return nil
 }
 
-// writeDegradedState writes the two lines that say why the Broker runs
-// degraded: the cause on the first line and the repair on the second.
-func writeDegradedState(w io.Writer, degraded *localpb.DegradedState) error {
+// WriteDegraded writes the two lines that say why the Broker runs degraded:
+// the level and cause on the first line and the repair on the second. It is
+// the only place these lines are built, so status, peer list and the service
+// commands print the same text.
+func WriteDegraded(w io.Writer, level localpb.DegradedLevel, reason, fix string) error {
 	if _, err := fmt.Fprintf(w, "Broker: degraded (%s): %s\n",
-		degradedLevelName(degraded.GetLevel()), degraded.GetReason()); err != nil {
+		localpb.DegradedLevelLabel(level), reason); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(w, "Fix: %s\n", degraded.GetFix())
+	_, err := fmt.Fprintf(w, "Fix: %s\n", fix)
 	return err
-}
-
-// degradedLevelName renders the level as the words status and peer list use.
-func degradedLevelName(level localpb.DegradedLevel) string {
-	switch level {
-	case localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY:
-		return "local only"
-	case localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY:
-		return "diagnostics only"
-	default:
-		return "unspecified"
-	}
 }
 
 // WriteAuditEvent writes ev as one line: the event time, the event name and
@@ -237,7 +227,7 @@ func WritePairingKey(w io.Writer, resp *localpb.CreatePairingKeyResponse) error 
 // produces come before the table, exactly as WriteStatus writes them.
 func WriteBrokerList(w io.Writer, brokers []*localpb.BrokerInfo, local *localpb.LocalBrokerState) error {
 	if degraded := local.GetDegraded(); degraded != nil {
-		if err := writeDegradedState(w, degraded); err != nil {
+		if err := WriteDegraded(w, degraded.GetLevel(), degraded.GetReason(), degraded.GetFix()); err != nil {
 			return err
 		}
 		if degraded.GetLevel() == localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY {

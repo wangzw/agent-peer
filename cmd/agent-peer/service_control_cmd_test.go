@@ -279,14 +279,15 @@ func TestServiceControlNotInstalled(t *testing.T) {
 
 func TestServiceControlDegraded(t *testing.T) {
 	cases := []struct {
-		level string
+		name  string
+		level service.DegradedLevel
 		want  string
 	}{
-		{"local_only", "local only"},
-		{"diagnostics_only", "diagnostics only"},
+		{"local_only", service.DegradedLocalOnly, "local only"},
+		{"diagnostics_only", service.DegradedDiagnosticsOnly, "diagnostics only"},
 	}
 	for _, tc := range cases {
-		t.Run(tc.level, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			state := service.DegradedState{
 				Level:  tc.level,
 				Step:   "listen",
