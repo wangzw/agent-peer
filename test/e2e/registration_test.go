@@ -277,48 +277,12 @@ func TestLocalRegistration(t *testing.T) {
 		// first failing rule, and the MCP server renders that detail verbatim.
 		// The exact sentence is asserted so that the general "empty, or contains
 		// @ or *" sentence cannot satisfy any of these cases.
-		rejected := func(s *harness.Session, name, detail string, listed func(addr string) bool) {
-			t.Helper()
-			registrationEventually(t, harness.RegistrationReportBound, fmt.Sprintf("session name %q is reported unusable", name), func(deadline time.Time) (bool, string) {
-				// Bounded like every call a wait makes: a stalled call costs one
-				// poll, and its transport error is a retryable state, so the
-				// wait keeps observing until its own bound instead of failing
-				// from a sixty-second call.
-				r, err := s.PollCall(t, deadline, "list_agents", nil)
-				if err != nil {
-					return false, err.Error()
-				}
-				if !r.IsError {
-					return false, "list_agents succeeded"
-				}
-				if code := r.Code(); code != "not_registered" {
-					return false, "error code is " + code
-				}
-				if !strings.Contains(r.Text, detail) {
-					return false, fmt.Sprintf("the error does not carry the cause %q: %s", detail, r.Text)
-				}
-				return true, ""
-			})
-			harness.Consistently(t, 500*time.Millisecond, fmt.Sprintf("no agent is listed for the unusable name %q", name), func() (bool, string) {
-				out, state := registrationListAgents(t, observer, nil)
-				if state != "" {
-					return false, state
-				}
-				for _, agent := range out.Agents {
-					if listed(agent.Address) {
-						return false, fmt.Sprintf("an agent with address %q was listed", agent.Address)
-					}
-				}
-				return true, ""
-			})
-		}
-
 		// Renaming the session after the Broker reported the "@" lets the
 		// registration connection that was left open finish: the MCP server
 		// process is not restarted and no second session is started.
 		at := registrationSession(t, host, "a@b", workspace)
 		defer at.End(t)
-		rejected(at, "a@b", `the session name contains "@"`, func(addr string) bool {
+		registrationRejected(t, at, observer, "a@b", `the session name contains "@"`, func(addr string) bool {
 			return strings.Contains(addr, "a@b")
 		})
 
@@ -336,13 +300,13 @@ func TestLocalRegistration(t *testing.T) {
 
 		star := registrationSession(t, host, "a*b", workspace)
 		defer star.End(t)
-		rejected(star, "a*b", `the session name contains "*"`, func(addr string) bool {
+		registrationRejected(t, star, observer, "a*b", `the session name contains "*"`, func(addr string) bool {
 			return strings.Contains(addr, "a*b")
 		})
 
 		empty := registrationSession(t, host, "", workspace)
 		defer empty.End(t)
-		rejected(empty, "", "the session name is empty", func(addr string) bool {
+		registrationRejected(t, empty, observer, "", "the session name is empty", func(addr string) bool {
 			return registrationAddressName(addr) == ""
 		})
 	})
@@ -448,6 +412,42 @@ func registrationWaitRegistered(t *testing.T, s *harness.Session, name string) m
 		return true, ""
 	})
 	return out
+}
+
+// registrationRejected waits until the Broker reports s's session name as
+// unusable and renders detail verbatim, and checks that observer never lists an
+// agent whose address matches listed. The wait retries a stalled list_agents
+// call: its transport error is a state, not a failure.
+func registrationRejected(t *testing.T, s, observer *harness.Session, name, detail string, listed func(addr string) bool) {
+	t.Helper()
+	registrationEventually(t, harness.RegistrationReportBound, fmt.Sprintf("session name %q is reported unusable", name), func(deadline time.Time) (bool, string) {
+		r, err := s.PollCall(t, deadline, "list_agents", nil)
+		if err != nil {
+			return false, err.Error()
+		}
+		if !r.IsError {
+			return false, "list_agents succeeded"
+		}
+		if code := r.Code(); code != "not_registered" {
+			return false, "error code is " + code
+		}
+		if !strings.Contains(r.Text, detail) {
+			return false, fmt.Sprintf("the error does not carry the cause %q: %s", detail, r.Text)
+		}
+		return true, ""
+	})
+	harness.Consistently(t, 500*time.Millisecond, fmt.Sprintf("no agent is listed for the unusable name %q", name), func() (bool, string) {
+		out, state := registrationListAgents(t, observer, nil)
+		if state != "" {
+			return false, state
+		}
+		for _, agent := range out.Agents {
+			if listed(agent.Address) {
+				return false, fmt.Sprintf("an agent with address %q was listed", agent.Address)
+			}
+		}
+		return true, ""
+	})
 }
 
 // registrationListAgents calls list_agents outside a wait, with the harness's

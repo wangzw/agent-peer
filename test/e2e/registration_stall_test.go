@@ -5,8 +5,13 @@ package e2e
 import (
 	"context"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
 	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
@@ -117,6 +122,82 @@ func TestWaitRegisteredToleratesASlowUpdateCheck(t *testing.T) {
 		t.Fatalf("WaitRegistered returned after %s, want at least the %s update check and %s handler delays; the call did not exercise the hint", elapsed, updateCheckDelay, handlerDelay)
 	}
 	t.Logf("WaitRegistered passed after %s with a %s update check", elapsed, updateCheckDelay)
+}
+
+// TestWaitRegisteredRetriesAStalledCall checks that one stalled list_agents call
+// is retried instead of failing the wait. The fake Broker's first ListAgents
+// request blocks until its context is cancelled, which is the poll bound; the
+// next request answers. WaitRegistered must pass, with two Broker calls
+// recorded, which shows the first call was abandoned and made again.
+func TestWaitRegisteredRetriesAStalledCall(t *testing.T) {
+	var calls atomic.Int32
+	srv := fakelocal.Start(t, fakelocal.SocketPath(t), fakelocal.Handlers{
+		ListAgents: func(ctx context.Context, _ *localpb.ListAgentsRequest) (*localpb.ListAgentsResponse, error) {
+			if calls.Add(1) == 1 {
+				<-ctx.Done()
+				return nil, status.Error(codes.DeadlineExceeded, "the first ListAgents request stalled")
+			}
+			return &localpb.ListAgentsResponse{}, nil
+		},
+	})
+	s, _ := registrationStalledSession(t, srv, "stalled-then-registered", "retry-agent", "retry@test")
+
+	harness.WaitRegistered(t, s, harness.ToolCallWaitBound)
+
+	if got := calls.Load(); got < 2 {
+		t.Fatalf("the Broker answered %d ListAgents calls, want the stalled one retried", got)
+	}
+}
+
+// TestRegistrationRejectedRetriesAStalledCall checks the same retry through the
+// unusable-name wait. The rejected session's first list_agents call reaches the
+// Broker and stalls until the poll bound; the fake Broker then reports the name
+// unusable on the open Register stream, and the next poll observes the
+// not_registered result. The observer proves that no agent is listed for the
+// name.
+func TestRegistrationRejectedRetriesAStalledCall(t *testing.T) {
+	const detail = `the session name contains "@"`
+	var (
+		mu      sync.Mutex
+		starReg *fakelocal.RegisterConn
+		stalled atomic.Bool
+	)
+	srv := fakelocal.Start(t, fakelocal.SocketPath(t), fakelocal.Handlers{
+		ListAgents: func(ctx context.Context, req *localpb.ListAgentsRequest) (*localpb.ListAgentsResponse, error) {
+			if req.GetAgentId() != "star-agent" {
+				return &localpb.ListAgentsResponse{}, nil
+			}
+			if !stalled.CompareAndSwap(false, true) {
+				return &localpb.ListAgentsResponse{}, nil
+			}
+			<-ctx.Done()
+			mu.Lock()
+			conn := starReg
+			mu.Unlock()
+			if conn != nil {
+				_ = conn.Send(&localpb.RegisterResponse{
+					Event: &localpb.RegisterResponse_NotRegistered{
+						NotRegistered: &localpb.RegistrationProblem{
+							Reason: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_NAME_UNUSABLE,
+							Detail: detail,
+						},
+					},
+				})
+			}
+			return nil, status.Error(codes.DeadlineExceeded, "the first list_agents call stalled")
+		},
+	})
+	observer, _ := registrationStalledSession(t, srv, "observer", "observer-agent", "observer@test")
+	harness.WaitRegistered(t, observer, harness.ToolCallWaitBound)
+
+	star, conn := registrationStalledSession(t, srv, "a@b", "star-agent", "a@b@test")
+	mu.Lock()
+	starReg = conn
+	mu.Unlock()
+
+	registrationRejected(t, star, observer, "a@b", detail, func(addr string) bool {
+		return strings.Contains(addr, "a@b")
+	})
 }
 
 // registrationStalledSession starts a session whose MCP server talks to srv,
