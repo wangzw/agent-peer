@@ -304,7 +304,10 @@ func TestInstallLinuxStepFailures(t *testing.T) {
 		{
 			name:    "daemon-reload",
 			trigger: "daemon-reload",
-			want:    []string{"systemctl --user daemon-reload"},
+			want: []string{
+				"systemctl --user daemon-reload",
+				"systemctl --user disable --now agent-peer.service",
+			},
 		},
 		{
 			name:    "enable",
@@ -312,6 +315,7 @@ func TestInstallLinuxStepFailures(t *testing.T) {
 			want: []string{
 				"systemctl --user daemon-reload",
 				"systemctl --user enable agent-peer.service",
+				"systemctl --user disable --now agent-peer.service",
 			},
 		},
 		{
@@ -321,6 +325,7 @@ func TestInstallLinuxStepFailures(t *testing.T) {
 				"systemctl --user daemon-reload",
 				"systemctl --user enable agent-peer.service",
 				"systemctl --user restart agent-peer.service",
+				"systemctl --user disable --now agent-peer.service",
 			},
 		},
 	}
@@ -913,14 +918,15 @@ func TestInstallDarwinUser(t *testing.T) {
 	wantCmds := []string{
 		"launchctl print gui/501",
 		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl enable gui/501/io.github.wangzw.agent-peer",
 		"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
 		"launchctl print gui/501/io.github.wangzw.agent-peer",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
-	if !slices.Equal(res.Commands, wantCmds[1:3]) {
-		t.Errorf("Result.Commands = %q, want %q", res.Commands, wantCmds[1:3])
+	if !slices.Equal(res.Commands, wantCmds[1:4]) {
+		t.Errorf("Result.Commands = %q, want %q", res.Commands, wantCmds[1:4])
 	}
 	if res.Domain != "gui/501" {
 		t.Errorf("Domain = %q, want gui/501", res.Domain)
@@ -971,9 +977,16 @@ func TestInstallDarwinBootoutFailure(t *testing.T) {
 	wantCmds := []string{
 		"launchctl print gui/501",
 		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl disable gui/501/io.github.wangzw.agent-peer",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
+	}
+	for _, want := range []string{"could not be stopped", "will not start automatically"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
 	}
 	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
 	if _, err := os.Stat(plist); err != nil {
@@ -981,7 +994,12 @@ func TestInstallDarwinBootoutFailure(t *testing.T) {
 	}
 }
 
-func TestInstallDarwinBootstrapFailureRollsBackThePlist(t *testing.T) {
+// TestInstallDarwinBootstrapFailureKeepsThePlistDisabled checks the rollback of
+// a failed bootstrap. The plist is kept and its label disabled: launchd loads
+// every plist under LaunchAgents at login, so disable is what stops the failed
+// installation from starting a Broker, and the error's recovery command can
+// bootstrap the same plist once the cause is fixed.
+func TestInstallDarwinBootstrapFailureKeepsThePlistDisabled(t *testing.T) {
 	opts := baseOptions(t)
 	opts.GOOS = "darwin"
 	opts.EUID = 501
@@ -1003,41 +1021,39 @@ func TestInstallDarwinBootstrapFailureRollsBackThePlist(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "Bootstrap failed") {
 		t.Fatalf("Install error = %v, want the bootstrap failure", err)
 	}
+	for _, want := range []string{"stopped and disabled", "run service install again"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
 	wantCmds := []string{
 		"launchctl print gui/501",
 		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl enable gui/501/io.github.wangzw.agent-peer",
 		"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
+		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl disable gui/501/io.github.wangzw.agent-peer",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
 	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
-	if _, err := os.Stat(plist); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("plist was not rolled back: %v", err)
+	if _, err := os.Stat(plist); err != nil {
+		t.Errorf("plist was not kept after the failed bootstrap: %v", err)
 	}
 }
 
-func TestInstallDarwinBootstrapFailureReportsTheOutputWhenRollbackFails(t *testing.T) {
+func TestInstallDarwinBootstrapFailureReportsTheOutput(t *testing.T) {
 	opts := baseOptions(t)
 	opts.GOOS = "darwin"
 	opts.EUID = 501
 	opts.UID = 501
 	opts.Home = "/Users/alice"
-	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		switch {
 		case len(args) > 0 && args[0] == "bootout":
 			return nil, exitError(t, 3)
 		case len(args) > 0 && args[0] == "bootstrap":
-			// Replace the plist with a non-empty directory so the rollback
-			// cannot remove it.
-			_ = os.Remove(plist)
-			if err := os.Mkdir(plist, 0o755); err != nil {
-				t.Fatalf("creating %s: %v", plist, err)
-			}
-			if err := os.WriteFile(filepath.Join(plist, "keep"), []byte("x"), 0o644); err != nil {
-				t.Fatalf("writing marker: %v", err)
-			}
 			return []byte("Bootstrap failed: 5: Input/output error"), exitError(t, 5)
 		}
 		return nil, nil
@@ -1047,7 +1063,7 @@ func TestInstallDarwinBootstrapFailureReportsTheOutputWhenRollbackFails(t *testi
 	if err == nil {
 		t.Fatal("Install succeeded after a failed bootstrap")
 	}
-	for _, want := range []string{"Bootstrap failed", "could not remove", plist} {
+	for _, want := range []string{"Bootstrap failed: 5: Input/output error", "launchctl bootstrap"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}
@@ -1105,14 +1121,15 @@ func TestInstallDarwinSystem(t *testing.T) {
 
 	wantCmds := []string{
 		"launchctl bootout system/io.github.wangzw.agent-peer",
+		"launchctl enable system/io.github.wangzw.agent-peer",
 		"launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist",
 		"launchctl print system/io.github.wangzw.agent-peer",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
-	if !slices.Equal(res.Commands, wantCmds[:2]) {
-		t.Errorf("Result.Commands = %q, want %q", res.Commands, wantCmds[:2])
+	if !slices.Equal(res.Commands, wantCmds[:3]) {
+		t.Errorf("Result.Commands = %q, want %q", res.Commands, wantCmds[:3])
 	}
 	if res.Domain != "system" {
 		t.Errorf("Domain = %q, want system", res.Domain)
@@ -1241,6 +1258,7 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 			"launchctl print gui/501",
 			"launchctl print gui/501/io.github.wangzw.agent-peer",
 			"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+			"launchctl enable gui/501/io.github.wangzw.agent-peer",
 			"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
 			"launchctl print gui/501/io.github.wangzw.agent-peer",
 		}
@@ -1490,6 +1508,16 @@ func commandIndex(cmds []string, want string) int {
 	return slices.Index(cmds, want)
 }
 
+func commandCount(cmds []string, want string) int {
+	count := 0
+	for _, cmd := range cmds {
+		if cmd == want {
+			count++
+		}
+	}
+	return count
+}
+
 func TestInstallRefusesAnOccupiedListenAddress(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -1524,9 +1552,209 @@ func TestInstallRefusesAnOccupiedListenAddress(t *testing.T) {
 	if !strings.Contains(err.Error(), "leave it empty") {
 		t.Errorf("error %q does not suggest an empty broker.listen", err)
 	}
-	for _, verb := range []string{"enable", "restart"} {
+	for _, verb := range []string{"stop", "disable", "enable", "restart"} {
 		if cmd := "systemctl --user " + verb + " " + UnitName; slices.Contains(cmds, cmd) {
 			t.Errorf("commands = %q, want no %q before the listen precheck passes", cmds, cmd)
+		}
+	}
+	// The unit is written only after the precheck, so a fresh installation that
+	// cannot use its address leaves no service definition to start at boot.
+	unit := rooted(opts, "/home/alice/.config/systemd/user/"+UnitName)
+	if _, statErr := os.Stat(unit); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Errorf("unit file %s exists after the precheck failed: %v", unit, statErr)
+	}
+}
+
+// TestInstallDarwinLeavesNoAutostartServiceAfterAPrecheckFailure checks that a
+// failed macOS precheck writes no plist. launchd loads every plist in the
+// LaunchAgents and LaunchDaemons directories at login and boot, so a plist
+// left behind would start a Broker that cannot bind.
+func TestInstallDarwinLeavesNoAutostartServiceAfterAPrecheckFailure(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	addr := ln.Addr().String()
+
+	opts := baseOptions(t)
+	opts.GOOS = "darwin"
+	opts.EUID = 501
+	opts.UID = 501
+	opts.Home = "/Users/alice"
+	writeListenConfig(t, opts, addr)
+	var cmds []string
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501/"+Label:
+			return []byte("Could not find service"), exitError(t, 113)
+		}
+		return nil, nil
+	}
+	opts.Probe = func(string) (int, bool) { return 0, false }
+	opts.ListenProbe = config.ProbeListen
+
+	_, err = Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded while broker.listen was held by another process")
+	}
+	plist := rooted(opts, "/Users/alice/Library/LaunchAgents/"+Label+".plist")
+	if _, statErr := os.Stat(plist); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Errorf("plist %s exists after the precheck failed: %v", plist, statErr)
+	}
+	for _, cmd := range cmds {
+		if strings.Contains(cmd, "bootstrap") || strings.Contains(cmd, "bootout") {
+			t.Errorf("commands = %q, want no launchd state change after the precheck failed", cmds)
+		}
+	}
+}
+
+// TestInstallDisablesTheServiceWhenThePrecheckStopFails checks the case where
+// the service holding broker.listen cannot be stopped. The failed installation
+// must still disable the service, and the error must say that it will not start
+// automatically and give the command that restores it. Without both texts the
+// operator finds a disabled service and is not told why or how to bring it
+// back.
+func TestInstallDisablesTheServiceWhenThePrecheckStopFails(t *testing.T) {
+	t.Run("linux user", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen: %v", err)
+		}
+		defer func() { _ = ln.Close() }()
+		addr := ln.Addr().String()
+
+		opts := baseOptions(t)
+		writeListenConfig(t, opts, addr)
+		var cmds []string
+		opts.Run = func(name string, args ...string) ([]byte, error) {
+			cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+			switch {
+			case slices.Contains(args, "show"):
+				return []byte("4242\n"), nil
+			case slices.Contains(args, "stop"):
+				return []byte("Job for agent-peer.service failed"), errors.New("exit status 1")
+			}
+			return nil, nil
+		}
+		opts.Probe = func(string) (int, bool) { return 4242, true }
+		opts.ListenProbe = config.ProbeListen
+
+		_, err = Install(opts)
+		if err == nil {
+			t.Fatal("Install succeeded although the service holding broker.listen could not be stopped")
+		}
+		for _, want := range []string{
+			"could not be stopped",
+			"will not start automatically",
+			"systemctl --user enable --now " + UnitName,
+		} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not contain %q", err, want)
+			}
+		}
+		if got := commandCount(cmds, "systemctl --user disable --now "+UnitName); got != 1 {
+			t.Errorf("disable commands = %d, want 1 in %q", got, cmds)
+		}
+	})
+
+	t.Run("darwin user", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen: %v", err)
+		}
+		defer func() { _ = ln.Close() }()
+		addr := ln.Addr().String()
+
+		opts := baseOptions(t)
+		opts.GOOS = "darwin"
+		opts.EUID = 501
+		opts.UID = 501
+		opts.Home = "/Users/alice"
+		writeListenConfig(t, opts, addr)
+		var cmds []string
+		opts.Run = func(name string, args ...string) ([]byte, error) {
+			cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+			switch {
+			case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+				return []byte("com.apple.launchd\n"), nil
+			case len(args) == 2 && args[0] == "print" && args[1] == "gui/501/"+Label:
+				return []byte("pid = 4242\n"), nil
+			case len(args) > 0 && args[0] == "bootout":
+				return []byte("Boot-out failed: 5: Input/output error"), exitError(t, 5)
+			}
+			return nil, nil
+		}
+		opts.Probe = func(string) (int, bool) { return 4242, true }
+		opts.ListenProbe = config.ProbeListen
+
+		_, err = Install(opts)
+		if err == nil {
+			t.Fatal("Install succeeded although the service holding broker.listen could not be booted out")
+		}
+		for _, want := range []string{
+			"could not be stopped",
+			"will not start automatically",
+			"launchctl enable gui/501/" + Label,
+			"launchctl bootstrap gui/501",
+		} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not contain %q", err, want)
+			}
+		}
+		if got := commandCount(cmds, "launchctl disable gui/501/"+Label); got != 1 {
+			t.Errorf("disable commands = %d, want 1 in %q", got, cmds)
+		}
+		plist := rooted(opts, "/Users/alice/Library/LaunchAgents/"+Label+".plist")
+		if _, statErr := os.Stat(plist); !errors.Is(statErr, fs.ErrNotExist) {
+			t.Errorf("plist %s exists after the precheck failed: %v", plist, statErr)
+		}
+	})
+}
+
+// TestInstallRefusesAnExternalOccupantWithoutStoppingTheService checks the
+// occupant identification: a same-named service may be running while another
+// process holds broker.listen. The installation must reject the address and
+// leave the running service alone, because stopping it would take down a
+// healthy Broker that is not the occupant.
+func TestInstallRefusesAnExternalOccupantWithoutStoppingTheService(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	addr := ln.Addr().String()
+
+	opts := baseOptions(t)
+	writeListenConfig(t, opts, addr)
+	var cmds []string
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		if slices.Contains(args, "show") {
+			// The service manager reports a running process, but that Broker is
+			// not the one holding the address.
+			return []byte("4242\n"), nil
+		}
+		return nil, nil
+	}
+	opts.Probe = func(string) (int, bool) { return 0, false }
+	opts.ListenProbe = config.ProbeListen
+
+	_, err = Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded while an external process held broker.listen")
+	}
+	if !strings.Contains(err.Error(), "already in use") {
+		t.Errorf("error %q does not say the address is already in use", err)
+	}
+	for _, cmd := range cmds {
+		for _, verb := range []string{"stop", "disable", "enable", "restart", "bootout"} {
+			if strings.Contains(cmd, " "+verb+" ") || strings.HasSuffix(cmd, " "+verb) {
+				t.Errorf("commands = %q, want no %q while the occupant is not this service", cmds, cmd)
+			}
 		}
 	}
 }
@@ -1542,7 +1770,6 @@ func TestInstallReinstallsOverItsOwnRunningService(t *testing.T) {
 	opts := baseOptions(t)
 	writeListenConfig(t, opts, addr)
 	var cmds []string
-	started := false
 	held := true
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
@@ -1554,12 +1781,12 @@ func TestInstallReinstallsOverItsOwnRunningService(t *testing.T) {
 			}
 		case slices.Contains(args, "show"):
 			return []byte("4242\n"), nil
-		case slices.Contains(args, "restart"):
-			started = true
 		}
 		return nil, nil
 	}
-	opts.Probe = probeAfterStart(&started, 4242)
+	// The service's own Broker answers on the local socket with the pid the
+	// service manager reports, so the occupied address is this service's.
+	opts.Probe = func(string) (int, bool) { return 4242, true }
 	opts.ListenProbe = config.ProbeListen
 
 	if _, err := Install(opts); err != nil {
@@ -1577,12 +1804,107 @@ func TestInstallReinstallsOverItsOwnRunningService(t *testing.T) {
 	}
 }
 
+// TestInstallDarwinReinstallWaitsForTheOldServiceToExit checks that a macOS
+// reinstall waits for its own Broker to release broker.listen. bootout returns
+// before the old process has exited; the wait must outlast that delay instead
+// of mistaking the old Broker for a foreign occupant after one second.
+func TestInstallDarwinReinstallWaitsForTheOldServiceToExit(t *testing.T) {
+	opts := baseOptions(t)
+	opts.GOOS = "darwin"
+	opts.EUID = 501
+	opts.UID = 501
+	opts.Home = "/Users/alice"
+	writeListenConfig(t, opts, "127.0.0.1:17448")
+
+	var cmds []string
+	var bootedOut time.Time
+	held := true
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501/"+Label:
+			return []byte("state = running\n\tpid = 4242\n"), nil
+		case len(args) > 0 && args[0] == "bootout":
+			if bootedOut.IsZero() {
+				bootedOut = time.Now()
+				return nil, nil
+			}
+			return nil, exitError(t, 3)
+		}
+		return nil, nil
+	}
+	opts.Probe = func(string) (int, bool) { return 4242, true }
+	opts.ListenProbe = func(addr string) error {
+		if held && !bootedOut.IsZero() && time.Since(bootedOut) >= 1500*time.Millisecond {
+			held = false
+		}
+		if held {
+			return fmt.Errorf("cannot bind %q: %w", addr, syscall.EADDRINUSE)
+		}
+		return nil
+	}
+
+	if _, err := Install(opts); err != nil {
+		t.Fatalf("reinstall after the old Broker needed 1.5s to release the address: %v", err)
+	}
+	if bootedOut.IsZero() {
+		t.Fatalf("commands = %q, want the reinstall to boot out the running service", cmds)
+	}
+}
+
+// TestInstallReportsAStoppedServiceWhenTheAddressStaysBusy checks the message
+// of the one remaining path that stops a running service and still fails: the
+// service owned the address, but it did not release it within the bound. The
+// error must say the existing service was stopped, give a recovery command,
+// and the failure must leave the unit unable to start at boot.
+func TestInstallReportsAStoppedServiceWhenTheAddressStaysBusy(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	addr := ln.Addr().String()
+
+	opts := baseOptions(t)
+	writeListenConfig(t, opts, addr)
+	var cmds []string
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		if slices.Contains(args, "show") {
+			return []byte("4242\n"), nil
+		}
+		return nil, nil
+	}
+	opts.Probe = func(string) (int, bool) { return 4242, true }
+	opts.ListenProbe = config.ProbeListen
+	opts.StopTimeout = 30 * time.Millisecond
+
+	_, err = Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded while broker.listen stayed occupied")
+	}
+	for _, want := range []string{
+		"already in use",
+		"the existing service was stopped",
+		"systemctl --user enable --now agent-peer.service",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if cmd := "systemctl --user disable --now " + UnitName; !slices.Contains(cmds, cmd) {
+		t.Errorf("commands = %q, want %q so the stopped service does not start at boot", cmds, cmd)
+	}
+}
+
 func TestInstallReportsTheStartupFailureOnTimeout(t *testing.T) {
 	const reason = "listen tcp :17443: bind: address already in use"
 	fakeRun := func(name string, args ...string) ([]byte, error) {
 		switch {
 		case name == "journalctl":
-			return []byte(fmt.Sprintf("{\"event\":\"startup_failed\",\"error\":%q}\n", reason)), nil
+			return []byte(fmt.Sprintf("{\"time\":%q,\"event\":\"startup_failed\",\"error\":%q}\n", time.Now().UTC().Format(time.RFC3339Nano), reason)), nil
 		case slices.Contains(args, "show"):
 			return []byte("4242\n"), nil
 		}
@@ -1614,13 +1936,18 @@ func TestInstallReportsTheStartupFailureOnTimeout(t *testing.T) {
 		if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		line := fmt.Sprintf("{\"event\":\"broker_started\"}\n{\"event\":\"startup_failed\",\"error\":%q}\n", reason)
-		if err := os.WriteFile(logPath, []byte(line), 0o600); err != nil {
-			t.Fatal(err)
-		}
 		opts.Run = func(name string, args ...string) ([]byte, error) {
-			if len(args) > 0 && args[0] == "bootout" {
+			switch {
+			case len(args) > 0 && args[0] == "bootout":
 				return nil, exitError(t, 3)
+			case len(args) > 0 && args[0] == "bootstrap":
+				// The Broker writes the record while it starts, after the
+				// installation began.
+				now := time.Now().UTC().Format(time.RFC3339Nano)
+				line := fmt.Sprintf("{\"time\":%q,\"event\":\"broker_started\"}\n{\"time\":%q,\"event\":\"startup_failed\",\"error\":%q}\n", now, now, reason)
+				if err := os.WriteFile(logPath, []byte(line), 0o600); err != nil {
+					t.Fatalf("writing %s: %v", logPath, err)
+				}
 			}
 			return nil, nil
 		}
@@ -1634,7 +1961,74 @@ func TestInstallReportsTheStartupFailureOnTimeout(t *testing.T) {
 	})
 }
 
-func TestInstallUninstallsAfterAReadinessFailure(t *testing.T) {
+// TestInstallIgnoresStartupFailuresBeforeTheInstallStarted checks that a
+// readiness timeout reports only records written after this installation
+// began. An old startup_failed record describes an earlier run and would send
+// the operator after a cause that no longer applies.
+func TestInstallIgnoresStartupFailuresBeforeTheInstallStarted(t *testing.T) {
+	const oldReason = "listen tcp :17443: bind: address already in use (earlier run)"
+	old := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)
+
+	t.Run("linux user", func(t *testing.T) {
+		opts := baseOptions(t)
+		opts.Run = func(name string, args ...string) ([]byte, error) {
+			switch {
+			case name == "journalctl":
+				if !slices.Contains(args, "--since") {
+					t.Errorf("journalctl arguments = %q, want a --since bound", args)
+				}
+				return []byte(fmt.Sprintf("{\"time\":%q,\"event\":\"startup_failed\",\"error\":%q}\n", old, oldReason)), nil
+			case slices.Contains(args, "show"):
+				return []byte("4242\n"), nil
+			}
+			return nil, nil
+		}
+		opts.Probe = func(string) (int, bool) { return 0, false }
+		opts.ReadyTimeout = 20 * time.Millisecond
+
+		_, err := Install(opts)
+		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+			t.Fatalf("Install error = %v, want the readiness timeout", err)
+		}
+		if strings.Contains(err.Error(), oldReason) {
+			t.Errorf("error %q carries a startup_failed record from before the install", err)
+		}
+	})
+
+	t.Run("darwin user log file", func(t *testing.T) {
+		opts := baseOptions(t)
+		opts.GOOS = "darwin"
+		opts.EUID = 501
+		opts.UID = 501
+		opts.Home = "/Users/alice"
+		logPath := filepath.Join(opts.Root, "Users/alice/Library/Logs/agent-peer/broker.log")
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		line := fmt.Sprintf("{\"time\":%q,\"event\":\"startup_failed\",\"error\":%q}\n", old, oldReason)
+		if err := os.WriteFile(logPath, []byte(line), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		opts.Run = func(name string, args ...string) ([]byte, error) {
+			if len(args) > 0 && args[0] == "bootout" {
+				return nil, exitError(t, 3)
+			}
+			return nil, nil
+		}
+		opts.Probe = func(string) (int, bool) { return 0, false }
+		opts.ReadyTimeout = 20 * time.Millisecond
+
+		_, err := Install(opts)
+		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+			t.Fatalf("Install error = %v, want the readiness timeout", err)
+		}
+		if strings.Contains(err.Error(), oldReason) {
+			t.Errorf("error %q carries a startup_failed record from before the install", err)
+		}
+	})
+}
+
+func TestInstallDisablesAfterAReadinessFailure(t *testing.T) {
 	t.Run("linux user", func(t *testing.T) {
 		opts := baseOptions(t)
 		var cmds []string
@@ -1652,7 +2046,7 @@ func TestInstallUninstallsAfterAReadinessFailure(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "did not answer") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
-		for _, want := range []string{"stopped and uninstalled", "run service install again"} {
+		for _, want := range []string{"stopped and disabled", "run service install again"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("error %q does not contain %q", err, want)
 			}
@@ -1677,10 +2071,14 @@ func TestInstallUninstallsAfterAReadinessFailure(t *testing.T) {
 		opts.UID = 501
 		opts.Home = "/Users/alice"
 		bootouts := 0
+		disables := 0
 		opts.Run = func(name string, args ...string) ([]byte, error) {
-			if len(args) > 0 && args[0] == "bootout" {
+			switch {
+			case len(args) > 0 && args[0] == "bootout":
 				bootouts++
 				return nil, exitError(t, 3)
+			case len(args) > 0 && args[0] == "disable":
+				disables++
 			}
 			return nil, nil
 		}
@@ -1688,17 +2086,82 @@ func TestInstallUninstallsAfterAReadinessFailure(t *testing.T) {
 		opts.ReadyTimeout = 20 * time.Millisecond
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "stopped and uninstalled") {
-			t.Fatalf("Install error = %v, want the readiness failure with the uninstall note", err)
+		if err == nil || !strings.Contains(err.Error(), "stopped and disabled") {
+			t.Fatalf("Install error = %v, want the readiness failure with the disabled note", err)
 		}
 		if bootouts < 2 {
 			t.Errorf("bootout calls = %d, want one before the start and one after the failure", bootouts)
+		}
+		// launchd reloads every plist under LaunchAgents at login, so a kept
+		// plist must be disabled or the failed install starts a Broker that
+		// cannot bind.
+		if disables != 1 {
+			t.Errorf("launchctl disable calls = %d, want 1 after the failure", disables)
 		}
 		plist := rooted(opts, "/Users/alice/Library/LaunchAgents/"+Label+".plist")
 		if _, statErr := os.Stat(plist); statErr != nil {
 			t.Errorf("plist was not kept after the failure: %v", statErr)
 		}
 	})
+}
+
+// TestInstallReportsACleanupFailure checks the error of abandonInstall when
+// disabling the service it registered also fails. The installation must say
+// that the service may still start automatically instead of implying it is
+// safe from autostart.
+func TestInstallReportsACleanupFailure(t *testing.T) {
+	opts := baseOptions(t)
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		switch {
+		case slices.Contains(args, "show"):
+			return []byte("4242\n"), nil
+		case slices.Contains(args, "disable"):
+			return []byte("disable failed"), errors.New("exit status 1")
+		}
+		return nil, nil
+	}
+	opts.Probe = func(string) (int, bool) { return 0, false }
+	opts.ReadyTimeout = 20 * time.Millisecond
+
+	_, err := Install(opts)
+	if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		t.Fatalf("Install error = %v, want the readiness timeout", err)
+	}
+	for _, want := range []string{"could not be disabled", "may start automatically", "disable failed"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
+// TestInstallReportsANonAddressInUseProbeError checks the listenError branch
+// for a bind failure that is not an occupied address, such as a privileged
+// port or a malformed interface. The error must name the bind failure and the
+// advice, and must not touch the service.
+func TestInstallReportsANonAddressInUseProbeError(t *testing.T) {
+	opts := baseOptions(t)
+	writeListenConfig(t, opts, "127.0.0.1:17448")
+	opts.ListenProbe = func(string) error { return errors.New("permission denied") }
+	opts.Probe = func(string) (int, bool) { return 0, false }
+	var cmds []string
+	opts.Run = recordCommands(&cmds)
+
+	_, err := Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded although broker.listen could not be bound")
+	}
+	for _, want := range []string{
+		"cannot bind broker.listen",
+		"permission denied",
+		"change broker.listen to another port",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if len(cmds) != 0 {
+		t.Errorf("commands = %q, want none after a non-conflict bind failure", cmds)
+	}
 }
 
 func TestInstallOverwritesUnit(t *testing.T) {

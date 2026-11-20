@@ -46,11 +46,16 @@ func TestUserServiceInstallRefusesAnOccupiedListenPort(t *testing.T) {
 	}
 
 	// A failed installation must leave launchd without the service, so a
-	// following login does not start a Broker that cannot bind.
+	// following login does not start a Broker that cannot bind. The precheck
+	// runs before the plist is written, so the file must be absent as well.
 	domain := userDomain(t)
 	if out, loaded := launchctlPrint(domain); loaded {
 		t.Errorf("launchd still has %s/%s loaded after the failed installation:\n%s",
 			domain, serviceLabel, out)
+	}
+	plist := filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", serviceLabel+".plist")
+	if _, err := os.Stat(plist); err == nil {
+		t.Errorf("plist %s exists after the failed installation", plist)
 	}
 }
 

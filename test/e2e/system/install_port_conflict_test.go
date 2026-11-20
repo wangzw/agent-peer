@@ -166,7 +166,9 @@ func assertSystemServiceNotRegistered(t *testing.T) {
 	if procs := syscontainer.Pids("agent-peer", "broker", "--system"); len(procs) != 0 {
 		t.Errorf("the system Broker still runs after the failed installation: %v", procs)
 	}
+	// The unit is written only after the listen precheck, so a fresh
+	// installation that cannot use its address leaves no unit file at all.
 	if _, err := os.Stat(systemUnitPath); err == nil {
-		t.Logf("the unit file %s exists after the failed installation; only the systemd state is checked", systemUnitPath)
+		t.Errorf("the unit file %s exists after the precheck failed", systemUnitPath)
 	}
 }

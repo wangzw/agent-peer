@@ -34,6 +34,17 @@ const (
 	readyPollInterval = 100 * time.Millisecond
 	// probeTimeout bounds one dial of the local socket.
 	probeTimeout = 500 * time.Millisecond
+
+	// serviceStopBound bounds the wait for a service that the listen precheck
+	// stopped to exit and release broker.listen. systemctl stop and launchctl
+	// bootout return while the Broker is still shutting down: systemd signals
+	// the process and launchd tears the job down asynchronously, and the Broker
+	// then closes its listeners. The bound covers launchd's exit timeout, the
+	// Broker's SIGTERM shutdown and launchd's 10-second ThrottleInterval, with
+	// the same margin readyBound leaves. It is not shorter than the bound the
+	// reinstall path uses for launchd's unload wait (20 seconds), so the two
+	// waits cannot disagree.
+	serviceStopBound = 20 * time.Second
 )
 
 // launchdPIDPattern matches the "pid = <n>" line of launchctl print.
@@ -62,6 +73,7 @@ type Options struct {
 	Probe         func(socketPath string) (pid int, answering bool)           // peer pid of the Broker answering on the local socket
 	ListenProbe   func(addr string) error                                     // whether broker.listen can be bound; nil uses config.ProbeListen
 	ReadyTimeout  time.Duration                                               // wait for the local socket after start; zero uses readyBound
+	StopTimeout   time.Duration                                               // wait for a stopped service to release broker.listen; zero uses serviceStopBound
 }
 
 // Result describes what Install or Uninstall did. On error it lists the steps
@@ -141,6 +153,9 @@ func DefaultOptions(system bool) (Options, error) {
 // already done.
 func Install(opts Options) (Result, error) {
 	var res Result
+	// Records older than this describe an earlier run. The readiness timeout
+	// only reports a startup_failed record written after this point.
+	installStart := time.Now()
 
 	switch opts.GOOS {
 	case "linux", "darwin":
@@ -208,36 +223,41 @@ func Install(opts Options) (Result, error) {
 		res.AdminGroup = adminGroupName(opts)
 	}
 
-	unitPath, err := writeUnit(opts)
-	if err != nil {
-		return res, err
-	}
-	res.UnitPath = unitPath
-
+	// The configuration file comes first: the listen precheck reads it, and a
+	// failure later in the installation keeps it for the next run.
 	if err := createConfig(opts, &res, adminGID); err != nil {
 		return res, err
 	}
 
-	// The address is checked after the configuration exists, so the check sees
-	// both a generated template and a file an earlier install left. It runs
-	// before the service is registered or started, so an occupied address
-	// fails the installation without leaving a service that restarts forever.
-	if err := precheckListen(opts, domain, &res); err != nil {
+	// The address is checked before the service definition is written and
+	// before the service is registered or started, so an address that cannot
+	// be used fails the installation without leaving a service that restarts
+	// forever or a plist that launchd loads at the next login.
+	stopped, err := precheckListen(opts, domain, &res)
+	if err != nil {
 		return res, err
 	}
 
+	unitPath, err := writeUnit(opts)
+	if err != nil {
+		if stopped {
+			return res, abandonInstall(opts, domain, &res, true, err)
+		}
+		return res, err
+	}
+	res.UnitPath = unitPath
+
 	switch opts.GOOS {
 	case "linux":
-		if err := runSystemctl(opts, &res); err != nil {
-			return res, err
-		}
+		err = runSystemctl(opts, &res)
 	case "darwin":
-		if err := runLaunchctl(opts, domain, unitPath, &res); err != nil {
-			return res, err
-		}
+		err = runLaunchctl(opts, domain, unitPath, &res)
 	}
-	if err := waitReady(opts, domain); err != nil {
-		return res, abandonInstall(opts, domain, &res, err)
+	if err != nil {
+		return res, abandonInstall(opts, domain, &res, stopped, err)
+	}
+	if err := waitReady(opts, domain, installStart); err != nil {
+		return res, abandonInstall(opts, domain, &res, stopped, err)
 	}
 
 	res.Domain = domain
@@ -302,20 +322,22 @@ func checkExistingBroker(opts Options, domain string) error {
 // which releases it again. An empty value means the Broker does not listen and
 // passes without a probe.
 //
-// When the address is already in use, the running instance of this same
-// service may own it: an install also reinstalls and restarts a service. The
-// service is stopped once and the address probed again, so a reinstall is not
-// mistaken for a foreign process; the start step that follows brings the
-// service back with the new binary. If the address is still taken, the
-// installation fails before the service is registered or started.
-func precheckListen(opts Options, domain string, res *Result) error {
+// When the address is already in use, it first identifies the occupant. An
+// install is also a reinstall, so the occupant may be this service's own
+// running Broker; the service manager's main pid and the pid answering on the
+// local socket identify that case, the same comparison the pre-install check
+// and the update path use. Only then is the service stopped and the address
+// probed again until the Broker exits. Any other occupant fails the
+// installation with the running service untouched. The bool reports whether an
+// existing service was stopped, so a later failure can say so.
+func precheckListen(opts Options, domain string, res *Result) (bool, error) {
 	path := configFilePath(opts)
 	addr, err := config.ListenFromFile(rooted(opts, path))
 	if err != nil {
-		return fmt.Errorf("service: read broker.listen from %s: %w", path, err)
+		return false, fmt.Errorf("service: read broker.listen from %s: %w", path, err)
 	}
 	if addr == "" {
-		return nil
+		return false, nil
 	}
 	probe := opts.ListenProbe
 	if probe == nil {
@@ -323,36 +345,97 @@ func precheckListen(opts Options, domain string, res *Result) error {
 	}
 	err = probe(addr)
 	if err == nil {
-		return nil
+		return false, nil
 	}
 	if !errors.Is(err, syscall.EADDRINUSE) {
-		return listenError(path, addr, err)
+		return false, listenError(path, addr, err)
+	}
+	if !serviceOwnsOccupiedAddress(opts, domain) {
+		return false, listenError(path, addr, err)
 	}
 
-	stopForPrecheck(opts, domain, res)
-	deadline := time.Now().Add(time.Second)
+	if err := stopForPrecheck(opts, domain, res); err != nil {
+		// The stop failed, but a failed installation must still not leave the
+		// service enabled for the next boot or login. Stopping it again is best
+		// effort; the disable is what the error must report, because that is
+		// what keeps the service from starting automatically.
+		_, disableErr := stopAndDisable(opts, domain, res)
+		msg := fmt.Sprintf("service: the existing service holding %q could not be stopped: %v", addr, err)
+		if disableErr != nil {
+			msg += fmt.Sprintf("; it could not be disabled either and may start automatically: %v", disableErr)
+			return false, errors.New(msg)
+		}
+		msg += "; it will not start automatically"
+		if recovery := recoveryCommand(opts, domain); recovery != "" {
+			msg += "; restore it with `" + recovery + "` after fixing the problem"
+		}
+		return false, errors.New(msg)
+	}
+	if err := waitListenReleased(probe, addr, stopBound(opts)); err != nil {
+		// The service this install replaces was stopped and still holds the
+		// address: report the occupied address, say the existing service was
+		// stopped, and make sure it cannot start at boot.
+		return true, abandonInstall(opts, domain, res, true, listenError(path, addr, err))
+	}
+	return true, nil
+}
+
+// serviceOwnsOccupiedAddress reports whether the process holding broker.listen
+// is this service's own running Broker. The service manager must report a
+// running main pid and the Broker answering on this level's local socket must
+// have that same pid. A Broker that could not bind broker.listen fails to
+// start, so a service that is merely restarting does not answer on the socket
+// and is not mistaken for the occupant.
+func serviceOwnsOccupiedAddress(opts Options, domain string) bool {
+	if opts.Probe == nil {
+		return false
+	}
+	servicePID, managed := serviceMainPID(opts, domain)
+	if !managed {
+		return false
+	}
+	brokerPID, answering := opts.Probe(localSocketPath(opts))
+	return answering && brokerPID == servicePID
+}
+
+// stopForPrecheck stops the service that owns the address so it can release
+// broker.listen for the reinstall. The call is recorded in res.Commands with
+// the other state changes.
+func stopForPrecheck(opts Options, domain string, res *Result) error {
+	switch opts.GOOS {
+	case "linux":
+		return runSystemctlCommand(opts, res, "stop", UnitName)
+	case "darwin":
+		return bootoutService(opts, domain, res)
+	}
+	return nil
+}
+
+// waitListenReleased polls addr until it can be bound, returning the last probe
+// error when the bound expires. The caller has already stopped the service that
+// owned the address; the wait covers the Broker's shutdown and the service
+// manager's asynchronous teardown.
+func waitListenReleased(probe func(string) error, addr string, bound time.Duration) error {
+	deadline := time.Now().Add(bound)
+	var last error
 	for {
-		if probe(addr) == nil {
+		last = probe(addr)
+		if last == nil {
 			return nil
 		}
-		if time.Now().After(deadline) {
-			return listenError(path, addr, err)
+		if !time.Now().Before(deadline) {
+			return last
 		}
-		time.Sleep(readyPollInterval / 2)
+		time.Sleep(readyPollInterval)
 	}
 }
 
-// stopForPrecheck stops the service during the listen precheck. A service that
-// is not installed or not running makes the command fail; the second probe
-// decides whether the address is still taken, so that failure is not reported
-// here. The call is recorded in res.Commands with the other state changes.
-func stopForPrecheck(opts Options, domain string, res *Result) {
-	switch opts.GOOS {
-	case "linux":
-		_ = runSystemctlCommand(opts, res, "stop", UnitName)
-	case "darwin":
-		_ = bootoutService(opts, domain, res)
+// stopBound returns the wait for a stopped service to release broker.listen.
+func stopBound(opts Options) time.Duration {
+	if opts.StopTimeout > 0 {
+		return opts.StopTimeout
 	}
+	return serviceStopBound
 }
 
 // listenError explains why the installation cannot use this install's
@@ -365,22 +448,94 @@ func listenError(path, addr string, err error) error {
 	return fmt.Errorf("service: cannot bind broker.listen %q from %s: %w; %s", addr, path, err, advice)
 }
 
-// abandonInstall stops and unregisters the service a failed install started.
-// The unit or plist and the configuration file are kept, so fixing the cause
-// and running service install again finds them. The service is stopped rather
-// than left to restart on every launchd or systemd cycle.
-func abandonInstall(opts Options, domain string, res *Result, cause error) error {
-	var cleanup error
+// abandonInstall handles a failed installation after the service definition
+// was written or an existing service was stopped. The unit or plist and the
+// configuration file are kept, so fixing the cause and running service install
+// again finds them. The service is disabled, so the failed installation never
+// leaves a Broker that starts at the next boot or login: a systemd unit must
+// not stay enabled, and a kept launchd plist must not stay loadable. stopped
+// reports that this install stopped the service that was already running, so
+// the error tells the operator what changed and how to restore it.
+func abandonInstall(opts Options, domain string, res *Result, stopped bool, cause error) error {
+	stopErr, disableErr := stopAndDisable(opts, domain, res)
+	msg := cause.Error()
+	if stopped {
+		msg += "; the existing service was stopped"
+	}
+	switch {
+	case disableErr != nil:
+		msg += fmt.Sprintf("; the service could not be disabled and may start automatically at the next boot or login: %v", disableErr)
+	case stopped:
+		msg += " and will not start automatically"
+		if recovery := recoveryCommand(opts, domain); recovery != "" {
+			msg += "; restore it with `" + recovery + "` after fixing the problem"
+		}
+	case stopErr != nil:
+		msg += fmt.Sprintf("; the service could not be stopped: %v; it is disabled and will not start automatically", stopErr)
+	default:
+		msg += "; the service was stopped and disabled"
+	}
+	msg += "; fix the problem and run service install again"
+	return errors.New(msg)
+}
+
+// stopAndDisable stops the service and makes sure it cannot start at the next
+// boot or login. It returns the stop error and the disable error separately:
+// macOS can fail to unload the job while still recording the label's disabled
+// state, which is what keeps launchd from loading it at login. Linux performs
+// both in one `systemctl disable --now`, which removes the enable symlink and
+// stops the unit, so the two errors are the same. The plist is kept so the user
+// has the service definition, and install re-enables the label before it
+// bootstraps again.
+func stopAndDisable(opts Options, domain string, res *Result) (stopErr, disableErr error) {
 	switch opts.GOOS {
 	case "linux":
-		cleanup = runSystemctlCommand(opts, res, "disable", "--now", UnitName)
+		err := runSystemctlCommand(opts, res, "disable", "--now", UnitName)
+		return err, err
 	case "darwin":
-		cleanup = bootoutService(opts, domain, res)
+		return bootoutService(opts, domain, res), runLaunchctlCommand(opts, domain, res, "disable")
 	}
-	if cleanup != nil {
-		return fmt.Errorf("%w; the service could not be stopped and uninstalled: %v; fix the problem and run service install again", cause, cleanup)
+	return nil, nil
+}
+
+// recoveryCommand names the command that brings back a service this install
+// stopped before it failed.
+func recoveryCommand(opts Options, domain string) string {
+	switch opts.GOOS {
+	case "linux":
+		if opts.System {
+			return "sudo systemctl enable --now " + UnitName
+		}
+		return "systemctl --user enable --now " + UnitName
+	case "darwin":
+		path, err := unitPath(opts)
+		if err != nil {
+			return ""
+		}
+		target := domain + "/" + Label
+		prefix := ""
+		if opts.System {
+			prefix = "sudo "
+		}
+		return prefix + "launchctl enable " + target + " && " + prefix + "launchctl bootstrap " + domain + " " + path
 	}
-	return fmt.Errorf("%w; the service was stopped and uninstalled; fix the problem and run service install again", cause)
+	return ""
+}
+
+// runLaunchctlCommand runs one launchctl command on domain/label, records it
+// and reports its output on failure.
+func runLaunchctlCommand(opts Options, domain string, res *Result, verb string) error {
+	target := domain + "/" + Label
+	cmdline := "launchctl " + verb + " " + target
+	res.Commands = append(res.Commands, cmdline)
+	out, err := opts.Run("launchctl", verb, target)
+	if err != nil {
+		if msg := strings.TrimSpace(string(out)); msg != "" {
+			return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+		}
+		return fmt.Errorf("service: %s: %w", cmdline, err)
+	}
+	return nil
 }
 
 // serviceMainPID returns the pid the service manager reports for the unit and
@@ -442,10 +597,17 @@ func launchctlDomainExists(opts Options, domain string) bool {
 }
 
 // runLaunchctl replaces the loaded service, if any, with the freshly written
-// plist. A failed bootstrap removes the plist this run wrote, so a failed
-// installation leaves no installed but unloaded service behind.
+// plist. A failed bootstrap keeps the plist: abandonInstall disables the label
+// so launchd does not load it at login, and the error's recovery command
+// bootstraps that same plist once the cause is fixed.
 func runLaunchctl(opts Options, domain, plistPath string, res *Result) error {
 	if err := bootoutService(opts, domain, res); err != nil {
+		return err
+	}
+	// A failed earlier installation disables the label so it cannot start at
+	// login. Enabling it here is what lets that plist load again; without it a
+	// rerun after a failure would leave the service disabled for good.
+	if err := runLaunchctlCommand(opts, domain, res, "enable"); err != nil {
 		return err
 	}
 
@@ -453,14 +615,7 @@ func runLaunchctl(opts Options, domain, plistPath string, res *Result) error {
 	res.Commands = append(res.Commands, cmdline)
 	out, err := opts.Run("launchctl", "bootstrap", domain, plistPath)
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if rmErr := os.Remove(rooted(opts, plistPath)); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
-			if msg != "" {
-				return fmt.Errorf("service: %s: %w: %s; also could not remove %s: %v", cmdline, err, msg, plistPath, rmErr)
-			}
-			return fmt.Errorf("service: %s: %w; also could not remove %s: %v", cmdline, err, plistPath, rmErr)
-		}
-		if msg != "" {
+		if msg := strings.TrimSpace(string(out)); msg != "" {
 			return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
 		}
 		return fmt.Errorf("service: %s: %w", cmdline, err)
@@ -506,7 +661,7 @@ func exitStatus(err error) int {
 // from any other process is not readiness, because the service cannot take over
 // that process's account lock. A timeout reports the log location, since the
 // service manager owns the process and its standard error.
-func waitReady(opts Options, domain string) error {
+func waitReady(opts Options, domain string, since time.Time) error {
 	bound := opts.ReadyTimeout
 	if bound <= 0 {
 		bound = readyBound
@@ -534,7 +689,7 @@ func waitReady(opts Options, domain string) error {
 			// The precheck can pass and the Broker still fail to start; the
 			// service log records the cause. Include it so the timeout names
 			// the real problem instead of only the silent socket.
-			reason := startupFailureReason(opts)
+			reason := startupFailureReason(opts, since)
 			if reason != "" {
 				return fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s; its last startup_failed record says: %s", path, bound, logHint(opts), reason)
 			}
@@ -567,19 +722,20 @@ func logFile(opts Options) string {
 	return filepath.Join(opts.Home, "Library", "Logs", "agent-peer", "broker.log")
 }
 
-// startupFailureReason returns the error of the last startup_failed record in
-// the service log, or an empty string when there is none or the log cannot be
-// read. It never fails an installation: the record is only additional context
-// for a readiness timeout.
-func startupFailureReason(opts Options) string {
+// startupFailureReason returns the error of the last startup_failed record
+// written after since, or an empty string when there is none or the log cannot
+// be read. It never fails an installation: the record is only additional
+// context for a readiness timeout. Records from an earlier run describe a cause
+// that may no longer apply, so they are ignored.
+func startupFailureReason(opts Options, since time.Time) string {
 	if path := logFile(opts); path != "" {
 		data, err := readLogTail(rooted(opts, path))
 		if err != nil {
 			return ""
 		}
-		return lastStartupFailure(string(data))
+		return lastStartupFailure(string(data), since)
 	}
-	args := []string{"-u", UnitName, "-n", "100", "--no-pager", "-o", "cat"}
+	args := []string{"-u", UnitName, "-n", "100", "--no-pager", "-o", "cat", "--since", "@" + strconv.FormatInt(since.Unix(), 10)}
 	if !opts.System {
 		args = append([]string{"--user"}, args...)
 	}
@@ -587,7 +743,7 @@ func startupFailureReason(opts Options) string {
 	if err != nil {
 		return ""
 	}
-	return lastStartupFailure(string(out))
+	return lastStartupFailure(string(out), since)
 }
 
 // logTailBytes bounds how much of the service log startupFailureReason reads
@@ -617,8 +773,10 @@ func readLogTail(path string) ([]byte, error) {
 }
 
 // lastStartupFailure scans the log from the end and returns the error field of
-// the last startup_failed JSON record.
-func lastStartupFailure(log string) string {
+// the last startup_failed JSON record written at or after since. The Broker
+// writes the time field as RFC 3339 with nanoseconds; a record without a
+// parseable time cannot be shown to come from this installation and is ignored.
+func lastStartupFailure(log string, since time.Time) string {
 	lines := strings.Split(log, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(lines[i])
@@ -626,15 +784,21 @@ func lastStartupFailure(log string) string {
 			continue
 		}
 		var record struct {
+			Time  string `json:"time"`
 			Event string `json:"event"`
 			Error string `json:"error"`
 		}
 		if err := json.Unmarshal([]byte(line), &record); err != nil {
 			continue
 		}
-		if record.Event == "startup_failed" && record.Error != "" {
-			return record.Error
+		if record.Event != "startup_failed" || record.Error == "" {
+			continue
 		}
+		at, err := time.Parse(time.RFC3339Nano, record.Time)
+		if err != nil || at.Before(since) {
+			continue
+		}
+		return record.Error
 	}
 	return ""
 }

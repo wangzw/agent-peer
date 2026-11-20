@@ -147,13 +147,13 @@ service Local {
 - `peer connect`：一行 `Paired with <alias> (<fingerprint>)`；应答中的 warnings 每条一行写到标准错误，前缀 `warning: `，退出码仍为 0。
 - `peer disconnect`：一行 `Disconnected <broker>`。
 
-`service install` 写入服务定义、启用服务并立即启动 Broker，随后用本机 socket 轮询 Broker 是否应答，上限为 20 秒。上限覆盖 Broker 自身的启动时间与 launchd 默认 10 秒的节流；超时使安装失败，错误给出服务日志的位置，并并入日志中最后一条 `startup_failed` 记录的 `error` 字段：Linux 为 `journalctl --user -u agent-peer.service`（系统级去掉 `--user`），macOS 为 `~/Library/Logs/agent-peer/broker.log`（系统级为 `/var/log/agent-peer/broker.log`）。
+`service install` 写入服务定义、启用服务并立即启动 Broker，随后用本机 socket 轮询 Broker 是否应答，上限为 20 秒。上限覆盖 Broker 自身的启动时间与 launchd 默认 10 秒的节流；超时使安装失败，错误给出服务日志的位置，并并入日志中最后一条 `startup_failed` 记录的 `error` 字段：Linux 为 `journalctl --user -u agent-peer.service`（系统级去掉 `--user`），macOS 为 `~/Library/Logs/agent-peer/broker.log`（系统级为 `/var/log/agent-peer/broker.log`）。只采用本次安装开始之后写入的记录：Linux 用 `journalctl --since` 限定查询起点，再按记录时间过滤；macOS 按记录的 `time` 字段过滤。安装前的旧记录描述上一次运行，不并入错误。
 
 发布包的安装脚本把二进制放进目标目录、以它调用 `service install`、为执行安装的用户注册 MCP 服务（`REQ-broker-config-041`）；服务定义的写入、启动与重装仍只由 `service install` 负责，它可重复执行，安装脚本因此不另做判断。远程安装脚本负责下载发布包、核对发布包的 sha256 并在解压后调用包内的 `install.sh`；权限检查、拒绝以 `root` 走用户级安装等判断仍由包内脚本负责（`REQ-broker-config-042`）。
 
 Linux 上，用户级单元写到 `~/.config/systemd/user/agent-peer.service`，系统级写到 `/etc/systemd/system/agent-peer.service`，随后依次执行 `systemctl --user daemon-reload`、`systemctl --user enable agent-peer.service` 与 `systemctl --user restart agent-peer.service`，系统级去掉 `--user`；`restart` 在服务未运行时启动它，重装时换上新的二进制。用户级的配置目录取 `XDG_CONFIG_HOME`，为空或不是绝对路径时取 `~/.config`。
 
-macOS 上，用户级 plist 写到 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`，系统级写到 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`，标签为 `io.github.wangzw.agent-peer`。用户级只使用 `gui/<uid>` 域；该域不存在时在写 plist 之前安装失败，错误说明用户级服务需要在图形登录会话中安装，没有图形会话的主机改用 `--system`。系统级使用 `system` 域。安装先执行 `launchctl bootout <域>/io.github.wangzw.agent-peer`，再执行 `launchctl bootstrap <域> <plist 路径>`。`launchctl` 以退出码 3 报告服务未加载，此时安装忽略该错误；其余 bootout 错误一律返回。bootstrap 失败时删除本次写入的 plist 并返回错误。实际使用的域记在安装结果中。
+macOS 上，用户级 plist 写到 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`，系统级写到 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`，标签为 `io.github.wangzw.agent-peer`。用户级只使用 `gui/<uid>` 域；该域不存在时在写 plist 之前安装失败，错误说明用户级服务需要在图形登录会话中安装，没有图形会话的主机改用 `--system`。系统级使用 `system` 域。安装先执行 `launchctl bootout <域>/io.github.wangzw.agent-peer`，再执行 `launchctl enable <域>/io.github.wangzw.agent-peer`，最后执行 `launchctl bootstrap <域> <plist 路径>`；enable 清掉上一次失败留下的禁用状态。`launchctl` 以退出码 3 报告服务未加载，此时安装忽略该错误；其余 bootout 错误一律返回。bootstrap 失败时保留本次写入的 plist、返回错误，随后按上一段的失败处理禁用该标签；报错里的恢复命令重新加载的正是这个 plist。实际使用的域记在安装结果中。
 
 安装前检查该级别的本机 socket。Broker 在应答时，安装取服务管理器报告的 PID（systemd 的 `MainPID`，launchd `print` 中的 `pid`）与 socket 对端的 PID 比较：相等才是本服务正在运行，安装用新的二进制重启它；不相等或服务管理器没有运行中的进程时，一律视为外来 Broker，拒绝安装并说明要先停掉它。
 
@@ -161,7 +161,9 @@ macOS 上，用户级 plist 写到 `~/Library/LaunchAgents/io.github.wangzw.agen
 
 安装时，该级别的配置文件不存在就生成一份列出全部配置项的模板。系统级写到 `/etc/agent-peer/config.yaml`，以 root 为属主、管理组为属组、`0660` 为权限，内容为 `config.Template(config.ModeSystem)`；用户级写到 `~/.agent-peer/config.yaml`，以本账户为属主、`0600` 为权限，内容为 `config.Template(config.ModeUser)`，所在目录不存在时按数据目录的规则创建。两者都以独占方式创建（`O_EXCL`），文件已存在时不改动；本机已有的配置文件不迁移，也不改写。安装输出写明“已生成配置文件 <路径>”或“沿用已有配置文件 <路径>”（`REQ-broker-config-040`）。
 
-注册服务之前，安装读取这次安装将生效的 `broker.listen`，包括本次刚生成的模板。值不为空时试绑该地址再释放：地址被占用时，安装先停掉同名的已运行服务再试一次，地址随之释放说明占用者就是本服务（重装或升级），安装继续并用新二进制启动它；地址仍被占用则安装失败，不注册、不启动服务。报错写明地址、`already in use`、配置文件路径与 `broker.listen` 键，并提示改用其他端口，或留空表示不监听。就绪失败（Broker 启动失败或 20 秒内不应答）后，安装停止并卸载本次注册的服务：Linux 执行 `systemctl --user disable --now agent-peer.service`（系统级去掉 `--user`），macOS 执行 `launchctl bootout <域>/io.github.wangzw.agent-peer`。单元文件或 plist 与配置文件保留，报错说明修好后重新执行 `service install`。预检与真正的绑定之间仍有竞态，启动失败时由上面的日志原因兜底。
+配置文件先于预检生成，服务定义在预检通过后才写入。注册服务之前，安装读取这次安装将生效的 `broker.listen`，包括本次刚生成的模板。值不为空时试绑该地址再释放。地址被占用时先识别占用者：服务管理器报告的主进程（Linux 的 `MainPID`，launchd `print` 中的 `pid`）与本机 socket 对端的 PID 相同，才说明占用者是本服务的 Broker（重装或升级），这与 update 判断自身是否由服务管理器启动时用的是同一个主进程查询；安装随即停掉该服务并轮询地址，直到旧 Broker 退出并释放。等待上限为 20 秒，覆盖 Broker 收到 SIGTERM 后的关闭、launchd 拆除旧任务的时间与 10 秒节流。占用者不是本服务时安装直接失败，不停、不卸载、不改动已安装的服务。地址仍被占用则安装失败，不注册、不启动服务。报错写明地址、`already in use`、配置文件路径与 `broker.listen` 键，并提示改用其他端口，或留空表示不监听。
+
+本次安装写入或启用的服务，在安装失败后都不会在开机或登录时自动启动。预检失败发生在服务定义写入之前，因此本次安装不会新写 plist 或单元文件；占用者不是本服务时，已安装的服务保持原状，仍按它原来的启用状态运行。就绪失败（Broker 启动失败或 20 秒内不应答）或注册失败后，Linux 执行 `systemctl --user disable --now agent-peer.service`（系统级去掉 `--user`），macOS 先执行 `launchctl bootout <域>/io.github.wangzw.agent-peer`，再执行 `launchctl disable <域>/io.github.wangzw.agent-peer`；launchd 会在登录或开机时加载 LaunchAgents 与 LaunchDaemons 目录下的每个 plist，只有 disable 才能阻止它重新加载。重新安装会先 `launchctl enable` 再 `bootstrap`，清掉上一次失败留下的禁用状态。单元文件或 plist 与配置文件保留，报错说明修好后重新执行 `service install`。如果失败发生在停掉原本运行的服务之后，报错写明 `the existing service was stopped`，并给出恢复该服务的命令。预检中停掉原服务失败时，安装照样禁用该服务，报错写明 `will not start automatically` 并给出恢复命令；连禁用也失败时，报错说明它仍可能在下次开机或登录时自动启动。预检与真正的绑定之间仍有竞态，启动失败时由上面的日志原因兜底。
 
 系统级安装创建管理组：组不存在时 Linux 执行 `groupadd --system <名称>`，macOS 用 `dseditgroup` 创建；组已存在时直接使用，不改成员。组名默认为 `agent-peer`，由 `--admin-group` 指定；建组失败时安装失败，并且不改动配置文件。配置文件已存在时，内容、属组与权限都不动，安装输出给出把已有文件交给管理组的命令 `chgrp <组> <路径> && chmod 0660 <路径>`。发布包内的安装脚本询问是否把执行安装的账户加入该组，默认不加入（[ADR-admin-group](../../adr/adr-admin-group.md)，`REQ-broker-config-043`）。
 
