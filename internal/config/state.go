@@ -65,6 +65,15 @@ func (c *core) setLocked(actor Actor, key string, v Value) (Value, error) {
 	if c.listenOverride && key == "broker.listen" {
 		return Value{}, fmt.Errorf("%w: %s", ErrListenOverridden, key)
 	}
+	// A privileged port needs root and a configuration file that no other
+	// account can write. This is checked before the pending external change is
+	// adopted and before anything is written, so a refused caller leaves both
+	// the file and the in-memory values untouched.
+	if key == "broker.listen" && c.mode == ModeSystem && lowPrivilegedListenPort(v) {
+		if err := c.checkLowPortAllowed(actor); err != nil {
+			return Value{}, err
+		}
+	}
 	// Adopt any external change that is still pending, by the reload rules and
 	// with its audits, before validating and writing. Validation must start
 	// from the values now on disk, not from a stale memory snapshot. The bytes
@@ -482,6 +491,12 @@ func (c *core) reloadLocked() (configBytes, error) {
 				break
 			}
 		}
+	}
+	// A privileged listen port is adopted only while the configuration file is
+	// writable only by root. Otherwise the whole listen group keeps its old
+	// values, the rejection is logged, and config_rejected is audited.
+	if groupValid && c.rejectReloadedLowPort(values["broker.listen"], candidate["broker.listen"]) {
+		groupValid = false
 	}
 	if !groupValid {
 		for _, name := range group {

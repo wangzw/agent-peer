@@ -53,10 +53,16 @@ type Entry struct {
 	Value Value
 }
 
-// Actor identifies who initiated a change or an event.
+// Actor identifies who initiated a change or an event. UIDKnown reports whether
+// UID is the effective account of the local caller; a caller that could not
+// establish an identity leaves it false and is treated as unprivileged, so the
+// zero value cannot pass a root-only rule. UID is used for rules that depend on
+// whether the caller is root.
 type Actor struct {
-	Account string
-	Agent   string
+	UIDKnown bool
+	UID      uint32
+	Account  string
+	Agent    string
 }
 
 // AdvertisedAddr is one entry in the advertised address list.
@@ -89,6 +95,9 @@ const (
 	EventConnectionRejected EventKind = "connection_rejected"
 	EventRejectedByPeer     EventKind = "rejected_by_peer"
 	EventLocalAliasAssigned EventKind = "local_alias_assigned"
+	// EventConfigRejected records an external configuration change that was
+	// refused, so no value was adopted.
+	EventConfigRejected EventKind = "config_rejected"
 )
 
 var allEventKinds = map[EventKind]bool{
@@ -103,6 +112,7 @@ var allEventKinds = map[EventKind]bool{
 	EventConnectionRejected: true,
 	EventRejectedByPeer:     true,
 	EventLocalAliasAssigned: true,
+	EventConfigRejected:     true,
 }
 
 // Event is one audit record.
@@ -138,6 +148,10 @@ var (
 	ErrInvalidCombination = errors.New("config: invalid listen/advertise combination")
 	ErrTooManyAddresses   = errors.New("config: too many advertised addresses")
 	ErrFileWrite          = errors.New("config: cannot write config file")
+	// ErrLowPortDenied reports that a system Broker refused a listen port
+	// below 1024 because the change was not made by root or the configuration
+	// file can be written by another account.
+	ErrLowPortDenied = errors.New("config: a listen port below 1024 requires root and a configuration file that only root can write")
 )
 
 // global is the package singleton. Tests install their own core through

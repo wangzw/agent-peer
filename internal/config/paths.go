@@ -34,6 +34,9 @@ func (c *core) resolvePaths() (PathSet, error) {
 			AuditLog:   filepath.Join(dataDir, "audit.log"),
 		}, nil
 	case ModeSystem:
+		if c.systemPaths != nil {
+			return c.systemPaths(), nil
+		}
 		return PathSet{
 			RuntimeDir: runtimeDir,
 			ConfigFile: "/etc/agent-peer/config.yaml",

@@ -85,6 +85,15 @@ type core struct {
 	statFile     func(path string) (os.FileInfo, error)
 	logger       *slog.Logger
 	checkRuntime func() (string, error)
+
+	// configFileRootOnly reports whether the configuration file may be written
+	// only by root. It is a seam so tests can state the permission rule
+	// without being root. lowPrivileged listen ports are allowed only while it
+	// returns true.
+	configFileRootOnly func(path string) (bool, error)
+	// systemPaths overrides the fixed system path set. It is a seam tests use
+	// to place the system paths under a temporary directory.
+	systemPaths func() PathSet
 }
 
 var defaultLogger = func() *slog.Logger { return slog.Default() }
@@ -112,20 +121,21 @@ func runningAccountName() (string, error) {
 func newCore() *core {
 	hostname := os.Hostname
 	return &core{
-		values:      make(map[string]Value),
-		validators:  make(map[string][]func(old, new Value) error),
-		subs:        make(map[string][]func(old, new Value)),
-		now:         time.Now,
-		newTicker:   newRealTicker,
-		hostname:    hostname,
-		accountName: runningAccountName,
-		homeDir:     homeDirSource,
-		euid:        os.Geteuid,
-		routesSrc:   platformAddressSource{},
-		writeFile:   writeConfigFile,
-		readFile:    os.ReadFile,
-		statFile:    os.Stat,
-		logger:      defaultLogger(),
+		values:             make(map[string]Value),
+		validators:         make(map[string][]func(old, new Value) error),
+		subs:               make(map[string][]func(old, new Value)),
+		now:                time.Now,
+		newTicker:          newRealTicker,
+		hostname:           hostname,
+		accountName:        runningAccountName,
+		homeDir:            homeDirSource,
+		euid:               os.Geteuid,
+		routesSrc:          platformAddressSource{},
+		writeFile:          writeConfigFile,
+		readFile:           os.ReadFile,
+		statFile:           os.Stat,
+		logger:             defaultLogger(),
+		configFileRootOnly: configFileRootOnlyWritable,
 	}
 }
 

@@ -49,6 +49,13 @@ func (c *core) load(mode Mode, listenOverride string) error {
 	if err := c.validateLoadedValues(); err != nil {
 		return err
 	}
+	// Bind a privileged port only when the configuration file that asked for
+	// it cannot be written by another account. The failure is a startup
+	// failure, so the Broker exits instead of running with a port that a group
+	// administrator could have chosen.
+	if err := c.checkLowPortAtStartup(); err != nil {
+		return err
+	}
 	if err := c.prepareAdvertised(); err != nil {
 		return err
 	}
