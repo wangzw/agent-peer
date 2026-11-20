@@ -62,11 +62,11 @@ func TestRealDepsAllWired(t *testing.T) {
 	if d.updateApply == nil {
 		t.Error("updateApply is nil")
 	}
-	if d.serviceOptions == nil {
-		t.Error("serviceOptions is nil")
+	if d.applyUpdateViaBroker == nil {
+		t.Error("applyUpdateViaBroker is nil")
 	}
-	if d.serviceRestart == nil {
-		t.Error("serviceRestart is nil")
+	if d.brokerUpdateStatus == nil {
+		t.Error("brokerUpdateStatus is nil")
 	}
 }
 

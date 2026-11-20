@@ -12,16 +12,33 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
+	"github.com/wangzw/agent-peer/internal/broker/service"
 	"github.com/wangzw/agent-peer/internal/broker/update"
 )
 
 const updateUsage = "usage: agent-peer update [--yes]\n"
 
-// updateSharedBinaryHint tells the user that a system-level update restarts
-// only the system-level service; a user-level service that runs the same
-// binary keeps the old process until it is restarted.
-const updateSharedBinaryHint = "User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user."
+// updateLocalTakesEffectHint follows a local replacement. The command does not
+// restart anything, because the service may have been stopped on purpose.
+const updateLocalTakesEffectHint = "The new binary takes effect the next time the Broker starts."
+
+// updateSessionHint follows a Broker-applied update. It is the wording in
+// design-broker's delegated update section; keep it verbatim.
+const updateSessionHint = "Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically."
+
+// updateRestartWait bounds the wait for a restarted Broker to report the new
+// version. It covers the Broker's exit delay, the service manager's restart
+// interval (systemd RestartSec is 5 seconds; launchd's default
+// ThrottleInterval is 10 seconds) and the Broker's startup and readiness. The
+// design sets the bound to 60 seconds. It is a variable so a test can shorten
+// the wait without sleeping for the production bound.
+var updateRestartWait = 60 * time.Second
+
+// updateStatusPollDelay separates UpdateStatus polls while the Broker
+// restarts. It is a variable for the same reason as updateRestartWait.
+var updateStatusPollDelay = 250 * time.Millisecond
 
 // Test seams for the parts of the update command that reach the operating
 // system. The command's GitHub requests and the service restart are reached
@@ -40,9 +57,10 @@ func init() {
 	subcommands["update"] = (*app).updateCmd
 }
 
-// updateCmd implements "agent-peer update [--yes]". It asks GitHub for the
-// latest formal release and, after the user confirms or passes --yes, replaces
-// the running binary and restarts the installed service.
+// updateCmd implements "agent-peer update [--yes]". It asks the selected
+// Broker to install the newest release and restart itself. A user-level Broker
+// that declines (it cannot replace and restart itself) leaves the command to
+// replace that account's binary in place.
 func (a *app) updateCmd(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -68,6 +86,37 @@ func (a *app) updateCmd(ctx context.Context, args []string) int {
 		return exitFailure
 	}
 
+	if !*yes {
+		if !updateIsTerminal(a.stdin) {
+			_, _ = fmt.Fprintln(a.stderr, `agent-peer update: standard input is not a terminal; run "agent-peer update --yes" to update without asking`)
+			return exitFailure
+		}
+		_, _ = fmt.Fprintf(a.stdout, "agent-peer %s is installed. Update to the latest release? [y/N] ", current)
+		answer, err := readAnswer(a.stdin)
+		if err != nil {
+			_, _ = fmt.Fprintf(a.stderr, "agent-peer update: reading the answer: %v\n", err)
+			return exitFailure
+		}
+		if !isYes(answer) {
+			_, _ = fmt.Fprintln(a.stdout, "Update canceled; nothing was changed.")
+			return exitOK
+		}
+	}
+
+	result, err := a.deps.applyUpdateViaBroker(ctx)
+	if err != nil {
+		if errors.Is(err, errUserLevelUpdateUnsupported) || errors.Is(err, errNoRunningBroker) {
+			return a.updateLocal(ctx, current)
+		}
+		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: %v\n", err)
+		return exitFailure
+	}
+	return a.reportBrokerUpdate(ctx, result)
+}
+
+// updateLocal replaces a user-level binary in place and restarts the
+// user-level service that runs it. The user has already confirmed the update.
+func (a *app) updateLocal(ctx context.Context, current string) int {
 	target, err := updateTarget()
 	if err != nil {
 		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: %v\n", err)
@@ -91,26 +140,9 @@ func (a *app) updateCmd(ctx context.Context, args []string) int {
 		return exitOK
 	}
 
-	if !*yes && !updateIsTerminal(a.stdin) {
-		_, _ = fmt.Fprintln(a.stderr, `agent-peer update: standard input is not a terminal; run "agent-peer update --yes" to update without asking`)
-		return exitFailure
-	}
-
 	_, _ = fmt.Fprintf(a.stdout, "agent-peer %s is installed; version %s is available.\n", current, release.Version)
 	if release.URL != "" {
 		_, _ = fmt.Fprintf(a.stdout, "Release: %s\n", release.URL)
-	}
-	if !*yes {
-		_, _ = fmt.Fprintf(a.stdout, "Update to %s? [y/N] ", release.Version)
-		answer, err := readAnswer(a.stdin)
-		if err != nil {
-			_, _ = fmt.Fprintf(a.stderr, "agent-peer update: reading the answer: %v\n", err)
-			return exitFailure
-		}
-		if !isYes(answer) {
-			_, _ = fmt.Fprintln(a.stdout, "Update canceled; the binary and service were not changed.")
-			return exitOK
-		}
 	}
 
 	if err := a.deps.updateApply(ctx, update.ApplyOptions{
@@ -124,26 +156,83 @@ func (a *app) updateCmd(ctx context.Context, args []string) int {
 		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: %v\n", err)
 		return exitFailure
 	}
-	_, _ = fmt.Fprintf(a.stdout, "agent-peer %s is installed.\n", release.Version)
+	_, _ = fmt.Fprintln(a.stdout, updateLocalTakesEffectHint)
+	return exitOK
+}
 
-	opts, err := a.deps.serviceOptions(updateEUID() == 0)
-	if err != nil {
+// reportBrokerUpdate handles a successful ApplyUpdate answer. When the Broker
+// restarts, the command waits until the new Broker answers with the new
+// version, because the request is only complete once that process is running.
+func (a *app) reportBrokerUpdate(ctx context.Context, result brokerUpdateResult) int {
+	from := strings.TrimPrefix(result.FromVersion, "v")
+	to := strings.TrimPrefix(result.ToVersion, "v")
+	if to == "" {
+		_, _ = fmt.Fprintf(a.stdout, "agent-peer %s is up to date\n", from)
+		return exitOK
+	}
+	if !result.Restarting {
+		_, _ = fmt.Fprintf(a.stdout, "agent-peer %s is installed.\n", to)
+		_, _ = fmt.Fprintln(a.stdout, updateSessionHint)
+		return exitOK
+	}
+
+	_, _ = fmt.Fprintf(a.stdout, "The Broker is restarting to version %s.\n", to)
+	if err := a.waitForBrokerVersion(ctx, to, result.UserLevel); err != nil {
 		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: %v\n", err)
 		return exitFailure
 	}
-	restarted, err := a.deps.serviceRestart(ctx, opts)
-	if err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: restarting the service: %v\n", err)
-		return exitFailure
-	}
-	if restarted {
-		_, _ = fmt.Fprintln(a.stdout, "Restarted the agent-peer service.")
-	} else {
-		_, _ = fmt.Fprintln(a.stdout, "The Broker is not installed as a service; restart it to use the new version.")
-	}
-	_, _ = fmt.Fprintln(a.stdout, updateSharedBinaryHint)
-	_, _ = fmt.Fprintln(a.stdout, "Open Claude Code sessions must reconnect with /mcp or be restarted to use the new version.")
+	_, _ = fmt.Fprintf(a.stdout, "The Broker is running agent-peer %s.\n", to)
+	_, _ = fmt.Fprintln(a.stdout, updateSessionHint)
 	return exitOK
+}
+
+// waitForBrokerVersion polls UpdateStatus until the restarted Broker reports
+// want. Connection errors are expected while the old process exits and the
+// service manager starts the new one, so they are retried until the bound. A
+// timeout names the log of the level that answered ApplyUpdate, which is where
+// the failure that kept the new Broker from starting will be.
+func (a *app) waitForBrokerVersion(ctx context.Context, want string, userLevel bool) error {
+	want = strings.TrimPrefix(want, "v")
+	deadline := time.Now().Add(updateRestartWait)
+	var lastErr error
+	for {
+		status, err := a.deps.brokerUpdateStatus(ctx)
+		switch {
+		case err != nil:
+			lastErr = err
+		case strings.TrimPrefix(status.CurrentVersion, "v") == want:
+			return nil
+		default:
+			lastErr = nil
+		}
+		if !time.Now().Before(deadline) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(updateStatusPollDelay):
+		}
+	}
+	if lastErr != nil {
+		return fmt.Errorf("the Broker did not report version %s within %s (%v); check the service log with %s", want, updateRestartWait, lastErr, updateLogHint(userLevel))
+	}
+	return fmt.Errorf("the Broker did not report version %s within %s; check the service log with %s", want, updateRestartWait, updateLogHint(userLevel))
+}
+
+// updateLogHint names where the service manager writes the Broker's standard
+// error, for the level that answered ApplyUpdate.
+func updateLogHint(userLevel bool) string {
+	switch {
+	case updateGOOS == "darwin" && userLevel:
+		return "~/Library/Logs/agent-peer/broker.log"
+	case updateGOOS == "darwin":
+		return "/var/log/agent-peer/broker.log"
+	case userLevel:
+		return "journalctl --user -u " + service.UnitName
+	default:
+		return "journalctl -u " + service.UnitName
+	}
 }
 
 // updateTarget returns the running executable with symbolic links resolved, so

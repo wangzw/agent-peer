@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker/service"
 	"github.com/wangzw/agent-peer/internal/broker/update"
 )
 
@@ -37,12 +36,12 @@ type stubDeps struct {
 
 	// Update command overrides. When nil, the stub records the call and uses
 	// the configured results below.
-	updateAPIBase  func() string
-	updateLatest   func(ctx context.Context, client *http.Client, api string) (update.Release, error)
-	updateNewer    func(current, candidate string) bool
-	updateApply    func(ctx context.Context, o update.ApplyOptions) error
-	serviceOptions func(system bool) (service.Options, error)
-	serviceRestart func(ctx context.Context, opts service.Options) (bool, error)
+	updateAPIBase        func() string
+	updateLatest         func(ctx context.Context, client *http.Client, api string) (update.Release, error)
+	updateNewer          func(current, candidate string) bool
+	updateApply          func(ctx context.Context, o update.ApplyOptions) error
+	applyUpdateViaBroker func(ctx context.Context) (brokerUpdateResult, error)
+	brokerUpdateStatus   func(ctx context.Context) (brokerUpdateStatus, error)
 
 	// Configured results used when the corresponding override is nil.
 	brokerErr      error
@@ -51,26 +50,27 @@ type stubDeps struct {
 	statusErr      error
 	auditErr       error
 
-	latestRelease    update.Release
-	latestErr        error
-	newerResult      bool
-	applyErr         error
-	optionsErr       error
-	serviceRestarted bool
-	restartErr       error
+	latestRelease   update.Release
+	latestErr       error
+	newerResult     bool
+	applyErr        error
+	brokerUpdate    brokerUpdateResult
+	brokerUpdateErr error
+	brokerStatus    brokerUpdateStatus
+	brokerStatusErr error
 
 	// Recorded calls.
-	brokerCalls        []brokerOptions
-	mcpCalls           int
-	statusCalls        []stubStatusCall
-	auditCalls         []stubAuditCall
-	latestCalls        int
-	latestAPI          string
-	latestClient       *http.Client
-	newerCalls         [][2]string
-	applyCalls         []update.ApplyOptions
-	serviceOptionCalls []bool
-	restartCalls       []service.Options
+	brokerCalls       []brokerOptions
+	mcpCalls          int
+	statusCalls       []stubStatusCall
+	auditCalls        []stubAuditCall
+	latestCalls       int
+	latestAPI         string
+	latestClient      *http.Client
+	newerCalls        [][2]string
+	applyCalls        []update.ApplyOptions
+	brokerApplyCalls  int
+	brokerStatusCalls int
 }
 
 // deps returns a deps whose function fields record into s and then delegate to
@@ -140,19 +140,19 @@ func (s *stubDeps) deps() deps {
 			}
 			return s.applyErr
 		},
-		serviceOptions: func(system bool) (service.Options, error) {
-			s.serviceOptionCalls = append(s.serviceOptionCalls, system)
-			if s.serviceOptions != nil {
-				return s.serviceOptions(system)
+		applyUpdateViaBroker: func(ctx context.Context) (brokerUpdateResult, error) {
+			s.brokerApplyCalls++
+			if s.applyUpdateViaBroker != nil {
+				return s.applyUpdateViaBroker(ctx)
 			}
-			return service.Options{System: system}, s.optionsErr
+			return s.brokerUpdate, s.brokerUpdateErr
 		},
-		serviceRestart: func(ctx context.Context, opts service.Options) (bool, error) {
-			s.restartCalls = append(s.restartCalls, opts)
-			if s.serviceRestart != nil {
-				return s.serviceRestart(ctx, opts)
+		brokerUpdateStatus: func(ctx context.Context) (brokerUpdateStatus, error) {
+			s.brokerStatusCalls++
+			if s.brokerUpdateStatus != nil {
+				return s.brokerUpdateStatus(ctx)
 			}
-			return s.serviceRestarted, s.restartErr
+			return s.brokerStatus, s.brokerStatusErr
 		},
 	}
 }

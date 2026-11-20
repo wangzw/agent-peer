@@ -213,6 +213,12 @@ func FindBroker(ctx context.Context) (string, error) {
 	return t.Path, nil
 }
 
+// UserSocketPath returns the socket path of the calling account's user-level
+// Broker. For root it is the same path as the system-level socket.
+func UserSocketPath() string {
+	return userSocketPath(os.Geteuid())
+}
+
 // FindBrokerWithDial is FindBroker together with a function that opens a
 // connection to the selected socket. The function checks the peer of every
 // underlying connection with peerUID before gRPC sends a byte, so a socket

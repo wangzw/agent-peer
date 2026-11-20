@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wangzw/agent-peer/internal/broker/update"
 )
@@ -30,7 +31,8 @@ func (c *countingTransport) RoundTrip(*http.Request) (*http.Response, error) {
 }
 
 // updateTestEnv installs the operating-system seams around a temporary target
-// binary and restores them when the test ends.
+// binary and restores them when the test ends. The defaults describe an
+// ordinary account: non-root, with a writable user-level installation.
 type updateTestEnv struct {
 	target    string
 	transport *countingTransport
@@ -52,9 +54,11 @@ func newUpdateTestEnv(t *testing.T) *updateTestEnv {
 		newClient    func() *http.Client
 		isTerminal   func(io.Reader) bool
 		goos, goarch string
+		restartBound time.Duration
+		pollDelay    time.Duration
 	}{
 		updateExecutable, updateEvalSymlinks, updateEUID, updateNewClient,
-		updateIsTerminal, updateGOOS, updateGOARCH,
+		updateIsTerminal, updateGOOS, updateGOARCH, updateRestartWait, updateStatusPollDelay,
 	}
 	updateExecutable = func() (string, error) { return target, nil }
 	updateEvalSymlinks = func(path string) (string, error) { return path, nil }
@@ -63,6 +67,8 @@ func newUpdateTestEnv(t *testing.T) *updateTestEnv {
 	updateIsTerminal = func(io.Reader) bool { return true }
 	updateGOOS = "linux"
 	updateGOARCH = "amd64"
+	updateRestartWait = time.Second
+	updateStatusPollDelay = time.Millisecond
 	t.Cleanup(func() {
 		updateExecutable = previous.executable
 		updateEvalSymlinks = previous.evalSymlinks
@@ -71,6 +77,8 @@ func newUpdateTestEnv(t *testing.T) *updateTestEnv {
 		updateIsTerminal = previous.isTerminal
 		updateGOOS = previous.goos
 		updateGOARCH = previous.goarch
+		updateRestartWait = previous.restartBound
+		updateStatusPollDelay = previous.pollDelay
 	})
 	return env
 }
@@ -86,6 +94,17 @@ func assertBinaryUnchanged(t *testing.T, path string) {
 	}
 }
 
+// userLevelRefusal is the answer a user-level Broker gives when it cannot
+// apply an update itself.
+var userLevelRefusal = errUserLevelUpdateUnsupported
+
+// designSessionHint is the delegated-update hint as design-broker writes it.
+// The tests spell it out so a change to the constant cannot pass unnoticed.
+const designSessionHint = "Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically."
+
+// designLocalHint is the local-replacement hint as design-broker writes it.
+const designLocalHint = "The new binary takes effect the next time the Broker starts."
+
 func TestUpdateRejectsNonReleaseBuilds(t *testing.T) {
 	for _, version := range []string{"dev", "e2e", "0.1.2-SNAPSHOT-abc123", "", "0.1", "0.1.0+build.5"} {
 		t.Run(version, func(t *testing.T) {
@@ -99,11 +118,72 @@ func TestUpdateRejectsNonReleaseBuilds(t *testing.T) {
 			if stdout.Len() != 0 {
 				t.Fatalf("stdout = %q, want empty", stdout.String())
 			}
-			if stub.latestCalls != 0 || len(stub.applyCalls) != 0 {
-				t.Fatalf("latest calls = %d, apply calls = %d, want none", stub.latestCalls, len(stub.applyCalls))
+			if stub.latestCalls != 0 || len(stub.applyCalls) != 0 || stub.brokerApplyCalls != 0 {
+				t.Fatalf("latest calls = %d, apply calls = %d, broker apply calls = %d, want none",
+					stub.latestCalls, len(stub.applyCalls), stub.brokerApplyCalls)
 			}
 		})
 	}
+}
+
+func TestUpdateRefusesNonTerminalInputWithoutYes(t *testing.T) {
+	env := newUpdateTestEnv(t)
+	updateIsTerminal = func(io.Reader) bool { return false }
+
+	a, _, stderr, stub := newDispatchApp("0.1.1")
+	a.stdin = strings.NewReader("y\n")
+	if got := a.run(context.Background(), []string{"update"}); got != exitFailure {
+		t.Fatalf("run(update) = %d, want %d", got, exitFailure)
+	}
+	if !strings.Contains(stderr.String(), "--yes") {
+		t.Fatalf("stderr = %q, want it to offer --yes", stderr.String())
+	}
+	if stub.brokerApplyCalls != 0 || stub.latestCalls != 0 || len(stub.applyCalls) != 0 {
+		t.Fatalf("broker apply calls = %d, latest calls = %d, apply calls = %d, want none before confirmation",
+			stub.brokerApplyCalls, stub.latestCalls, len(stub.applyCalls))
+	}
+	if env.transport.calls != 0 {
+		t.Fatalf("network requests = %d, want none", env.transport.calls)
+	}
+	assertBinaryUnchanged(t, env.target)
+}
+
+func TestUpdateUserDeclines(t *testing.T) {
+	env := newUpdateTestEnv(t)
+	a, stdout, stderr, stub := newDispatchApp("0.1.1")
+	a.stdin = strings.NewReader("n\n")
+
+	if got := a.run(context.Background(), []string{"update"}); got != exitOK {
+		t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Update canceled; nothing was changed.") {
+		t.Fatalf("stdout = %q, want the cancellation line", stdout.String())
+	}
+	if stub.brokerApplyCalls != 0 || stub.latestCalls != 0 || len(stub.applyCalls) != 0 {
+		t.Fatalf("broker apply calls = %d, latest calls = %d, apply calls = %d, want none",
+			stub.brokerApplyCalls, stub.latestCalls, len(stub.applyCalls))
+	}
+	assertBinaryUnchanged(t, env.target)
+}
+
+func TestUpdateReportsUpToDate(t *testing.T) {
+	env := newUpdateTestEnv(t)
+	stub := &stubDeps{
+		brokerUpdate: brokerUpdateResult{FromVersion: "0.1.1"},
+	}
+	a, stdout, stderr, _ := newDispatchApp("0.1.1")
+	a.deps = stub.deps()
+
+	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
+		t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	}
+	if want := "agent-peer 0.1.1 is up to date\n"; stdout.String() != want {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	}
+	if len(stub.applyCalls) != 0 {
+		t.Fatalf("apply calls = %d, want none", len(stub.applyCalls))
+	}
+	assertBinaryUnchanged(t, env.target)
 }
 
 func TestUpdateFailsBeforeAnyDownloadWithoutWritePermission(t *testing.T) {
@@ -128,9 +208,14 @@ func TestUpdateFailsBeforeAnyDownloadWithoutWritePermission(t *testing.T) {
 	updateExecutable = func() (string, error) { return target, nil }
 	updateEvalSymlinks = func(path string) (string, error) { return path, nil }
 
-	a, _, stderr, stub := newDispatchApp("0.1.1")
+	stub := &stubDeps{brokerUpdateErr: userLevelRefusal}
+	a, _, stderr, _ := newDispatchApp("0.1.1")
+	a.deps = stub.deps()
 	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitFailure {
 		t.Fatalf("run(update --yes) = %d, want %d", got, exitFailure)
+	}
+	if stub.brokerApplyCalls != 1 {
+		t.Fatalf("broker apply calls = %d, want 1 before the fallback", stub.brokerApplyCalls)
 	}
 	if stub.latestCalls != 0 {
 		t.Fatalf("latest calls = %d, want none before the permission check passes", stub.latestCalls)
@@ -141,111 +226,18 @@ func TestUpdateFailsBeforeAnyDownloadWithoutWritePermission(t *testing.T) {
 	if env.transport.calls != 0 {
 		t.Fatalf("network requests = %d, want none before the permission check passes", env.transport.calls)
 	}
-	if !strings.Contains(stderr.String(), "sudo agent-peer update") {
+	if !strings.Contains(stderr.String(), `run "sudo agent-peer update"`) {
 		t.Fatalf("stderr = %q, want the sudo hint", stderr.String())
 	}
 	assertBinaryUnchanged(t, target)
 }
 
-func TestUpdateRefusesNonTerminalInputWithoutYes(t *testing.T) {
-	env := newUpdateTestEnv(t)
-	updateIsTerminal = func(io.Reader) bool { return false }
-
-	a, _, stderr, stub := newDispatchApp("0.1.1")
-	stub.latestRelease = update.Release{Version: "0.1.2"}
-	stub.newerResult = true
-	a.deps = stub.deps()
-	a.stdin = strings.NewReader("y\n")
-	if got := a.run(context.Background(), []string{"update"}); got != exitFailure {
-		t.Fatalf("run(update) = %d, want %d", got, exitFailure)
-	}
-	if !strings.Contains(stderr.String(), "--yes") {
-		t.Fatalf("stderr = %q, want it to offer --yes", stderr.String())
-	}
-	if stub.latestCalls != 1 || len(stub.applyCalls) != 0 {
-		t.Fatalf("latest calls = %d, apply calls = %d, want one lookup and no apply", stub.latestCalls, len(stub.applyCalls))
-	}
-	if env.transport.calls != 0 {
-		t.Fatalf("network requests = %d, want none", env.transport.calls)
-	}
-	assertBinaryUnchanged(t, env.target)
-}
-
-func TestUpdateReportsUpToDate(t *testing.T) {
+func TestUpdateFallsBackToLocalForAUserBroker(t *testing.T) {
 	env := newUpdateTestEnv(t)
 	stub := &stubDeps{
-		latestRelease: update.Release{Version: "0.1.1", URL: "https://github.com/wangzw/agent-peer/releases/tag/v0.1.1"},
-		newerResult:   false,
-	}
-	a, stdout, stderr, _ := newDispatchApp("0.1.1")
-	a.deps = stub.deps()
-
-	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
-		t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
-	}
-	if want := "agent-peer 0.1.1 is up to date\n"; stdout.String() != want {
-		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
-	}
-	if len(stub.applyCalls) != 0 || len(stub.restartCalls) != 0 {
-		t.Fatalf("apply calls = %d, restart calls = %d, want none", len(stub.applyCalls), len(stub.restartCalls))
-	}
-	assertBinaryUnchanged(t, env.target)
-}
-
-func TestUpdateUserDeclines(t *testing.T) {
-	env := newUpdateTestEnv(t)
-	stub := &stubDeps{
-		latestRelease: update.Release{Version: "0.1.2", URL: "https://example.test/release"},
-		newerResult:   true,
-	}
-	a, stdout, stderr, _ := newDispatchApp("0.1.1")
-	a.deps = stub.deps()
-	a.stdin = strings.NewReader("n\n")
-
-	if got := a.run(context.Background(), []string{"update"}); got != exitOK {
-		t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "Update canceled") {
-		t.Fatalf("stdout = %q, want the cancellation line", stdout.String())
-	}
-	if len(stub.applyCalls) != 0 || len(stub.restartCalls) != 0 {
-		t.Fatalf("apply calls = %d, restart calls = %d, want none", len(stub.applyCalls), len(stub.restartCalls))
-	}
-	assertBinaryUnchanged(t, env.target)
-}
-
-func TestUpdateNonTerminalUpToDateExitsZero(t *testing.T) {
-	newUpdateTestEnv(t)
-	updateIsTerminal = func(io.Reader) bool { return false }
-	stub := &stubDeps{
-		latestRelease: update.Release{Version: "0.1.1"},
-		newerResult:   false,
-	}
-	a, stdout, stderr, _ := newDispatchApp("0.1.1")
-	a.deps = stub.deps()
-	a.stdin = strings.NewReader("")
-
-	if got := a.run(context.Background(), []string{"update"}); got != exitOK {
-		t.Fatalf("run(update) with non-terminal input and the latest release = %d, want %d (stderr %q)",
-			got, exitOK, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "is up to date") {
-		t.Fatalf("stdout = %q, want the up-to-date line", stdout.String())
-	}
-	if strings.Contains(stderr.String(), "not a terminal") {
-		t.Fatalf("stderr = %q, want no terminal refusal before the release is known", stderr.String())
-	}
-	if len(stub.applyCalls) != 0 {
-		t.Fatalf("apply calls = %d, want none", len(stub.applyCalls))
-	}
-}
-
-func TestUpdateConfirmsAndRestartsTheService(t *testing.T) {
-	env := newUpdateTestEnv(t)
-	stub := &stubDeps{
-		latestRelease:    update.Release{Version: "0.1.2", URL: "https://example.test/release"},
-		newerResult:      true,
-		serviceRestarted: true,
+		brokerUpdateErr: userLevelRefusal,
+		latestRelease:   update.Release{Version: "0.1.2", URL: "https://example.test/release"},
+		newerResult:     true,
 	}
 	a, stdout, stderr, _ := newDispatchApp("0.1.1")
 	a.deps = stub.deps()
@@ -253,6 +245,9 @@ func TestUpdateConfirmsAndRestartsTheService(t *testing.T) {
 
 	if got := a.run(context.Background(), []string{"update"}); got != exitOK {
 		t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	}
+	if stub.brokerApplyCalls != 1 {
+		t.Fatalf("broker apply calls = %d, want 1 before the fallback", stub.brokerApplyCalls)
 	}
 	if len(stub.applyCalls) != 1 {
 		t.Fatalf("apply calls = %d, want 1", len(stub.applyCalls))
@@ -267,30 +262,24 @@ func TestUpdateConfirmsAndRestartsTheService(t *testing.T) {
 	if got.API != "https://api.example" || got.Client == nil {
 		t.Fatalf("ApplyOptions API = %q, client = %v, want the wired API and client", got.API, got.Client)
 	}
-	if len(stub.serviceOptionCalls) != 1 || stub.serviceOptionCalls[0] {
-		t.Fatalf("service option calls = %v, want one user-level call", stub.serviceOptionCalls)
-	}
-	if len(stub.restartCalls) != 1 || stub.restartCalls[0].System {
-		t.Fatalf("restart calls = %+v, want one user-level restart", stub.restartCalls)
-	}
 	out := stdout.String()
-	if !strings.Contains(out, "Restarted the agent-peer service.") {
-		t.Fatalf("stdout = %q, want the restart line", out)
+	if !strings.Contains(out, "[y/N]") {
+		t.Fatalf("stdout = %q, want the confirmation question", out)
 	}
-	if !strings.Contains(out, "reconnect with /mcp") {
-		t.Fatalf("stdout = %q, want the session hint", out)
+	if !strings.Contains(out, designLocalHint+"\n") {
+		t.Fatalf("stdout = %q, want the design local hint verbatim", out)
 	}
-	if !strings.Contains(out, "User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.") {
-		t.Fatalf("stdout = %q, want the shared-binary hint", out)
+	if strings.Contains(out, "Restarted") || strings.Contains(out, "service") {
+		t.Fatalf("stdout = %q, want no service operation or message", out)
 	}
 }
 
 func TestUpdateYesSkipsTheQuestion(t *testing.T) {
 	newUpdateTestEnv(t)
 	stub := &stubDeps{
-		latestRelease:    update.Release{Version: "0.1.2"},
-		newerResult:      true,
-		serviceRestarted: true,
+		brokerUpdateErr: userLevelRefusal,
+		latestRelease:   update.Release{Version: "0.1.2"},
+		newerResult:     true,
 	}
 	a, stdout, stderr, _ := newDispatchApp("0.1.1")
 	a.deps = stub.deps()
@@ -307,13 +296,11 @@ func TestUpdateYesSkipsTheQuestion(t *testing.T) {
 	}
 }
 
-func TestUpdateRootUsesTheSystemServiceLevel(t *testing.T) {
-	newUpdateTestEnv(t)
+func TestUpdateRootUsesApplyUpdate(t *testing.T) {
+	env := newUpdateTestEnv(t)
 	updateEUID = func() int { return 0 }
 	stub := &stubDeps{
-		latestRelease:    update.Release{Version: "0.1.2"},
-		newerResult:      true,
-		serviceRestarted: true,
+		brokerUpdate: brokerUpdateResult{FromVersion: "0.1.1", ToVersion: "0.1.2"},
 	}
 	a, stdout, stderr, _ := newDispatchApp("0.1.1")
 	a.deps = stub.deps()
@@ -321,23 +308,183 @@ func TestUpdateRootUsesTheSystemServiceLevel(t *testing.T) {
 	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
 		t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
 	}
-	if len(stub.serviceOptionCalls) != 1 || !stub.serviceOptionCalls[0] {
-		t.Fatalf("service option calls = %v, want one system-level call", stub.serviceOptionCalls)
+	if stub.brokerApplyCalls != 1 {
+		t.Fatalf("broker apply calls = %d, want 1", stub.brokerApplyCalls)
 	}
-	if len(stub.restartCalls) != 1 || !stub.restartCalls[0].System {
-		t.Fatalf("restart calls = %+v, want one system-level restart", stub.restartCalls)
+	if len(stub.applyCalls) != 0 {
+		t.Fatalf("local apply calls = %d, want none for a system-level update", len(stub.applyCalls))
 	}
-	if !strings.Contains(stdout.String(), "User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.") {
-		t.Fatalf("stdout = %q, want the shared-binary hint after a system-level update", stdout.String())
+	if !strings.Contains(stdout.String(), "agent-peer 0.1.2 is installed.") {
+		t.Fatalf("stdout = %q, want the installed version", stdout.String())
+	}
+	assertBinaryUnchanged(t, env.target)
+}
+
+func TestUpdateBrokerAppliesTheUpdate(t *testing.T) {
+	env := newUpdateTestEnv(t)
+	stub := &stubDeps{
+		brokerUpdate: brokerUpdateResult{FromVersion: "0.1.1", ToVersion: "0.1.2"},
+	}
+	a, stdout, stderr, _ := newDispatchApp("0.1.1")
+	a.deps = stub.deps()
+
+	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
+		t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	}
+	if stub.brokerApplyCalls != 1 {
+		t.Fatalf("broker apply calls = %d, want 1", stub.brokerApplyCalls)
+	}
+	if len(stub.applyCalls) != 0 || stub.latestCalls != 0 {
+		t.Fatalf("local apply calls = %d, latest calls = %d, want none", len(stub.applyCalls), stub.latestCalls)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "agent-peer 0.1.2 is installed.") {
+		t.Fatalf("stdout = %q, want the installed version", out)
+	}
+	if !strings.Contains(out, designSessionHint+"\n") {
+		t.Fatalf("stdout = %q, want the design hint verbatim", out)
+	}
+	assertBinaryUnchanged(t, env.target)
+}
+
+func TestUpdateAsksBeforeTheBrokerCall(t *testing.T) {
+	t.Run("declined", func(t *testing.T) {
+		env := newUpdateTestEnv(t)
+		a, stdout, stderr, stub := newDispatchApp("0.1.1")
+		a.stdin = strings.NewReader("n\n")
+		if got := a.run(context.Background(), []string{"update"}); got != exitOK {
+			t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+		}
+		if stub.brokerApplyCalls != 0 {
+			t.Fatalf("broker apply calls = %d, want none after a refusal", stub.brokerApplyCalls)
+		}
+		if !strings.Contains(stdout.String(), "Update canceled") {
+			t.Fatalf("stdout = %q, want the cancellation line", stdout.String())
+		}
+		assertBinaryUnchanged(t, env.target)
+	})
+
+	t.Run("accepted", func(t *testing.T) {
+		newUpdateTestEnv(t)
+		stub := &stubDeps{
+			brokerUpdate: brokerUpdateResult{FromVersion: "0.1.1", ToVersion: "0.1.2"},
+		}
+		a, stdout, stderr, _ := newDispatchApp("0.1.1")
+		a.deps = stub.deps()
+		a.stdin = strings.NewReader("y\n")
+		if got := a.run(context.Background(), []string{"update"}); got != exitOK {
+			t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+		}
+		if stub.brokerApplyCalls != 1 {
+			t.Fatalf("broker apply calls = %d, want 1", stub.brokerApplyCalls)
+		}
+		if !strings.Contains(stdout.String(), "[y/N]") {
+			t.Fatalf("stdout = %q, want the question", stdout.String())
+		}
+	})
+}
+
+func TestUpdateWaitsForTheRestartedBroker(t *testing.T) {
+	newUpdateTestEnv(t)
+	stub := &stubDeps{
+		brokerUpdate: brokerUpdateResult{FromVersion: "0.1.1", ToVersion: "0.1.2", Restarting: true},
+	}
+	var statusCalls int
+	stub.brokerUpdateStatus = func(context.Context) (brokerUpdateStatus, error) {
+		statusCalls++
+		if statusCalls < 3 {
+			return brokerUpdateStatus{CurrentVersion: "0.1.1"}, nil
+		}
+		return brokerUpdateStatus{CurrentVersion: "0.1.2"}, nil
+	}
+	a, stdout, stderr, _ := newDispatchApp("0.1.1")
+	a.deps = stub.deps()
+
+	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
+		t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	}
+	if statusCalls != 3 {
+		t.Fatalf("UpdateStatus calls = %d, want 3 polls before the new version", statusCalls)
+	}
+	if !strings.Contains(stdout.String(), "The Broker is running agent-peer 0.1.2.") {
+		t.Fatalf("stdout = %q, want the running version after the restart", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), designSessionHint+"\n") {
+		t.Fatalf("stdout = %q, want the design hint verbatim", stdout.String())
 	}
 }
 
-func TestUpdateHintsToRestartAnUnmanagedBroker(t *testing.T) {
+func TestUpdateRestartTimeoutNamesTheLog(t *testing.T) {
+	newUpdateTestEnv(t)
+	updateRestartWait = 0
+	stub := &stubDeps{
+		brokerUpdate: brokerUpdateResult{FromVersion: "0.1.1", ToVersion: "0.1.2", Restarting: true},
+		brokerStatus: brokerUpdateStatus{CurrentVersion: "0.1.1"},
+	}
+	a, _, stderr, _ := newDispatchApp("0.1.1")
+	a.deps = stub.deps()
+
+	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitFailure {
+		t.Fatalf("run(update --yes) = %d, want %d", got, exitFailure)
+	}
+	err := stderr.String()
+	if !strings.Contains(err, "did not report version 0.1.2") {
+		t.Fatalf("stderr = %q, want the timeout version", err)
+	}
+	if !strings.Contains(err, "journalctl -u agent-peer.service") {
+		t.Fatalf("stderr = %q, want the system service log location", err)
+	}
+}
+
+func TestUpdateRestartTimeoutNamesTheUserLevelLog(t *testing.T) {
+	newUpdateTestEnv(t)
+	updateRestartWait = 0
+	stub := &stubDeps{
+		brokerUpdate: brokerUpdateResult{FromVersion: "0.1.1", ToVersion: "0.1.2", Restarting: true, UserLevel: true},
+		brokerStatus: brokerUpdateStatus{CurrentVersion: "0.1.1"},
+	}
+	a, _, stderr, _ := newDispatchApp("0.1.1")
+	a.deps = stub.deps()
+
+	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitFailure {
+		t.Fatalf("run(update --yes) = %d, want %d", got, exitFailure)
+	}
+	err := stderr.String()
+	if !strings.Contains(err, "check the service log with journalctl --user -u agent-peer.service") {
+		t.Fatalf("stderr = %q, want the user-level service log location", err)
+	}
+}
+
+func TestUpdateBrokerPermissionDeniedMakesNoDownload(t *testing.T) {
+	env := newUpdateTestEnv(t)
+	stub := &stubDeps{
+		brokerUpdateErr: errors.New("permission denied: the account cannot write the Broker configuration"),
+	}
+	a, _, stderr, _ := newDispatchApp("0.1.1")
+	a.deps = stub.deps()
+
+	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitFailure {
+		t.Fatalf("run(update --yes) = %d, want %d", got, exitFailure)
+	}
+	if !strings.Contains(stderr.String(), "permission denied") {
+		t.Fatalf("stderr = %q, want the Broker's permission error", stderr.String())
+	}
+	if len(stub.applyCalls) != 0 {
+		t.Fatalf("local apply calls = %d, want none after a permission failure", len(stub.applyCalls))
+	}
+	if stub.latestCalls != 0 {
+		t.Fatalf("latest calls = %d, want none after a permission failure", stub.latestCalls)
+	}
+	if env.transport.calls != 0 {
+		t.Fatalf("network requests = %d, want none", env.transport.calls)
+	}
+	assertBinaryUnchanged(t, env.target)
+}
+
+func TestUpdateBrokerUpToDate(t *testing.T) {
 	newUpdateTestEnv(t)
 	stub := &stubDeps{
-		latestRelease:    update.Release{Version: "0.1.2"},
-		newerResult:      true,
-		serviceRestarted: false,
+		brokerUpdate: brokerUpdateResult{FromVersion: "0.1.1"},
 	}
 	a, stdout, stderr, _ := newDispatchApp("0.1.1")
 	a.deps = stub.deps()
@@ -345,17 +492,50 @@ func TestUpdateHintsToRestartAnUnmanagedBroker(t *testing.T) {
 	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
 		t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "restart it to use the new version") {
-		t.Fatalf("stdout = %q, want the manual restart hint", stdout.String())
+	if want := "agent-peer 0.1.1 is up to date\n"; stdout.String() != want {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
+	if stub.brokerStatusCalls != 0 {
+		t.Fatalf("UpdateStatus calls = %d, want none when nothing changed", stub.brokerStatusCalls)
+	}
+}
+
+func TestUpdateWithoutARunningBrokerReplacesLocally(t *testing.T) {
+	env := newUpdateTestEnv(t)
+	stub := &stubDeps{
+		brokerUpdateErr: errNoRunningBroker,
+		latestRelease:   update.Release{Version: "0.1.2"},
+		newerResult:     true,
+	}
+	a, stdout, stderr, _ := newDispatchApp("0.1.1")
+	a.deps = stub.deps()
+
+	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
+		t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	}
+	if stub.brokerApplyCalls != 1 {
+		t.Fatalf("broker apply calls = %d, want 1 before the fallback", stub.brokerApplyCalls)
+	}
+	if len(stub.applyCalls) != 1 {
+		t.Fatalf("apply calls = %d, want 1", len(stub.applyCalls))
+	}
+	out := stdout.String()
+	if !strings.Contains(out, designLocalHint+"\n") {
+		t.Fatalf("stdout = %q, want the design local hint verbatim", out)
+	}
+	if strings.Contains(out, "Restarted") || strings.Contains(out, "service") {
+		t.Fatalf("stdout = %q, want no service operation or message", out)
+	}
+	assertBinaryUnchanged(t, env.target)
 }
 
 func TestUpdateApplyFailureLeavesTheBinary(t *testing.T) {
 	env := newUpdateTestEnv(t)
 	stub := &stubDeps{
-		latestRelease: update.Release{Version: "0.1.2"},
-		newerResult:   true,
-		applyErr:      errors.New("checksum mismatch"),
+		brokerUpdateErr: userLevelRefusal,
+		latestRelease:   update.Release{Version: "0.1.2"},
+		newerResult:     true,
+		applyErr:        errors.New("checksum mismatch"),
 	}
 	a, _, stderr, _ := newDispatchApp("0.1.1")
 	a.deps = stub.deps()
@@ -366,28 +546,7 @@ func TestUpdateApplyFailureLeavesTheBinary(t *testing.T) {
 	if !strings.Contains(stderr.String(), "checksum mismatch") {
 		t.Fatalf("stderr = %q, want the apply error", stderr.String())
 	}
-	if len(stub.restartCalls) != 0 {
-		t.Fatalf("restart calls = %d, want none after a failed replacement", len(stub.restartCalls))
-	}
 	assertBinaryUnchanged(t, env.target)
-}
-
-func TestUpdateRestartFailureIsReported(t *testing.T) {
-	newUpdateTestEnv(t)
-	stub := &stubDeps{
-		latestRelease: update.Release{Version: "0.1.2"},
-		newerResult:   true,
-		restartErr:    errors.New("systemctl failed"),
-	}
-	a, _, stderr, _ := newDispatchApp("0.1.1")
-	a.deps = stub.deps()
-
-	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitFailure {
-		t.Fatalf("run(update --yes) = %d, want %d", got, exitFailure)
-	}
-	if !strings.Contains(stderr.String(), "restarting the service: systemctl failed") {
-		t.Fatalf("stderr = %q, want the restart error", stderr.String())
-	}
 }
 
 func TestUpdateQueriesTheLatestReleaseEndpoint(t *testing.T) {
@@ -404,9 +563,10 @@ func TestUpdateQueriesTheLatestReleaseEndpoint(t *testing.T) {
 	// The release lookup runs against the fake API; Apply stays a test double,
 	// so the command never downloads anything in this test.
 	stub := &stubDeps{
-		updateAPIBase: func() string { return srv.URL },
-		updateLatest:  update.Latest,
-		updateNewer:   update.Newer,
+		brokerUpdateErr: userLevelRefusal,
+		updateAPIBase:   func() string { return srv.URL },
+		updateLatest:    update.Latest,
+		updateNewer:     update.Newer,
 	}
 	a, stdout, stderr, _ := newDispatchApp("0.1.1")
 	a.deps = stub.deps()

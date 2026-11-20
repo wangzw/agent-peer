@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/wangzw/agent-peer/internal/broker/service"
 	"github.com/wangzw/agent-peer/internal/broker/update"
 )
 
@@ -96,13 +95,32 @@ type deps struct {
 	runPeerConnect      func(ctx context.Context, address, key, alias string, stdout, warn io.Writer) error
 	runPeerDisconnect   func(ctx context.Context, broker string, stdout io.Writer) error
 
-	// Update command. The command asks GitHub for the latest release, replaces
-	// the binary, and restarts the service installed at the level the effective
-	// user belongs to.
-	updateAPIBase  func() string
-	updateLatest   func(ctx context.Context, client *http.Client, api string) (update.Release, error)
-	updateNewer    func(current, candidate string) bool
-	updateApply    func(ctx context.Context, o update.ApplyOptions) error
-	serviceOptions func(system bool) (service.Options, error)
-	serviceRestart func(ctx context.Context, opts service.Options) (bool, error)
+	// Update command. The command asks the selected Broker to install the
+	// newest release itself. When that Broker is this account's user-level
+	// Broker and declines, the command replaces the user-level binary locally
+	// and restarts the user-level service.
+	updateAPIBase        func() string
+	updateLatest         func(ctx context.Context, client *http.Client, api string) (update.Release, error)
+	updateNewer          func(current, candidate string) bool
+	updateApply          func(ctx context.Context, o update.ApplyOptions) error
+	applyUpdateViaBroker func(ctx context.Context) (brokerUpdateResult, error)
+	brokerUpdateStatus   func(ctx context.Context) (brokerUpdateStatus, error)
+}
+
+// brokerUpdateResult is the outcome of the Broker's ApplyUpdate RPC as the
+// command line needs it. Keeping a local value type lets the command be built
+// and tested without the generated local client.
+type brokerUpdateResult struct {
+	FromVersion string
+	ToVersion   string
+	Restarting  bool
+	// UserLevel reports whether the Broker that answered runs as this
+	// account's user-level service. A timeout names the log of that level.
+	UserLevel bool
+}
+
+// brokerUpdateStatus is the part of UpdateStatus the command reads while it
+// waits for a restarted Broker.
+type brokerUpdateStatus struct {
+	CurrentVersion string
 }

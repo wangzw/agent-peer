@@ -72,6 +72,8 @@ type Handlers struct {
 	GetConfig        func(context.Context, *localpb.GetConfigRequest) (*localpb.GetConfigResponse, error)
 	SetConfig        func(context.Context, *localpb.SetConfigRequest) (*localpb.SetConfigResponse, error)
 	Status           func(context.Context, *localpb.StatusRequest) (*localpb.StatusResponse, error)
+	UpdateStatus     func(context.Context, *localpb.UpdateStatusRequest) (*localpb.UpdateStatusResponse, error)
+	ApplyUpdate      func(context.Context, *localpb.ApplyUpdateRequest) (*localpb.ApplyUpdateResponse, error)
 	Audit            func(*localpb.AuditRequest, localpb.Local_AuditServer) error
 }
 
@@ -106,6 +108,22 @@ func AdminHandlers() Handlers {
 		Disconnect: func(context.Context, *localpb.DisconnectRequest) (*localpb.DisconnectResponse, error) {
 			return &localpb.DisconnectResponse{}, nil
 		},
+	}
+}
+
+// ApplyUpdateAnswer returns an ApplyUpdate handler that reports installing to
+// from toVersion. An empty toVersion means the Broker is up to date.
+func ApplyUpdateAnswer(from, toVersion string, restarting bool) func(context.Context, *localpb.ApplyUpdateRequest) (*localpb.ApplyUpdateResponse, error) {
+	return func(context.Context, *localpb.ApplyUpdateRequest) (*localpb.ApplyUpdateResponse, error) {
+		return &localpb.ApplyUpdateResponse{FromVersion: from, ToVersion: toVersion, Restarting: restarting}, nil
+	}
+}
+
+// ApplyUpdateFailure returns an ApplyUpdate handler that fails with code and
+// message.
+func ApplyUpdateFailure(code codes.Code, message string) func(context.Context, *localpb.ApplyUpdateRequest) (*localpb.ApplyUpdateResponse, error) {
+	return func(context.Context, *localpb.ApplyUpdateRequest) (*localpb.ApplyUpdateResponse, error) {
+		return nil, status.Error(code, message)
 	}
 }
 
@@ -521,6 +539,22 @@ func (svc *service) Status(ctx context.Context, req *localpb.StatusRequest) (*lo
 		return h(ctx, req)
 	}
 	return nil, unimplemented("Status")
+}
+
+func (svc *service) UpdateStatus(ctx context.Context, req *localpb.UpdateStatusRequest) (*localpb.UpdateStatusResponse, error) {
+	svc.s.record("UpdateStatus", req)
+	if h := svc.s.handlers.UpdateStatus; h != nil {
+		return h(ctx, req)
+	}
+	return nil, unimplemented("UpdateStatus")
+}
+
+func (svc *service) ApplyUpdate(ctx context.Context, req *localpb.ApplyUpdateRequest) (*localpb.ApplyUpdateResponse, error) {
+	svc.s.record("ApplyUpdate", req)
+	if h := svc.s.handlers.ApplyUpdate; h != nil {
+		return h(ctx, req)
+	}
+	return nil, unimplemented("ApplyUpdate")
 }
 
 func (svc *service) Audit(req *localpb.AuditRequest, stream localpb.Local_AuditServer) error {

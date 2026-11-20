@@ -726,3 +726,83 @@ func TestRunAuditCancel(t *testing.T) {
 		t.Fatal("RunAudit did not return within 3s after the context was cancelled")
 	}
 }
+
+func TestRunApplyUpdateUsesSelectedSocket(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	h := fakelocal.AdminHandlers()
+	h.ApplyUpdate = func(context.Context, *localpb.ApplyUpdateRequest) (*localpb.ApplyUpdateResponse, error) {
+		return &localpb.ApplyUpdateResponse{FromVersion: "0.1.1", ToVersion: "0.1.2", Restarting: true}, nil
+	}
+	srv := fakelocal.Start(t, path, h)
+
+	got, err := RunApplyUpdate(t.Context(), fixedSelector(path))
+	if err != nil {
+		t.Fatalf("RunApplyUpdate: %v", err)
+	}
+	if got.FromVersion != "0.1.1" || got.ToVersion != "0.1.2" || !got.Restarting {
+		t.Fatalf("RunApplyUpdate = %+v, want 0.1.1 -> 0.1.2 restarting", got)
+	}
+	if n := methodCalls(srv, "ApplyUpdate"); n != 1 {
+		t.Fatalf("ApplyUpdate calls = %d, want 1", n)
+	}
+}
+
+func TestRunApplyUpdateDescribesBrokerErrors(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	h := fakelocal.AdminHandlers()
+	h.ApplyUpdate = func(context.Context, *localpb.ApplyUpdateRequest) (*localpb.ApplyUpdateResponse, error) {
+		return nil, fakelocal.ErrorStatus(codes.PermissionDenied, &localpb.ErrorDetail{
+			Code:    localpb.ErrorCode_ERROR_CODE_PERMISSION_DENIED,
+			Message: "the account cannot write the Broker configuration",
+		})
+	}
+	fakelocal.Start(t, path, h)
+
+	_, err := RunApplyUpdate(t.Context(), fixedSelector(path))
+	if err == nil {
+		t.Fatal("RunApplyUpdate returned nil, want the Broker's permission error")
+	}
+	if want := "permission_denied: the account cannot write the Broker configuration"; err.Error() != want {
+		t.Fatalf("RunApplyUpdate error = %q, want %q", err, want)
+	}
+	if IsFailedPrecondition(err) {
+		t.Fatal("IsFailedPrecondition = true for a permission failure")
+	}
+}
+
+func TestRunApplyUpdateRecognizesFailedPrecondition(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	h := fakelocal.AdminHandlers()
+	h.ApplyUpdate = func(context.Context, *localpb.ApplyUpdateRequest) (*localpb.ApplyUpdateResponse, error) {
+		return nil, status.Error(codes.FailedPrecondition, "this Broker cannot replace its binary")
+	}
+	fakelocal.Start(t, path, h)
+
+	_, err := RunApplyUpdate(t.Context(), fixedSelector(path))
+	if err == nil {
+		t.Fatal("RunApplyUpdate returned nil, want the Broker's refusal")
+	}
+	if !IsFailedPrecondition(err) {
+		t.Fatalf("IsFailedPrecondition = false for %v", err)
+	}
+}
+
+func TestRunUpdateStatusUsesSelectedSocket(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	h := fakelocal.AdminHandlers()
+	h.UpdateStatus = func(context.Context, *localpb.UpdateStatusRequest) (*localpb.UpdateStatusResponse, error) {
+		return &localpb.UpdateStatusResponse{CurrentVersion: "0.1.2", AvailableVersion: ""}, nil
+	}
+	srv := fakelocal.Start(t, path, h)
+
+	current, available, err := RunUpdateStatus(t.Context(), fixedSelector(path))
+	if err != nil {
+		t.Fatalf("RunUpdateStatus: %v", err)
+	}
+	if current != "0.1.2" || available != "" {
+		t.Fatalf("RunUpdateStatus = (%q, %q), want (0.1.2, empty)", current, available)
+	}
+	if n := methodCalls(srv, "UpdateStatus"); n != 1 {
+		t.Fatalf("UpdateStatus calls = %d, want 1", n)
+	}
+}

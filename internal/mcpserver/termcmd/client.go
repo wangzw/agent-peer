@@ -18,6 +18,10 @@ import (
 // has no overall deadline; it ends when the command is interrupted.
 const UnaryTimeout = 10 * time.Second
 
+// updateStatusTimeout bounds one UpdateStatus call. It is shorter than
+// UnaryTimeout because the update command polls it while a Broker restarts.
+const updateStatusTimeout = 2 * time.Second
+
 // Dialer opens a client connection to the Broker on the selected socket. The
 // production value checks the peer before gRPC uses the connection. It is an
 // alias so that a function returning this signature directly satisfies
@@ -198,6 +202,74 @@ func RunPeerDisconnect(ctx context.Context, sel Selector, broker string, w io.Wr
 	}
 	_, err = fmt.Fprintf(w, "Disconnected %s\n", broker)
 	return err
+}
+
+// ApplyUpdateResult is the outcome of the Broker's ApplyUpdate RPC.
+type ApplyUpdateResult struct {
+	FromVersion string
+	ToVersion   string
+	Restarting  bool
+}
+
+// ApplyUpdateError is a failed ApplyUpdate with the gRPC code kept, so a caller
+// can tell the Broker's refusal from a transport or permission failure while
+// the text stays the described one.
+type ApplyUpdateError struct {
+	Code codes.Code
+	Text string
+}
+
+func (e *ApplyUpdateError) Error() string { return e.Text }
+
+// IsFailedPrecondition reports whether err is an ApplyUpdate refusal. The
+// update command falls back to replacing a user-level binary only on this
+// answer, which is how a Broker that cannot apply updates itself declines.
+func IsFailedPrecondition(err error) bool {
+	var e *ApplyUpdateError
+	return errors.As(err, &e) && e.Code == codes.FailedPrecondition
+}
+
+// RunApplyUpdate asks the selected Broker to install the newest release and
+// restart itself. The request carries no version: the Broker decides what is
+// newer and refuses a downgrade. The call has no deadline of its own because
+// the Broker downloads and verifies the release before answering; cancelling
+// ctx cancels that work.
+func RunApplyUpdate(ctx context.Context, sel Selector) (ApplyUpdateResult, error) {
+	client, closeConn, err := dial(ctx, sel)
+	if err != nil {
+		return ApplyUpdateResult{}, err
+	}
+	defer closeConn()
+
+	resp, err := client.ApplyUpdate(ctx, &localpb.ApplyUpdateRequest{})
+	if err != nil {
+		return ApplyUpdateResult{}, &ApplyUpdateError{Code: status.Code(err), Text: Describe(err)}
+	}
+	return ApplyUpdateResult{
+		FromVersion: resp.GetFromVersion(),
+		ToVersion:   resp.GetToVersion(),
+		Restarting:  resp.GetRestarting(),
+	}, nil
+}
+
+// RunUpdateStatus returns the version the selected Broker runs now and the
+// newer release it knows of. The call is bounded by updateStatusTimeout, which
+// is short because it is polled while a Broker restarts; a Broker that is
+// still starting refuses the connection instead of answering slowly.
+func RunUpdateStatus(ctx context.Context, sel Selector) (current, available string, err error) {
+	client, closeConn, err := dial(ctx, sel)
+	if err != nil {
+		return "", "", err
+	}
+	defer closeConn()
+
+	callCtx, cancel := context.WithTimeout(ctx, updateStatusTimeout)
+	defer cancel()
+	resp, err := client.UpdateStatus(callCtx, &localpb.UpdateStatusRequest{})
+	if err != nil {
+		return "", "", errors.New(Describe(err))
+	}
+	return resp.GetCurrentVersion(), resp.GetAvailableVersion(), nil
 }
 
 // dial selects the Broker, opens a connection through the selector's dialer and

@@ -185,6 +185,9 @@ func TestREQUpdate004_ConfirmedUpdateRestartsUserService(t *testing.T) {
 
 	svc := updateSetupUserService(t)
 	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	// The Broker performs the update, so its own service environment must reach
+	// the fake API; the command's environment only covers a local fallback.
+	selfUpdateSetUserUnitEnv(t, "peer", svc.userEnv, fake.URL())
 	env := append(append([]string(nil), svc.userEnv...), "AGENT_PEER_TEST_UPDATE_API="+fake.URL())
 
 	beforeHash := updateFileHash(t, svc.target)
@@ -238,11 +241,11 @@ func TestREQUpdate004_RefusedUpdateChangesNothing(t *testing.T) {
 	beforeHash := updateFileHash(t, svc.target)
 	res := updateRunInteractive(t, "peer", env, svc.target, "n\n", "update")
 	combined := res.Stdout + res.Stderr
-	// The command names both versions before it asks; their absence means it
-	// never reached the question.
-	for _, want := range []string{updateOldVersion, updateNewVersion} {
+	// The command asks before it contacts the Broker, so a refusal names only
+	// the installed version; asking GitHub first would be a wasted request.
+	for _, want := range []string{updateOldVersion, "Update canceled"} {
 		if !strings.Contains(combined, want) {
-			t.Fatalf("the update output does not name version %s:\n%s", want, combined)
+			t.Fatalf("the update output does not contain %q:\n%s", want, combined)
 		}
 	}
 
@@ -273,6 +276,9 @@ func TestREQUpdate004_YesSkipsPrompt(t *testing.T) {
 
 	svc := updateSetupUserService(t)
 	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	// The Broker performs the update, so its own service environment must reach
+	// the fake API; the command's environment only covers a local fallback.
+	selfUpdateSetUserUnitEnv(t, "peer", svc.userEnv, fake.URL())
 	env := append(append([]string(nil), svc.userEnv...), "AGENT_PEER_TEST_UPDATE_API="+fake.URL())
 
 	beforeHash := updateFileHash(t, svc.target)
@@ -282,10 +288,10 @@ func TestREQUpdate004_YesSkipsPrompt(t *testing.T) {
 		t.Fatalf("agent-peer update --yes exited %d with non-terminal input\nstdout:\n%s\nstderr:\n%s",
 			res.ExitCode, res.Stdout, res.Stderr)
 	}
-	for _, want := range []string{updateOldVersion, updateNewVersion} {
-		if !strings.Contains(combined, want) {
-			t.Fatalf("update --yes output does not name version %s:\n%s", want, combined)
-		}
+	// --yes skips the question, so the command never prints the installed
+	// version; the restarted Broker is what reports the new one.
+	if !strings.Contains(combined, updateNewVersion) {
+		t.Fatalf("update --yes output does not name version %s:\n%s", updateNewVersion, combined)
 	}
 	if after := updateFileHash(t, svc.target); after == beforeHash {
 		t.Errorf("the binary at %s was not replaced", svc.target)
@@ -316,6 +322,10 @@ func TestREQUpdate005_FailedUpdateKeepsBinaryAndService(t *testing.T) {
 
 	svc := updateSetupUserService(t)
 	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	// The Broker performs the update, so its service environment must reach the
+	// fake API; otherwise every case would fail at the lookup instead of at the
+	// artifact check under test.
+	selfUpdateSetUserUnitEnv(t, "peer", svc.userEnv, fake.URL())
 
 	cases := []struct {
 		name      string
