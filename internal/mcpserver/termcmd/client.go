@@ -49,7 +49,15 @@ func RunStatus(ctx context.Context, sel Selector, w io.Writer) error {
 	if err != nil {
 		return errors.New(Describe(err))
 	}
-	return WriteStatus(w, resp)
+	if err := WriteStatus(w, resp); err != nil {
+		return err
+	}
+	// A diagnostics-only Broker is not usable; the command exits non-zero so a
+	// caller can detect it. The status line itself belongs to the display work.
+	if d := resp.GetDegraded(); d != nil && d.GetLevel() == localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY {
+		return errors.New("the Broker runs degraded with diagnostics only")
+	}
+	return nil
 }
 
 // RunAudit streams the audit log from the selected Broker to w, one line per

@@ -116,6 +116,9 @@ func (h *handlers) preflight(tool string, kind callKind, needAgent bool) (Status
 		return st, toolError(phrase, fmt.Sprintf(textVersionMismatch, st.Detail, st.Remedy), localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH)
 	case PhaseConnected:
 		if needAgent && st.AgentID == "" {
+			if st.NotRegistered == localpb.NotRegisteredReason_NOT_REGISTERED_REASON_BROKER_DEGRADED {
+				return st, toolError(phrase, notRegisteredReason(st.NotRegistered, st.NotRegisteredDetail), localpb.ErrorCode_ERROR_CODE_BROKER_DEGRADED)
+			}
 			return st, toolError(phrase, fmt.Sprintf(textNotRegistered, notRegisteredReason(st.NotRegistered, st.NotRegisteredDetail)), localpb.ErrorCode_ERROR_CODE_NOT_REGISTERED)
 		}
 	}
