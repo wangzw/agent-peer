@@ -115,6 +115,10 @@ type Result struct {
 	Commands          []string // commands that changed state, in order
 	Domain            string   // macOS: the launchd domain the service was loaded into or out of
 	Removed           bool     // Uninstall: a unit file or plist was removed
+
+	Binary   string // Install: the executable the service definition starts
+	RunLog   string // Install: where the Broker's run log is read, as logHint gives it
+	AuditLog string // Install: the level's audit log path
 }
 
 // DefaultOptions fills Options from the running process.
@@ -334,7 +338,8 @@ func Install(opts Options) (Result, error) {
 		}
 		return res, abandonInstall(opts, domain, &res, check.stopped, err)
 	}
-	if err := waitReady(opts, domain, installStart); err != nil {
+	deadline, err := waitReady(opts, domain, installStart)
+	if err != nil {
 		stopped := check.stopped
 		if opts.GOOS == "darwin" {
 			stopped = replaced
@@ -342,7 +347,22 @@ func Install(opts Options) (Result, error) {
 		return res, abandonInstall(opts, domain, &res, stopped, err)
 	}
 
+	// The service answers, so it is installed and running from here on. Fill
+	// what the summary prints even when the Broker turns out to be degraded.
 	res.Domain = domain
+	res.Binary = opts.Exe
+	res.RunLog = logHint(opts)
+	res.AuditLog = auditLogPath(opts)
+
+	state, degraded, err := waitStatus(opts, deadline)
+	if err != nil {
+		// The service is running but does not answer Status. Leave it alone:
+		// disabling it would take down a Broker that is reachable.
+		return res, fmt.Errorf("service: the service is running but its status could not be read: %w; check it with `agent-peer status`", err)
+	}
+	if degraded {
+		return res, &DegradedError{State: state}
+	}
 	return res, nil
 }
 
@@ -939,8 +959,10 @@ func exitStatus(err error) int {
 // check: the service manager's pid must equal the socket peer pid. An answer
 // from any other process is not readiness, because the service cannot take over
 // that process's account lock. A timeout reports the log location, since the
-// service manager owns the process and its standard error.
-func waitReady(opts Options, domain string, since time.Time) error {
+// service manager owns the process and its standard error. On success it
+// returns the readiness deadline, which bounds the degraded-status check that
+// follows within the same wait.
+func waitReady(opts Options, domain string, since time.Time) (time.Time, error) {
 	bound := opts.ReadyTimeout
 	if bound <= 0 {
 		bound = readyBound
@@ -958,21 +980,43 @@ func waitReady(opts Options, domain string, since time.Time) error {
 		if answering {
 			servicePID, managed = serviceMainPID(opts, domain)
 			if managed && servicePID == peerPID {
-				return nil
+				return deadline, nil
 			}
 		}
 		if time.Now().After(deadline) {
 			if answering {
-				return fmt.Errorf("service: the Broker answering on %s is not the service's process (service pid %d, socket peer pid %d); stop it and check the service log with %s", path, servicePID, peerPID, logHint(opts))
+				return deadline, fmt.Errorf("service: the Broker answering on %s is not the service's process (service pid %d, socket peer pid %d); stop it and check the service log with %s", path, servicePID, peerPID, logHint(opts))
 			}
 			// The precheck can pass and the Broker still fail to start; the
 			// service log records the cause. Include it so the timeout names
 			// the real problem instead of only the silent socket.
 			reason := startupFailureReason(opts, since)
 			if reason != "" {
-				return fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s; its last startup_failed record says: %s", path, bound, logHint(opts), reason)
+				return deadline, fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s; its last startup_failed record says: %s", path, bound, logHint(opts), reason)
 			}
-			return fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s", path, bound, logHint(opts))
+			return deadline, fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s", path, bound, logHint(opts))
+		}
+		time.Sleep(readyPollInterval)
+	}
+}
+
+// waitStatus asks the ready Broker for its status. A probe error means Status
+// could not be read yet, so it is retried until the readiness deadline; the
+// Broker answered on the socket a moment earlier and may still be serving the
+// call. The returned error is the last probe error.
+func waitStatus(opts Options, deadline time.Time) (DegradedState, bool, error) {
+	probe := opts.StatusProbe
+	if probe == nil {
+		probe = defaultStatusProbe
+	}
+	path := localSocketPath(opts)
+	for {
+		state, degraded, err := probe(path)
+		if err == nil {
+			return state, degraded, nil
+		}
+		if !time.Now().Before(deadline) {
+			return DegradedState{}, false, err
 		}
 		time.Sleep(readyPollInterval)
 	}
@@ -1157,6 +1201,15 @@ func configFilePath(opts Options) string {
 		return systemConfigPath
 	}
 	return filepath.Join(opts.Home, ".agent-peer", "config.yaml")
+}
+
+// auditLogPath returns the production path of the audit log for the install's
+// level. It follows the same path table as configFilePath.
+func auditLogPath(opts Options) string {
+	if opts.System {
+		return filepath.Join(systemLogDir, "audit.log")
+	}
+	return filepath.Join(opts.Home, ".agent-peer", "audit.log")
 }
 
 // createConfig creates the configuration file for the install's level if it is

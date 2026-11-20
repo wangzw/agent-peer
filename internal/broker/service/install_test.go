@@ -36,6 +36,9 @@ func baseOptions(t *testing.T) Options {
 		// do not exercise group creation emit no group commands.
 		GroupGID: func(string) (int, bool, error) { return 999, true, nil },
 		Probe:    func(string) (int, bool) { return 0, false },
+		// Most tests are not about degraded running; report a healthy Broker so
+		// the status check after readiness passes.
+		StatusProbe: func(string) (DegradedState, bool, error) { return DegradedState{}, false, nil },
 		// Most tests do not exercise the listen precheck; report every address
 		// free so they never bind the template's real port. The precheck tests
 		// replace this with config.ProbeListen or a stand-in.
@@ -211,6 +214,9 @@ func TestInstallLinuxUser(t *testing.T) {
 	if res.ConfigPath != "/home/alice/.agent-peer/config.yaml" {
 		t.Errorf("ConfigPath = %q", res.ConfigPath)
 	}
+	if want := "/home/alice/.agent-peer/audit.log"; res.AuditLog != want {
+		t.Errorf("AuditLog = %q, want %q", res.AuditLog, want)
+	}
 }
 
 func TestInstallLinuxUserHonoursXDGConfigHome(t *testing.T) {
@@ -279,6 +285,9 @@ func TestInstallLinuxSystem(t *testing.T) {
 	}
 	if res.ConfigPath != "/etc/agent-peer/config.yaml" {
 		t.Errorf("ConfigPath = %q", res.ConfigPath)
+	}
+	if want := "/var/log/agent-peer/audit.log"; res.AuditLog != want {
+		t.Errorf("AuditLog = %q, want %q", res.AuditLog, want)
 	}
 	if res.AdminGroup != DefaultAdminGroup {
 		t.Errorf("AdminGroup = %q, want %q", res.AdminGroup, DefaultAdminGroup)
@@ -2358,6 +2367,199 @@ func TestInstallOverwritesUnit(t *testing.T) {
 	}
 	if got := mustReadFile(t, path); got != want {
 		t.Errorf("stale unit was not replaced: %q", got)
+	}
+}
+
+// TestInstallReportsDegradedAfterReady checks the check that runs once the
+// service answers: a Broker that reports a degraded state leaves the service
+// installed and running, returns *DegradedError with a complete Result, and is
+// never disabled or stopped.
+func TestInstallReportsDegradedAfterReady(t *testing.T) {
+	cases := []struct {
+		name  string
+		state DegradedState
+	}{
+		{
+			name: "local only",
+			state: DegradedState{
+				Level:  "local_only",
+				Step:   "listen",
+				Reason: "listen tcp :17443: bind: address already in use",
+				Fix:    "change broker.listen to another port",
+			},
+		},
+		{
+			name: "diagnostics only",
+			state: DegradedState{
+				Level:  "diagnostics_only",
+				Step:   "audit",
+				Reason: "the audit log is not writable",
+				Fix:    "fix the permissions of ~/.agent-peer/audit.log",
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := baseOptions(t)
+			var cmds []string
+			started := false
+			opts.Run = recordCommandsUntil(&cmds, &started, "restart")
+			opts.Probe = probeAfterStart(&started, 4242)
+			opts.StatusProbe = func(string) (DegradedState, bool, error) {
+				return tc.state, true, nil
+			}
+
+			res, err := Install(opts)
+			var degraded *DegradedError
+			if !errors.As(err, &degraded) {
+				t.Fatalf("Install error = %v, want *DegradedError", err)
+			}
+			if degraded.State != tc.state {
+				t.Errorf("DegradedError.State = %+v, want %+v", degraded.State, tc.state)
+			}
+			if res.UnitPath != "/home/alice/.config/systemd/user/agent-peer.service" {
+				t.Errorf("UnitPath = %q", res.UnitPath)
+			}
+			if res.ConfigPath != "/home/alice/.agent-peer/config.yaml" {
+				t.Errorf("ConfigPath = %q", res.ConfigPath)
+			}
+			if res.Binary != opts.Exe {
+				t.Errorf("Binary = %q, want %q", res.Binary, opts.Exe)
+			}
+			if want := "journalctl --user -u agent-peer.service"; res.RunLog != want {
+				t.Errorf("RunLog = %q, want %q", res.RunLog, want)
+			}
+			if want := "/home/alice/.agent-peer/audit.log"; res.AuditLog != want {
+				t.Errorf("AuditLog = %q, want %q", res.AuditLog, want)
+			}
+			for _, cmd := range cmds {
+				for _, verb := range []string{"disable", "stop"} {
+					if slices.Contains(strings.Fields(cmd), verb) {
+						t.Errorf("commands = %q, want the running service left alone after the degraded answer", cmds)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestInstallDarwinReportsDegradedAfterReady checks the same result on macOS:
+// the domain and the level's log paths are filled, and no cleanup disable runs.
+func TestInstallDarwinReportsDegradedAfterReady(t *testing.T) {
+	opts := baseOptions(t)
+	opts.GOOS = "darwin"
+	opts.EUID = 501
+	opts.UID = 501
+	opts.Home = "/Users/alice"
+	var cmds []string
+	started := false
+	bootedOut := false
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501/"+Label:
+			if bootedOut && !started {
+				return []byte("Could not find service \"" + Label + "\" in domain for user"), exitError(t, 113)
+			}
+			return []byte("state = running\n\tpid = 4242\n"), nil
+		case len(args) > 0 && args[0] == "bootout":
+			bootedOut = true
+			return nil, exitError(t, 3)
+		case len(args) > 0 && args[0] == "bootstrap":
+			started = true
+		}
+		return nil, nil
+	}
+	opts.Probe = probeAfterStart(&started, 4242)
+	state := DegradedState{Level: "local_only", Reason: "listener unavailable", Fix: "fix broker.listen"}
+	opts.StatusProbe = func(string) (DegradedState, bool, error) { return state, true, nil }
+
+	res, err := Install(opts)
+	var degraded *DegradedError
+	if !errors.As(err, &degraded) {
+		t.Fatalf("Install error = %v, want *DegradedError", err)
+	}
+	if res.Domain != "gui/501" {
+		t.Errorf("Domain = %q, want gui/501", res.Domain)
+	}
+	if res.Binary != opts.Exe {
+		t.Errorf("Binary = %q, want %q", res.Binary, opts.Exe)
+	}
+	if want := "/Users/alice/Library/Logs/agent-peer/broker.log"; res.RunLog != want {
+		t.Errorf("RunLog = %q, want %q", res.RunLog, want)
+	}
+	if want := "/Users/alice/.agent-peer/audit.log"; res.AuditLog != want {
+		t.Errorf("AuditLog = %q, want %q", res.AuditLog, want)
+	}
+	if cmd := "launchctl disable gui/501/" + Label; slices.Contains(cmds, cmd) {
+		t.Errorf("commands = %q, want no %q after the degraded answer", cmds, cmd)
+	}
+}
+
+// TestInstallRetriesTheStatusProbe checks that a status probe that fails right
+// after readiness is retried within the readiness bound instead of failing the
+// installation on its first attempt.
+func TestInstallRetriesTheStatusProbe(t *testing.T) {
+	opts := baseOptions(t)
+	var cmds []string
+	started := false
+	opts.Run = recordCommandsUntil(&cmds, &started, "restart")
+	opts.Probe = probeAfterStart(&started, 4242)
+	opts.ReadyTimeout = time.Second
+	calls := 0
+	opts.StatusProbe = func(string) (DegradedState, bool, error) {
+		calls++
+		if calls < 3 {
+			return DegradedState{}, false, errors.New("the status is not available yet")
+		}
+		return DegradedState{}, false, nil
+	}
+
+	if _, err := Install(opts); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if calls < 3 {
+		t.Errorf("status probes = %d, want the check to retry", calls)
+	}
+}
+
+// TestInstallFailsWhenTheStatusCannotBeRead checks the failure that is not a
+// degraded state: the service answers but its status cannot be read. The
+// installation fails without disabling the running service, and the error tells
+// the operator the service is running and where to look.
+func TestInstallFailsWhenTheStatusCannotBeRead(t *testing.T) {
+	opts := baseOptions(t)
+	var cmds []string
+	started := false
+	opts.Run = recordCommandsUntil(&cmds, &started, "restart")
+	opts.Probe = probeAfterStart(&started, 4242)
+	opts.ReadyTimeout = 20 * time.Millisecond
+	opts.StatusProbe = func(string) (DegradedState, bool, error) {
+		return DegradedState{}, false, errors.New("connection reset")
+	}
+
+	res, err := Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded although the status could not be read")
+	}
+	var degraded *DegradedError
+	if errors.As(err, &degraded) {
+		t.Fatalf("Install error = %v, want a plain error, not *DegradedError", err)
+	}
+	for _, want := range []string{"service is running", "status could not be read", "agent-peer status", "connection reset"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if res.Binary == "" || res.AuditLog == "" {
+		t.Errorf("Result after a status failure = %+v, want the completed fields", res)
+	}
+	for _, cmd := range cmds {
+		if slices.Contains(strings.Fields(cmd), "disable") {
+			t.Errorf("commands = %q, want the answered service left running", cmds)
+		}
 	}
 }
 
