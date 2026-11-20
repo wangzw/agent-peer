@@ -335,7 +335,7 @@ func TestStatusThroughExplicitSocket(t *testing.T) {
 	sb := newSandbox(t)
 	sock := filepath.Join(sb.root, "x.sock")
 	fakelocal.Start(t, sock, fakelocal.SampleHandlers(nil, nil))
-	sb.extraEnv = append(sb.extraEnv, "AGENT_PEER_SOCKET="+sock)
+	sb.extraEnv = append(sb.extraEnv, "AGENT_PEER_TEST_SOCKET="+sock)
 
 	res := runCLI(t, sb, 3*time.Second, "status")
 	if res.code != exitOK {
@@ -362,7 +362,7 @@ func TestStatusExplicitSocketUnavailable(t *testing.T) {
 	}
 	fake := fakelocal.Start(t, filepath.Join(dir, "broker.sock"), fakelocal.SampleHandlers(nil, nil))
 
-	sb.extraEnv = append(sb.extraEnv, "AGENT_PEER_SOCKET="+missing)
+	sb.extraEnv = append(sb.extraEnv, "AGENT_PEER_TEST_SOCKET="+missing)
 
 	res := runCLI(t, sb, 3*time.Second, "status")
 	if res.code != exitFailure {
@@ -427,7 +427,7 @@ func TestAuditThroughExplicitSocket(t *testing.T) {
 	sock := filepath.Join(sb.root, "x.sock")
 	reqs := &fakelocal.AuditRequests{}
 	fakelocal.Start(t, sock, fakelocal.SampleHandlers(reqs, nil))
-	sb.extraEnv = append(sb.extraEnv, "AGENT_PEER_SOCKET="+sock)
+	sb.extraEnv = append(sb.extraEnv, "AGENT_PEER_TEST_SOCKET="+sock)
 
 	res := runCLI(t, sb, 3*time.Second, "audit", "--limit", "2")
 	if res.code != exitOK {
@@ -450,7 +450,7 @@ func TestAuditPermissionDenied(t *testing.T) {
 	sock := filepath.Join(sb.root, "x.sock")
 	reqs := &fakelocal.AuditRequests{}
 	fakelocal.Start(t, sock, fakelocal.SampleHandlers(reqs, fakelocal.PermissionDenied("not allowed")))
-	sb.extraEnv = append(sb.extraEnv, "AGENT_PEER_SOCKET="+sock)
+	sb.extraEnv = append(sb.extraEnv, "AGENT_PEER_TEST_SOCKET="+sock)
 
 	res := runCLI(t, sb, 3*time.Second, "audit")
 	if res.code != exitFailure {
@@ -470,7 +470,7 @@ func TestMCPHandshakeAndSignal(t *testing.T) {
 	sb := newSandbox(t)
 	// An explicit socket that does not exist makes the selection fail without
 	// launching a Broker.
-	sb.extraEnv = append(sb.extraEnv, "AGENT_PEER_SOCKET="+filepath.Join(sb.root, "none.sock"))
+	sb.extraEnv = append(sb.extraEnv, "AGENT_PEER_TEST_SOCKET="+filepath.Join(sb.root, "none.sock"))
 
 	p := startMCP(t, sb)
 	p.initialize()
@@ -501,7 +501,7 @@ func TestMCPSignalClosesRegistration(t *testing.T) {
 			sock := filepath.Join(sb.root, "x.sock")
 			fake := fakelocal.Start(t, sock, fakelocal.Handlers{})
 			sb.extraEnv = append(sb.extraEnv,
-				"AGENT_PEER_SOCKET="+sock,
+				"AGENT_PEER_TEST_SOCKET="+sock,
 				"CLAUDE_CODE_MESSAGING_SOCKET=/s",
 			)
 

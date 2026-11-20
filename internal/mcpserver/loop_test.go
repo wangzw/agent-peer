@@ -449,7 +449,7 @@ func TestRunLoop(t *testing.T) {
 		stop()
 	})
 
-	t.Run("AGENT_PEER_SOCKET Broker unavailable then up", func(t *testing.T) {
+	t.Run("a test-named Broker unavailable then up", func(t *testing.T) {
 		// REQ-agent-messaging-038
 		path := fakelocal.SocketPath(t)
 		var selectCalls atomic.Int32
@@ -459,17 +459,17 @@ func TestRunLoop(t *testing.T) {
 		deps := loopBaseDeps(st, clock)
 		deps.selectTarget = func(context.Context) (target, error) {
 			if selectCalls.Add(1) == 1 {
-				return target{}, fmt.Errorf("the socket %s named by AGENT_PEER_SOCKET is unavailable (missing)", path)
+				return target{}, fmt.Errorf("the socket %s named by the test hook is unavailable (missing)", path)
 			}
-			return target{Path: path, Kind: kindEnv}, nil
+			return target{Path: path, Kind: kindTest}, nil
 		}
 		stop := loopStart(t, deps)
 
 		status := loopWaitStatus(t, st, "PhaseUnavailable", func(s Status) bool {
 			return s.Phase == PhaseUnavailable
 		})
-		if !strings.Contains(status.Detail, "AGENT_PEER_SOCKET") {
-			t.Fatalf("Detail = %q, want it to name AGENT_PEER_SOCKET", status.Detail)
+		if !strings.Contains(status.Detail, path) {
+			t.Fatalf("Detail = %q, want it to name %s", status.Detail, path)
 		}
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
 		clock.autoAdvance()
@@ -732,7 +732,7 @@ func TestRunLoop(t *testing.T) {
 		}
 	})
 
-	t.Run("version mismatch of the AGENT_PEER_SOCKET Broker names the socket in the remedy", func(t *testing.T) {
+	t.Run("version mismatch of a test-named Broker names the socket in the remedy", func(t *testing.T) {
 		// REQ-broker-config-016
 		path := fakelocal.SocketPath(t)
 		fakelocal.Start(t, path, fakelocal.Handlers{
@@ -745,7 +745,7 @@ func TestRunLoop(t *testing.T) {
 		clock := newLoopClock()
 		deps := loopBaseDeps(st, clock)
 		deps.selectTarget = func(context.Context) (target, error) {
-			return target{Path: path, Kind: kindEnv}, nil
+			return target{Path: path, Kind: kindTest}, nil
 		}
 		loopStart(t, deps)
 
@@ -760,9 +760,9 @@ func TestRunLoop(t *testing.T) {
 		}
 	})
 
-	t.Run("AGENT_PEER_SOCKET Broker is only retried after a disconnect", func(t *testing.T) {
-		// A socket named by AGENT_PEER_SOCKET is never replaced by a Broker the
-		// MCP server starts.
+	t.Run("a test-named Broker is only retried after a disconnect", func(t *testing.T) {
+		// A socket named by the test hook is retried as it is, not replaced by
+		// another selection.
 		path := fakelocal.SocketPath(t)
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
 
@@ -770,7 +770,7 @@ func TestRunLoop(t *testing.T) {
 		clock := newLoopClock()
 		deps := loopBaseDeps(st, clock)
 		deps.selectTarget = func(context.Context) (target, error) {
-			return target{Path: path, Kind: kindEnv}, nil
+			return target{Path: path, Kind: kindTest}, nil
 		}
 		loopStart(t, deps)
 

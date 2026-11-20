@@ -32,7 +32,7 @@ const (
 	installSystemPrefix = "/usr/local/bin/agent-peer"
 
 	// installArchiveDir is where the inner test assembles a release-shaped
-	// directory from the staged archive files and the image's release binary.
+	// directory from the staged archive files and the image's agent-peer binary.
 	installArchiveDir = "/var/lib/agent-peer-install-archive"
 
 	// installClaudePath is the fake claude the script resolves through PATH.
@@ -195,7 +195,7 @@ type installClaudeCall struct {
 
 // stageInstallArchive copies the install script and the license from the
 // repository into the directory mount the container reads. It runs on the host;
-// the inner run assembles them with the image's release binary.
+// the inner run assembles them with the image's agent-peer binary.
 func stageInstallArchive(t *testing.T) {
 	t.Helper()
 
@@ -260,7 +260,7 @@ func installUserEnv() []string {
 }
 
 // prepareInstallArchive builds a directory shaped like the release archive:
-// the release binary, the staged install script, the license and a README. It
+// the agent-peer binary, the staged install script, the license and a README. It
 // returns the directory.
 func prepareInstallArchive(t *testing.T) string {
 	t.Helper()
@@ -328,7 +328,7 @@ func installFakeClaude(t *testing.T) {
 	}
 }
 
-// removePreinstalledSystemBinary removes the release binary the image already
+// removePreinstalledSystemBinary removes the agent-peer binary the image already
 // carries at the system-level default path, so the owner and mode checked after
 // the install are the install's own.
 func removePreinstalledSystemBinary(t *testing.T) {

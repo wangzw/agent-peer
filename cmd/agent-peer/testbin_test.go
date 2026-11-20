@@ -72,7 +72,7 @@ type sandbox struct {
 
 	// extraEnv is appended to env for every child started from this sandbox.
 	// Tests use it for the variables the child needs beyond the fixed four,
-	// such as AGENT_PEER_SOCKET or CLAUDE_CODE_MESSAGING_SOCKET.
+	// such as AGENT_PEER_TEST_SOCKET or CLAUDE_CODE_MESSAGING_SOCKET.
 	extraEnv []string
 }
 
@@ -122,7 +122,7 @@ func sandboxRoot() (string, error) {
 
 // env is the child environment. It starts from nothing rather than
 // os.Environ so the session variables of the test runner (for example
-// CLAUDE_CODE_MESSAGING_SOCKET or AGENT_PEER_SOCKET) cannot leak into the
+// CLAUDE_CODE_MESSAGING_SOCKET or AGENT_PEER_TEST_SOCKET) cannot leak into the
 // process under test.
 func (s *sandbox) env() []string {
 	env := []string{

@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	// agentPeerBinary is the release build in the base image.
+	// agentPeerBinary is the agent-peer build in the base image.
 	agentPeerBinary = "/usr/local/bin/agent-peer"
 	// systemConfigPath is the system Broker's configuration file.
 	systemConfigPath = "/etc/agent-peer/config.yaml"

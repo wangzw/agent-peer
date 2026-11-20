@@ -235,7 +235,7 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 	// The grant belongs to other's account. peer is not in agentpeer-admins, so
 	// a fresh call from peer against the system Broker is still refused.
 	sysPeer := syscontainer.NewSession(t, "peer", "syspeer",
-		syscontainer.WithEnv("AGENT_PEER_SOCKET="+permSocketPath))
+		syscontainer.WithEnv("AGENT_PEER_TEST_SOCKET="+permSocketPath))
 	permWaitConnected(t, sysPeer)
 	text, isError = sysPeer.Call(t, "set_config",
 		map[string]any{"key": "broker.alias", "value": "peer-alias"})
@@ -327,7 +327,7 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 	peerBroker := syscontainer.StartUserBroker(t, "peer", "--listen", ":17444")
 
 	peer := syscontainer.NewSession(t, "peer", "peeragent",
-		syscontainer.WithEnv("AGENT_PEER_SOCKET="+permSocketPath))
+		syscontainer.WithEnv("AGENT_PEER_TEST_SOCKET="+permSocketPath))
 	permWaitRegistered(t, peer)
 	other := syscontainer.NewSession(t, "other", "otheragent")
 	permWaitRegistered(t, other)

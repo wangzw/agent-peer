@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
 	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
 )
 
@@ -42,22 +41,18 @@ func wantWaits(t *testing.T, got []time.Duration, want ...time.Duration) {
 	}
 }
 
-// REQ-broker-config-026
-func TestSelectEnvSocketTakesPrecedence(t *testing.T) {
+// REQ-broker-config-026: the removed AGENT_PEER_SOCKET no longer influences
+// selection; the user-level Broker of the account wins.
+func TestSelectIgnoresSocketEnvironment(t *testing.T) {
 	envPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, envPath, fakelocal.Handlers{})
 	userPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, userPath, fakelocal.Handlers{})
 	systemPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, systemPath, fakelocal.Handlers{})
+	t.Setenv("AGENT_PEER_SOCKET", envPath)
 
 	s := &selector{
-		getenv: func(name string) string {
-			if name != "AGENT_PEER_SOCKET" {
-				t.Errorf("getenv(%q), want AGENT_PEER_SOCKET", name)
-			}
-			return envPath
-		},
 		userSocket:   userPath,
 		systemSocket: systemPath,
 		probe:        inspectSocket,
@@ -67,30 +62,8 @@ func TestSelectEnvSocketTakesPrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Find: %v", err)
 	}
-	if got.Kind != kindEnv || got.Path != envPath {
-		t.Fatalf("Find = %+v, want {%s kindEnv}", got, envPath)
-	}
-}
-
-// A dead AGENT_PEER_SOCKET must not silently fall through to another Broker.
-func TestSelectEnvSocketMissingDoesNotFallThrough(t *testing.T) {
-	missing := filepath.Join(t.TempDir(), "absent.sock")
-	userPath := fakelocal.SocketPath(t)
-	fakelocal.Start(t, userPath, fakelocal.Handlers{})
-
-	s := &selector{
-		getenv:       func(string) string { return missing },
-		userSocket:   userPath,
-		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
-		probe:        inspectSocket,
-	}
-
-	_, err := s.Find(context.Background())
-	if err == nil {
-		t.Fatal("Find returned nil error for a dead AGENT_PEER_SOCKET")
-	}
-	if !strings.Contains(err.Error(), missing) || !strings.Contains(err.Error(), "AGENT_PEER_SOCKET") {
-		t.Fatalf("error = %q, want it to name %s and AGENT_PEER_SOCKET", err, missing)
+	if got.Kind != kindUser || got.Path != userPath {
+		t.Fatalf("Find = %+v, want {%s kindUser} despite AGENT_PEER_SOCKET naming %s", got, userPath, envPath)
 	}
 }
 
@@ -203,37 +176,6 @@ func TestSelectRejectsForeignUserSocket(t *testing.T) {
 	wantUID := strconv.FormatUint(uint64(foreign), 10)
 	if !strings.Contains(err.Error(), userPath) || !strings.Contains(err.Error(), wantUID) {
 		t.Fatalf("error = %q, want it to name %s and uid %s", err, userPath, wantUID)
-	}
-}
-
-// AGENT_PEER_SOCKET names a socket that must be served by this account or by
-// root. Another account falls under the same "unavailable" rule as a dead
-// socket, and the error names the path and the account that answered.
-func TestSelectRejectsForeignEnvSocket(t *testing.T) {
-	envPath := fakelocal.SocketPath(t)
-	fakelocal.Start(t, envPath, fakelocal.Handlers{})
-
-	foreign := uint32(os.Geteuid()) + 1
-	old := peerUID
-	peerUID = func(net.Conn) (uint32, error) { return foreign, nil }
-	t.Cleanup(func() { peerUID = old })
-
-	s := &selector{
-		getenv:       func(string) string { return envPath },
-		userSocket:   filepath.Join(t.TempDir(), "user.sock"),
-		systemSocket: filepath.Join(t.TempDir(), "system.sock"),
-		probe:        inspectSocket,
-	}
-
-	_, err := s.Find(context.Background())
-	if err == nil {
-		t.Fatalf("Find accepted a socket served by uid %d", foreign)
-	}
-	wantUID := strconv.FormatUint(uint64(foreign), 10)
-	for _, want := range []string{envPath, wantUID, "AGENT_PEER_SOCKET"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("error = %q, want it to contain %q", err, want)
-		}
 	}
 }
 
@@ -443,49 +385,4 @@ func TestFindSystemRefusedRetries(t *testing.T) {
 		4*time.Second,
 		2250*time.Millisecond,
 	)
-}
-
-// FindBrokerWithDial returns a dialer that checks the peer of every connection
-// it opens, so a socket taken over by another account after selection is
-// refused before Hello is sent.
-func TestFindBrokerWithDialRefusesForeignPeer(t *testing.T) {
-	path := fakelocal.SocketPath(t)
-	srv := fakelocal.Start(t, path, fakelocal.Handlers{})
-	t.Setenv("AGENT_PEER_SOCKET", path)
-
-	gotPath, dial, err := FindBrokerWithDial(context.Background())
-	if err != nil {
-		t.Fatalf("FindBrokerWithDial: %v", err)
-	}
-	if gotPath != path {
-		t.Fatalf("FindBrokerWithDial path = %q, want %q", gotPath, path)
-	}
-
-	// The socket now answers as another account, as if another process had
-	// taken it over between selection and the connection.
-	foreign := uint32(os.Geteuid()) + 1
-	old := peerUID
-	peerUID = func(net.Conn) (uint32, error) { return foreign, nil }
-	t.Cleanup(func() { peerUID = old })
-
-	cc, client, err := dial()
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer func() { _ = cc.Close() }()
-
-	ctx, cancel := context.WithTimeout(context.Background(), helloTimeout)
-	defer cancel()
-	_, err = client.Hello(ctx, &localpb.HelloRequest{ProtocolVersion: localpb.ProtocolVersion})
-	if err == nil {
-		t.Fatal("the dialer connected to a Broker socket served by another account")
-	}
-	if !strings.Contains(err.Error(), "served by uid") {
-		t.Fatalf("Hello error = %q, want it to name the peer uid", err)
-	}
-	for _, c := range srv.Calls() {
-		if c.Method == "Hello" {
-			t.Fatal("the fake Broker received Hello over a connection served by another account")
-		}
-	}
 }

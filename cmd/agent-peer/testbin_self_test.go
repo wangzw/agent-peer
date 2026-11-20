@@ -19,7 +19,7 @@ import (
 // path limit. t.Setenv forbids t.Parallel, which is why this test is serial.
 func TestSandboxEnvFromEmpty(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_MESSAGING_SOCKET", "/x")
-	t.Setenv("AGENT_PEER_SOCKET", "/y")
+	t.Setenv("AGENT_PEER_TEST_SOCKET", "/y")
 
 	sb := newSandbox(t)
 	env := sb.env()
@@ -45,7 +45,7 @@ func TestSandboxEnvFromEmpty(t *testing.T) {
 			t.Fatalf("env is missing %s: %q", name, env)
 		}
 	}
-	for _, name := range []string{"CLAUDE_CODE_MESSAGING_SOCKET", "AGENT_PEER_SOCKET"} {
+	for _, name := range []string{"CLAUDE_CODE_MESSAGING_SOCKET", "AGENT_PEER_TEST_SOCKET"} {
 		if _, ok := got[name]; ok {
 			t.Fatalf("env leaked %s from the test process: %q", name, env)
 		}

@@ -46,7 +46,7 @@ func TestOtherAccountRejected(t *testing.T) {
 
 	t.Run("REQ-broker-config-019 filesystem layer", func(t *testing.T) {
 		status := accountsRunAsOther(t, c, "hostA", "fs-status",
-			map[string]string{"AGENT_PEER_SOCKET": socket}, "agent-peer", "status")
+			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "agent-peer", "status")
 		if status.ExitCode != 1 {
 			t.Fatalf("agent-peer status as other exited %d, want 1\nstdout: %s\nstderr: %s",
 				status.ExitCode, status.Stdout, status.Stderr)
@@ -61,7 +61,7 @@ func TestOtherAccountRejected(t *testing.T) {
 		}
 
 		audit := accountsRunAsOther(t, c, "hostA", "fs-audit",
-			map[string]string{"AGENT_PEER_SOCKET": socket}, "agent-peer", "audit")
+			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "agent-peer", "audit")
 		if audit.ExitCode != 1 {
 			t.Fatalf("agent-peer audit as other exited %d, want 1\nstdout: %s\nstderr: %s",
 				audit.ExitCode, audit.Stdout, audit.Stderr)
@@ -87,7 +87,7 @@ func TestOtherAccountRejected(t *testing.T) {
 		// Record the filesystem denial first, so the same test also shows that
 		// the second failure is not that denial.
 		before := accountsRunAsOther(t, c, "hostA", "cred-before",
-			map[string]string{"AGENT_PEER_SOCKET": socket}, "agent-peer", "status")
+			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "agent-peer", "status")
 		if !strings.Contains(before.Stderr, "may not connect to it") {
 			t.Fatalf("the filesystem layer did not deny the connection first: %s", before.Stderr)
 		}
@@ -104,7 +104,7 @@ func TestOtherAccountRejected(t *testing.T) {
 		})
 
 		after := accountsRunAsOther(t, c, "hostA", "cred-after",
-			map[string]string{"AGENT_PEER_SOCKET": socket}, "agent-peer", "status")
+			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "agent-peer", "status")
 		if after.ExitCode != 1 {
 			t.Fatalf("agent-peer status as other exited %d after the filesystem was opened, want 1\nstdout: %s\nstderr: %s",
 				after.ExitCode, after.Stdout, after.Stderr)
@@ -263,7 +263,7 @@ func accountsOneshotRejected(t *testing.T, c *harness.Cluster, nodeName, socket,
 		// server process: oneshot-session builds that environment itself.
 		out := accountsRunAsOther(t, c, nodeName, "oneshot", nil,
 			"e2e-node", "oneshot-session", "--name", name, "--bin", "agent-peer",
-			"--env", "AGENT_PEER_SOCKET="+socket)
+			"--env", "AGENT_PEER_TEST_SOCKET="+socket)
 		if out.ExitCode != 0 {
 			return false, fmt.Sprintf("oneshot-session exited %d: %s", out.ExitCode, out.Stderr)
 		}

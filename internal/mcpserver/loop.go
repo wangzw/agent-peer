@@ -39,7 +39,7 @@ const (
 
 	loopRemedyUser   = "restart the Broker of this account with the same agent-peer version, starting it with `agent-peer service install` or with `agent-peer broker` in a terminal outside the session; this session reconnects by itself"
 	loopRemedySystem = "ask the administrator to restart the Broker system service with the same agent-peer version; this session reconnects by itself"
-	loopRemedyEnv    = "restart the Broker at %s with the same agent-peer version; this session reconnects by itself"
+	loopRemedyTest   = "restart the Broker at %s with the same agent-peer version; this session reconnects by itself"
 )
 
 // loopRemedy returns the "To fix it, ..." clause for a target.
@@ -47,8 +47,8 @@ func loopRemedy(t target) string {
 	switch t.Kind {
 	case kindSystem:
 		return loopRemedySystem
-	case kindEnv:
-		return fmt.Sprintf(loopRemedyEnv, t.Path)
+	case kindTest:
+		return fmt.Sprintf(loopRemedyTest, t.Path)
 	default:
 		return loopRemedyUser
 	}

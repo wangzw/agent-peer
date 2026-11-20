@@ -205,7 +205,8 @@ func runWaitRegistered(t *testing.T, cs *mcp.ClientSession) {
 func TestRunHandshakeWithoutBroker(t *testing.T) {
 	clock := newLoopClock()
 	missing := filepath.Join(t.TempDir(), "missing.sock")
-	opts := runTestOptions(t, clock, map[string]string{"AGENT_PEER_SOCKET": missing})
+	opts := runTestOptions(t, clock, nil)
+	opts.userSocket = missing
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	opts.Transport = serverTransport
@@ -261,9 +262,9 @@ func TestRunToolErrorsWhenBrokerIsUnavailable(t *testing.T) {
 	clock := newLoopClock()
 	sock := fakelocal.SocketPath(t)
 	opts := runTestOptions(t, clock, map[string]string{
-		"AGENT_PEER_SOCKET":            sock,
 		"CLAUDE_CODE_MESSAGING_SOCKET": "/s",
 	})
+	opts.userSocket = sock
 	h := startRunClient(t, opts)
 
 	res := runWaitUnavailableError(t, h.cs)
@@ -274,8 +275,8 @@ func TestRunToolErrorsWhenBrokerIsUnavailable(t *testing.T) {
 	if !strings.HasPrefix(text, "list_agents failed:") {
 		t.Errorf("list_agents error = %q, want a \"list_agents failed:\" prefix", text)
 	}
-	if !strings.Contains(text, "AGENT_PEER_SOCKET") {
-		t.Errorf("list_agents error = %q, want the AGENT_PEER_SOCKET path", text)
+	if !strings.Contains(text, "no Broker is available for this account") {
+		t.Errorf("list_agents error = %q, want the no-Broker text", text)
 	}
 
 	res = callTool(t, h.cs, "send_message", map[string]any{"to": "a@b", "message": "hi"})
@@ -316,9 +317,9 @@ func TestRunJoinsDefaultTopicFromProjectConfig(t *testing.T) {
 	writeProjectFile(t, dir, "topics: [team]\n")
 
 	opts := runTestOptions(t, clock, map[string]string{
-		"AGENT_PEER_SOCKET":            sock,
 		"CLAUDE_CODE_MESSAGING_SOCKET": "/s",
 	})
+	opts.userSocket = sock
 	opts.getwd = func() (string, error) { return dir, nil }
 
 	srv := fakelocal.Start(t, sock, fakelocal.Handlers{
@@ -349,9 +350,9 @@ func TestRunDoesNotJoinWhenAutoJoinIsOff(t *testing.T) {
 	writeProjectFile(t, dir, "topics: [team]\n")
 
 	opts := runTestOptions(t, clock, map[string]string{
-		"AGENT_PEER_SOCKET":            sock,
 		"CLAUDE_CODE_MESSAGING_SOCKET": "/s",
 	})
+	opts.userSocket = sock
 	opts.getwd = func() (string, error) { return dir, nil }
 
 	handlers := fakelocal.Handlers{
@@ -403,9 +404,9 @@ func TestRunRestoresTopicsAfterBrokerRestart(t *testing.T) {
 	writeProjectFile(t, dir, "topics: [team]\n")
 
 	opts := runTestOptions(t, clock, map[string]string{
-		"AGENT_PEER_SOCKET":            sock,
 		"CLAUDE_CODE_MESSAGING_SOCKET": "/s",
 	})
+	opts.userSocket = sock
 	opts.getwd = func() (string, error) { return dir, nil }
 
 	handlers := fakelocal.Handlers{
@@ -453,9 +454,9 @@ func TestRunForgetsManualTopicsAcrossProcesses(t *testing.T) {
 	writeProjectFile(t, dir, "topics: [team]\n")
 
 	opts := runTestOptions(t, clock, map[string]string{
-		"AGENT_PEER_SOCKET":            sock,
 		"CLAUDE_CODE_MESSAGING_SOCKET": "/s",
 	})
+	opts.userSocket = sock
 	opts.getwd = func() (string, error) { return dir, nil }
 
 	handlers := fakelocal.Handlers{
@@ -526,9 +527,9 @@ func TestRunCancelClosesRegisterStream(t *testing.T) {
 	clock := newLoopClock()
 	sock := fakelocal.SocketPath(t)
 	opts := runTestOptions(t, clock, map[string]string{
-		"AGENT_PEER_SOCKET":            sock,
 		"CLAUDE_CODE_MESSAGING_SOCKET": "/s",
 	})
+	opts.userSocket = sock
 	srv := fakelocal.Start(t, sock, fakelocal.Handlers{})
 	h := startRunClient(t, opts)
 
@@ -548,9 +549,9 @@ func TestRunInstallsNoSignalHandler(t *testing.T) {
 	clock := newLoopClock()
 	sock := filepath.Join(t.TempDir(), "missing.sock")
 	opts := runTestOptions(t, clock, map[string]string{
-		"AGENT_PEER_SOCKET":            sock,
 		"CLAUDE_CODE_MESSAGING_SOCKET": "/s",
 	})
+	opts.userSocket = sock
 	startRunClient(t, opts)
 
 	if signal.Ignored(syscall.SIGTERM) {
@@ -596,9 +597,9 @@ func TestRunSendsInjectedProtocolVersion(t *testing.T) {
 	clock := newLoopClock()
 	sock := fakelocal.SocketPath(t)
 	opts := runTestOptions(t, clock, map[string]string{
-		"AGENT_PEER_SOCKET":            sock,
 		"CLAUDE_CODE_MESSAGING_SOCKET": "/s",
 	})
+	opts.userSocket = sock
 	opts.LocalProtocolVersion = 7
 
 	srv := fakelocal.Start(t, sock, fakelocal.Handlers{

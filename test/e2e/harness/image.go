@@ -30,16 +30,17 @@ var (
 // peer account's uid and gid, and the owner of this test process, as
 // agent-peer-e2e:ape2e-<pid>-<start>-u<uid>-g<gid>-<hash>. The owner marker
 // lets a cleanup remove only images of runs that are gone, so two suites on
-// one host never delete each other's image. The image holds the release builds
-// of agent-peer and e2e-node, so it takes no build tags. The system Broker and
-// service installation unit derives its image from it.
+// one host never delete each other's image. The image holds an agent-peer test
+// build, so a container scenario can name a Broker socket through the
+// agentpeer_testenv hook, and the e2e-node build. The system Broker and service
+// installation unit derives its image from it.
 func Image(tb testing.TB) string {
 	tb.Helper()
 
 	// Build the two binaries outside the once, so a failing go build ends this
 	// test with its own message instead of caching an empty tag for the rest
 	// of the process.
-	agentPeer := BuildBinary(tb, "linux", runtime.GOARCH)
+	agentPeer := BuildBinary(tb, "linux", runtime.GOARCH, "agentpeer_testenv")
 	e2eNode := BuildPackage(tb, "./test/e2e/cmd/e2e-node", "linux", runtime.GOARCH)
 
 	imageOnce.Do(func() {

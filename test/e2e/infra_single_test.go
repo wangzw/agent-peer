@@ -14,7 +14,7 @@ import (
 )
 
 // TestInfraSingleNode starts one container node and checks the properties the
-// remaining container scenarios rely on: the release binary, the account ids,
+// remaining container scenarios rely on: the agent-peer binary, the account ids,
 // an owned control directory, root commands, and an internal network without a
 // default route.
 func TestInfraSingleNode(t *testing.T) {

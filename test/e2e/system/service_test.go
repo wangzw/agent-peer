@@ -24,7 +24,7 @@ const (
 	systemConfigPath = "/etc/agent-peer/config.yaml"
 	// systemSocket is the system Broker's local socket.
 	systemSocket = "/run/agent-peer/broker.sock"
-	// releaseBinary is the release build the base image installs.
+	// releaseBinary is the agent-peer build the base image installs.
 	releaseBinary = "/usr/local/bin/agent-peer"
 	// systemAdminGroup is the default group a system-level install delegates
 	// administration to.
@@ -501,7 +501,7 @@ func fileOwnerAndMode(t *testing.T, path string) (uid, gid uint32, mode os.FileM
 	return st.Uid, st.Gid, info.Mode().Perm()
 }
 
-// copyBinary copies the release binary to dst with mode 0755.
+// copyBinary copies the image's agent-peer binary to dst with mode 0755.
 func copyBinary(t *testing.T, dst string) {
 	t.Helper()
 	data, err := os.ReadFile(releaseBinary)

@@ -61,7 +61,7 @@ const (
 //
 // The suite runs one container per test, so the second host is another Broker
 // in the same container: peer's user-level Broker. The terminal on that host
-// runs as peer and selects its Broker through AGENT_PEER_SOCKET; a Broker
+// runs as peer and selects its Broker through AGENT_PEER_TEST_SOCKET; a Broker
 // socket may serve only its own account or root, so root cannot drive another
 // account's Broker.
 func TestREQBrokerConfig039_TerminalAdminCommands(t *testing.T) {
@@ -76,7 +76,7 @@ func TestREQBrokerConfig039_TerminalAdminCommands(t *testing.T) {
 	// pairing-key create prints one that co-located host B can dial.
 	syscontainer.StartSystemBroker(t, "broker:\n  alias: sys\n  advertise: \"127.0.0.1:17443\"\n")
 	syscontainer.StartUserBroker(t, "peer", "--listen", termAdminPeerListen)
-	hostBEnv := []string{"AGENT_PEER_SOCKET=" + syscontainer.UserSocketPath(t, "peer")}
+	hostBEnv := []string{"AGENT_PEER_TEST_SOCKET=" + syscontainer.UserSocketPath(t, "peer")}
 
 	// An account without write permission on the system configuration file is
 	// refused when it asks for a pairing key from its session.

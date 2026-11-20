@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	// agentPeerBinaryPath is the release build in the base image.
+	// agentPeerBinaryPath is the agent-peer build in the base image.
 	agentPeerBinaryPath = "/usr/local/bin/agent-peer"
 	// registerClientRoleEnv selects the registration client in TestMain.
 	registerClientRoleEnv = "AGENT_PEER_E2E_ROLE"
@@ -245,7 +245,7 @@ func runRegisterClient(t *testing.T, account, inboxSocket, configDir string) reg
 	exe := copyTestBinary(t)
 	base := syscontainer.Command(account, []string{
 		registerClientRoleEnv + "=" + registerClientRole,
-		"AGENT_PEER_SOCKET=" + e2eSystemSocketPath,
+		"AGENT_PEER_TEST_SOCKET=" + e2eSystemSocketPath,
 		"E2E_SOCKET=" + inboxSocket,
 		"E2E_CONFIG_DIR=" + configDir,
 	}, exe)
@@ -304,7 +304,7 @@ func copyTestBinary(t *testing.T) string {
 // the register-client role. It opens a Register stream, writes the first
 // downstream event as one JSON line and exits.
 func runRegisterClientRole() int {
-	socket := os.Getenv("AGENT_PEER_SOCKET")
+	socket := os.Getenv("AGENT_PEER_TEST_SOCKET")
 	inboxSocket := os.Getenv("E2E_SOCKET")
 	configDir := os.Getenv("E2E_CONFIG_DIR")
 

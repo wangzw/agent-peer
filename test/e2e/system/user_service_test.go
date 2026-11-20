@@ -415,7 +415,7 @@ func listBrokerStatuses(t *testing.T, exe, socket string) (map[string]string, er
 
 	base := syscontainer.Command("peer", []string{
 		registerClientRoleEnv + "=" + listBrokersRole,
-		"AGENT_PEER_SOCKET=" + socket,
+		"AGENT_PEER_TEST_SOCKET=" + socket,
 	}, exe)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -445,7 +445,7 @@ func runListBrokersRole() int {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	oracle, err := node.DialOracle(os.Getenv("AGENT_PEER_SOCKET"))
+	oracle, err := node.DialOracle(os.Getenv("AGENT_PEER_TEST_SOCKET"))
 	if err != nil {
 		return failListBrokersRole(err)
 	}

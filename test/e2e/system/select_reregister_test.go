@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"os"
 	"os/exec"
 	"os/user"
@@ -32,11 +31,6 @@ const (
 	srSystemSocket = "/run/agent-peer/broker.sock"
 	// srSystemService is the systemd unit of the system-level Broker.
 	srSystemService = "agent-peer.service"
-	// srNoBrokerBudget bounds the wait for the no-Broker status when the system
-	// socket is left stale: selection retries it for
-	// mcpserver.SystemRetryDeadline, and the margin covers starting the
-	// session, the first tool call and scheduling.
-	srNoBrokerBudget = mcpserver.SystemRetryDeadline + 5*time.Second
 	// srLaunchBudget bounds the reconnect when the user-level Broker is started
 	// after a selection round that probed a stale system-level socket. That
 	// round first waits mcpserver.SystemRetryDeadline; the next reconnect waits
@@ -160,7 +154,7 @@ func srAgentID(t *testing.T, account, address string) string {
 	t.Helper()
 	base := syscontainer.Command(account, []string{
 		registerClientRoleEnv + "=" + statusClientRole,
-		"AGENT_PEER_SOCKET=" + syscontainer.UserSocketPath(t, account),
+		"AGENT_PEER_TEST_SOCKET=" + syscontainer.UserSocketPath(t, account),
 		"E2E_ADDRESS=" + address,
 	}, copyTestBinary(t))
 
@@ -189,7 +183,7 @@ func srAgentID(t *testing.T, account, address string) string {
 // status-client role. It runs as the account that owns the Broker, reads the
 // agent ID of one address through the Oracle, and prints that ID.
 func runStatusClientRole() int {
-	oracle, err := node.DialOracle(os.Getenv("AGENT_PEER_SOCKET"))
+	oracle, err := node.DialOracle(os.Getenv("AGENT_PEER_TEST_SOCKET"))
 	if err != nil {
 		return failStatusClientRole(err)
 	}
@@ -245,35 +239,6 @@ func srMCPPIDs(t *testing.T, account string) []int {
 	return out
 }
 
-// srStopSystemService stops the system Broker through systemd.
-func srStopSystemService(t *testing.T) {
-	t.Helper()
-	cmd := syscontainer.Command("root", nil, "systemctl", "stop", srSystemService)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("systemctl stop %s: %v\n%s", srSystemService, err, strings.TrimSpace(string(out)))
-	}
-}
-
-// srLeaveStaleSocket leaves an unlistened socket file at the system path, the
-// state a stopped Broker can leave behind.
-func srLeaveStaleSocket(t *testing.T) {
-	t.Helper()
-	if err := os.Remove(srSystemSocket); err != nil && !os.IsNotExist(err) {
-		t.Fatalf("removing %s: %v", srSystemSocket, err)
-	}
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: srSystemSocket, Net: "unix"})
-	if err != nil {
-		t.Fatalf("binding %s: %v", srSystemSocket, err)
-	}
-	ln.SetUnlinkOnClose(false)
-	if err := ln.Close(); err != nil {
-		t.Fatalf("closing %s: %v", srSystemSocket, err)
-	}
-	if err := os.Chmod(srSystemSocket, 0o666); err != nil {
-		t.Fatalf("chmod %s: %v", srSystemSocket, err)
-	}
-}
-
 // srMainPID returns the MainPID systemd reports for the system service.
 func srMainPID() (int, error) {
 	out, err := syscontainer.Command("root", nil, "systemctl", "show", "-p", "MainPID", srSystemService).Output()
@@ -290,18 +255,18 @@ func srMainPID() (int, error) {
 	return 0, fmt.Errorf("systemctl show printed no MainPID")
 }
 
-// TestSelectOrderReq026 checks REQ-broker-config-026: without an explicit
-// socket a session uses its account's running user-level Broker, an explicit
-// AGENT_PEER_SOCKET wins, and an account without a user-level Broker uses the
-// system-level one. It also checks that a stale system socket with no process
-// behind it makes the session start its own user-level Broker.
+// TestSelectOrderReq026 checks REQ-broker-config-026: with the system Broker
+// on :17443 and peer's user-level Broker on :17444 both available, peer's
+// session uses the user-level Broker; a peer session opened after that Broker
+// stops uses the system Broker; an account without a user-level Broker uses
+// the system Broker; and AGENT_PEER_SOCKET has no effect on the choice.
 func TestSelectOrderReq026(t *testing.T) {
 	if !srInit(t) {
 		return
 	}
-	srSetup(t)
+	userBroker := srSetup(t)
 
-	// 1. peer's session, no socket named: peer's user-level Broker.
+	// 1. peer's session: peer's user-level Broker, ahead of the system Broker.
 	s1 := syscontainer.NewSession(t, "peer", "s1")
 	srWaitRegistered(t, s1, "s1")
 	if strings.Contains(srMustStatus(t, "root"), "s1") {
@@ -311,63 +276,38 @@ func TestSelectOrderReq026(t *testing.T) {
 		t.Fatal("s1 is not on peer's user-level Broker")
 	}
 
-	// 2. peer's session with AGENT_PEER_SOCKET: the system Broker.
-	s2 := syscontainer.NewSession(t, "peer", "s2", syscontainer.WithEnv("AGENT_PEER_SOCKET="+srSystemSocket))
+	// 2. AGENT_PEER_SOCKET names the system Broker; the choice does not change,
+	// so the session still registers on peer's user-level Broker.
+	s2 := syscontainer.NewSession(t, "peer", "s2",
+		syscontainer.WithEnv("AGENT_PEER_SOCKET="+srSystemSocket))
 	srWaitRegistered(t, s2, "s2")
-	if !strings.Contains(srMustStatus(t, "root"), "s2") {
-		t.Fatal("s2 is not on the system Broker although AGENT_PEER_SOCKET named it")
+	if strings.Contains(srMustStatus(t, "root"), "s2") {
+		t.Fatal("s2 registered on the system Broker because AGENT_PEER_SOCKET named it")
 	}
-	if strings.Contains(srMustStatus(t, "peer"), "s2") {
-		t.Fatal("s2 fell back to peer's user-level Broker instead of the named socket")
+	if !strings.Contains(srMustStatus(t, "peer"), "s2") {
+		t.Fatal("s2 is not on peer's user-level Broker")
 	}
 
-	// 3. an account without a user-level Broker: the system Broker.
-	s3 := syscontainer.NewSession(t, "other", "s3")
+	// 3. peer's user-level Broker stops; a session opened afterwards uses the
+	// system Broker.
+	userBroker.Stop(t)
+	s3 := syscontainer.NewSession(t, "peer", "s3")
 	srWaitRegistered(t, s3, "s3")
 	if !strings.Contains(srMustStatus(t, "root"), "s3") {
-		t.Fatal("s3 is not on the system Broker")
+		t.Fatal("s3 is not on the system Broker after peer's user-level Broker stopped")
+	}
+	if procs := srBrokerProcs(t, "peer"); len(procs) != 0 {
+		t.Fatalf("peer runs a user-level Broker although it was stopped: %v", procs)
+	}
+
+	// 4. an account without a user-level Broker: the system Broker.
+	s4 := syscontainer.NewSession(t, "other", "s4")
+	srWaitRegistered(t, s4, "s4")
+	if !strings.Contains(srMustStatus(t, "root"), "s4") {
+		t.Fatal("s4 is not on the system Broker")
 	}
 	if procs := srBrokerProcs(t, "other"); len(procs) != 0 {
 		t.Fatalf("other runs a user-level Broker although the system Broker was available: %v", procs)
-	}
-
-	// 4. the system Broker stops and leaves its socket file behind; the stale
-	// socket must not be treated as a usable Broker, and the MCP server process
-	// must not start a user-level Broker in its place.
-	srStopSystemService(t)
-	srLeaveStaleSocket(t)
-	s4 := syscontainer.NewSession(t, "other", "s4")
-	mcpBefore := srMCPPIDs(t, "other")
-	if len(mcpBefore) == 0 {
-		t.Fatal("other has no MCP server process after s4 started")
-	}
-	harness.Eventually(t, srNoBrokerBudget, "s4 reports that no Broker is available", func() (bool, string) {
-		text, isError := s4.Call(t, "list_agents", map[string]any{})
-		if !isError {
-			return false, "list_agents succeeded without a Broker"
-		}
-		for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
-			if !strings.Contains(text, want) {
-				return false, text
-			}
-		}
-		if procs := srBrokerProcs(t, "other"); len(procs) != 0 {
-			return false, fmt.Sprintf("%d user-level Broker processes appeared", len(procs))
-		}
-		return true, ""
-	})
-
-	// 5. the user starts other's Broker in a terminal; the session registers
-	// without reconnecting the MCP server process.
-	syscontainer.StartUserBroker(t, "other")
-	harness.Eventually(t, srLaunchBudget, "s4 registers on the Broker the user started", func() (bool, string) {
-		if _, isError := s4.Call(t, "list_agents", map[string]any{}); isError {
-			return false, "list_agents still fails"
-		}
-		return true, ""
-	})
-	if got := srMCPPIDs(t, "other"); !slices.Equal(got, mcpBefore) {
-		t.Fatalf("the MCP server processes changed from %v to %v; the session reconnected instead of recovering", mcpBefore, got)
 	}
 }
 

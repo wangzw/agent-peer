@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	// sgBinary is the release build the system image provides.
+	// sgBinary is the agent-peer build the system image provides.
 	sgBinary = "/usr/local/bin/agent-peer"
 	// sgConfigPath is the system Broker's configuration file.
 	sgConfigPath = "/etc/agent-peer/config.yaml"
@@ -156,7 +156,7 @@ func TestSystemSocketGroupReappliedOnReload(t *testing.T) {
 
 	sgAssertNotPermitted(t, "other", sgSocketPath)
 	if res := syscontainer.RunAs(t, "peer",
-		[]string{"AGENT_PEER_SOCKET=" + sgSocketPath}, "status"); res.ExitCode != 0 {
+		[]string{"AGENT_PEER_TEST_SOCKET=" + sgSocketPath}, "status"); res.ExitCode != 0 {
 		t.Errorf("status as peer through the reloaded system socket: exit %d\n%s", res.ExitCode, res.Stderr)
 	}
 }
@@ -233,7 +233,7 @@ func TestSystemSocketGroupUnknownRejected(t *testing.T) {
 // problem.
 func sgAssertNotPermitted(t *testing.T, account, path string) {
 	t.Helper()
-	res := syscontainer.RunAs(t, account, []string{"AGENT_PEER_SOCKET=" + path}, "status")
+	res := syscontainer.RunAs(t, account, []string{"AGENT_PEER_TEST_SOCKET=" + path}, "status")
 	if res.ExitCode == 0 {
 		t.Errorf("status as %s through the system socket succeeded; stdout:\n%s", account, res.Stdout)
 		return

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"google.golang.org/grpc"
@@ -16,8 +15,9 @@ import (
 type targetKind int
 
 const (
-	// kindEnv means AGENT_PEER_SOCKET named the socket.
-	kindEnv targetKind = iota
+	// kindTest means the test build hook named the socket. A release build
+	// never produces this kind.
+	kindTest targetKind = iota
 	// kindUser means the user-level Broker of this account was chosen.
 	kindUser
 	// kindSystem means the system-level Broker was chosen.
@@ -30,7 +30,7 @@ type target struct {
 	Kind targetKind
 }
 
-// SystemRetryDeadline is how long step three keeps retrying a system-level
+// SystemRetryDeadline is how long step two keeps retrying a system-level
 // socket that exists and may be connected to but has no process answering. It
 // is exported so end-to-end tests can derive their wait bounds from it rather
 // than repeat the number.
@@ -71,24 +71,11 @@ func (s *selector) Find(ctx context.Context) (target, error) {
 	return t, nil
 }
 
-// find runs steps one to three of the selection order.
+// find runs the selection order. A test build may name a socket with its hook;
+// a release build has no such step and always selects by account.
 func (s *selector) find(ctx context.Context) (target, bool, error) {
-	if raw := s.environment("AGENT_PEER_SOCKET"); raw != "" {
-		path, err := filepath.Abs(raw)
-		if err != nil {
-			return target{}, false, fmt.Errorf(
-				"the socket %s named by AGENT_PEER_SOCKET is unavailable (%v)", raw, err)
-		}
-		r := s.probePath(ctx, path, kindEnv)
-		switch r.Outcome {
-		case probeOK:
-			return target{Path: path, Kind: kindEnv}, true, nil
-		case probeWrongPeer:
-			return target{}, false, peerMismatchError(path, kindEnv, r.PeerUID)
-		default:
-			return target{}, false, fmt.Errorf(
-				"the socket %s named by AGENT_PEER_SOCKET is unavailable (%s)", path, probeDescription(r.Outcome))
-		}
+	if t, found, err := s.findNamedSocket(ctx); err != nil || found {
+		return t, found, err
 	}
 
 	switch r := s.probePath(ctx, s.userSocket, kindUser); r.Outcome {
@@ -158,13 +145,6 @@ func (s *selector) wait(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func (s *selector) environment(name string) string {
-	if s.getenv == nil {
-		return os.Getenv(name)
-	}
-	return s.getenv(name)
-}
-
 // probePath probes path and applies the peer rule of the selection step. The
 // raw probe already rejects a peer that may not serve a Broker at all; this
 // narrows it to the account that may serve this particular socket.
@@ -183,27 +163,25 @@ func (s *selector) probePath(ctx context.Context, path string, kind targetKind) 
 
 // peerAllowed reports whether uid may serve the Broker socket of kind: root for
 // the system-level Broker, this account for the user-level one, and either for
-// the socket named by AGENT_PEER_SOCKET.
+// the socket named by the test build hook.
 func peerAllowed(kind targetKind, uid uint32) bool {
 	switch kind {
 	case kindSystem:
 		return uid == 0
-	case kindEnv:
+	case kindTest:
 		return peerMayServe(uid)
 	default:
 		return uid == uint32(os.Geteuid())
 	}
 }
 
-// peerMismatchError names the socket and the account that answered it. The text
-// is shown to the model, so it must carry both facts.
+// peerMismatchError names a user-level or system-level socket and the account
+// that answered it. The text is shown to the model, so it must carry both
+// facts. A test-named socket builds its own message in the test build.
 func peerMismatchError(path string, kind targetKind, uid uint32) error {
 	switch kind {
 	case kindSystem:
 		return fmt.Errorf("the system-level Broker socket %s is served by uid %d, not root", path, uid)
-	case kindEnv:
-		return fmt.Errorf("the socket %s named by AGENT_PEER_SOCKET is served by uid %d, not this account (%d) or root",
-			path, uid, os.Geteuid())
 	default:
 		return fmt.Errorf("the user-level Broker socket %s is served by uid %d, not this account (%d)",
 			path, uid, os.Geteuid())
@@ -215,22 +193,6 @@ func (s *selector) afterFunc() func(time.Duration) <-chan time.Time {
 		return time.After
 	}
 	return s.after
-}
-
-// probeDescription names a probe failure for the AGENT_PEER_SOCKET error text.
-func probeDescription(r probeResult) string {
-	switch r {
-	case probeMissing:
-		return "the path does not exist"
-	case probeRefused:
-		return "no process accepts connections"
-	case probeDenied:
-		return "this account may not connect to it"
-	case probeOther:
-		return "the connection failed"
-	default:
-		return "unknown failure"
-	}
 }
 
 // FindBroker applies the Broker selection order and returns the socket path of
