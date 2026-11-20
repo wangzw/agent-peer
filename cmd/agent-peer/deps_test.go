@@ -42,6 +42,7 @@ type stubDeps struct {
 	updateApply          func(ctx context.Context, o update.ApplyOptions) error
 	applyUpdateViaBroker func(ctx context.Context) (brokerUpdateResult, error)
 	brokerUpdateStatus   func(ctx context.Context) (brokerUpdateStatus, error)
+	restartService       func(ctx context.Context) error
 
 	// Configured results used when the corresponding override is nil.
 	brokerErr      error
@@ -71,6 +72,8 @@ type stubDeps struct {
 	applyCalls        []update.ApplyOptions
 	brokerApplyCalls  int
 	brokerStatusCalls int
+	// restartServiceCalls counts service operations reached through the seam.
+	restartServiceCalls int
 }
 
 // deps returns a deps whose function fields record into s and then delegate to
@@ -153,6 +156,13 @@ func (s *stubDeps) deps() deps {
 				return s.brokerUpdateStatus(ctx)
 			}
 			return s.brokerStatus, s.brokerStatusErr
+		},
+		restartService: func(ctx context.Context) error {
+			s.restartServiceCalls++
+			if s.restartService != nil {
+				return s.restartService(ctx)
+			}
+			return nil
 		},
 	}
 }

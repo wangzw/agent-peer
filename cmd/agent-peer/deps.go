@@ -97,14 +97,20 @@ type deps struct {
 
 	// Update command. The command asks the selected Broker to install the
 	// newest release itself. When that Broker is this account's user-level
-	// Broker and declines, the command replaces the user-level binary locally
-	// and restarts the user-level service.
+	// Broker and declines, the command replaces the user-level binary locally.
 	updateAPIBase        func() string
 	updateLatest         func(ctx context.Context, client *http.Client, api string) (update.Release, error)
 	updateNewer          func(current, candidate string) bool
 	updateApply          func(ctx context.Context, o update.ApplyOptions) error
 	applyUpdateViaBroker func(ctx context.Context) (brokerUpdateResult, error)
 	brokerUpdateStatus   func(ctx context.Context) (brokerUpdateStatus, error)
+	// restartService is a service operation the update command must not
+	// perform. The delegated route leaves restarting to the Broker's service
+	// manager, and a local replacement leaves an installed service alone
+	// because it may have been stopped on purpose, so nothing calls this. It
+	// exists so the test double records an attempt: a change that restarts the
+	// service from the command is caught instead of slipping through.
+	restartService func(ctx context.Context) error
 }
 
 // brokerUpdateResult is the outcome of the Broker's ApplyUpdate RPC as the

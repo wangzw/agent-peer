@@ -526,6 +526,9 @@ func TestUpdateWithoutARunningBrokerReplacesLocally(t *testing.T) {
 	if strings.Contains(out, "Restarted") || strings.Contains(out, "service") {
 		t.Fatalf("stdout = %q, want no service operation or message", out)
 	}
+	if stub.restartServiceCalls != 0 {
+		t.Fatalf("service operations = %d, want none on the local replacement route", stub.restartServiceCalls)
+	}
 	assertBinaryUnchanged(t, env.target)
 }
 
