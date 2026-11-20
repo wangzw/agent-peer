@@ -2,11 +2,20 @@ version: v2
 plugins:
   # Both plugins are the versions fixed in go.mod's tool block, so generation
   # does not depend on whatever binaries happen to be on PATH.
+  #
+  # strategy: all runs each plugin once per module instead of once per proto
+  # directory. The default directory strategy starts several copies of the same
+  # "go tool" command at once; they share the Go build cache, and the cache
+  # writes the tool binary while another copy executes it, which fails with
+  # "text file busy" (golang.org/issue/22315). One invocation per plugin cannot
+  # race with itself.
   - local: ["go", "tool", "protoc-gen-go"]
     out: .
+    strategy: all
     opt:
       - paths=source_relative
   - local: ["go", "tool", "protoc-gen-go-grpc"]
     out: .
+    strategy: all
     opt:
       - paths=source_relative

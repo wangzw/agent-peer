@@ -5,6 +5,16 @@
 
 JOBS ?= 4
 
+# Directory for golangci-lint's cache. The linter also takes a global run lock
+# at $TMPDIR/golangci-lint.lock and refuses to run while another instance holds
+# it, so gates that run in parallel must each pass a different directory here.
+# The linter then gets a private cache and a private TMPDIR under this
+# directory. When empty, the linter's own defaults are used.
+GOLANGCI_LINT_CACHE ?=
+
+# golangci-lint with the caller's private cache and lock directory.
+GOLANGCI_LINT = $(if $(GOLANGCI_LINT_CACHE),env GOLANGCI_LINT_CACHE="$(GOLANGCI_LINT_CACHE)" TMPDIR="$(GOLANGCI_LINT_CACHE)/tmp" )golangci-lint
+
 GIT ?= git
 
 # Total timeout of the end-to-end test binary, passed to go test -timeout.
@@ -38,6 +48,7 @@ gen-check:
 # Format, static analysis, shell script lint, module tidiness and the module
 # dependency-direction check.
 lint:
+	@if [ -n "$(GOLANGCI_LINT_CACHE)" ]; then mkdir -p "$(GOLANGCI_LINT_CACHE)/tmp"; fi
 	@files="$$(find . -type f -name '*.go' \
 		-not -path './third_party/*' \
 		-not -path './.git/*' \
@@ -50,11 +61,11 @@ lint:
 		fi; \
 	fi
 	shellcheck scripts/install.sh scripts/remote-install.sh
-	golangci-lint run ./...
-	golangci-lint run --build-tags agentpeer_testenv ./...
-	golangci-lint run --build-tags e2e ./...
-	GOOS=darwin golangci-lint run ./...
-	GOOS=darwin golangci-lint run --build-tags e2e,e2e_darwin ./...
+	$(GOLANGCI_LINT) run ./...
+	$(GOLANGCI_LINT) run --build-tags agentpeer_testenv ./...
+	$(GOLANGCI_LINT) run --build-tags e2e ./...
+	GOOS=darwin $(GOLANGCI_LINT) run ./...
+	GOOS=darwin $(GOLANGCI_LINT) run --build-tags e2e,e2e_darwin ./...
 	go mod tidy -diff
 	go run ./scripts/check-deps -goos linux
 	go run ./scripts/check-deps -goos darwin
@@ -85,7 +96,9 @@ proto-lint:
 test:
 	go build ./...
 	go vet ./...
-	go test -race -p $(JOBS) -parallel $(JOBS) ./...
+	@tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT HUP INT TERM; \
+	go build -o "$$tmp/testreport" ./scripts/testreport || exit $$?; \
+	bash -o pipefail -c 'go test -race -json -p $(JOBS) -parallel $(JOBS) ./... | '"$$tmp"'/testreport -label test -'
 	@root="$$(mktemp -d)"; home="$$(mktemp -d)"; scratch="$$(mktemp -d)"; \
 	cleanup() { status=$$1; rm -rf "$$root" "$$home" "$$scratch"; exit $$status; }; \
 	go list -e -f '{{.ImportPath}}|{{join .GoFiles " "}}|{{join .TestGoFiles " "}}' ./... > "$$scratch/plain" || cleanup $$?; \
@@ -107,9 +120,11 @@ test:
 	echo "test: agentpeer_testenv packages:$$pkgs"; \
 	echo "test: agentpeer_testenv tests:^($$tests)$$"; \
 	AGENT_PEER_TEST_RUNTIME_ROOT="$$root" AGENT_PEER_TEST_HOME="$$home" \
-		go test -race -count=1 -tags agentpeer_testenv -p $(JOBS) -parallel $(JOBS) \
-			-run "^($$tests)$$" $$pkgs; \
-	cleanup $$?
+		go test -race -count=1 -json -tags agentpeer_testenv -p $(JOBS) -parallel $(JOBS) \
+			-run "^($$tests)$$" $$pkgs > "$$scratch/testenv.json"; \
+	status=$$?; \
+	go run ./scripts/testreport -label test-env "$$scratch/testenv.json" || cleanup $$?; \
+	cleanup $$status
 	@if [ "$$(go env GOOS)" = darwin ]; then \
 		go -C $(CURDIR)/third_party/fsnotify test -race -count=1 -p $(JOBS) -parallel $(JOBS) -run '^Test(KqueueCloseDoesNotCloseAReusedDescriptor|AddWatchKeepsAnExistingDescriptorWhenReregisterFails|WriteAfterCreateIsReported)$$' ./; \
 	else \
@@ -129,8 +144,13 @@ test:
 SYSTEMD_REBUILD_LEDGER ?= /tmp/ape2e-systemd-rebuilds.log
 
 e2e:
-	@go test -tags e2e -timeout $(E2E_TIMEOUT) -p $(JOBS) -parallel $(JOBS) ./test/e2e/...; \
-	status=$$?; \
+	@tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT HUP INT TERM; \
+	status=0; \
+	if go build -o "$$tmp/testreport" ./scripts/testreport; then \
+		bash -o pipefail -c 'go test -tags e2e -timeout $(E2E_TIMEOUT) -json -p $(JOBS) -parallel $(JOBS) ./test/e2e/... | '"$$tmp"'/testreport -label e2e -progress -' || status=$$?; \
+	else \
+		status=$$?; \
+	fi; \
 	if [ -s $(SYSTEMD_REBUILD_LEDGER) ]; then \
 		echo "e2e: systemd container rebuilds:"; \
 		cat $(SYSTEMD_REBUILD_LEDGER); \

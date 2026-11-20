@@ -161,8 +161,9 @@ jobs:
   e2e:
     name: end-to-end tests
     runs-on: ubuntu-24.04
-    # Same as E2E_TIMEOUT in the Makefile.
-    timeout-minutes: 30
+    # E2E_TIMEOUT in the Makefile bounds the test binary; setup and cleanup
+    # need room beyond it.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
