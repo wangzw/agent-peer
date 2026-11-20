@@ -18,7 +18,7 @@ Run it from the account whose Claude Code should use the system Broker: the inst
 
 The system Broker takes root's account lock. If a user Broker is already running as root, the system-level install refuses and asks you to stop it first.
 
-The system Broker uses `/etc/agent-peer/config.yaml`, `/var/log/agent-peer/audit.log` and `/var/lib/agent-peer`. If the configuration file does not exist, the install generates it as a template that lists every configuration key, with owner root, the default group `agent-peer` and mode `0660`; an existing file is left unchanged. Members of that group manage the Broker without `sudo`; [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}#the-admin-group) describes the group and its limits.
+The system Broker uses `/etc/agent-peer/config.yaml`, `/var/log/agent-peer/audit.log` and `/var/lib/agent-peer`. If the configuration file does not exist, the install generates it as a template that lists every configuration key, with owner root, the default group `agent-peer` and mode `0660`; an existing file is left unchanged. Members of that group manage the Broker without `sudo` when the account runs no user-level Broker of its own; [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}#the-admin-group) describes the group and its limits.
 
 ## Let accounts use it
 

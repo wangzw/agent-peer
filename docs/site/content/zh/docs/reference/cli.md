@@ -79,7 +79,7 @@ Update: <v> available (current <c>); run agent-peer update
 
 `config`、`pairing-key` 与 `peer` 下的命令连接正在运行的 Broker，不会启动 Broker。它们按执行命令的操作系统账户选择 Broker，没有按级别指定 Broker 的命令行选项：先找本账户正在运行的用户级 Broker，再找本账户有权使用的系统级 Broker。本账户运行着自己的用户级 Broker、又要管理系统级 Broker 时，必须以 `sudo` 执行命令。`status`、`audit` 与 `update` 遵循同一规则。选择规则与相关设置见[运行系统级 Broker]({{< relref "/docs/guides/system-broker" >}})。
 
-Broker 按执行命令的账户判定每个命令的权限，规则与对应的工具相同。写操作留下的审计记录中，`account` 是执行命令的账户，`actor` 为空。管理员以 `sudo` 执行时，系统级 Broker 按 root 的权限判定。系统级 Broker 管理组的成员不用 `sudo` 也能管理它；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。这些命令不经过 Claude Code 的权限确认。Broker 拒绝某个命令时，它给出的英文错误写到标准错误，其中包含配置文件的路径，命令以退出码 1 结束。
+Broker 按执行命令的账户判定每个命令的权限，规则与对应的工具相同。写操作留下的审计记录中，`account` 是执行命令的账户，`actor` 为空。管理员以 `sudo` 执行时，系统级 Broker 按 root 的权限判定。系统级 Broker 管理组的成员在本账户没有运行自己的用户级 Broker 时，不用 `sudo` 也能管理它；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。这些命令不经过 Claude Code 的权限确认。Broker 拒绝某个命令时，它给出的英文错误写到标准错误，其中包含配置文件的路径，命令以退出码 1 结束。
 
 这些命令的输出沿用 `agent-peer status` 的约定：空值写 `-`。
 
@@ -224,7 +224,7 @@ The new binary takes effect the next time the Broker starts.
 - 不带 `--system` 时安装用户级服务，账户登录时启动 Broker。不能以 root 运行。在 macOS 上只能在图形登录会话里运行。`~/.agent-peer/config.yaml` 不存在时，生成这个文件，属主为执行安装的账户，权限 `0600`；已存在的文件不改动。
 - 带 `--system` 时安装系统级服务，开机时启动 Broker。必须以 root 运行。组 `agent-peer` 不存在时，命令新建它；已存在时直接使用，不改动成员。`/etc/agent-peer/config.yaml` 不存在时，生成这个文件，属主为 `root`，组为 `agent-peer`，权限 `0660`；已存在的文件不改动。`--admin-group <name>` 只在带 `--system` 时有效，用于改用另一个组；组名只能以小写字母或下划线开头，其后只能是小写字母、数字、下划线或连字符。
 
-生成的文件是一份列出全部键的模板：有固定默认值的键写出取值，其余键写成注释并附示例值或空占位。安装写入文件时输出 `generated the configuration file <path>`，文件已存在时输出 `kept the existing configuration file <path>`，系统级安装还会输出 `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`。执行这条命令就把已有安装交给该组，组成员随后不用 `sudo` 就能管理 Broker；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。
+生成的文件是一份列出全部键的模板：有固定默认值的键写出取值，其余键写成注释并附示例值或空占位。安装写入文件时输出 `generated the configuration file <path>`，文件已存在时输出 `kept the existing configuration file <path>`，系统级安装还会输出 `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`。执行这条命令就把已有安装交给该组，组成员随后不用 `sudo` 就能管理 Broker；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。`broker.listen` 使用小于 1024 的端口时跳过这条命令，因为这类 Broker 在另一个账户能写这个文件时会拒绝启动。
 
 如果这一级别已有 Broker 正在应答，而且不是这个服务启动的，安装会被拒绝，并提示先停掉它。
 

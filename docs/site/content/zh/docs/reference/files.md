@@ -59,6 +59,6 @@ Broker 把运行日志写到标准错误，把审计日志写到上面的审计�
 
 用户级 Broker 以该账户身份运行。Broker 在数据目录不存在时以 `0700` 创建它，以 `0600` 创建文件，并以 `0600` 绑定本机 socket，所以只有该账户能访问它们。
 
-系统级 Broker 以 root 运行。配置文件的权限决定其他账户能用管理工具和终端命令做哪些事：读权限允许读取配置、完整状态与审计日志；写权限允许修改配置和管理配对。系统级安装默认已经把新生成的配置文件以写权限交给 `agent-peer` 组；已存在的文件用 `chgrp` 和 `chmod` 交给这个组，做法见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}}#管理组)。Broker 检查调用方对实际文件的访问权限，所以经工具或终端命令能做的事不超出直接编辑文件能做的事。
+系统级 Broker 以 root 运行。配置文件的权限决定其他账户能用管理工具和终端命令做哪些事：读权限允许读取配置、完整状态与审计日志；写权限允许修改配置和管理配对。系统级安装默认已经把新生成的配置文件以写权限交给 `agent-peer` 组；已存在的文件用 `chgrp` 和 `chmod` 交给这个组，做法见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}}#管理组)。`broker.listen` 使用小于 1024 的端口时跳过这一步，因为这类 Broker 在另一个账户能写这个文件时会拒绝启动。Broker 检查调用方对实际文件的访问权限，所以经工具或终端命令能做的事不超出直接编辑文件能做的事。
 
 socket 及其权限见[配置键]({{< relref "docs/reference/configuration" >}})。项目配置文件另见[项目配置文件]({{< relref "docs/reference/project-config" >}})，[使用指南]({{< relref "docs/guides" >}})介绍怎样安装服务。

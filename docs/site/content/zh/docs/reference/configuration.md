@@ -9,7 +9,7 @@ weight: 3
 
 `agent-peer service install` 只在该级别的配置文件不存在时写入模板，已存在的文件不改。模板列出全部键，每个键上方有一行说明。有固定默认值的键直接写出取值。默认值为空或在运行时计算的 5 个键写成注释并附示例：`broker.alias`（默认值在运行时计算），以及默认为空的 `broker.advertise`、`broker.advertise_extra`、`broker.local_socket_group` 和 `pairing.static_key`。取消注释并填入合法值，改动就会像其他合法改动一样在 Broker 运行期间生效。没有配置文件就启动的 Broker 不会得到模板。
 
-系统级模板有两处不同。开头说明讲的是，把文件的读权限授予某个组，该组的账户就能读取配置；把写权限授予某个组，该组的账户就能修改配置、管理配对。此外，用户级模板在 `broker.local_socket_group` 与 `broker.local_socket_mode` 这两个键的说明后注明，它们只对系统级 Broker 生效。
+两份模板有三处不同。第一行写明级别，分别是 `# agent-peer user Broker configuration.` 与 `# agent-peer system Broker configuration.`。开头注释不同：用户级模板说明这个文件只属于本账户，系统级模板则说明，把文件的读权限授予某个组，该组的账户就能读取配置、完整状态与审计日志，把写权限授予某个组，该组的账户就能修改配置、管理配对。此外，用户级模板在 `broker.local_socket_group` 与 `broker.local_socket_mode` 这两个键的说明后注明，它们只对系统级 Broker 生效。
 
 模板以一段说明注释开头：
 
@@ -72,7 +72,7 @@ pairing:
 
 更新检查会访问 GitHub。[安全模型]({{< relref "docs/security" >}})说明它发送什么、接收什么。`agent-peer update` 也访问 GitHub，但只在你运行它时。
 
-未设置 `broker.alias` 时，系统级 Broker 取系统主机名的第一段，即第一个 `.` 之前的部分；用户级 Broker 取这一段、`.` 和运行它的账户名，例如 `workstation` 与 `workstation.alice`。别名与监听地址、监听端口和对外地址都无关。不在别名字符集内的字符换成 `-`。账户名查不到或为空时用十进制 uid 代替，例如 `workstation.1000`。主机名读不到或为空时，主机名部分取 `broker`。别名超过 24 个字符时先截短主机名部分，主机名部分至少保留 1 个字符，仍然超长再截短账户名部分。截短后去掉末尾的 `.` 与 `-`；账户名部分改用 uid 时即截短 uid。从 0.1.0 升级后，没有设置此项的 Broker 别名通常会变；不监听、主机名本来就是单个段且不超过 24 个字符的系统级 Broker 除外，它的别名不变，用户级 Broker 则一律在主机名后追加 `.` 与账户名。要沿用旧别名就在这里设置此项，例如设回 `workstation-17443`。
+未设置 `broker.alias` 时，系统级 Broker 取系统主机名的第一段，即第一个 `.` 之前的部分；用户级 Broker 取这一段、`.` 和运行它的账户名，例如 `workstation` 与 `workstation.alice`。别名与监听地址、监听端口和对外地址都无关。不在别名字符集内的字符换成 `-`。账户名查不到或为空时用十进制 uid 代替，例如 `workstation.1000`。主机名读不到或为空时，主机名部分取 `broker`。别名超过 24 个字符时先截短主机名部分，主机名部分至少保留 1 个字符，仍然超长再截短账户名部分。截短后去掉末尾的 `.` 与 `-`；账户名部分改用 uid 时即截短 uid。从 0.1.0 升级后，没有设置此项的 Broker 别名通常会变；不监听、主机名本来就是单个段且不超过 24 个字符的系统级 Broker 除外，它的别名不变，用户级 Broker 则一律在主机名后追加 `.` 与账户名。要沿用旧别名就在这里设置此项，例如设回 `workstation-17443`。升级前要读出旧别名，可以用 `get_config` 工具读 `broker.alias`，或取 `agent-peer status` 输出的 Agent 地址里 `@` 后面的部分；升级后这两个途径读到的已经是新别名，所以要先记下旧别名，升级后把它设回配置文件的 `broker.alias`。默认端口下，旧别名是完整主机名加上 `-17443`，截短到 24 个字符。
 
 ## 类型与约束
 

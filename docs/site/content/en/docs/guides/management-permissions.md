@@ -33,8 +33,6 @@ The check identifies an operating-system account, not a person or a model. Any p
 
 The release archive's install script asks whether to add the account that ran `sudo` to the group, and does not add it by default. `--join-admin-group` adds that account without asking, and `--no-admin-group` neither asks nor adds it. Without a terminal, the script adds nothing and prints the command to join the group. A new membership applies from the next call through the Broker, because the Broker reads the account's groups from the account database on each check. Log in again, or run `newgrp agent-peer`, before the account's own processes use the new membership, for example to edit the configuration file directly. To add another account, run `sudo usermod -aG agent-peer <account>` on Linux, or `sudo dseditgroup -o edit -a <account> -t user agent-peer` on macOS; if you set `--admin-group`, use that group name instead.
 
-A port below 1024 in `broker.listen` can stay only in a configuration file that root alone can write; [Configuration keys]({{< relref "../reference/configuration.md" >}}) gives the rule.
-
 For an existing installation, give the file to the group with the command the install output prints:
 
 ```sh
@@ -43,6 +41,8 @@ sudo chmod 0660 /etc/agent-peer/config.yaml
 ```
 
 Use `0640` instead of `0660` to grant read access only.
+
+Skip giving the file to the group when `broker.listen` uses a port below 1024, because such a Broker refuses to start while another account can write the file. Read-only access (`0640`) is not subject to this limit, because the rule looks only at whether the group or others can write the file.
 
 Two limits come with the group. A port below 1024 in `broker.listen` takes effect only while the configuration file can be written by root alone, so a group that can write the file cannot move the Broker to a privileged port. A file that a group or others can write and that sets such a port makes the Broker refuse to start; when the file is changed to that combination while the Broker runs, the Broker keeps the old value instead of applying the new port. A change made by editing the file directly is recorded in the audit log with no account, because only changes through the local socket carry the caller's account. Installing and uninstalling the system-level service still needs root.
 

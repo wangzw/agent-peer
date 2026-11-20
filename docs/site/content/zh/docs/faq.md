@@ -59,7 +59,7 @@ Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见
 
 ## 升级后 Agent 地址为什么变了？
 
-从 0.2.0 起，默认别名不再包含监听端口：主机名为 `workstation` 的系统级 Broker 报出 `workstation`，不再是旧形式 `workstation-17443`；账户 alice 的用户级 Broker 报出 `workstation.alice`。因此，从 0.1.0 升级、又没有设置 `broker.alias` 的 Broker 别名通常会变，对端看到的 Agent 地址也随之改变，除非对端已经为它设了本地别名；保存了旧地址的会话要改用新地址。对端遇到与已有别名冲突时会自行处理：为改了别名的 Broker 生成一个本地别名，原有地址不会因此指向另一个 Broker。想沿用旧别名，就在配置文件里设置 `broker.alias`，例如设回 `workstation-17443`。无论用哪种方式升级，包括在线安装、归档里的 `install.sh`、`agent-peer update` 或手工替换二进制，情形都一样。
+从 0.2.0 起，默认别名不再包含监听端口：主机名为 `workstation` 的系统级 Broker 报出 `workstation`，不再是旧形式 `workstation-17443`；账户 alice 的用户级 Broker 报出 `workstation.alice`。因此，从 0.1.0 升级、又没有设置 `broker.alias` 的 Broker 别名通常会变，对端看到的 Agent 地址也随之改变，除非对端已经为它设了本地别名；保存了旧地址的会话要改用新地址。对端遇到与已有别名冲突时会自行处理：为改了别名的 Broker 生成一个本地别名，原有地址不会因此指向另一个 Broker。想沿用旧别名，就在升级前把它读出来：用 `get_config` 工具读 `broker.alias`，或者从 `agent-peer status` 输出的 Agent 地址里取 `@` 后面的部分；升级后把配置文件里的 `broker.alias` 设回该值，例如 `workstation-17443`。默认端口下，旧别名是完整主机名加上 `-17443`，截短到 24 个字符。无论用哪种方式升级，包括在线安装、发布包里的 `install.sh`、`agent-peer update` 或手工替换二进制，情形都一样。
 
 ## 怎样更新 agent-peer？
 
@@ -99,7 +99,7 @@ topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会�
 
 ## 谁能修改 Broker 的配置？
 
-对 Broker 配置文件有写权限的账户可以用 `set_config` 或 `agent-peer config set` 修改配置，用 `create_pairing_key` 或 `agent-peer pairing-key create` 生成一次性配对密钥，用 `connect_broker` 与 `disconnect_broker`，或 `agent-peer peer connect` 与 `agent-peer peer disconnect` 配对和解除配对；读权限允许读取配置和审计日志。终端命令按执行命令的账户判定权限。管理组成员不用 `sudo` 就能管理系统级 Broker；管理员用 `sudo` 执行命令时，系统级 Broker 按 root 的权限判定。见[管理权限]({{< relref "guides/management-permissions.md" >}})，管理组的说明见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)一节。
+对 Broker 配置文件有写权限的账户可以用 `set_config` 或 `agent-peer config set` 修改配置，用 `create_pairing_key` 或 `agent-peer pairing-key create` 生成一次性配对密钥，用 `connect_broker` 与 `disconnect_broker`，或 `agent-peer peer connect` 与 `agent-peer peer disconnect` 配对和解除配对；读权限允许读取配置和审计日志。终端命令按执行命令的账户判定权限。管理组成员在本账户没有运行自己的用户级 Broker 时，不用 `sudo` 就能管理系统级 Broker；管理员用 `sudo` 执行命令时，系统级 Broker 按 root 的权限判定。见[管理权限]({{< relref "guides/management-permissions.md" >}})，管理组的说明见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)一节。
 
 ## 端口被占用时会怎样？
 

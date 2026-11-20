@@ -18,7 +18,7 @@ curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install
 
 系统级 Broker 取的是 root 的账户锁。如果 root 名下已有用户级 Broker 在运行，系统级安装会被拒绝，并提示先停掉它。
 
-系统级 Broker 使用 `/etc/agent-peer/config.yaml`、`/var/log/agent-peer/audit.log` 和 `/var/lib/agent-peer`。配置文件不存在时，安装会生成它，内容是一份列出全部键的模板，属主为 root，属组为默认的 `agent-peer`，权限 `0660`；已存在的文件不改动。该组的成员不用 `sudo` 就能管理 Broker；这个组及它的两条限制见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}}#管理组)。
+系统级 Broker 使用 `/etc/agent-peer/config.yaml`、`/var/log/agent-peer/audit.log` 和 `/var/lib/agent-peer`。配置文件不存在时，安装会生成它，内容是一份列出全部键的模板，属主为 root，属组为默认的 `agent-peer`，权限 `0660`；已存在的文件不改动。该组的成员在本账户没有运行自己的用户级 Broker 时，不用 `sudo` 就能管理 Broker；这个组及它的两条限制见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}}#管理组)。
 
 ## 允许账户使用它
 

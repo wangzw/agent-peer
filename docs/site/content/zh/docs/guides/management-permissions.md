@@ -33,8 +33,6 @@ weight: 6
 
 发布包里的安装脚本会询问是否把执行 `sudo` 的账户加入该组，默认不加入。`--join-admin-group` 不询问直接加入，`--no-admin-group` 既不询问也不加入。没有终端时，脚本不加入任何账户，并打印加入组的命令。Broker 每次判定权限都从账户数据库读取账户的组，所以经 Broker 做的管理操作，加入组后下一次调用就生效。要让本账户自己的进程带上新的成员关系，例如直接编辑配置文件，先重新登录或执行 `newgrp agent-peer`。要把别的账户加入组，Linux 上执行 `sudo usermod -aG agent-peer <account>`，macOS 上执行 `sudo dseditgroup -o edit -a <account> -t user agent-peer`；设置过 `--admin-group` 时，把命令里的 `agent-peer` 换成那个组名。
 
-`broker.listen` 的端口小于 1024 时，只能留在只有 root 可写的配置文件里；规则见[配置键]({{< relref "../reference/configuration.md" >}})。
-
 已有安装用安装输出给出的命令把文件交给这个组：
 
 ```sh
@@ -43,6 +41,8 @@ sudo chmod 0660 /etc/agent-peer/config.yaml
 ```
 
 只授予读权限时，把 `0660` 换成 `0640`。
+
+`broker.listen` 使用的是小于 1024 的端口时，不要执行上面的命令把文件交给组，因为这类 Broker 在另一个账户能写这个文件时会拒绝启动。只授读权限（`0640`）不受此限，因为低端口规则只看组和其他账户能否写这个文件。
 
 这个组有两条限制。`broker.listen` 的端口小于 1024 时，只有在配置文件只能由 root 写时才生效，所以能写这个文件的组无法把 Broker 移到特权端口。配置文件可被组或其他人写入、又设了这样的端口时，Broker 拒绝启动；运行中把文件改成这样的组合时，Broker 不采用新的端口，保留原来的值。直接编辑配置文件引起的改动，审计日志里没有账户归属，因为只有经本机 socket 的修改才带有调用方账户。系统级服务的安装与卸载仍然需要 root。
 

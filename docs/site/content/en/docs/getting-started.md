@@ -12,7 +12,7 @@ agent-peer runs on macOS and Linux, on amd64 and arm64; native Windows is not su
 
 ## Install
 
-There are four ways to install agent-peer, in order of convenience: with one command from GitHub Releases; from the release archive with the `install.sh` it contains; by hand from the same archive; or by building from source. To keep an agent-peer installed from a release up to date, run `agent-peer update`; [Update agent-peer]({{< relref "guides/update.md" >}}) covers it. A binary built from source reports `dev` and is not updated this way.
+There are four ways to install agent-peer, in order of convenience: with one command from GitHub Releases; from the release archive with the `install.sh` it contains; by hand from the same archive; or by building from source. To keep an agent-peer installed from a release up to date, run `agent-peer update`; [Update agent-peer]({{< relref "guides/update.md" >}}) covers it. A binary built without a version number reports `dev` and is not updated this way.
 
 Whatever way you install it, the MCP server must be registered for your account; reopen any Claude Code session that is already open so that it loads the new server, and check the registration with `claude mcp get peer`.
 
@@ -35,14 +35,14 @@ Do not run the user-level command with `sudo`.
 To install a particular version, set it first and pass `--version`:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version "$VERSION"
 ```
 
 For a system-level installation of a particular version:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --version "$VERSION" --system
 ```
 
@@ -66,7 +66,7 @@ The script does the same work as the `install.sh` in the archive, described in t
 agent-peer is distributed as a `tar.gz` archive on [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest). Download the archive for your platform and architecture together with `checksums.txt` from the same release:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/agent-peer_${VERSION}_<os>_<arch>.tar.gz
 curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/checksums.txt
 ```
@@ -76,21 +76,21 @@ Replace `<os>_<arch>` with `darwin_amd64`, `darwin_arm64`, `linux_amd64` or `lin
 Check the archive against `checksums.txt` before using it. On Linux:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 grep agent-peer_${VERSION}_linux_arm64.tar.gz checksums.txt | sha256sum -c -
 ```
 
 On macOS, use `shasum` instead:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 grep agent-peer_${VERSION}_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
 ```
 
 Create a directory and extract the archive into it: the archive has no top-level directory, so without one its files, including `LICENSE`, `README.md` and `third_party/`, land directly in the current directory:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 mkdir agent-peer-${VERSION}
 tar -xzf agent-peer_${VERSION}_darwin_arm64.tar.gz -C agent-peer-${VERSION}
 ```
@@ -100,7 +100,7 @@ Replace `darwin` with `linux` on Linux.
 Enter the extracted directory and run the script:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 cd agent-peer-${VERSION}
 sh ./install.sh
 ```
@@ -108,12 +108,12 @@ sh ./install.sh
 For a system-level installation, run the same script as root, usually through `sudo`:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 cd agent-peer-${VERSION}
 sudo sh ./install.sh --system
 ```
 
-The user-level form installs the binary into `~/.local/bin`, installs and starts the user-level Broker service, and registers the MCP server for your account. The system-level form installs the binary into `/usr/local/bin`, installs and starts the system-level Broker service, and registers the MCP server for the account that ran `sudo`. It also creates the `agent-peer` group, gives the configuration file it generates to that group, and asks whether to add the account that ran `sudo` to the group; the answer defaults to no, and without a terminal the script does not add the account and prints the command to do so. The script does not ask when that account is already in the group or when it runs as root directly, and only an answer of y or yes adds the account. A member of the admin group manages the system Broker without `sudo`; through the Broker, a new membership applies from the next call, and the account's own processes, such as a direct edit of the configuration file, see it after logging in again or running `newgrp agent-peer`. [The admin group]({{< relref "guides/management-permissions.md" >}}#the-admin-group) covers the group.
+The user-level form installs the binary into `~/.local/bin`, installs and starts the user-level Broker service, and registers the MCP server for your account. The system-level form installs the binary into `/usr/local/bin`, installs and starts the system-level Broker service, and registers the MCP server for the account that ran `sudo`; it also creates the `agent-peer` group and asks whether to add that account to it. [The admin group]({{< relref "guides/management-permissions.md" >}}#the-admin-group) covers the group, the question and its effect.
 
 The script accepts these options:
 
@@ -132,7 +132,7 @@ The script is safe to run again: it replaces the binary, restarts the service wi
 
 With `--no-mcp`, the script skips the registration, and you run the registration command in the manual section yourself. When it cannot find `claude`, or runs as root without `sudo` and has no account to register for, it prints the `claude mcp add` command to run.
 
-If `~/.agent-peer/config.yaml` does not exist, `service install` creates it with every configuration key listed. [Configuration keys]({{< relref "reference/configuration.md" >}}) describes the file.
+If the configuration file for the level does not exist, `service install` creates it with every configuration key listed: `~/.agent-peer/config.yaml` for a user-level service, and `/etc/agent-peer/config.yaml` for a system-level one. [Configuration keys]({{< relref "reference/configuration.md" >}}) describes the file.
 
 On macOS, the script clears the quarantine attribute from the binary itself, so a browser download needs no extra step. If the user-level install directory is not on `PATH`, the script says so; add it to `PATH` to run `agent-peer` by name. A user-level service on macOS needs a graphical login session; on a host without one, use `--system` or `--no-service`.
 
@@ -145,7 +145,7 @@ Download, verify and extract the archive as described in the previous section, t
 On macOS, a browser download carries the quarantine attribute, and macOS blocks the binary until it is removed. Clear it from the extracted binary if a browser downloaded the archive:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer
 ```
 
@@ -156,7 +156,7 @@ If you install a system-level service, use the `sudo install` step in [Run the B
 Move the binary into a directory on your `PATH`:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 mkdir -p ~/.local/bin
 mv agent-peer-${VERSION}/agent-peer ~/.local/bin/
 agent-peer --version
@@ -207,13 +207,13 @@ A Broker started inside a session exits with code 6. When no Broker is available
 To build from source you need Go 1.27. Clone the repository and build:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 git clone https://github.com/wangzw/agent-peer
 cd agent-peer
 go build -trimpath -ldflags "-X main.version=$VERSION" -o agent-peer ./cmd/agent-peer
 ```
 
-Without `-ldflags`, `agent-peer --version` prints `agent-peer dev`. Installing with `go install …@version` is not supported, because `go.mod` uses a `replace` directive that points at a vendored dependency.
+Without `-ldflags`, `agent-peer --version` prints `agent-peer dev`, and `agent-peer update` does not update such a binary. Installing with `go install …@version` is not supported, because `go.mod` uses a `replace` directive that points at a vendored dependency.
 
 The build leaves `agent-peer` in the current directory; follow the manual installation steps above to put it on `PATH`, register the MCP server and start the Broker.
 

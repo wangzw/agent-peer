@@ -32,12 +32,12 @@ The unit or plist runs `agent-peer broker` as that account. It starts when the a
 
 ## Install a system-level service
 
-A system-level install runs as root and makes the Broker start at boot. From an extracted release archive, `sudo sh ./install.sh --system` installs the binary and the service in one step, and so does the online system-level command in [Getting Started]({{< relref "/docs/getting-started" >}}). The steps below do the two parts by hand. The script also asks whether to add the account that ran `sudo` to the admin group, with the answer defaulting to no; it does not ask when that account is already in the group or when it runs as root directly, and only an answer of y or yes adds the account. [The admin group]({{< relref "management-permissions.md" >}}#the-admin-group) covers the group and the options that control the question.
+A system-level install runs as root and makes the Broker start at boot. From an extracted release archive, `sudo sh ./install.sh --system` installs the binary and the service in one step, and so does the online system-level command in [Getting Started]({{< relref "/docs/getting-started" >}}). The steps below do the two parts by hand. The script also asks whether to add the account that ran `sudo` to the admin group. [The admin group]({{< relref "management-permissions.md" >}}#the-admin-group) covers the group, the answer and the options that control the question.
 
 The binary must be in a directory that root owns and that group and others cannot write, such as `/usr/local/bin`. The service starts the binary as root, so an ordinary account that can modify the binary or one of its parent directories could take over the service:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 sudo install -o root -g 0 -m 0755 agent-peer-${VERSION}/agent-peer /usr/local/bin/agent-peer
 sudo /usr/local/bin/agent-peer service install --system
 ```

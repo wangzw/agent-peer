@@ -12,7 +12,7 @@ agent-peer 运行在 macOS 与 Linux 上，支持 amd64 和 arm64；不支持原
 
 ## 安装
 
-agent-peer 有四种安装方式，按方便程度排列：用一条命令从 GitHub Releases 安装；下载发布包，执行包里的 `install.sh`；从同一个发布包手动安装；从源码构建。从发布包安装的 agent-peer 要保持更新，运行 `agent-peer update`，详见[《更新 agent-peer》指南]({{< relref "guides/update.md" >}})。从源码构建的二进制版本是 `dev`，不能用这种方式更新。
+agent-peer 有四种安装方式，按方便程度排列：用一条命令从 GitHub Releases 安装；下载发布包，执行包里的 `install.sh`；从同一个发布包手动安装；从源码构建。从发布包安装的 agent-peer 要保持更新，运行 `agent-peer update`，详见[《更新 agent-peer》指南]({{< relref "guides/update.md" >}})。不带版本号构建的二进制版本显示为 `dev`，不能用这种方式更新。
 
 无论用哪种方式安装，都要为账户注册 MCP 服务；已经打开的 Claude Code 会话要重开才能加载新的 MCP 服务，并用 `claude mcp get peer` 检查注册结果。
 
@@ -35,14 +35,14 @@ curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install
 安装指定版本时，先设好版本号，再传 `--version`：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version "$VERSION"
 ```
 
 系统级安装指定版本：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --version "$VERSION" --system
 ```
 
@@ -66,7 +66,7 @@ sh install.sh
 agent-peer 以 `tar.gz` 发布包的形式放在 [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest) 上。下载对应平台和架构的发布包，以及同一发布里的 `checksums.txt`：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/agent-peer_${VERSION}_<os>_<arch>.tar.gz
 curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/checksums.txt
 ```
@@ -76,21 +76,21 @@ curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/chec
 使用前先用 `checksums.txt` 校验发布包。Linux 上：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 grep agent-peer_${VERSION}_linux_arm64.tar.gz checksums.txt | sha256sum -c -
 ```
 
 macOS 上用 `shasum`：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 grep agent-peer_${VERSION}_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
 ```
 
 新建一个目录，把发布包解压进去：发布包没有外层目录，不新建目录时，`LICENSE`、`README.md`、`third_party/` 等文件会和二进制一起直接落在当前目录：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 mkdir agent-peer-${VERSION}
 tar -xzf agent-peer_${VERSION}_darwin_arm64.tar.gz -C agent-peer-${VERSION}
 ```
@@ -100,7 +100,7 @@ Linux 上把 `darwin` 换成 `linux`。
 进入解压出的目录并运行脚本：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 cd agent-peer-${VERSION}
 sh ./install.sh
 ```
@@ -108,12 +108,12 @@ sh ./install.sh
 系统级安装以 root 运行同一脚本，通常经 `sudo`：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 cd agent-peer-${VERSION}
 sudo sh ./install.sh --system
 ```
 
-用户级形式把二进制装到 `~/.local/bin`，安装并启动用户级 Broker 服务，并为你的账户注册 MCP 服务。系统级形式把二进制装到 `/usr/local/bin`，安装并启动系统级 Broker 服务，并为执行 `sudo` 的账户注册 MCP 服务。系统级安装还会创建 `agent-peer` 组，把新生成的配置文件的属组设为该组，并询问是否把执行 `sudo` 的账户加入该组；默认不加入，没有终端时脚本不加入该账户，并打印加入命令。执行 `sudo` 的账户已经在组内，或者脚本直接以 root 运行时，脚本不询问；只有回答 y 或 yes 才会加入。管理组成员不用 `sudo` 就能管理系统级 Broker；经 Broker 的管理操作，新加入的成员关系从下一次调用起生效；本账户自己的进程（例如直接编辑配置文件）要重新登录或运行 `newgrp agent-peer` 之后才会用上新的成员关系。管理组见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)。
+用户级形式把二进制装到 `~/.local/bin`，安装并启动用户级 Broker 服务，并为你的账户注册 MCP 服务。系统级形式把二进制装到 `/usr/local/bin`，安装并启动系统级 Broker 服务，并为执行 `sudo` 的账户注册 MCP 服务；它还会创建 `agent-peer` 组，并询问是否把这个账户加入组内。管理组的含义、这个询问及其效果见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)。
 
 脚本接受这些选项：
 
@@ -132,7 +132,7 @@ sudo sh ./install.sh --system
 
 传了 `--no-mcp` 时，脚本跳过注册，需要自己执行手动一节里的注册命令。找不到 `claude`，或者不经 `sudo` 直接以 root 运行且没有可注册的账户时，脚本会打印要执行的 `claude mcp add` 命令。
 
-`~/.agent-peer/config.yaml` 不存在时，由 `service install` 生成这个文件，列出全部配置项。[配置键]({{< relref "reference/configuration.md" >}})介绍这个文件。
+对应级别的配置文件不存在时，由 `service install` 生成它，列出全部配置项：用户级服务是 `~/.agent-peer/config.yaml`，系统级服务是 `/etc/agent-peer/config.yaml`。[配置键]({{< relref "reference/configuration.md" >}})介绍这个文件。
 
 macOS 上，脚本自己清除二进制上的隔离属性，所以用浏览器下载也不需要额外步骤。用户级安装目录不在 `PATH` 上时，脚本会提示；把它加入 `PATH` 才能按名字运行 `agent-peer`。macOS 上的用户级服务需要图形登录会话；没有图形会话的主机改用 `--system` 或 `--no-service`。
 
@@ -145,7 +145,7 @@ macOS 上，脚本自己清除二进制上的隔离属性，所以用浏览器�
 macOS 上，浏览器下载的文件带有隔离属性，清除之前 macOS 会阻止运行二进制。如果发布包是浏览器下载的，先从解压出的二进制上清除：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer
 ```
 
@@ -156,7 +156,7 @@ xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer
 把二进制移到 `PATH` 上的目录：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 mkdir -p ~/.local/bin
 mv agent-peer-${VERSION}/agent-peer ~/.local/bin/
 agent-peer --version
@@ -207,13 +207,13 @@ agent-peer broker
 从源码构建需要 Go 1.27。克隆仓库并构建：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.2.0
 git clone https://github.com/wangzw/agent-peer
 cd agent-peer
 go build -trimpath -ldflags "-X main.version=$VERSION" -o agent-peer ./cmd/agent-peer
 ```
 
-不带 `-ldflags` 时，`agent-peer --version` 输出 `agent-peer dev`。不支持用 `go install …@version` 安装，因为 `go.mod` 里的 `replace` 指令指向一份随仓库附带的依赖。
+不带 `-ldflags` 时，`agent-peer --version` 输出 `agent-peer dev`，这样的二进制不能用 `agent-peer update` 更新。不支持用 `go install …@version` 安装，因为 `go.mod` 里的 `replace` 指令指向一份随仓库附带的依赖。
 
 构建产物 `agent-peer` 就在当前目录；把它放进 `PATH`、注册 MCP 服务并启动 Broker，做法见上面的手动安装一节。
 
