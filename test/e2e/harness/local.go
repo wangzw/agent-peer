@@ -344,19 +344,13 @@ type localSession struct {
 	deferred *deferredTB
 }
 
-func (s *localSession) call(t testing.TB, tool string, args map[string]any) Result {
-	t.Helper()
-	result, err := s.callErr(tool, args)
-	if err != nil {
-		t.Fatalf("harness: session %s: calling %s: %v", s.name, tool, err)
-		return Result{}
+func (s *localSession) callErrWithin(bound time.Duration, tool string, args map[string]any) (Result, error) {
+	ctx := context.Background()
+	if bound > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, bound)
+		defer cancel()
 	}
-	return result
-}
-
-func (s *localSession) callErr(tool string, args map[string]any) (Result, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), sessionCallBound)
-	defer cancel()
 	result, err := s.session.Call(ctx, tool, args)
 	if err != nil {
 		return Result{}, fmt.Errorf("harness: session %s: calling %s: %w", s.name, tool, err)

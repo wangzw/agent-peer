@@ -246,6 +246,23 @@ func TestSessionEndReportsBackgroundError(t *testing.T) {
 	}
 }
 
+// TestSessionCallReportsOnePrefix checks that a failed tool call names the
+// session and the tool in its failure message once. The call on a session
+// without an MCP server process fails in the backend, whose error already
+// carries that prefix; a second one added by Session.Call would make the
+// message read "harness: session ...: calling ...: harness: session ...".
+func TestSessionCallReportsOnePrefix(t *testing.T) {
+	host := NewLocalHost(t, LocalOptions{Name: "prefix"})
+	s := host.StartSession(t, SessionSpec{Name: "a*b"})
+
+	recorder := &failureRecorder{TB: t}
+	s.Call(recorder, "list_agents", nil)
+	const prefix = "harness: session a*b: calling list_agents:"
+	if got := strings.Count(recorder.message, prefix); got != 1 {
+		t.Fatalf("the failure message carries %q %d times, want 1: %s", prefix, got, recorder.message)
+	}
+}
+
 func TestSessionEndIsIdempotent(t *testing.T) {
 	host := NewLocalHost(t, LocalOptions{Name: "end"})
 	session := host.StartSession(t, SessionSpec{Name: "e"})

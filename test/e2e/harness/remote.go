@@ -283,24 +283,20 @@ type remoteSession struct {
 	proxy  *remoteFake
 }
 
-func (s *remoteSession) call(tb testing.TB, tool string, args map[string]any) Result {
-	tb.Helper()
-	result, err := s.callErr(tool, args)
-	if err != nil {
-		tb.Fatalf("%v", err)
-		return Result{}
+func (s *remoteSession) callErrWithin(bound time.Duration, tool string, args map[string]any) (Result, error) {
+	ctx := context.Background()
+	var timeoutMS int64
+	if bound > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, bound)
+		defer cancel()
+		timeoutMS = bound.Milliseconds()
 	}
-	return result
-}
-
-func (s *remoteSession) callErr(tool string, args map[string]any) (Result, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), sessionCallBound)
-	defer cancel()
 	res, err := s.client.Call(ctx, ctl.SessionCallRequest{
 		ID:        s.id,
 		Tool:      tool,
 		Args:      args,
-		TimeoutMS: sessionCallBound.Milliseconds(),
+		TimeoutMS: timeoutMS,
 	})
 	if err != nil {
 		return Result{}, fmt.Errorf("harness: session %s: calling %s: %w", s.name, tool, err)

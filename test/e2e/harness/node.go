@@ -27,6 +27,13 @@ const oracleBound = 3 * time.Second
 // still returns its error result.
 const sessionCallBound = 60 * time.Second
 
+// ToolCallPollBound bounds one MCP tool call made from inside a test wait. A
+// local tool call answers at once, and the project-wide three-second wait
+// covers the Broker round trip it makes. It is far below sessionCallBound on
+// purpose: a call a wait makes must not outlive the wait itself, or one stalled
+// call turns a bounded wait into a sixty-second hang.
+const ToolCallPollBound = 3 * time.Second
+
 // LocalOptions configures a node that runs its processes directly on the
 // machine running the tests.
 type LocalOptions struct {
@@ -301,10 +308,11 @@ func (n *Node) Workspace(t testing.TB, kind, origin, projectYAML string) string 
 	return n.impl.workspace(t, kind, origin, projectYAML)
 }
 
-// sessionBackend is what a Session delegates to.
+// sessionBackend is what a Session delegates to. callErrWithin is the single
+// place that names the session and the tool in a failed call: Call reports its
+// error unchanged, so the message carries that prefix once.
 type sessionBackend interface {
-	call(t testing.TB, tool string, args map[string]any) Result
-	callErr(tool string, args map[string]any) (Result, error)
+	callErrWithin(bound time.Duration, tool string, args map[string]any) (Result, error)
 	tools(t testing.TB) []node.ToolInfo
 	stopMCP(t testing.TB, sig syscall.Signal) int
 	restartMCP(t testing.TB)
@@ -324,10 +332,17 @@ type Session struct {
 	ended bool
 }
 
-// Call invokes a tool on the session's current MCP server process.
+// Call invokes a tool on the session's current MCP server process. A call that
+// fails at the transport or protocol level fails the test with the backend's
+// error as it is: callErrWithin already names the session and the tool.
 func (s *Session) Call(t testing.TB, tool string, args map[string]any) Result {
 	t.Helper()
-	return s.impl.call(t, tool, args)
+	result, err := s.impl.callErrWithin(sessionCallBound, tool, args)
+	if err != nil {
+		t.Fatalf("%v", err)
+		return Result{}
+	}
+	return result
 }
 
 // CallErr invokes a tool and returns a transport or protocol error instead of
@@ -335,7 +350,15 @@ func (s *Session) Call(t testing.TB, tool string, args map[string]any) Result {
 // returns a nil error, as Call does. Callers in another goroutine use this and
 // report the error on the test goroutine.
 func (s *Session) CallErr(tool string, args map[string]any) (Result, error) {
-	return s.impl.callErr(tool, args)
+	return s.impl.callErrWithin(sessionCallBound, tool, args)
+}
+
+// CallErrWithin is CallErr bounded by bound instead of sessionCallBound. A call
+// made from inside a wait uses ToolCallPollBound, so a stalled call costs one
+// poll of the wait rather than outliving it. A bound of zero or less means no
+// bound beyond the call's own.
+func (s *Session) CallErrWithin(bound time.Duration, tool string, args map[string]any) (Result, error) {
+	return s.impl.callErrWithin(bound, tool, args)
 }
 
 // Tools lists the tools of the session's current MCP server process, with the

@@ -175,20 +175,15 @@ type startupBackend struct {
 	calls         []string
 }
 
-func (b *startupBackend) call(t testing.TB, tool string, args map[string]any) Result {
-	t.Helper()
+func (b *startupBackend) callErrWithin(_ time.Duration, tool string, args map[string]any) (Result, error) {
 	b.calls = append(b.calls, tool)
 	if b.startingCalls > 0 {
 		b.startingCalls--
 		return Result{ToolResult: node.ToolResult{
 			IsError: true,
 			Text:    fmt.Sprintf("%s failed: the connection to the Broker is still being set up; retry shortly (code: internal)", tool),
-		}}
+		}}, nil
 	}
-	return Result{}
-}
-
-func (b *startupBackend) callErr(tool string, args map[string]any) (Result, error) {
 	return Result{}, nil
 }
 

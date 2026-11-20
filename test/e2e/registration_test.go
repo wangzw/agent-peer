@@ -280,7 +280,14 @@ func TestLocalRegistration(t *testing.T) {
 		rejected := func(s *harness.Session, name, detail string, listed func(addr string) bool) {
 			t.Helper()
 			harness.Eventually(t, harness.RegistrationReportBound, fmt.Sprintf("session name %q is reported unusable", name), func() (bool, string) {
-				r := s.Call(t, "list_agents", nil)
+				// Bounded like every call a wait makes: a stalled call costs one
+				// poll, and its transport error is a retryable state, so the
+				// wait keeps observing until its own bound instead of failing
+				// from a sixty-second call.
+				r, err := s.CallErrWithin(harness.ToolCallPollBound, "list_agents", nil)
+				if err != nil {
+					return false, err.Error()
+				}
 				if !r.IsError {
 					return false, "list_agents succeeded"
 				}
@@ -444,11 +451,17 @@ func registrationWaitRegistered(t *testing.T, s *harness.Session, name string) m
 }
 
 // registrationListAgents calls list_agents and returns the decoded listing. A
-// tool error is reported as a state string so Eventually can retry and so a
-// caller can inspect the error instead of failing the test inside it.
+// tool error, or a transport failure, is reported as a state string so the
+// waits that call this helper retry it instead of failing the test inside them.
+// The call is bounded by ToolCallPollBound, the project-wide wait bound, not by
+// the harness's sixty-second call bound: one stalled call must cost a poll of
+// the wait, not outlive the wait itself.
 func registrationListAgents(t *testing.T, s *harness.Session, args map[string]any) (mcpserver.ListAgentsOut, string) {
 	t.Helper()
-	r := s.Call(t, "list_agents", args)
+	r, err := s.CallErrWithin(harness.ToolCallPollBound, "list_agents", args)
+	if err != nil {
+		return mcpserver.ListAgentsOut{}, err.Error()
+	}
 	if r.IsError {
 		return mcpserver.ListAgentsOut{}, r.Text
 	}
@@ -464,7 +477,10 @@ func registrationListAgents(t *testing.T, s *harness.Session, args map[string]an
 func registrationJoin(t *testing.T, s *harness.Session, name string) {
 	t.Helper()
 	harness.Eventually(t, 3*time.Second, "join_topic "+name+" succeeds", func() (bool, string) {
-		r := s.Call(t, "join_topic", map[string]any{"name": name})
+		r, err := s.CallErrWithin(harness.ToolCallPollBound, "join_topic", map[string]any{"name": name})
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}

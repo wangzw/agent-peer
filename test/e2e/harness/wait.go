@@ -48,7 +48,10 @@ func Eventually(t testing.TB, bound time.Duration, what string, cond func() (ok 
 func WaitRegistered(t testing.TB, s *Session, bound time.Duration) {
 	t.Helper()
 	Eventually(t, bound, "the session is registered", func() (bool, string) {
-		r := s.Call(t, "list_agents", nil)
+		r, err := s.CallErrWithin(ToolCallPollBound, "list_agents", nil)
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}
@@ -73,7 +76,10 @@ func WaitRegistered(t testing.TB, s *Session, bound time.Duration) {
 func WaitConnected(t testing.TB, s *Session, bound time.Duration) {
 	t.Helper()
 	Eventually(t, bound, "the session is connected to its Broker", func() (bool, string) {
-		r := s.Call(t, "list_brokers", nil)
+		r, err := s.CallErrWithin(ToolCallPollBound, "list_brokers", nil)
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}
