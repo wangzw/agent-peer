@@ -240,9 +240,24 @@ func TestDegradedRun(t *testing.T) {
 			})
 		}
 
-		// The status command exits non-zero; the display unit owns its text.
-		if res := drExec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil); res.ExitCode == 0 {
-			t.Fatalf("agent-peer status exited 0 while diagnostics only: %s", res.Stdout)
+		// The status command prints the diagnostics-only line with the same
+		// reason the Status call reported, names the audit log in its fix, and
+		// exits non-zero without repeating the reason on standard error.
+		status := drExec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
+		if status.ExitCode == 0 {
+			t.Fatalf("agent-peer status exited 0 while diagnostics only: %s", status.Stdout)
+		}
+		if status.Stderr != "" {
+			t.Fatalf("agent-peer status stderr = %q, want empty", status.Stderr)
+		}
+		wantLine := "Broker: degraded (diagnostics only): " + resp.GetDegraded().GetReason()
+		if !strings.Contains(status.Stdout, wantLine) {
+			t.Fatalf("status stdout = %q, want the line %q", status.Stdout, wantLine)
+		}
+		for _, want := range []string{audit, "Fix:"} {
+			if !strings.Contains(status.Stdout, want) {
+				t.Fatalf("status stdout = %q, want it to contain %q", status.Stdout, want)
+			}
 		}
 
 		if res := host.Exec(t, []string{"rmdir", audit}, nil); res.ExitCode != 0 {
@@ -314,6 +329,19 @@ func TestDegradedRun(t *testing.T) {
 		for _, want := range []string{":17443", "broker.listen"} {
 			if !strings.Contains(resp.GetDegraded().GetReason()+resp.GetDegraded().GetFix(), want) {
 				t.Fatalf("degraded text %+v does not contain %q", resp.GetDegraded(), want)
+			}
+		}
+
+		// The status command prints the local-only line and the address that
+		// could not be bound.
+		status := drExec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
+		if status.ExitCode != 0 {
+			t.Fatalf("agent-peer status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
+				status.ExitCode, status.Stdout, status.Stderr)
+		}
+		for _, want := range []string{"Broker: degraded (local only):", ":17443"} {
+			if !strings.Contains(status.Stdout, want) {
+				t.Fatalf("status stdout = %q, want it to contain %q", status.Stdout, want)
 			}
 		}
 
