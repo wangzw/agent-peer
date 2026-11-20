@@ -1,0 +1,87 @@
+//go:build e2e_darwin
+
+package darwinservice
+
+import (
+	"testing"
+	"time"
+)
+
+const (
+	// reinstallCommandBound bounds one `service install` over a running
+	// service. The worst case is the 20-second stop budget shared by the unload
+	// wait and the address wait, the 10-second bootstrap retry bound and the
+	// 20-second readiness wait, 20 + 10 + 20 = 50 seconds, with margin for a
+	// loaded runner.
+	reinstallCommandBound = 75 * time.Second
+)
+
+// TestSystemServiceReinstall covers the user report of 2026-11-20: installing
+// the system-level service while it runs must replace the running Broker, not
+// fail while launchd tears the old job down.
+func TestSystemServiceReinstall(t *testing.T) {
+	resetSystemService(t)
+	t.Cleanup(func() { resetSystemService(t) })
+
+	reinstallRunningService(t, "system",
+		"sudo", "-n", installedBinary, "service", "install", "--system")
+}
+
+// TestUserServiceReinstall covers the same reinstall in the account's gui
+// domain.
+func TestUserServiceReinstall(t *testing.T) {
+	resetUserService(t)
+	t.Cleanup(func() { resetUserService(t) })
+
+	reinstallRunningService(t, userDomain(t),
+		installedBinary, "service", "install")
+}
+
+// reinstallRunningService installs the service, waits for the Broker launchd
+// started, runs the same install again over the running service and checks that
+// launchd replaced the process and that the new one serves.
+func reinstallRunningService(t *testing.T, domain, name string, args ...string) {
+	t.Helper()
+
+	res := runWithin(t, reinstallCommandBound, name, args...)
+	if res.exitCode != 0 {
+		t.Fatalf("first service install: exit %d\nstdout: %s\nstderr: %s",
+			res.exitCode, res.stdout, res.stderr)
+	}
+	first := waitForPID(t, domain, serviceStartBound)
+	t.Logf("launchd started the first Broker with pid %d in %s", first, domain)
+
+	// Log what launchctl print reports before the reinstall, so a failure shows
+	// what the unload wait saw in this domain.
+	if out, loaded := launchctlPrint(domain); loaded {
+		t.Logf("before the reinstall, %s/%s is loaded:\n%s", domain, serviceLabel, out)
+	} else {
+		t.Logf("before the reinstall, %s/%s is not loaded:\n%s", domain, serviceLabel, out)
+	}
+
+	res = runWithin(t, reinstallCommandBound, name, args...)
+	if res.exitCode != 0 {
+		out, loaded := launchctlPrint(domain)
+		t.Fatalf("service install over the running service: exit %d\nstdout: %s\nstderr: %s\nlaunchctl print %s/%s (loaded=%t):\n%s",
+			res.exitCode, res.stdout, res.stderr, domain, serviceLabel, loaded, out)
+	}
+	second := waitForNewPID(t, domain, first, restartBound)
+	t.Logf("the reinstall replaced pid %d with pid %d", first, second)
+
+	statusArgs := argsForStatus(domain)
+	status := run(t, statusArgs[0], statusArgs[1:]...)
+	if status.exitCode != 0 {
+		t.Fatalf("agent-peer status after the reinstall: exit %d\nstdout: %s\nstderr: %s",
+			status.exitCode, status.stdout, status.stderr)
+	}
+}
+
+// argsForStatus returns the arguments that run `agent-peer status` against the
+// level's Broker: as root for the system-level service, as this account for the
+// user-level one.
+func argsForStatus(domain string) []string {
+	if domain == "system" {
+		return []string{"sudo", "-n", installedBinary, "status"}
+	}
+	return []string{installedBinary, "status"}
+}

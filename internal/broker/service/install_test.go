@@ -792,8 +792,11 @@ func TestInstallDarwinSystemWritesResolvedExecutable(t *testing.T) {
 		opts.Run = func(name string, args ...string) ([]byte, error) {
 			cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
 			switch {
-			case len(args) == 2 && args[0] == "print" && args[1] == "system/io.github.wangzw.agent-peer":
-				return []byte("state = running\n\tpid = 4242\n"), nil
+			case len(args) == 2 && args[0] == "print":
+				if started {
+					return []byte("state = running\n\tpid = 4242\n"), nil
+				}
+				return []byte("Could not find service"), exitError(t, 113)
 			case len(args) > 0 && args[0] == "bootout":
 				return nil, exitError(t, 3)
 			case len(args) > 0 && args[0] == "bootstrap":
@@ -880,9 +883,14 @@ func TestInstallDarwinUser(t *testing.T) {
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
 		switch {
-		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501/io.github.wangzw.agent-peer":
-			return []byte("state = running\n\tpid = 4242\n"), nil
-		case len(args) == 2 && args[0] == "bootout":
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			if started {
+				return []byte("state = running\n\tpid = 4242\n"), nil
+			}
+			return []byte("Could not find service"), exitError(t, 113)
+		case len(args) > 0 && args[0] == "bootout":
 			return nil, exitError(t, 3)
 		case len(args) > 0 && args[0] == "bootstrap":
 			started = true
@@ -917,7 +925,9 @@ func TestInstallDarwinUser(t *testing.T) {
 
 	wantCmds := []string{
 		"launchctl print gui/501",
+		"launchctl print gui/501/io.github.wangzw.agent-peer",
 		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl print gui/501/io.github.wangzw.agent-peer",
 		"launchctl enable gui/501/io.github.wangzw.agent-peer",
 		"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
 		"launchctl print gui/501/io.github.wangzw.agent-peer",
@@ -925,8 +935,12 @@ func TestInstallDarwinUser(t *testing.T) {
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
-	if !slices.Equal(res.Commands, wantCmds[1:4]) {
-		t.Errorf("Result.Commands = %q, want %q", res.Commands, wantCmds[1:4])
+	if !slices.Equal(res.Commands, []string{
+		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl enable gui/501/io.github.wangzw.agent-peer",
+		"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
+	}) {
+		t.Errorf("Result.Commands = %q, want the bootout, enable and bootstrap", res.Commands)
 	}
 	if res.Domain != "gui/501" {
 		t.Errorf("Domain = %q, want gui/501", res.Domain)
@@ -961,10 +975,24 @@ func TestInstallDarwinBootoutFailure(t *testing.T) {
 	opts.EUID = 501
 	opts.UID = 501
 	opts.Home = "/Users/alice"
+	// A loaded service has a plist on disk, so this failure must keep it and
+	// disable the label.
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	if err := os.MkdirAll(filepath.Dir(plist), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plist, []byte("old plist"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	var cmds []string
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
-		if len(args) > 0 && args[0] == "bootout" {
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			return []byte("state = running\n\tpid = 4242\n"), nil
+		case len(args) > 0 && args[0] == "bootout":
 			return []byte("Boot-out failed: 5: Input/output error"), exitError(t, 5)
 		}
 		return nil, nil
@@ -974,41 +1002,75 @@ func TestInstallDarwinBootoutFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "bootout") {
 		t.Fatalf("Install error = %v, want the bootout failure", err)
 	}
+	for _, want := range []string{"could not be unloaded", "label was disabled", "run service install again"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
 	wantCmds := []string{
 		"launchctl print gui/501",
-		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl print gui/501/io.github.wangzw.agent-peer",
 		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
 		"launchctl disable gui/501/io.github.wangzw.agent-peer",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
-	for _, want := range []string{"could not be stopped", "will not start automatically"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not contain %q", err, want)
-		}
-	}
-	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
 	if _, err := os.Stat(plist); err != nil {
 		t.Errorf("plist after a failed bootout: %v", err)
 	}
 }
 
-// TestInstallDarwinBootstrapFailureKeepsThePlistDisabled checks the rollback of
-// a failed bootstrap. The plist is kept and its label disabled: launchd loads
-// every plist under LaunchAgents at login, so disable is what stops the failed
-// installation from starting a Broker, and the error's recovery command can
-// bootstrap the same plist once the cause is fixed.
-func TestInstallDarwinBootstrapFailureKeepsThePlistDisabled(t *testing.T) {
+// TestInstallDarwinReportsADisableFailure checks that a disable that fails is
+// reported as such: the error must not claim the label was disabled, because the
+// kept plist may then load and start a Broker at the next login.
+func TestInstallDarwinReportsADisableFailure(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			return []byte("state = running\n\tpid = 4242\n"), nil
+		case len(args) > 0 && args[0] == "bootout":
+			return []byte("Boot-out failed: 5: Input/output error"), exitError(t, 5)
+		case len(args) > 0 && args[0] == "disable":
+			return []byte("disable failed"), errors.New("exit status 1")
+		}
+		return nil, nil
+	}
+
+	_, err := Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded although bootout failed")
+	}
+	for _, want := range []string{"could not be disabled", "may start automatically", "disable failed"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "label was disabled") {
+		t.Errorf("error %q claims the label was disabled although disable failed", err)
+	}
+}
+
+func TestInstallDarwinBootstrapFailureRollsBackThePlist(t *testing.T) {
 	opts := baseOptions(t)
 	opts.GOOS = "darwin"
 	opts.EUID = 501
 	opts.UID = 501
 	opts.Home = "/Users/alice"
+	// A fresh installation has no old service, so this exercises the rollback
+	// after one bootstrap attempt rather than the exit-5 retry loop.
+	opts.BootstrapTimeout = time.Nanosecond
 	var cmds []string
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
 		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			return []byte("Could not find service"), exitError(t, 113)
 		case len(args) > 0 && args[0] == "bootout":
 			return nil, exitError(t, 3)
 		case len(args) > 0 && args[0] == "bootstrap":
@@ -1021,25 +1083,20 @@ func TestInstallDarwinBootstrapFailureKeepsThePlistDisabled(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "Bootstrap failed") {
 		t.Fatalf("Install error = %v, want the bootstrap failure", err)
 	}
-	for _, want := range []string{"stopped and disabled", "run service install again"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not contain %q", err, want)
-		}
-	}
 	wantCmds := []string{
 		"launchctl print gui/501",
+		"launchctl print gui/501/io.github.wangzw.agent-peer",
 		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl print gui/501/io.github.wangzw.agent-peer",
 		"launchctl enable gui/501/io.github.wangzw.agent-peer",
 		"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
-		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
-		"launchctl disable gui/501/io.github.wangzw.agent-peer",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
 	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
-	if _, err := os.Stat(plist); err != nil {
-		t.Errorf("plist was not kept after the failed bootstrap: %v", err)
+	if _, err := os.Stat(plist); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("plist was not rolled back: %v", err)
 	}
 }
 
@@ -1049,8 +1106,13 @@ func TestInstallDarwinBootstrapFailureReportsTheOutput(t *testing.T) {
 	opts.EUID = 501
 	opts.UID = 501
 	opts.Home = "/Users/alice"
+	opts.BootstrapTimeout = time.Nanosecond
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			return []byte("Could not find service"), exitError(t, 113)
 		case len(args) > 0 && args[0] == "bootout":
 			return nil, exitError(t, 3)
 		case len(args) > 0 && args[0] == "bootstrap":
@@ -1070,6 +1132,48 @@ func TestInstallDarwinBootstrapFailureReportsTheOutput(t *testing.T) {
 	}
 }
 
+func TestInstallDarwinBootstrapFailureReportsTheOutputWhenRollbackFails(t *testing.T) {
+	opts := baseOptions(t)
+	opts.GOOS = "darwin"
+	opts.EUID = 501
+	opts.UID = 501
+	opts.Home = "/Users/alice"
+	opts.BootstrapTimeout = time.Nanosecond
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			return []byte("Could not find service"), exitError(t, 113)
+		case len(args) > 0 && args[0] == "bootout":
+			return nil, exitError(t, 3)
+		case len(args) > 0 && args[0] == "bootstrap":
+			// Replace the plist with a non-empty directory so the rollback
+			// cannot remove it.
+			_ = os.Remove(plist)
+			if err := os.Mkdir(plist, 0o755); err != nil {
+				t.Fatalf("creating %s: %v", plist, err)
+			}
+			if err := os.WriteFile(filepath.Join(plist, "keep"), []byte("x"), 0o644); err != nil {
+				t.Fatalf("writing marker: %v", err)
+			}
+			return []byte("Bootstrap failed: 5: Input/output error"), exitError(t, 5)
+		}
+		return nil, nil
+	}
+
+	_, err := Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded after a failed bootstrap")
+	}
+	for _, want := range []string{"Bootstrap failed", "could not be cleaned up", plist} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
 func TestInstallDarwinSystem(t *testing.T) {
 	opts := baseOptions(t)
 	opts.GOOS = "darwin"
@@ -1082,8 +1186,11 @@ func TestInstallDarwinSystem(t *testing.T) {
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
 		switch {
-		case len(args) == 2 && args[0] == "print" && args[1] == "system/io.github.wangzw.agent-peer":
-			return []byte("state = running\n\tpid = 4242\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			if started {
+				return []byte("state = running\n\tpid = 4242\n"), nil
+			}
+			return []byte("Could not find service"), exitError(t, 113)
 		case len(args) > 0 && args[0] == "bootout":
 			return nil, exitError(t, 3)
 		case len(args) > 0 && args[0] == "bootstrap":
@@ -1120,7 +1227,9 @@ func TestInstallDarwinSystem(t *testing.T) {
 	assertMode(t, configPath, 0o660)
 
 	wantCmds := []string{
+		"launchctl print system/io.github.wangzw.agent-peer",
 		"launchctl bootout system/io.github.wangzw.agent-peer",
+		"launchctl print system/io.github.wangzw.agent-peer",
 		"launchctl enable system/io.github.wangzw.agent-peer",
 		"launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist",
 		"launchctl print system/io.github.wangzw.agent-peer",
@@ -1128,8 +1237,12 @@ func TestInstallDarwinSystem(t *testing.T) {
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
-	if !slices.Equal(res.Commands, wantCmds[:3]) {
-		t.Errorf("Result.Commands = %q, want %q", res.Commands, wantCmds[:3])
+	if !slices.Equal(res.Commands, []string{
+		"launchctl bootout system/io.github.wangzw.agent-peer",
+		"launchctl enable system/io.github.wangzw.agent-peer",
+		"launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist",
+	}) {
+		t.Errorf("Result.Commands = %q, want the bootout, enable and bootstrap", res.Commands)
 	}
 	if res.Domain != "system" {
 		t.Errorf("Domain = %q, want system", res.Domain)
@@ -1240,13 +1353,23 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 		const pid = 4242
 		opts.Probe = func(string) (int, bool) { return pid, true }
 		var cmds []string
+		bootedOut := false
+		started := false
 		opts.Run = func(name string, args ...string) ([]byte, error) {
 			cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
 			switch {
-			case len(args) == 2 && args[0] == "print" && args[1] == "gui/501/io.github.wangzw.agent-peer":
+			case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+				return []byte("com.apple.launchd\n"), nil
+			case len(args) == 2 && args[0] == "print":
+				if bootedOut && !started {
+					return []byte("Could not find service"), exitError(t, 113)
+				}
 				return []byte(fmt.Sprintf("state = running\n\tpid = %d\n", pid)), nil
 			case len(args) > 0 && args[0] == "bootout":
+				bootedOut = true
 				return nil, exitError(t, 3)
+			case len(args) > 0 && args[0] == "bootstrap":
+				started = true
 			}
 			return nil, nil
 		}
@@ -1257,7 +1380,9 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 		wantCmds := []string{
 			"launchctl print gui/501",
 			"launchctl print gui/501/io.github.wangzw.agent-peer",
+			"launchctl print gui/501/io.github.wangzw.agent-peer",
 			"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+			"launchctl print gui/501/io.github.wangzw.agent-peer",
 			"launchctl enable gui/501/io.github.wangzw.agent-peer",
 			"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
 			"launchctl print gui/501/io.github.wangzw.agent-peer",
@@ -1434,6 +1559,9 @@ func TestInstallWaitsForTheBroker(t *testing.T) {
 		opts.Probe = func(string) (int, bool) { return 0, false }
 		opts.ReadyTimeout = 30 * time.Millisecond
 		opts.Run = func(name string, args ...string) ([]byte, error) {
+			if len(args) == 2 && args[0] == "print" {
+				return []byte("Could not find service"), exitError(t, 113)
+			}
 			if len(args) > 0 && args[0] == "bootout" {
 				return nil, exitError(t, 3)
 			}
@@ -1474,6 +1602,12 @@ func TestInstallWaitsForTheBroker(t *testing.T) {
 		opts.Probe = func(string) (int, bool) { return 0, false }
 		opts.ReadyTimeout = 30 * time.Millisecond
 		opts.Run = func(name string, args ...string) ([]byte, error) {
+			if len(args) == 2 && args[0] == "print" && args[1] == "gui/501" {
+				return []byte("com.apple.launchd\n"), nil
+			}
+			if len(args) == 2 && args[0] == "print" {
+				return []byte("Could not find service"), exitError(t, 113)
+			}
 			if len(args) > 0 && args[0] == "bootout" {
 				return nil, exitError(t, 3)
 			}
@@ -1613,106 +1747,53 @@ func TestInstallDarwinLeavesNoAutostartServiceAfterAPrecheckFailure(t *testing.T
 }
 
 // TestInstallDisablesTheServiceWhenThePrecheckStopFails checks the case where
-// the service holding broker.listen cannot be stopped. The failed installation
-// must still disable the service, and the error must say that it will not start
-// automatically and give the command that restores it. Without both texts the
-// operator finds a disabled service and is not told why or how to bring it
-// back.
+// the Linux precheck cannot stop the service holding broker.listen. The failed
+// installation must still disable the service, and the error must say that it
+// will not start automatically and give the command that restores it. Without
+// both texts the operator finds a disabled service and is not told why or how
+// to bring it back. macOS does not stop the service in the precheck; its
+// bootout failure during the replacement is covered by
+// TestInstallDarwinBootoutFailure.
 func TestInstallDisablesTheServiceWhenThePrecheckStopFails(t *testing.T) {
-	t.Run("linux user", func(t *testing.T) {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatalf("listen: %v", err)
-		}
-		defer func() { _ = ln.Close() }()
-		addr := ln.Addr().String()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	addr := ln.Addr().String()
 
-		opts := baseOptions(t)
-		writeListenConfig(t, opts, addr)
-		var cmds []string
-		opts.Run = func(name string, args ...string) ([]byte, error) {
-			cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
-			switch {
-			case slices.Contains(args, "show"):
-				return []byte("4242\n"), nil
-			case slices.Contains(args, "stop"):
-				return []byte("Job for agent-peer.service failed"), errors.New("exit status 1")
-			}
-			return nil, nil
+	opts := baseOptions(t)
+	writeListenConfig(t, opts, addr)
+	var cmds []string
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case slices.Contains(args, "show"):
+			return []byte("4242\n"), nil
+		case slices.Contains(args, "stop"):
+			return []byte("Job for agent-peer.service failed"), errors.New("exit status 1")
 		}
-		opts.Probe = func(string) (int, bool) { return 4242, true }
-		opts.ListenProbe = config.ProbeListen
+		return nil, nil
+	}
+	opts.Probe = func(string) (int, bool) { return 4242, true }
+	opts.ListenProbe = config.ProbeListen
 
-		_, err = Install(opts)
-		if err == nil {
-			t.Fatal("Install succeeded although the service holding broker.listen could not be stopped")
+	_, err = Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded although the service holding broker.listen could not be stopped")
+	}
+	for _, want := range []string{
+		"could not be stopped",
+		"will not start automatically",
+		"systemctl --user enable --now " + UnitName,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
 		}
-		for _, want := range []string{
-			"could not be stopped",
-			"will not start automatically",
-			"systemctl --user enable --now " + UnitName,
-		} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("error %q does not contain %q", err, want)
-			}
-		}
-		if got := commandCount(cmds, "systemctl --user disable --now "+UnitName); got != 1 {
-			t.Errorf("disable commands = %d, want 1 in %q", got, cmds)
-		}
-	})
-
-	t.Run("darwin user", func(t *testing.T) {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatalf("listen: %v", err)
-		}
-		defer func() { _ = ln.Close() }()
-		addr := ln.Addr().String()
-
-		opts := baseOptions(t)
-		opts.GOOS = "darwin"
-		opts.EUID = 501
-		opts.UID = 501
-		opts.Home = "/Users/alice"
-		writeListenConfig(t, opts, addr)
-		var cmds []string
-		opts.Run = func(name string, args ...string) ([]byte, error) {
-			cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
-			switch {
-			case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
-				return []byte("com.apple.launchd\n"), nil
-			case len(args) == 2 && args[0] == "print" && args[1] == "gui/501/"+Label:
-				return []byte("pid = 4242\n"), nil
-			case len(args) > 0 && args[0] == "bootout":
-				return []byte("Boot-out failed: 5: Input/output error"), exitError(t, 5)
-			}
-			return nil, nil
-		}
-		opts.Probe = func(string) (int, bool) { return 4242, true }
-		opts.ListenProbe = config.ProbeListen
-
-		_, err = Install(opts)
-		if err == nil {
-			t.Fatal("Install succeeded although the service holding broker.listen could not be booted out")
-		}
-		for _, want := range []string{
-			"could not be stopped",
-			"will not start automatically",
-			"launchctl enable gui/501/" + Label,
-			"launchctl bootstrap gui/501",
-		} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("error %q does not contain %q", err, want)
-			}
-		}
-		if got := commandCount(cmds, "launchctl disable gui/501/"+Label); got != 1 {
-			t.Errorf("disable commands = %d, want 1 in %q", got, cmds)
-		}
-		plist := rooted(opts, "/Users/alice/Library/LaunchAgents/"+Label+".plist")
-		if _, statErr := os.Stat(plist); !errors.Is(statErr, fs.ErrNotExist) {
-			t.Errorf("plist %s exists after the precheck failed: %v", plist, statErr)
-		}
-	})
+	}
+	if got := commandCount(cmds, "systemctl --user disable --now "+UnitName); got != 1 {
+		t.Errorf("disable commands = %d, want 1 in %q", got, cmds)
+	}
 }
 
 // TestInstallRefusesAnExternalOccupantWithoutStoppingTheService checks the
@@ -1805,37 +1886,47 @@ func TestInstallReinstallsOverItsOwnRunningService(t *testing.T) {
 }
 
 // TestInstallDarwinReinstallWaitsForTheOldServiceToExit checks that a macOS
-// reinstall waits for its own Broker to release broker.listen. bootout returns
-// before the old process has exited; the wait must outlast that delay instead
-// of mistaking the old Broker for a foreign occupant after one second.
+// reinstall waits for its own Broker to release broker.listen after launchd has
+// unloaded the job. bootout returns before the old process has exited; the wait
+// must outlast that delay instead of mistaking the old Broker for a foreign
+// occupant.
 func TestInstallDarwinReinstallWaitsForTheOldServiceToExit(t *testing.T) {
-	opts := baseOptions(t)
-	opts.GOOS = "darwin"
-	opts.EUID = 501
-	opts.UID = 501
-	opts.Home = "/Users/alice"
+	opts := darwinUserReinstall(t)
 	writeListenConfig(t, opts, "127.0.0.1:17448")
+	opts.StopTimeout = 5 * time.Second
 
 	var cmds []string
 	var bootedOut time.Time
 	held := true
+	started := false
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
 		switch {
 		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
 			return []byte("com.apple.launchd\n"), nil
-		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501/"+Label:
-			return []byte("state = running\n\tpid = 4242\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			switch {
+			case started:
+				return []byte("state = running\n\tpid = 5252\n"), nil
+			case bootedOut.IsZero():
+				return []byte("state = running\n\tpid = 4242\n"), nil
+			}
+			return []byte("Could not find service"), exitError(t, 113)
 		case len(args) > 0 && args[0] == "bootout":
 			if bootedOut.IsZero() {
 				bootedOut = time.Now()
-				return nil, nil
 			}
-			return nil, exitError(t, 3)
+		case len(args) > 0 && args[0] == "bootstrap":
+			started = true
 		}
 		return nil, nil
 	}
-	opts.Probe = func(string) (int, bool) { return 4242, true }
+	opts.Probe = func(string) (int, bool) {
+		if started {
+			return 5252, true
+		}
+		return 4242, true
+	}
 	opts.ListenProbe = func(addr string) error {
 		if held && !bootedOut.IsZero() && time.Since(bootedOut) >= 1500*time.Millisecond {
 			held = false
@@ -1851,6 +1942,12 @@ func TestInstallDarwinReinstallWaitsForTheOldServiceToExit(t *testing.T) {
 	}
 	if bootedOut.IsZero() {
 		t.Fatalf("commands = %q, want the reinstall to boot out the running service", cmds)
+	}
+	if got := countCommandBefore(cmds, darwinBootoutCmd, darwinBootstrapCmd); got != 1 {
+		t.Errorf("bootout calls before the bootstrap = %d, want 1; commands = %q", got, cmds)
+	}
+	if held {
+		t.Error("the reinstall did not wait for the old Broker to release broker.listen")
 	}
 }
 
@@ -1938,6 +2035,10 @@ func TestInstallReportsTheStartupFailureOnTimeout(t *testing.T) {
 		}
 		opts.Run = func(name string, args ...string) ([]byte, error) {
 			switch {
+			case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+				return []byte("com.apple.launchd\n"), nil
+			case len(args) == 2 && args[0] == "print":
+				return []byte("Could not find service"), exitError(t, 113)
 			case len(args) > 0 && args[0] == "bootout":
 				return nil, exitError(t, 3)
 			case len(args) > 0 && args[0] == "bootstrap":
@@ -2010,7 +2111,12 @@ func TestInstallIgnoresStartupFailuresBeforeTheInstallStarted(t *testing.T) {
 			t.Fatal(err)
 		}
 		opts.Run = func(name string, args ...string) ([]byte, error) {
-			if len(args) > 0 && args[0] == "bootout" {
+			switch {
+			case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+				return []byte("com.apple.launchd\n"), nil
+			case len(args) == 2 && args[0] == "print":
+				return []byte("Could not find service"), exitError(t, 113)
+			case len(args) > 0 && args[0] == "bootout":
 				return nil, exitError(t, 3)
 			}
 			return nil, nil
@@ -2072,8 +2178,14 @@ func TestInstallDisablesAfterAReadinessFailure(t *testing.T) {
 		opts.Home = "/Users/alice"
 		bootouts := 0
 		disables := 0
+		var cmds []string
 		opts.Run = func(name string, args ...string) ([]byte, error) {
+			cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
 			switch {
+			case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+				return []byte("com.apple.launchd\n"), nil
+			case len(args) == 2 && args[0] == "print":
+				return []byte("Could not find service"), exitError(t, 113)
 			case len(args) > 0 && args[0] == "bootout":
 				bootouts++
 				return nil, exitError(t, 3)
@@ -2089,14 +2201,27 @@ func TestInstallDisablesAfterAReadinessFailure(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "stopped and disabled") {
 			t.Fatalf("Install error = %v, want the readiness failure with the disabled note", err)
 		}
-		if bootouts < 2 {
-			t.Errorf("bootout calls = %d, want one before the start and one after the failure", bootouts)
+		bootstrapIndex := slices.Index(cmds, darwinBootstrapCmd)
+		if bootstrapIndex < 0 {
+			t.Fatalf("commands = %q, want the replacement bootstrap", cmds)
+		}
+		if got := countCommand(cmds[:bootstrapIndex], darwinBootoutCmd); got != 1 {
+			t.Errorf("bootout calls before the bootstrap = %d, want 1; commands = %q", got, cmds)
+		}
+		if bootouts != 2 {
+			t.Errorf("bootout calls = %d, want one before the start and one after the failure; commands = %q", bootouts, cmds)
 		}
 		// launchd reloads every plist under LaunchAgents at login, so a kept
 		// plist must be disabled or the failed install starts a Broker that
 		// cannot bind.
 		if disables != 1 {
 			t.Errorf("launchctl disable calls = %d, want 1 after the failure", disables)
+		}
+		cleanup := cmds[bootstrapIndex+1:]
+		bootoutRel := slices.Index(cleanup, darwinBootoutCmd)
+		disableRel := slices.Index(cleanup, darwinDisableCmd)
+		if bootoutRel < 0 || disableRel < 0 || bootoutRel > disableRel {
+			t.Errorf("commands = %q, want the failure cleanup to boot out and then disable", cmds)
 		}
 		plist := rooted(opts, "/Users/alice/Library/LaunchAgents/"+Label+".plist")
 		if _, statErr := os.Stat(plist); statErr != nil {
@@ -2195,5 +2320,605 @@ func TestInstallUnsupportedOS(t *testing.T) {
 	opts.GOOS = "freebsd"
 	if _, err := Install(opts); err == nil {
 		t.Fatal("Install succeeded on an unsupported platform")
+	}
+}
+
+// darwinUserReinstall returns darwin user-level options for a service that is
+// already installed and loaded. A test's Run decides when launchd finishes
+// unloading it.
+func darwinUserReinstall(t *testing.T) Options {
+	t.Helper()
+	opts := baseOptions(t)
+	opts.GOOS = "darwin"
+	opts.EUID = 501
+	opts.UID = 501
+	opts.Home = "/Users/alice"
+	// A reinstall finds the plist an earlier install wrote. The install records
+	// that it existed, so a failure keeps it and disables its label.
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	if err := os.MkdirAll(filepath.Dir(plist), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plist, []byte("previous plist"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return opts
+}
+
+const (
+	darwinPrintOldCmd  = "launchctl print gui/501/io.github.wangzw.agent-peer"
+	darwinBootoutCmd   = "launchctl bootout gui/501/io.github.wangzw.agent-peer"
+	darwinDisableCmd   = "launchctl disable gui/501/io.github.wangzw.agent-peer"
+	darwinBootstrapCmd = "launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist"
+)
+
+func countCommand(cmds []string, want string) int {
+	n := 0
+	for _, cmd := range cmds {
+		if cmd == want {
+			n++
+		}
+	}
+	return n
+}
+
+// countCommandBefore counts want in cmds before the first stop command. The
+// replacement segment ends at the bootstrap; commands after it belong to the
+// failure cleanup, which may boot out again.
+func countCommandBefore(cmds []string, want, stop string) int {
+	limit := slices.Index(cmds, stop)
+	if limit < 0 {
+		limit = len(cmds)
+	}
+	return countCommand(cmds[:limit], want)
+}
+
+// TestInstallDarwinWaitsForTheOldServiceToUnload reproduces the user report of
+// 2026-11-20: launchctl bootout returns before launchd has torn the job down,
+// and a bootstrap in that window fails with exit 5. The fake keeps reporting
+// the old service as loaded for a few print calls and fails any bootstrap
+// attempted while it does. It also checks that the replacement boots the job
+// out exactly once, before the wait.
+func TestInstallDarwinWaitsForTheOldServiceToUnload(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	opts.StopTimeout = 2 * time.Second
+
+	const loadedPolls = 3
+	bootedOut := false
+	var unloadPolls int
+	bootstrapped := false
+	started := false
+	var cmds []string
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			switch {
+			case started:
+				return []byte("state = running\n\tpid = 5252\n"), nil
+			case !bootedOut:
+				return []byte("state = running\n\tpid = 4242\n"), nil
+			}
+			unloadPolls++
+			if unloadPolls <= loadedPolls {
+				return []byte("state = running\n\tpid = 4242\n"), nil
+			}
+			return []byte("Could not find service"), exitError(t, 113)
+		case len(args) > 0 && args[0] == "bootout":
+			bootedOut = true
+		case len(args) > 0 && args[0] == "bootstrap":
+			if !bootedOut || unloadPolls <= loadedPolls {
+				return []byte("Bootstrap failed: 5: Input/output error"), exitError(t, 5)
+			}
+			bootstrapped = true
+			started = true
+		}
+		return nil, nil
+	}
+	opts.Probe = probeAfterStart(&started, 5252)
+
+	if _, err := Install(opts); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if !bootstrapped {
+		t.Fatalf("the service was never bootstrapped; commands = %q", cmds)
+	}
+	if unloadPolls <= loadedPolls {
+		t.Errorf("bootstrap ran after %d unload polls, want more than the %d that still reported the old service", unloadPolls, loadedPolls)
+	}
+	if got := countCommandBefore(cmds, darwinBootoutCmd, darwinBootstrapCmd); got != 1 {
+		t.Errorf("bootout calls before the bootstrap = %d, want 1; commands = %q", got, cmds)
+	}
+	bootoutIndex := slices.Index(cmds, darwinBootoutCmd)
+	bootstrapIndex := slices.Index(cmds, darwinBootstrapCmd)
+	if bootoutIndex < 0 || bootstrapIndex < 0 || bootoutIndex > bootstrapIndex {
+		t.Errorf("commands = %q, want bootout before bootstrap", cmds)
+	}
+	// The unload wait must be an explicit launchctl print between bootout and
+	// bootstrap, not merely a side effect of waiting for the address.
+	polled := false
+	for _, cmd := range cmds[bootoutIndex+1 : bootstrapIndex] {
+		if cmd == darwinPrintOldCmd {
+			polled = true
+			break
+		}
+	}
+	if !polled {
+		t.Errorf("commands = %q, want a launchctl print between bootout and bootstrap", cmds)
+	}
+}
+
+// TestInstallDarwinWaitsForUnloadAfterBootoutExit3 checks that the unload wait
+// does not depend on bootout's exit status. launchctl reports exit 3 for a
+// service it considers unloaded, but launchd may still be tearing the job down;
+// the installation must still wait, then retry the bootstrap that raced the
+// teardown.
+func TestInstallDarwinWaitsForUnloadAfterBootoutExit3(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	opts.StopTimeout = 2 * time.Second
+
+	const loadedPolls = 2
+	bootedOut := false
+	var unloadPolls int
+	bootstraps := 0
+	earlyBootstrap := false
+	started := false
+	var cmds []string
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			switch {
+			case started:
+				return []byte("state = running\n\tpid = 5252\n"), nil
+			case !bootedOut:
+				return []byte("state = running\n\tpid = 4242\n"), nil
+			}
+			unloadPolls++
+			if unloadPolls <= loadedPolls {
+				return []byte("state = running\n\tpid = 4242\n"), nil
+			}
+			return []byte("Could not find service"), exitError(t, 113)
+		case len(args) > 0 && args[0] == "bootout":
+			bootedOut = true
+			return nil, exitError(t, 3)
+		case len(args) > 0 && args[0] == "bootstrap":
+			bootstraps++
+			if !bootedOut || unloadPolls <= loadedPolls {
+				earlyBootstrap = true
+				return []byte("Bootstrap failed: 5: Input/output error"), exitError(t, 5)
+			}
+			if bootstraps == 1 {
+				return []byte("Bootstrap failed: 5: Input/output error"), exitError(t, 5)
+			}
+			started = true
+		}
+		return nil, nil
+	}
+	opts.Probe = probeAfterStart(&started, 5252)
+
+	if _, err := Install(opts); err != nil {
+		t.Fatalf("Install after a bootout that reported exit 3: %v", err)
+	}
+	if earlyBootstrap {
+		t.Errorf("bootstrap ran before launchd unloaded the old service; commands = %q", cmds)
+	}
+	if unloadPolls <= loadedPolls {
+		t.Errorf("unload polls = %d, want more than %d", unloadPolls, loadedPolls)
+	}
+	if bootstraps != 2 {
+		t.Errorf("bootstrap calls = %d, want exit 5 then success", bootstraps)
+	}
+	if got := countCommandBefore(cmds, darwinBootoutCmd, darwinBootstrapCmd); got != 1 {
+		t.Errorf("bootout calls before the bootstrap = %d, want 1; commands = %q", got, cmds)
+	}
+}
+
+// TestInstallDarwinRetriesAPrintErrorThatDoesNotProveUnloaded checks that only
+// exit status 113 or "Could not find service" count as unloaded. Any other
+// print failure is retried until the service is reported gone.
+func TestInstallDarwinRetriesAPrintErrorThatDoesNotProveUnloaded(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	opts.StopTimeout = 2 * time.Second
+
+	bootedOut := false
+	var otherPolls int
+	started := false
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			switch {
+			case started:
+				return []byte("state = running\n\tpid = 5252\n"), nil
+			case !bootedOut:
+				return []byte("state = running\n\tpid = 4242\n"), nil
+			}
+			if otherPolls < 2 {
+				otherPolls++
+				return []byte("launchctl: Resource temporarily unavailable"), errors.New("exit status 70")
+			}
+			return []byte("Could not find service"), exitError(t, 113)
+		case len(args) > 0 && args[0] == "bootout":
+			bootedOut = true
+		case len(args) > 0 && args[0] == "bootstrap":
+			started = true
+		}
+		return nil, nil
+	}
+	opts.Probe = probeAfterStart(&started, 5252)
+
+	if _, err := Install(opts); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if otherPolls != 2 {
+		t.Errorf("print errors retried = %d, want 2 before the missing-service report", otherPolls)
+	}
+}
+
+// TestInstallDarwinDoesNotTreatAPrintErrorAsUnloaded checks the timeout when
+// launchctl print keeps failing with an error that does not prove the job is
+// gone: the installation must not bootstrap over it. The failed reinstall keeps
+// the plist and disables the label, so launchd does not start it at login.
+func TestInstallDarwinDoesNotTreatAPrintErrorAsUnloaded(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	opts.StopTimeout = 30 * time.Millisecond
+
+	bootstrapped := false
+	bootedOut := false
+	var cmds []string
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			if bootedOut {
+				return []byte("launchctl: Resource temporarily unavailable"), errors.New("exit status 70")
+			}
+			return []byte("state = running\n\tpid = 4242\n"), nil
+		case len(args) > 0 && args[0] == "bootout":
+			bootedOut = true
+		case len(args) > 0 && args[0] == "bootstrap":
+			bootstrapped = true
+		}
+		return nil, nil
+	}
+
+	_, err := Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded while launchctl print kept failing")
+	}
+	for _, want := range []string{
+		"was not unloaded within 30ms",
+		"Resource temporarily unavailable",
+		"run the install again",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if bootstrapped {
+		t.Error("Install bootstrapped while launchctl print did not report the service gone")
+	}
+	if !slices.Contains(cmds, darwinDisableCmd) {
+		t.Errorf("commands = %q, want %q so the kept plist does not start at login", cmds, darwinDisableCmd)
+	}
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	if _, statErr := os.Stat(plist); statErr != nil {
+		t.Errorf("plist was removed while the old service may still be loaded: %v", statErr)
+	}
+}
+
+// TestInstallDarwinRetriesBootstrapExit5 checks that a bootstrap that still
+// returns exit 5 after the old service is gone is retried.
+func TestInstallDarwinRetriesBootstrapExit5(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	opts.BootstrapTimeout = 2 * time.Second
+
+	const failedBootstraps = 2
+	var bootstraps int
+	started := false
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			if started {
+				return []byte("state = running\n\tpid = 5252\n"), nil
+			}
+			return []byte("Could not find service"), exitError(t, 113)
+		case len(args) > 0 && args[0] == "bootout":
+			return nil, nil
+		case len(args) > 0 && args[0] == "bootstrap":
+			bootstraps++
+			if bootstraps <= failedBootstraps {
+				return []byte("Bootstrap failed: 5: Input/output error"), exitError(t, 5)
+			}
+			started = true
+		}
+		return nil, nil
+	}
+	opts.Probe = probeAfterStart(&started, 5252)
+
+	if _, err := Install(opts); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if want := failedBootstraps + 1; bootstraps != want {
+		t.Errorf("bootstrap calls = %d, want %d", bootstraps, want)
+	}
+}
+
+// TestInstallDarwinFailsAtOnceOnAnotherBootstrapExit checks that only exit 5 is
+// retried: another exit status fails the installation on the first attempt.
+func TestInstallDarwinFailsAtOnceOnAnotherBootstrapExit(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	opts.BootstrapTimeout = 2 * time.Second
+
+	bootstraps := 0
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			return []byte("Could not find service"), exitError(t, 113)
+		case len(args) > 0 && args[0] == "bootout":
+			return nil, nil
+		case len(args) > 0 && args[0] == "bootstrap":
+			bootstraps++
+			return []byte("Bootstrap failed: 37: Operation already in progress"), exitError(t, 37)
+		}
+		return nil, nil
+	}
+
+	_, err := Install(opts)
+	if err == nil || !strings.Contains(err.Error(), "Operation already in progress") {
+		t.Fatalf("Install error = %v, want the exit 37 failure", err)
+	}
+	if bootstraps != 1 {
+		t.Errorf("bootstrap calls = %d, want 1", bootstraps)
+	}
+}
+
+// TestInstallDarwinReinstallBootstrapFailureKeepsThePlist checks the failure a
+// reinstall reports when bootstrap never succeeds: the old service is gone, no
+// Broker runs, and the new plist stays disabled so it can be loaded by hand or
+// by running the install again.
+func TestInstallDarwinReinstallBootstrapFailureKeepsThePlist(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	opts.BootstrapTimeout = 30 * time.Millisecond
+
+	bootedOut := false
+	var cmds []string
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			if bootedOut {
+				return []byte("Could not find service"), exitError(t, 113)
+			}
+			return []byte("state = running\n\tpid = 4242\n"), nil
+		case len(args) > 0 && args[0] == "bootout":
+			bootedOut = true
+		case len(args) > 0 && args[0] == "bootstrap":
+			return []byte("Bootstrap failed: 5: Input/output error"), exitError(t, 5)
+		}
+		return nil, nil
+	}
+
+	_, err := Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded after a bootstrap that always fails")
+	}
+	for _, want := range []string{
+		"the old service was unloaded",
+		"no Broker is running",
+		"agent-peer service install",
+		"launchctl enable gui/501/io.github.wangzw.agent-peer && launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if !slices.Contains(cmds, darwinDisableCmd) {
+		t.Errorf("commands = %q, want %q so the kept plist does not start at login", cmds, darwinDisableCmd)
+	}
+	if got := countCommandBefore(cmds, darwinBootoutCmd, darwinBootstrapCmd); got != 1 {
+		t.Errorf("bootout calls before the bootstrap = %d, want 1; commands = %q", got, cmds)
+	}
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	if _, statErr := os.Stat(plist); statErr != nil {
+		t.Errorf("reinstall failure removed the plist: %v", statErr)
+	}
+}
+
+// TestInstallDarwinBootstrapFailureKeepsAnUnloadedPlist checks a plist that
+// existed before the install whose service was not loaded, such as one left
+// disabled by an earlier failure. The install must keep that plist and disable
+// its label; only a plist this run wrote is removed.
+func TestInstallDarwinBootstrapFailureKeepsAnUnloadedPlist(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	opts.BootstrapTimeout = 30 * time.Millisecond
+
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	if err := os.MkdirAll(filepath.Dir(plist), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(plist, []byte("old plist"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var cmds []string
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			return []byte("Could not find service"), exitError(t, 113)
+		case len(args) > 0 && args[0] == "bootout":
+			return nil, exitError(t, 3)
+		case len(args) > 0 && args[0] == "bootstrap":
+			return []byte("Bootstrap failed: 5: Input/output error"), exitError(t, 5)
+		}
+		return nil, nil
+	}
+
+	_, err := Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded after a bootstrap that always fails")
+	}
+	if got := countCommand(cmds, darwinDisableCmd); got != 1 {
+		t.Errorf("disable calls = %d, want 1 for a kept plist; commands = %q", got, cmds)
+	}
+	if _, statErr := os.Stat(plist); statErr != nil {
+		t.Errorf("a pre-existing plist was removed by a failed install: %v", statErr)
+	}
+}
+
+// TestInstallDarwinPrecheckBootsOutOnce checks the replacement order: the
+// precheck only identifies the occupant, and the whole installation boots the
+// old job out exactly once, before the unload wait and the bootstrap.
+func TestInstallDarwinPrecheckBootsOutOnce(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	writeListenConfig(t, opts, "127.0.0.1:17448")
+
+	var cmds []string
+	held := true
+	bootedOut := false
+	started := false
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			switch {
+			case started:
+				return []byte("state = running\n\tpid = 5252\n"), nil
+			case !bootedOut:
+				return []byte("state = running\n\tpid = 4242\n"), nil
+			}
+			return []byte("Could not find service"), exitError(t, 113)
+		case len(args) > 0 && args[0] == "bootout":
+			bootedOut = true
+			held = false
+		case len(args) > 0 && args[0] == "bootstrap":
+			started = true
+		}
+		return nil, nil
+	}
+	opts.Probe = func(string) (int, bool) {
+		if started {
+			return 5252, true
+		}
+		return 4242, true
+	}
+	opts.ListenProbe = func(addr string) error {
+		if held {
+			return fmt.Errorf("cannot bind %q: %w", addr, syscall.EADDRINUSE)
+		}
+		return nil
+	}
+
+	if _, err := Install(opts); err != nil {
+		t.Fatalf("Install over a running service: %v", err)
+	}
+	if got := countCommandBefore(cmds, darwinBootoutCmd, darwinBootstrapCmd); got != 1 {
+		t.Fatalf("bootout calls before the bootstrap = %d, want 1; commands = %q", got, cmds)
+	}
+	bootoutIndex := slices.Index(cmds, darwinBootoutCmd)
+	bootstrapIndex := slices.Index(cmds, darwinBootstrapCmd)
+	if bootoutIndex > bootstrapIndex {
+		t.Errorf("commands = %q, want bootout before bootstrap", cmds)
+	}
+}
+
+// TestInstallDarwinSharesOneStopBudget checks that the unload wait and the
+// address wait take the same deadline. A deadline that has already passed makes
+// each wait probe once instead of granting itself a fresh budget.
+func TestInstallDarwinSharesOneStopBudget(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	opts.Run = func(string, ...string) ([]byte, error) {
+		return []byte("state = running\n\tpid = 4242\n"), nil
+	}
+
+	deadline := time.Now()
+	if err := waitServiceUnloaded(opts, "gui/501", deadline, time.Millisecond); err == nil {
+		t.Fatal("waitServiceUnloaded succeeded with a past deadline")
+	}
+
+	probes := 0
+	probe := func(string) error {
+		probes++
+		return errors.New("still busy")
+	}
+	if err := waitListenReleased(probe, "127.0.0.1:17448", deadline); err == nil {
+		t.Fatal("waitListenReleased succeeded with a past deadline")
+	}
+	if probes != 1 {
+		t.Errorf("waitListenReleased probes = %d, want 1 with the caller's deadline", probes)
+	}
+}
+
+// TestInstallDarwinBootstrapsAfterTheUnloadWaitUsesTheStopBudget checks that the
+// exit-5 retries have their own bound. The unload wait runs past the stop
+// budget's deadline and the first bootstrap still reports exit 5; the retry
+// must run and succeed instead of inheriting the spent stop deadline.
+func TestInstallDarwinBootstrapsAfterTheUnloadWaitUsesTheStopBudget(t *testing.T) {
+	opts := darwinUserReinstall(t)
+	// Scaled down: two 100ms unload polls run past this deadline.
+	opts.StopTimeout = 190 * time.Millisecond
+	opts.BootstrapTimeout = 2 * time.Second
+
+	const loadedPolls = 2
+	bootedOut := false
+	unloadPolls := 0
+	bootstraps := 0
+	started := false
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		switch {
+		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
+			return []byte("com.apple.launchd\n"), nil
+		case len(args) == 2 && args[0] == "print":
+			switch {
+			case started:
+				return []byte("state = running\n\tpid = 5252\n"), nil
+			case !bootedOut:
+				return []byte("state = running\n\tpid = 4242\n"), nil
+			}
+			unloadPolls++
+			if unloadPolls <= loadedPolls {
+				return []byte("state = running\n\tpid = 4242\n"), nil
+			}
+			return []byte("Could not find service"), exitError(t, 113)
+		case len(args) > 0 && args[0] == "bootout":
+			bootedOut = true
+		case len(args) > 0 && args[0] == "bootstrap":
+			bootstraps++
+			if bootstraps == 1 {
+				return []byte("Bootstrap failed: 5: Input/output error"), exitError(t, 5)
+			}
+			started = true
+		}
+		return nil, nil
+	}
+	opts.Probe = probeAfterStart(&started, 5252)
+
+	if _, err := Install(opts); err != nil {
+		t.Fatalf("Install after the unload wait used the stop budget: %v", err)
+	}
+	if unloadPolls <= loadedPolls {
+		t.Fatalf("unload polls = %d, want more than %d", unloadPolls, loadedPolls)
+	}
+	if bootstraps != 2 {
+		t.Errorf("bootstrap calls = %d, want the exit 5 attempt and the retry", bootstraps)
 	}
 }
