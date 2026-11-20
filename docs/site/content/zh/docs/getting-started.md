@@ -113,7 +113,7 @@ cd agent-peer-${VERSION}
 sudo sh ./install.sh --system
 ```
 
-用户级形式把二进制装到 `~/.local/bin`，安装并启动用户级 Broker 服务，并为你的账户注册 MCP 服务。系统级形式把二进制装到 `/usr/local/bin`，安装并启动系统级 Broker 服务，并为执行 `sudo` 的账户注册 MCP 服务。
+用户级形式把二进制装到 `~/.local/bin`，安装并启动用户级 Broker 服务，并为你的账户注册 MCP 服务。系统级形式把二进制装到 `/usr/local/bin`，安装并启动系统级 Broker 服务，并为执行 `sudo` 的账户注册 MCP 服务。系统级安装还会创建 `agent-peer` 组，把新生成的配置文件的属组设为该组，并询问是否把执行 `sudo` 的账户加入该组；默认不加入，没有终端时脚本不加入该账户，并打印加入命令。管理组成员不用 `sudo` 就能管理系统级 Broker；经 Broker 的管理操作，新加入的成员关系从下一次调用起生效；本账户自己的进程（例如直接编辑配置文件）要重新登录或运行 `newgrp agent-peer` 之后才会用上新的成员关系。管理组见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)。
 
 脚本接受这些选项：
 
@@ -122,6 +122,11 @@ sudo sh ./install.sh --system
 | `--prefix <dir>` | 把二进制装到 `<dir>`，代替默认目录：用户级安装为 `~/.local/bin`，系统级安装为 `/usr/local/bin`。 |
 | `--no-service` | 不安装 Broker 服务。[启动 Broker](#启动-broker)。 |
 | `--no-mcp` | 不注册 MCP 服务。 |
+| `--admin-group <name>` | 改用组 `<name>` 管理系统级 Broker，代替默认的 `agent-peer` 组；组名只能以小写字母或下划线开头，其后只能是小写字母、数字、下划线或连字符。只在与 `--system` 同用时有效。 |
+| `--join-admin-group` | 不询问，直接把执行 `sudo` 的账户加入管理组。只在与 `--system` 同用时有效。 |
+| `--no-admin-group` | 不询问是否把执行 `sudo` 的账户加入管理组。只在与 `--system` 同用时有效。 |
+
+`--join-admin-group` 与 `--no-admin-group` 同时给出是用法错误。
 
 脚本可以重复执行：替换二进制，用新二进制重启服务，不会重复注册 MCP 服务。如果已经注册为别的命令，脚本保留原有注册；要改过来，先运行 `claude mcp remove -s user peer`，再执行一次脚本。脚本不访问网络，安装用的所有文件都来自解压出的发布包。
 
@@ -233,6 +238,6 @@ go build -trimpath -ldflags "-X main.version=$VERSION" -o agent-peer ./cmd/agent
 3. 在另一台主机上，让模型用第 2 步的地址和密钥调用 `connect_broker` 并在权限确认中批准，或者运行 `agent-peer peer connect <address> --key <key>`。
 4. 结果显示接受方 Broker 的别名与指纹。两台主机上处在同一个 topic 里的会话此后就能互相看见、互发消息。
 
-`create_pairing_key`、`connect_broker` 等管理工具以及对应的终端命令，要求对 Broker 的配置文件有写权限。你自己的用户级 Broker 的配置文件属于你的账户，所以自然满足。系统级 Broker 上普通账户默认没有写权限。配对双方中任一侧是系统级 Broker 时，生成密钥和连接都需要该侧的写权限，请管理员执行 `sudo agent-peer pairing-key create` 与 `sudo agent-peer peer connect <address> --key <key>`；管理员也可以按管理权限页的做法授予写权限。权限规则见[以配置文件权限管理 Broker]({{< relref "guides/management-permissions.md" >}})。
+`create_pairing_key`、`connect_broker` 等管理工具以及对应的终端命令，要求对 Broker 的配置文件有写权限。你自己的用户级 Broker 的配置文件属于你的账户，所以自然满足。系统级 Broker 上，管理组拥有写权限：组成员在该侧直接执行命令；不在组内的账户请管理员把它加入组，或由管理员代为执行。本账户的用户级 Broker 正在运行时，用 `sudo` 访问系统级 Broker。管理组与权限规则见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)。
 
 调用 `connect_broker` 或运行 `agent-peer peer connect` 的一方是拨号方，网络中断后由它重新建立链路；接受方不主动拨号。密钥过期、别名冲突、地址连不上等情形见[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。

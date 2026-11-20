@@ -63,7 +63,7 @@ Starting with 0.2.0, the default alias no longer contains the listen port: on a 
 
 ## How do I update agent-peer?
 
-Run `agent-peer update` in a terminal; for a system-level installation, run `sudo agent-peer update`. The command asks GitHub for the latest release, verifies the download, replaces the binary, and restarts the installed service; sessions that are already open must reconnect with `/mcp` or be restarted. See [Update agent-peer]({{< relref "guides/update.md" >}}).
+Run `agent-peer update` in a terminal, or call `update_broker` from a session. A system-level installation is updated without `sudo` by a member of the admin group; an account outside the group uses `sudo agent-peer update`, or joins the group first. When the same account also runs a user-level Broker, `sudo agent-peer update` reaches the system-level Broker. The update verifies the download and replaces the binary; a Broker that runs as a service is restarted with the new version, and one that is not running takes it up at its next start. Sessions that are already open must reconnect with `/mcp` or be restarted. See [Update agent-peer]({{< relref "guides/update.md" >}}).
 
 ## Can I turn off update checks?
 
@@ -99,7 +99,7 @@ The receiving Claude Code drops a message from the same agent to the same sessio
 
 ## Who can change the Broker's configuration?
 
-An account with write permission on the Broker's configuration file can change it with `set_config` or `agent-peer config set`, create one-time pairing keys with `create_pairing_key` or `agent-peer pairing-key create`, and pair or unpair with `connect_broker` and `disconnect_broker`, or `agent-peer peer connect` and `agent-peer peer disconnect`. Read permission allows reading the configuration and the audit log. The terminal commands judge permission by the account running them; when the administrator runs them with `sudo`, a system Broker authorizes them against root's permissions. See [Management permissions]({{< relref "guides/management-permissions.md" >}}).
+An account with write permission on the Broker's configuration file can change it with `set_config` or `agent-peer config set`, create one-time pairing keys with `create_pairing_key` or `agent-peer pairing-key create`, and pair or unpair with `connect_broker` and `disconnect_broker`, or `agent-peer peer connect` and `agent-peer peer disconnect`. Read permission allows reading the configuration and the audit log. The terminal commands judge permission by the account running them. A member of the admin group manages a system-level Broker without `sudo`; an administrator who runs a command with `sudo` is authorized against root's permissions. See [Management permissions]({{< relref "guides/management-permissions.md" >}}), especially [The admin group]({{< relref "guides/management-permissions.md" >}}#the-admin-group).
 
 ## What happens if the port is already in use?
 

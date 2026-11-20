@@ -20,6 +20,7 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer。安装脚�
 | `create_pairing_key` | 生成一次性配对密钥，并给出本 Broker 的地址。 | 无。 | 写 |
 | `get_config` | 读取本 Broker 的配置。 | `key`（字符串，可选）：一个键，例如 `broker.alias`；省略则返回全部键。 | 读 |
 | `set_config` | 修改一个配置键。 | `key`（字符串，必填）。`value`（字符串，必填）：新值的文本形式，例如 `10m`、`true` 或 `[a, b]`。 | 写 |
+| `update_broker` | 把本 Broker 升级到最新的正式发布版本并重启。 | 无。 | 写 |
 
 ## 返回结果
 
@@ -45,23 +46,29 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer。安装脚�
 
 `get_config` 返回 `entries`，每项有 `key` 和 `value`。密钥类键的值只显示 `(set)` 或 `(not set)`。`set_config` 返回该键的 `old_value` 和 `new_value`。
 
+### 更新
+
+`update_broker` 返回 `from_version`、`to_version`、`restarting` 与一句 `result`。Broker 升级时，`restarting` 为真，结果为 `Upgrading the Broker from <from> to <to>; the Broker restarts and the connection recovers automatically. Reopen this session to use the new MCP server.`。已经是最新版本时，`to_version` 为空，`restarting` 为假，结果为 `The Broker is already up to date (<from>).`。调用在 Broker 应答后立即返回，早于重启完成。
+
 ### 更新提示
 
 每个 MCP 服务进程在第一次工具调用时向 Broker 查询更新状态，此后最多每 10 分钟查询一次。已知有更新的正式发布版本时，该次工具结果的末尾多出一段文本：
 
 ```text
-agent-peer <v> is available (this host runs <c>). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
+agent-peer <v> is available (this Broker runs <c>). Ask the agent to call update_broker, or run `agent-peer update` in a terminal.
 ```
 
-`<v>` 是可用版本，`<c>` 是当前版本。同一个版本在一个会话中只提示一次；会话开着期间出了新版本，之后的工具调用会再提示一次。以工具错误结束的调用同样附带。查询失败或超时、Broker 是旧版而不支持该查询，或 `update.check` 关闭时，不附提示，工具结果保持原样。会话里没有安装更新的工具，更新要在终端运行 `agent-peer update`。
+`<v>` 是可用版本，`<c>` 是当前版本。同一个版本在一个会话中只提示一次；会话开着期间出了新版本，之后的工具调用会再提示一次。以工具错误结束的调用同样附带。查询失败或超时、Broker 是旧版而不支持该查询，或 `update.check` 关闭时，不附提示，工具结果保持原样。
 
 ## 配置文件权限
 
 表中的“无”“读”“写”指调用方账户对 Broker 配置文件的访问级别。账户取自操作系统为本机 socket 另一端进程提供的凭据，不采信调用方的陈述。
 
 - 用户级 Broker 的配置文件属于本账户，所以每次调用都通过。
-- 系统级 Broker 以该文件判定权限：读权限允许 `get_config`；写权限允许 `connect_broker`、`disconnect_broker`、`create_pairing_key` 和 `set_config`。管理员给某个组授予文件的相应权限，就把这些操作委托给了这个组。
+- 系统级 Broker 以该文件判定权限：读权限允许 `get_config`；写权限允许 `connect_broker`、`disconnect_broker`、`create_pairing_key`、`set_config` 与 `update_broker`。管理员给组 `agent-peer` 授予文件的相应权限，就把这些操作委托给了这个组；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。
 - 消息与 topic 工具以及 `list_brokers` 不要求配置文件权限。
+
+`update_broker` 不是只读工具：它的声明不带只读标记，并标为破坏性操作，Claude Code 默认会在执行前请你确认。不要把 `update_broker` 加入自动批准：这道确认是 Broker 被替换并重启前的最后一道人工检查。
 
 `list_agents`、`send_message`、`list_topics`、`join_topic` 和 `leave_topic` 代表会话行事，需要会话已经登记。发现、配对与配置类工具在登记完成之前也能使用。
 

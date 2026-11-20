@@ -113,7 +113,7 @@ cd agent-peer-${VERSION}
 sudo sh ./install.sh --system
 ```
 
-The user-level form installs the binary into `~/.local/bin`, installs and starts the user-level Broker service, and registers the MCP server for your account. The system-level form installs the binary into `/usr/local/bin`, installs and starts the system-level Broker service, and registers the MCP server for the account that ran `sudo`.
+The user-level form installs the binary into `~/.local/bin`, installs and starts the user-level Broker service, and registers the MCP server for your account. The system-level form installs the binary into `/usr/local/bin`, installs and starts the system-level Broker service, and registers the MCP server for the account that ran `sudo`. It also creates the `agent-peer` group, gives the configuration file it generates to that group, and asks whether to add the account that ran `sudo` to the group; the answer defaults to no, and without a terminal the script does not add the account and prints the command to do so. A member of the admin group manages the system Broker without `sudo`; through the Broker, a new membership applies from the next call, and the account's own processes, such as a direct edit of the configuration file, see it after logging in again or running `newgrp agent-peer`. [The admin group]({{< relref "guides/management-permissions.md" >}}#the-admin-group) covers the group.
 
 The script accepts these options:
 
@@ -122,6 +122,11 @@ The script accepts these options:
 | `--prefix <dir>` | Install the binary into `<dir>` instead of the default, `~/.local/bin` for a user-level installation or `/usr/local/bin` for a system-level one. |
 | `--no-service` | Do not install the Broker service. [Start the Broker](#start-the-broker) yourself. |
 | `--no-mcp` | Do not register the MCP server. |
+| `--admin-group <name>` | Manage the system Broker through the group `<name>` instead of the default `agent-peer` group; the name may start only with a lowercase letter or an underscore and may contain only lowercase letters, digits, underscores and hyphens. Valid only with `--system`. |
+| `--join-admin-group` | Add the account that ran `sudo` to the admin group without asking. Valid only with `--system`. |
+| `--no-admin-group` | Do not ask whether to add the account that ran `sudo` to the admin group. Valid only with `--system`. |
+
+Giving both `--join-admin-group` and `--no-admin-group` is a usage error.
 
 The script is safe to run again: it replaces the binary, restarts the service with it, and does not register the MCP server twice. If the server is already registered with a different command, the script keeps the existing registration; to change it, run `claude mcp remove -s user peer` and run the script again. It never accesses the network; everything it installs comes from the extracted archive.
 
@@ -233,6 +238,6 @@ At least one host must be able to reach port 17443 on the other. Before pairing,
 3. On the other host, ask the model to call `connect_broker` with the address from step 2 and the key, and approve the call, or run `agent-peer peer connect <address> --key <key>`.
 4. The result shows the accepting Broker's alias and fingerprint. Sessions on both hosts that share a topic can now see each other and send messages.
 
-`create_pairing_key`, `connect_broker` and the other management tools, and their terminal forms, need write permission on the Broker's configuration file. Your own user Broker's file belongs to your account, so this holds. On a system Broker an ordinary account has no write permission by default. Either host may run a system Broker, and on that side both creating the key and connecting need write permission, so ask the administrator to run `sudo agent-peer pairing-key create` and `sudo agent-peer peer connect <address> --key <key>`. The administrator can also grant write access instead; [Manage a Broker by file permission]({{< relref "guides/management-permissions.md" >}}) covers the permission rules.
+`create_pairing_key`, `connect_broker` and the other management tools, and their terminal forms, need write permission on the Broker's configuration file. Your own user Broker's file belongs to your account, so this holds. On a system Broker the admin group holds write permission: a member of the group runs the commands on that side directly, and an account that is not in the group asks an administrator to add it to the group or to run the commands on its behalf. An account whose own user-level Broker is running uses `sudo` to reach the system Broker. [The admin group]({{< relref "guides/management-permissions.md" >}}#the-admin-group) covers the group and the permission rules.
 
 The side that calls `connect_broker` or runs `agent-peer peer connect` is the dialer and re-establishes the link after a network drop; the accepting side does not dial. [Pair two hosts]({{< relref "guides/pair-hosts.md" >}}) covers the alternatives, such as an expired key, an alias conflict and an address the other side cannot reach.

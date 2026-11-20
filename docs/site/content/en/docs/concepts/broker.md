@@ -11,7 +11,7 @@ A Broker runs in one of two forms.
 
 A **system Broker** runs as a privileged system service. There is at most one per host, and it serves the sessions of every account on the host that is allowed to use it. An administrator installs it.
 
-A **user Broker** runs under an ordinary account and serves only that account's sessions. An account runs at most one instance. It is started by the user's service manager, or by the user in a terminal; the MCP server process only connects. An account that can use the host's system Broker needs no user Broker; a running user Broker takes precedence over the system Broker, unless the session's tool configuration names a Broker.
+A **user Broker** runs under an ordinary account and serves only that account's sessions. An account runs at most one instance. It is started by the user's service manager, or by the user in a terminal; the MCP server process only connects. An account that can use the host's system Broker needs no user Broker; a running user Broker takes precedence over the system Broker.
 
 Each instance has its own fingerprint, peers and configuration. Two Brokers on one host are independent Brokers on the network, not parts of one process. Their default aliases differ; the rule is under Address and identity below. On a host whose hostname is `workstation.example.com`, the system Broker takes `workstation`, and the user Brokers of accounts alice and bob take `workstation.alice` and `workstation.bob`. These are three Brokers with three different aliases, and a list sorted by alias keeps the Brokers of one host together.
 

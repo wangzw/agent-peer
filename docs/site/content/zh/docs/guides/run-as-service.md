@@ -32,7 +32,7 @@ agent-peer service install
 
 ## 安装系统级服务
 
-系统级安装以 root 运行，让 Broker 在开机时启动。从解压后的发布包里执行 `sudo sh ./install.sh --system`，可以一步装好二进制与服务；[快速开始]({{< relref "/docs/getting-started" >}})里的在线系统级命令效果相同。下面的步骤则手动完成这两部分。
+系统级安装以 root 运行，让 Broker 在开机时启动。从解压后的发布包里执行 `sudo sh ./install.sh --system`，可以一步装好二进制与服务；[快速开始]({{< relref "/docs/getting-started" >}})里的在线系统级命令效果相同。下面的步骤则手动完成这两部分。脚本还会询问是否把执行 `sudo` 的账户加入管理组，默认不加入；[管理组]({{< relref "management-permissions.md" >}}#管理组)介绍这个组以及控制这一询问的选项。
 
 二进制必须放在 root 拥有、且组和其他人不可写的目录里，例如 `/usr/local/bin`。服务以 root 身份运行这个二进制，能改动它或其上级目录的普通账户可能借此接管服务：
 
@@ -46,7 +46,7 @@ Intel Mac 上用 Homebrew 时，`/usr/local/bin` 属于普通用户，安装会�
 
 安装会检查二进制以及它上面的每一层目录，然后立即启动 Broker。
 
-在 Linux 上，命令写入 `/etc/systemd/system/agent-peer.service`，启用并启动它；在 macOS 上写入并加载 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`。系统级安装还会在 `/etc/agent-peer/config.yaml` 不存在时，用系统级模板生成它，属主为 root，权限 `0600`；已存在的文件不改动。
+在 Linux 上，命令写入 `/etc/systemd/system/agent-peer.service`，启用并启动它；在 macOS 上写入并加载 `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`。系统级安装还会在 `/etc/agent-peer/config.yaml` 不存在时，用系统级模板生成它，属主为 root，属组为 `agent-peer`，权限 `0660`；已存在的文件不改动，安装会打印把已有文件交给该组的命令。[管理组]({{< relref "management-permissions.md" >}}#管理组)介绍这个组。
 
 ## 卸载服务
 

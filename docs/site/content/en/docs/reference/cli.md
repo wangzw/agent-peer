@@ -22,8 +22,8 @@ Commands:
   peer connect <address> --key <key> [--alias <alias>]
                               pair with another Broker
   peer disconnect <broker>    remove a pairing
-  update [--yes]              update to the latest release and restart the
-                              installed service; --yes skips the question
+  update [--yes]              update through the selected Broker, or replace
+                              the user-level binary locally; --yes skips the question
   service install [--system]  install and start the Broker as a user-level service,
                               or system-level with --system
   service uninstall [--system]
@@ -46,7 +46,7 @@ Without `--listen`, the configured `broker.listen` applies.
 
 ## agent-peer mcp
 
-Runs the MCP server for one Claude Code session over the process's standard input and standard output. Claude Code starts this process from the MCP registration, so there is normally no reason to run it by hand. The session picks a Broker in this order: the socket named by `AGENT_PEER_SOCKET`, this account's user Broker, then the system Broker. [Run a system Broker]({{< relref "/docs/guides/system-broker" >}}) lists the order and the settings. A running user Broker takes precedence over the system Broker; on an account that can use the system Broker, installing a user-level service makes its sessions use the user Broker instead of the system Broker. When no Broker is available, tool calls return an error that says what to do, and the guidance depends on the case. A first lookup that finds neither a user Broker nor a system Broker, and a user Broker whose socket has disappeared or refuses connections, as after a hard kill, get the same message: it says to ask the administrator to start a system Broker if the host has one, then gives the two user-level methods, `agent-peer service install` and `agent-peer broker` in a terminal outside Claude Code. A session that was registered on the system Broker and loses it is told only to contact the administrator. A user Broker whose socket still answers but whose handshake or a call fails is reported as unavailable, with a note that the MCP server keeps retrying in the background and no instruction to start a Broker. A Broker started inside a session fails with exit code 6.
+Runs the MCP server for one Claude Code session over the process's standard input and standard output. Claude Code starts this process from the MCP registration, so there is normally no reason to run it by hand. The session uses this account's user Broker when one is running; otherwise it uses the system Broker if this account may connect to it. [Run a system Broker]({{< relref "/docs/guides/system-broker" >}}) explains the choice and the settings. A running user Broker takes precedence over the system Broker; on an account that can use the system Broker, installing a user-level service makes its sessions use the user Broker instead of the system Broker. When no Broker is available, tool calls return an error that says what to do, and the guidance depends on the case. A first lookup that finds neither a user Broker nor a system Broker, and a user Broker whose socket has disappeared or refuses connections, as after a hard kill, get the same message: it says to ask the administrator to start a system Broker if the host has one, then gives the two user-level methods, `agent-peer service install` and `agent-peer broker` in a terminal outside Claude Code. A session that was registered on the system Broker and loses it is told only to contact the administrator. A user Broker whose socket still answers but whose handshake or a call fails is reported as unavailable, with a note that the MCP server keeps retrying in the background and no instruction to start a Broker. A Broker started inside a session fails with exit code 6.
 
 ## agent-peer status
 
@@ -75,9 +75,9 @@ Reading the audit log requires read permission on the Broker's configuration fil
 
 ## Broker administration commands
 
-The `config`, `pairing-key` and `peer` commands connect to a running Broker, without starting one. They look for it in the same order as a session: the socket named by `AGENT_PEER_SOCKET`, this account's running user Broker, then the system Broker. A running user Broker takes precedence over the system Broker, so an account that wants to manage the system Broker while its own user Broker is running must set `AGENT_PEER_SOCKET` or run the command with `sudo`. [Run a system Broker]({{< relref "/docs/guides/system-broker" >}}) lists the order and the settings.
+The `config`, `pairing-key` and `peer` commands connect to a running Broker, without starting one. They choose the Broker by the operating system account that runs them, with no command-line option to select a level: this account's running user Broker first, then the system Broker this account may use. An account that runs its own user Broker and wants to manage the system Broker must run the command with `sudo`. The same rule applies to `status`, `audit` and `update`. [Run a system Broker]({{< relref "/docs/guides/system-broker" >}}) explains the choice and the settings.
 
-The Broker decides the permission of each command from the account that runs it, using the same rules as the matching tool. In the audit records left by the write commands, `account` is the account that ran the command and `actor` is empty. When an administrator runs a command with `sudo`, a system Broker authorizes it against root's permissions. These commands do not pass through Claude Code's approval. When the Broker denies a command, its English error, which contains the path of the configuration file, is written to standard error and the command exits with code 1.
+The Broker decides the permission of each command from the account that runs it, using the same rules as the matching tool. In the audit records left by the write commands, `account` is the account that ran the command and `actor` is empty. When an administrator runs a command with `sudo`, a system Broker authorizes it against root's permissions. A member of the system Broker's admin group can manage it without `sudo`; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group. These commands do not pass through Claude Code's approval. When the Broker denies a command, its English error, which contains the path of the configuration file, is written to standard error and the command exits with code 1.
 
 These commands follow the output conventions of `agent-peer status`: an empty value is written `-`.
 
@@ -146,42 +146,62 @@ Requires write permission on the Broker's configuration file. A usage error exit
 
 ## agent-peer update
 
-Checks GitHub for the latest formal release and, after confirmation, replaces the running binary and restarts the installed service.
+Installs the latest formal release, either by asking the selected Broker to update itself or by replacing the binary in place.
 
 ```text
 usage: agent-peer update [--yes]
 ```
 
-The command queries GitHub directly and does not contact a Broker, so it works with no Broker running. It replaces the file that the executable resolves to, so a symbolic link keeps pointing at the updated file. Replacing a system-level installation, which lives in a root-owned directory, requires `sudo agent-peer update`; that run restarts only the system-level service.
+The command installs only a newer formal release: drafts and prereleases are ignored, there is no option to choose a version, and it never downgrades.
 
-- `--yes` skips the confirmation question. Without it the command asks `Update to <v>? [y/N]` and accepts `y` or `yes`, in any case, as confirmation. When standard input is not a terminal, the command refuses to run without `--yes`. When the current version is already the latest, no `--yes` is needed and the command runs with standard input that is not a terminal.
+- `--yes` skips the confirmation question. Without it the command asks `agent-peer <c> is installed. Update to the latest release? [y/N]`, where `<c>` is the current version, and accepts `y` or `yes`, in any case, as confirmation. When standard input is not a terminal, the command refuses to run without `--yes`. When the user answers `n`, it prints `Update canceled; nothing was changed.` and exits with code 0.
+- A usage error exits with code 2. Any other failure exits with code 1. A successful update, an up-to-date result and a canceled update all exit with code 0.
 
-The command proceeds in this order:
+### Through the Broker
+
+When the command selects a running Broker, that Broker installs the update itself. A member of the system Broker's admin group can update it without `sudo`; an account that runs its own user Broker reaches the system Broker with `sudo agent-peer update`.
 
 1. Refuses a version that is not a formal release. A binary built from source without a release version, which reports `agent-peer dev`, cannot update itself.
-2. Locates the running executable and resolves symbolic links.
-3. Checks that it can write in the target's directory, before any download. Without permission it fails and suggests `sudo agent-peer update`.
-4. Queries the latest formal release; drafts and prereleases are ignored. When the current version is already the latest, it prints `agent-peer <c> is up to date` and exits with code 0.
-5. Refuses to continue when standard input is not a terminal and `--yes` is not given.
-6. Prints the current and available versions, the release page when there is one, and the confirmation question.
-7. Downloads the archive for this platform and `checksums.txt`, verifies the archive's SHA-256, extracts the regular file named `agent-peer`, and runs the new binary's `--version` to confirm that it reports the expected version.
-8. Writes the new binary next to the target, gives it the same owner and mode as the old one, and renames it into place. The old version is not kept.
-9. Restarts the installed service at the caller's level: the system-level service when run as root, the user-level service otherwise. Without an installed service it asks you to restart the running Broker yourself.
-10. Reminds you that open Claude Code sessions must reconnect with `/mcp` or be restarted.
+2. Sends the request to the selected Broker. The Broker decides permission from write access to its configuration file; the command does not check it first. On a denial the Broker's English error is written to standard error and the command exits with code 1, with nothing downloaded.
+3. When the current version is already the latest, the command prints `agent-peer <c> is up to date` and exits with code 0.
+4. The Broker downloads the archive for this platform and `checksums.txt`, verifies the archive's SHA-256, extracts the regular file named `agent-peer`, and runs the new binary's `--version` to confirm that it reports the expected version. It then replaces its own binary. A symbolic link keeps pointing at the updated file.
+5. The Broker answers before it restarts. The command prints `The Broker is restarting to version <v>.` and waits until the restarted Broker reports that version, because the update is complete only when that process runs. On success it prints `The Broker is running agent-peer <v>.` and then the session notice. When the restarted Broker does not report the new version in time, the command fails and names where that level's service log is.
+6. The session notice reads `Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.`
 
-The output of a successful update looks like this. `Release:` appears only when the release has a URL.
+A user-level Broker that was started from a terminal, rather than by a service manager, cannot replace and restart itself. It leaves the command to the local replacement below.
+
+### By replacing the binary
+
+With no running Broker, or after the user-level Broker above declines, the command replaces the binary in place:
+
+1. Refuses a version that is not a formal release, as above.
+2. Locates the running executable and resolves symbolic links. Only the file they point at is replaced.
+3. Checks that it can write in the target's directory, before any download. Without permission it prints `cannot write to <dir>: ...`, then `run "sudo agent-peer update" to update a system-level installation`, and exits with code 1.
+4. Queries GitHub for the latest formal release. When the current version is already the latest, it prints `agent-peer <c> is up to date` and exits with code 0.
+5. Downloads the archive for this platform and `checksums.txt`, verifies the archive's SHA-256, extracts the regular file named `agent-peer`, and runs the new binary's `--version` to confirm that it reports the expected version. It prints `agent-peer <c> is installed; version <v> is available.` and, when the release has a URL, `Release: <url>`.
+6. Writes the new binary next to the target, gives it the same owner and mode as the old one, and renames it into place. The old version is not kept. It prints `agent-peer <v> is installed.`
+7. Starts no service and restarts none, because the service may have been stopped on purpose. It prints `The new binary takes effect the next time the Broker starts.`
+
+The output of a successful update looks like one of these. `Release:` appears only when the release has a URL.
+
+Through the Broker:
 
 ```text
-agent-peer 0.2.0 is installed; version 0.2.1 is available.
-Release: https://github.com/wangzw/agent-peer/releases/tag/v0.2.1
-Update to 0.2.1? [y/N] y
-agent-peer 0.2.1 is installed.
-Restarted the agent-peer service.
-User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.
-Open Claude Code sessions must reconnect with /mcp or be restarted to use the new version.
+agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
+The Broker is restarting to version 0.2.1.
+The Broker is running agent-peer 0.2.1.
+Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.
 ```
 
-With `--yes` the question is not printed. When the user answers `n`, the command prints `Update canceled; the binary and service were not changed.` and exits with code 0. Without an installed service, the restart line is replaced by `The Broker is not installed as a service; restart it to use the new version.`
+By replacing the binary:
+
+```text
+agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
+agent-peer 0.2.0 is installed; version 0.2.1 is available.
+Release: https://github.com/wangzw/agent-peer/releases/tag/v0.2.1
+agent-peer 0.2.1 is installed.
+The new binary takes effect the next time the Broker starts.
+```
 
 Failures are written to standard error with the prefix `agent-peer update: `. The messages include:
 
@@ -190,18 +210,18 @@ Failures are written to standard error with the prefix `agent-peer update: `. Th
 - `standard input is not a terminal; run "agent-peer update --yes" to update without asking`
 - `checksum mismatch for <archive>`
 - `downloaded binary reported "<x>", want "agent-peer <v>"`
-- `restarting the service: ...`
-
-A usage error exits with code 2. Any other failure exits with code 1. A successful update, an up-to-date result and a canceled update all exit with code 0.
+- `the Broker did not report version <v> within <duration>; check the service log with <command or path>`
+- `the Broker is not running under a service manager, so it cannot start the new binary again; install it as a service and run the update against that service (for example, "agent-peer service install" or "sudo agent-peer service install --system")`
+- `another update is already in progress`
 
 ## agent-peer service install
 
 Installs a service definition, enables the service, and starts the Broker immediately. It waits up to 20 seconds for the Broker to answer; a timeout fails the install and reports where the service logs go. Reinstalling replaces the running Broker with the new binary.
 
 - Without `--system`, installs a user-level service that starts the Broker when the account logs in. It must not run as root. On macOS it must run in a graphical login session. If `~/.agent-peer/config.yaml` does not exist, it generates the file, owned by the account that runs the install with mode `0600`; an existing file is left unchanged.
-- With `--system`, installs a system-level service that starts the Broker at boot. It must run as root. If `/etc/agent-peer/config.yaml` does not exist, it generates the file, owned by root with mode `0600`; an existing file is left unchanged.
+- With `--system`, installs a system-level service that starts the Broker at boot. It must run as root. The command creates the `agent-peer` group when it does not exist, and uses it without changing its members when it does. If `/etc/agent-peer/config.yaml` does not exist, it generates the file, owned by `root` with group `agent-peer` and mode `0660`; an existing file is left unchanged. `--admin-group <name>`, only with `--system`, uses another group; the name may start only with a lowercase letter or an underscore and may contain only lowercase letters, digits, underscores and hyphens.
 
-The generated file is a template that lists every configuration key: keys with a fixed default are written out, and the remaining keys are comments with an example value or an empty placeholder. When the install writes the file it prints `generated the configuration file <path>`; when the file already exists it prints `kept the existing configuration file <path>`.
+The generated file is a template that lists every configuration key: keys with a fixed default are written out, and the remaining keys are comments with an example value or an empty placeholder. When the install writes the file it prints `generated the configuration file <path>`; when the file already exists it prints `kept the existing configuration file <path>` and, for a system-level install, `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`. Running that command hands an existing installation to the group, whose members then manage the Broker without `sudo`; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group.
 
 If a Broker that this service did not start is already running at that level, the install refuses and asks you to stop it first.
 

@@ -26,6 +26,7 @@ agent-peer does what the rest of this site describes. This page explains the des
 - When the receiving session runs in a mode that skips permission prompts and has no inbound policy set, each message from agent-peer needs individual approval before it enters the session. See the [security model]({{< relref "security.md" >}}).
 - A message that arrives while the receiving session is in the middle of a turn may not reach it as a separate turn.
 - A build that is not a release version cannot update itself. A binary built from source without the release version reports `agent-peer dev`, and `agent-peer update` refuses it.
-- An update does not reconnect sessions that are already open. Each open Claude Code session must reconnect the MCP server with `/mcp` or be restarted before it runs the new version.
-- A system-level installation lives in a directory that an ordinary account cannot write, so updating it needs `sudo agent-peer update`.
-- Updating a shared binary as root restarts only the system-level service. When other accounts run a user-level Broker from the same binary, each of them must restart their own Broker before it uses the new version; the update prints a reminder just before its reconnect notice.
+- When the Broker applies an update, its connections recover automatically, but a session that is already open keeps the old MCP server until it reconnects with `/mcp` or is reopened.
+- Updating a system-level installation needs write permission on its configuration file and a service manager to restart the Broker. A member of the admin group updates it without `sudo`.
+- Updating a shared binary restarts only the system-level service. When other accounts run a user-level Broker from the same binary, each of them must restart their own Broker before it uses the new version.
+- An update installs only a newer formal release. You cannot choose a version, and you cannot go back to an older one.

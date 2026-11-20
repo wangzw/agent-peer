@@ -33,13 +33,13 @@ Broker 被用户设为公开之后，才会发布写着指纹、别名和对外�
 
 Broker 根据操作系统为本机 socket 另一端进程提供的凭据判断调用方能做什么，不采信调用方自己说了什么。写权限允许修改配置、生成一次性配对密钥、配对和解除配对；读权限允许读取配置、读取审计日志，以及查看调用方自己名下以外的状态。列出 Agent 和 topic、加入与退出 topic、发送消息，都不需要文件权限。
 
-因此系统级 Broker 可以用普通的文件权限委派管理：把写权限授予某个组，组里的账户就能经工具或终端命令管理 Broker。管理员用 `sudo` 执行终端命令时按 root 的权限判定，所以默认 0600 的文件已经允许 root 管理 Broker。这也意味着识别出的是账户，不是人，也不是模型。账户下的每个进程都以该账户的权限行事，受提示注入操纵的模型发起的调用，与用户本人发起的调用无法区分。
+因此系统级 Broker 可以用普通的文件权限委派管理：系统级安装把新生成的配置文件交给默认的 `agent-peer` 组，组成员不用 `sudo` 就能经工具或终端命令管理 Broker。这有两条限制，见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)。`broker.listen` 的端口小于 1024 时，只有在配置文件只能由 root 写时才生效。直接编辑配置文件引起的改动，审计日志里没有账户归属。管理员用 `sudo` 执行终端命令时按 root 的权限判定。这也意味着识别出的是账户，不是人，也不是模型。账户下的每个进程都以该账户的权限行事，受提示注入操纵的模型发起的调用，与用户本人发起的调用无法区分。
 
 ## 投递消息时不使用认证令牌
 
 Claude Code 允许向会话 inbox socket 写入的进程出示认证令牌。agent-peer 不出示令牌，也不读取令牌文件。于是投递的文本进入目标会话时，被当作没有声明权限类别的发送方。接收方会话对这类消息执行入站控制。以跳过权限确认的模式运行且没有设置入站策略的会话，会把每条消息暂扣，逐条批准后才放进会话。以无界面方式运行且跳过权限确认的会话收不到 agent-peer 的消息：接收方的 Claude Code 先把消息暂扣，随后因发送方没有声明权限类别而丢弃，而发送方那边已经返回成功。见[设计取舍与注意事项]({{< relref "limitations.md" >}})。
 
-Broker 的设计是不做任何会话的后代进程。用户级 Broker 由服务管理器启动，或由用户在终端里启动，不在会话的进程树内；系统级 Broker 则作为服务运行在进程树之外。能使用本机系统级 Broker 的账户不需要用户级 Broker；正在运行的用户级 Broker 优先于系统级 Broker，除非会话的工具配置指定了某个 Broker。
+Broker 的设计是不做任何会话的后代进程。用户级 Broker 由服务管理器启动，或由用户在终端里启动，不在会话的进程树内；系统级 Broker 则作为服务运行在进程树之外。能使用本机系统级 Broker 的账户不需要用户级 Broker；正在运行的用户级 Broker 优先于系统级 Broker。
 
 原生 Windows 不支持，因为那里的 inbox 连接强制要求认证行。
 
@@ -57,9 +57,9 @@ agent-peer 写入时不带回复地址，所以经同一个用户级 Broker，�
 
 ## 更新检查会访问 GitHub
 
-每个 Broker 在启动后不久检查一次 GitHub 上有没有更新的正式发布版本，此后默认每 24 小时检查一次。`agent-peer update` 命令直接向 GitHub 查询，不经过 Broker。
+每个 Broker 在启动后不久检查一次 GitHub 上有没有更新的正式发布版本，此后默认每 24 小时检查一次。`agent-peer update` 选中在服务管理器下运行的 Broker 时，由该 Broker 执行更新，系统级与用户级都是如此。没有正在运行的 Broker，或选中的用户级 Broker 不在服务管理器下运行时，由命令自己执行更新。
 
-检查与下载全程只走 HTTPS。检查只访问 GitHub；下载可能被 GitHub 重定向到它的存储主机，按主机名放行的环境要把两者都放行。检查是向 `https://api.github.com/repos/wangzw/agent-peer/releases/latest` 发出的一个普通 GET 请求，不带额外请求头；仓库名 `wangzw/agent-peer` 写死在二进制里。执行更新时，命令按你确认过的 tag 取该版本，再从该版本的发布附件下载地址取得发布包与 `checksums.txt`。两种请求都不携带主机名、账户名、Agent 身份、配对信息或配置内容。
+检查与下载全程只走 HTTPS。检查只访问 GitHub；下载可能被 GitHub 重定向到它的存储主机，按主机名放行的环境要把两者都放行。检查是向 `https://api.github.com/repos/wangzw/agent-peer/releases/latest` 发出的一个普通 GET 请求，不带额外请求头；仓库名 `wangzw/agent-peer` 写死在二进制里。经 Broker 执行的更新，由 Broker 按自己选定的 tag 取该版本；由命令执行的更新，按你确认过的 tag 取该版本。两种情形都从该版本的发布附件下载地址取得发布包与 `checksums.txt`。这些请求都不携带主机名、账户名、Agent 身份、配对信息或配置内容。
 
 检查失败只写一条 Debug 级日志，不影响其他功能；检查结果只保存在内存里，Broker 重启后不再保留。要停止检查，执行：
 
@@ -67,6 +67,8 @@ agent-peer 写入时不带回复地址，所以经同一个用户级 Broker，�
 agent-peer config set update.check false
 ```
 
-设置生效后，`agent-peer status` 里的 `Update` 一行和会话里的提示会立刻消失。没有外网的主机关掉检查即可；`agent-peer update` 只在你手动执行时才访问网络。命令读取标准的代理环境变量；系统级更新如何保留它们，见[更新 agent-peer]({{< relref "guides/update.md" >}})。
+设置生效后，`agent-peer status` 里的 `Update` 一行和会话里的提示会立刻消失。没有外网的主机关掉检查即可；`agent-peer update` 只在你手动执行时才访问网络。下载使用执行下载的进程的代理环境变量：由 Broker 执行更新时，系统级与用户级都一样，取自 Broker 服务进程；命令在本地替换二进制时，取自执行命令的进程。更新过程见[更新 agent-peer]({{< relref "guides/update.md" >}})。
 
-只有你能安装新版本。会话无法触发更新；`agent-peer update` 会先征求确认，你输入 y 或 yes，或者加上 `--yes` 之后才安装。命令在替换二进制之前用 SHA-256 把发布包与 `checksums.txt` 比对，解压时只取名为 `agent-peer` 的普通文件，并运行新二进制的 `--version`，输出符合预期才继续。替换之前的任何一步失败，原有的二进制与服务都保持原样；替换之后重启服务失败时，新二进制已经装好，按报错手动重启服务即可，见[更新 agent-peer]({{< relref "guides/update.md" >}})。系统级安装需要管理员权限：执行 `sudo agent-peer update`，命令会在下载任何内容之前先检查目标目录的写权限。
+更新只在确认之后进行。`agent-peer update` 会先征求确认，你输入 y 或 yes，或者加上 `--yes` 之后才安装。会话可以用 `update_broker` 工具发起同样的升级，Claude Code 默认会在执行前请你确认；不要把 `update_broker` 加入自动批准名单，因为这条确认是升级前的最后一道人工检查。替换之前，发布包会先用 SHA-256 与 `checksums.txt` 比对，解压时只取名为 `agent-peer` 的普通文件，新二进制的 `--version` 必须报告预期的版本。替换之前的任何一步失败，原有的二进制与服务都保持原样。由 Broker 执行更新时，命令不会自己重启服务：它最多等 60 秒，看 Broker 是否报告新版本；超时就给出服务日志的位置。系统级更新需要对 Broker 配置文件的写权限：没有写权限的账户在下载任何内容之前就会被拒绝。没有系统级 Broker 在运行时，命令改为在本地替换二进制，检查的是二进制所在目录的写权限，不是配置文件的写权限。更新过程见[更新 agent-peer]({{< relref "guides/update.md" >}})。
+
+管理组成员可以让以 root 运行的 Broker 安装本项目最新的正式发布版本，可信程度与 root 自己执行更新相同。调用方不能指定来源或版本，也不能降级。发布没有签名，所以更新的安全性依赖到 GitHub 的 HTTPS 与 `checksums.txt`。

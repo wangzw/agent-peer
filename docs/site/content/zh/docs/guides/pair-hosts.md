@@ -11,7 +11,7 @@ weight: 1
 - 两个 Broker 都在运行，彼此尚未配对。
 - 在接受配对的那台主机上，Broker 按默认地址监听：本机全部地址的 17443 端口。另一台主机能连到接受方 Broker 的某个对外地址；另一台主机可以位于 NAT 之后。
 - 两位用户之间有一条 agent-peer 之外的可信途径，用来传递密钥。
-- 运行会话或终端命令的账户对各自的 Broker 配置文件有写权限。用户级 Broker 的配置文件属于该账户，所以自然满足。系统级 Broker 上普通账户默认没有写权限，该侧生成密钥和连接都需要写权限，写操作由管理员用 `sudo` 执行，即 `sudo agent-peer pairing-key create` 与 `sudo agent-peer peer connect <address> --key <key>`；管理员也可以按[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}})的做法授予写权限。
+- 运行会话或终端命令的账户对各自的 Broker 配置文件有写权限。用户级 Broker 的配置文件属于该账户，所以自然满足。系统级 Broker 上，管理组拥有写权限：组成员在该侧直接执行命令；不在组内的账户请管理员把它加入组，或由管理员代为执行。本账户的用户级 Broker 正在运行时，用 `sudo` 访问系统级 Broker。管理组与权限规则见[管理组]({{< relref "management-permissions.md" >}}#管理组)。
 
 ## 生成配对密钥
 

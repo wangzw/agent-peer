@@ -79,7 +79,7 @@ pairing:
 - 时长写成 Go 时长语法，例如 `10m`、`500ms`、`1s` 或 `1h30m`。时长必须大于零。
 - 整数必须大于零，`send.link_retries` 和 `send.inbox_retries` 例外，可以取 `0`。
 - `link.reconnect_max` 不得小于 `link.reconnect_min`；`link.keepalive_timeout` 必须小于 `link.keepalive_interval`。修改其中一对里的一个键时，会与另一个一起校验。
-- `broker.listen` 写作 `host:port`、`:port` 或 `[v6]:port`，端口为 1 至 65535。修改为另一个值时，系统会先探测该地址，无法绑定的地址会被拒绝。
+- `broker.listen` 写作 `host:port`、`:port` 或 `[v6]:port`，端口为 1 至 65535。修改为另一个值时，系统会先探测该地址，无法绑定的地址会被拒绝。系统级 Broker 的端口小于 1024 时，只有在配置文件只能由 root 写时才生效；配置文件可被组或其他人写入时，Broker 遇到这样的端口会拒绝启动。这条限制见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}}#管理组)。
 - `broker.advertise` 与 `broker.advertise_extra` 要求有监听地址；只有端口的 `broker.advertise` 还要求监听本机全部地址。
 - 配置的对外地址，连同监听特定地址时隐含的那一项，最多 8 项。默认路由所在接口的地址会使列表超过 8 项时，从这部分末尾舍去；配置的项全部保留。
 - `broker.local_socket_group` 必须指向存在的组，不存在时启动失败。

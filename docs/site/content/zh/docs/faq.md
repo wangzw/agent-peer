@@ -63,7 +63,7 @@ Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见
 
 ## 怎样更新 agent-peer？
 
-在终端运行 `agent-peer update`；系统级安装要运行 `sudo agent-peer update`。命令向 GitHub 查询最新的正式发布版本，校验下载内容，替换二进制，并重启已安装的服务；已经打开的会话要用 `/mcp` 重连或重开后才会用上新版本。见[更新 agent-peer]({{< relref "guides/update.md" >}})。
+在终端运行 `agent-peer update`，或在会话里调用 `update_broker`。系统级安装由管理组成员更新，不用 `sudo`；不在组内的账户用 `sudo agent-peer update`，或先加入管理组。同一账户还运行着用户级 Broker 时，用 `sudo agent-peer update` 到达系统级 Broker。更新会校验下载内容、替换二进制；作为服务运行的 Broker 会用新版本重启，没有在运行的 Broker 在下次启动时用上新版本。已经打开的会话要用 `/mcp` 重连或重开。见[更新 agent-peer]({{< relref "guides/update.md" >}})。
 
 ## 能关闭更新检查吗？
 
@@ -99,7 +99,7 @@ topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会�
 
 ## 谁能修改 Broker 的配置？
 
-对 Broker 配置文件有写权限的账户可以用 `set_config` 或 `agent-peer config set` 修改配置，用 `create_pairing_key` 或 `agent-peer pairing-key create` 生成一次性配对密钥，用 `connect_broker` 与 `disconnect_broker`，或 `agent-peer peer connect` 与 `agent-peer peer disconnect` 配对和解除配对；读权限允许读取配置和审计日志。终端命令按执行命令的账户判定权限；管理员用 `sudo` 执行时，系统级 Broker 按 root 的权限判定。见[管理权限]({{< relref "guides/management-permissions.md" >}})。
+对 Broker 配置文件有写权限的账户可以用 `set_config` 或 `agent-peer config set` 修改配置，用 `create_pairing_key` 或 `agent-peer pairing-key create` 生成一次性配对密钥，用 `connect_broker` 与 `disconnect_broker`，或 `agent-peer peer connect` 与 `agent-peer peer disconnect` 配对和解除配对；读权限允许读取配置和审计日志。终端命令按执行命令的账户判定权限。管理组成员不用 `sudo` 就能管理系统级 Broker；管理员用 `sudo` 执行命令时，系统级 Broker 按 root 的权限判定。见[管理权限]({{< relref "guides/management-permissions.md" >}})，管理组的说明见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)一节。
 
 ## 端口被占用时会怎样？
 

@@ -22,8 +22,8 @@ Commands:
   peer connect <address> --key <key> [--alias <alias>]
                               pair with another Broker
   peer disconnect <broker>    remove a pairing
-  update [--yes]              update to the latest release and restart the
-                              installed service; --yes skips the question
+  update [--yes]              update through the selected Broker, or replace
+                              the user-level binary locally; --yes skips the question
   service install [--system]  install and start the Broker as a user-level service,
                               or system-level with --system
   service uninstall [--system]
@@ -46,7 +46,7 @@ Commands:
 
 ## agent-peer mcp
 
-在进程的标准输入与标准输出上为一个 Claude Code 会话运行 MCP 服务。Claude Code 按 MCP 注册启动这个进程，通常不必手动运行。会话按以下顺序选定 Broker：`AGENT_PEER_SOCKET` 指定的 socket、本账户的用户级 Broker、系统级 Broker；顺序与相关设置见[运行系统级 Broker]({{< relref "/docs/guides/system-broker" >}})。正在运行的用户级 Broker 优先于系统级 Broker；在能使用系统级 Broker 的账户上安装用户级服务，这些账户的会话就会改连用户级 Broker，不再使用系统级 Broker。没有 Broker 可用时，工具调用返回错误，说明该怎么做，具体提示分三种情形。第一次查找时用户级与系统级 Broker 都找不到，或者用户级 Broker 的 socket 消失、拒绝连接（例如被强杀之后），报的是同一条：先提示本机如有系统级 Broker 请管理员启动它，再给出两种用户级启动方法，即 `agent-peer service install` 与在 Claude Code 之外的终端里运行 `agent-peer broker`。原先连在系统级 Broker 上的会话断开后，只提示联系管理员。用户级 socket 还在应答，但握手或调用失败时，报告 Broker 不可用，并在后台重试，不给出启动方法。在会话里启动的 Broker 会以退出码 6 失败。
+在进程的标准输入与标准输出上为一个 Claude Code 会话运行 MCP 服务。Claude Code 按 MCP 注册启动这个进程，通常不必手动运行。本账户有用户级 Broker 在运行时，会话使用这个用户级 Broker；否则，本账户有权连接系统级 Broker 时，会话使用系统级 Broker。选择规则与相关设置见[运行系统级 Broker]({{< relref "/docs/guides/system-broker" >}})。正在运行的用户级 Broker 优先于系统级 Broker；在能使用系统级 Broker 的账户上安装用户级服务，这些账户的会话就会改连用户级 Broker，不再使用系统级 Broker。没有 Broker 可用时，工具调用返回错误，说明该怎么做，具体提示分三种情形。第一次查找时用户级与系统级 Broker 都找不到，或者用户级 Broker 的 socket 消失、拒绝连接（例如被强杀之后），报的是同一条：先提示本机如有系统级 Broker 请管理员启动它，再给出两种用户级启动方法，即 `agent-peer service install` 与在 Claude Code 之外的终端里运行 `agent-peer broker`。原先连在系统级 Broker 上的会话断开后，只提示联系管理员。用户级 socket 还在应答，但握手或调用失败时，报告 Broker 不可用，并在后台重试，不给出启动方法。在会话里启动的 Broker 会以退出码 6 失败。
 
 ## agent-peer status
 
@@ -75,9 +75,9 @@ Update: <v> available (current <c>); run agent-peer update
 
 ## Broker 管理命令
 
-`config`、`pairing-key` 与 `peer` 下的命令连接正在运行的 Broker，不会启动 Broker。查找顺序与会话相同：`AGENT_PEER_SOCKET` 指定的 socket、本账户正在运行的用户级 Broker、系统级 Broker。正在运行的用户级 Broker 优先于系统级 Broker，所以本账户的用户级 Broker 在运行时若要管理系统级 Broker，须设置 `AGENT_PEER_SOCKET`，或以 `sudo` 执行命令。顺序与相关设置见[运行系统级 Broker]({{< relref "/docs/guides/system-broker" >}})。
+`config`、`pairing-key` 与 `peer` 下的命令连接正在运行的 Broker，不会启动 Broker。它们按执行命令的操作系统账户选择 Broker，没有按级别指定 Broker 的命令行选项：先找本账户正在运行的用户级 Broker，再找本账户有权使用的系统级 Broker。本账户运行着自己的用户级 Broker、又要管理系统级 Broker 时，必须以 `sudo` 执行命令。`status`、`audit` 与 `update` 遵循同一规则。选择规则与相关设置见[运行系统级 Broker]({{< relref "/docs/guides/system-broker" >}})。
 
-Broker 按执行命令的账户判定每个命令的权限，规则与对应的工具相同。写操作留下的审计记录中，`account` 是执行命令的账户，`actor` 为空。管理员以 `sudo` 执行时，系统级 Broker 按 root 的权限判定。这些命令不经过 Claude Code 的权限确认。Broker 拒绝某个命令时，它给出的英文错误写到标准错误，其中包含配置文件的路径，命令以退出码 1 结束。
+Broker 按执行命令的账户判定每个命令的权限，规则与对应的工具相同。写操作留下的审计记录中，`account` 是执行命令的账户，`actor` 为空。管理员以 `sudo` 执行时，系统级 Broker 按 root 的权限判定。系统级 Broker 管理组的成员不用 `sudo` 也能管理它；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。这些命令不经过 Claude Code 的权限确认。Broker 拒绝某个命令时，它给出的英文错误写到标准错误，其中包含配置文件的路径，命令以退出码 1 结束。
 
 这些命令的输出沿用 `agent-peer status` 的约定：空值写 `-`。
 
@@ -146,42 +146,62 @@ Addresses:
 
 ## agent-peer update
 
-检查 GitHub 上是否有最新的正式发布版本，经确认后替换正在运行的二进制，并重启已安装的服务。
+安装最新的正式发布版本：要么请选中的 Broker 自己更新，要么在本地替换二进制。
 
 ```text
 usage: agent-peer update [--yes]
 ```
 
-命令直接查询 GitHub，不联系 Broker，没有 Broker 在运行也能用。它替换的是可执行文件解析符号链接后实际指向的文件，符号链接本身不变。替换系统级安装要用 `sudo agent-peer update`，因为系统级安装所在的目录属于 root；这样运行只重启系统级服务。
+命令只安装比当前版本更新的正式发布版本：草稿与预发布一律忽略，不能指定版本，也不会降级。
 
-- `--yes` 跳过确认问题。不给时，命令询问 `Update to <v>? [y/N]`，输入 `y` 或 `yes`（不区分大小写）即确认。标准输入不是终端时，没有 `--yes` 就拒绝执行。已经是最新版本时，不需要 `--yes`，标准输入不是终端也能运行。
+- `--yes` 跳过确认问题。不给时，命令询问 `agent-peer <c> is installed. Update to the latest release? [y/N]`（`<c>` 是当前版本），输入 `y` 或 `yes`（不区分大小写）即确认。标准输入不是终端时，没有 `--yes` 就拒绝执行。用户回答 `n` 时，命令输出 `Update canceled; nothing was changed.`，以退出码 0 结束。
+- 用法错误以退出码 2 结束，其余失败以退出码 1 结束。更新成功、已是最新与取消更新都以退出码 0 结束。
 
-命令按以下顺序执行：
+### 由 Broker 执行
+
+命令选中正在运行的 Broker 时，由它自己安装更新。系统级 Broker 管理组的成员不用 `sudo` 就能更新它；本账户运行着自己的用户级 Broker 时，用 `sudo agent-peer update` 作用于系统级 Broker。
 
 1. 当前版本不是正式发布版本时拒绝执行。从源码构建、未带发布版本号的二进制报告 `agent-peer dev`，不能自我更新。
-2. 定位正在运行的可执行文件，并解析符号链接。
-3. 检查能否写入目标所在的目录，这一步先于任何下载。没有写权限时失败，并提示改用 `sudo agent-peer update`。
-4. 查询最新的正式发布版本，草稿与预发布不算。已经是最新版本时，输出 `agent-peer <c> is up to date`，以退出码 0 结束。
-5. 没有给 `--yes` 且标准输入不是终端时，拒绝执行。
-6. 打印当前版本、可用版本、发布页面地址（有的话），并询问是否更新。
-7. 下载本平台与架构的发布包和 `checksums.txt`，核对发布包的 SHA-256，取出其中名为 `agent-peer` 的普通文件，并运行新二进制的 `--version`，确认它报告的版本符合预期。
-8. 在目标所在的目录写入新二进制，把属主与权限改成与原文件相同，再改名到目标路径。旧版本不保留。
-9. 重启调用方所在级别已安装的服务：以 root 运行时是系统级服务，否则是用户级服务。没有安装为服务时，提示自行重启正在运行的 Broker。
-10. 提示已经打开的 Claude Code 会话要用 `/mcp` 重连或重开会话。
+2. 把请求发给选中的 Broker。Broker 按对配置文件的写权限判定权限，命令不先行检查。权限被拒时，Broker 的英文错误写到标准错误，命令以退出码 1 结束，没有发出任何下载请求。
+3. 已经是最新版本时，命令输出 `agent-peer <c> is up to date`，以退出码 0 结束。
+4. Broker 下载本平台与架构的发布包和 `checksums.txt`，核对发布包的 SHA-256，取出其中名为 `agent-peer` 的普通文件，并运行新二进制的 `--version`，确认它报告的版本符合预期。然后它替换自己的二进制；符号链接仍指向更新后的文件。
+5. Broker 先应答再重启。命令输出 `The Broker is restarting to version <v>.`，并等到重启后的 Broker 报告该版本，因为只有新进程在运行，更新才算完成。成功时输出 `The Broker is running agent-peer <v>.`，随后输出会话提示。重启后的 Broker 未及时报告新版本时，命令失败，并给出该级别服务日志的位置。
+6. 会话提示为 `Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.`
 
-更新成功的输出如下。只有发布填了地址时才出现 `Release:` 一行。
+在终端里启动、而不是由服务管理器启动的用户级 Broker 不能替换并重启自己，会把命令交给下面的本地替换。
+
+### 本地替换二进制
+
+没有正在运行的 Broker，或上面的用户级 Broker 无法自我更新时，命令在本地替换二进制：
+
+1. 当前版本不是正式发布版本时拒绝执行，同上。
+2. 定位正在运行的可执行文件，并解析符号链接。只替换它们指向的文件。
+3. 检查能否写入目标所在的目录，这一步先于任何下载。没有写权限时输出 `cannot write to <dir>: ...`，随后输出 `run "sudo agent-peer update" to update a system-level installation`，以退出码 1 结束。
+4. 向 GitHub 查询最新的正式发布版本。已经是最新版本时输出 `agent-peer <c> is up to date`，以退出码 0 结束。
+5. 下载本平台与架构的发布包和 `checksums.txt`，核对发布包的 SHA-256，取出其中名为 `agent-peer` 的普通文件，并运行新二进制的 `--version`，确认它报告的版本符合预期。它输出 `agent-peer <c> is installed; version <v> is available.`；发布填了地址时再输出 `Release: <url>`。
+6. 在目标所在的目录写入新二进制，把属主与权限改成与原文件相同，再改名到目标路径。旧版本不保留。它输出 `agent-peer <v> is installed.`。
+7. 不启动也不重启任何服务，因为服务可能是有意停掉的。它输出 `The new binary takes effect the next time the Broker starts.`。
+
+更新成功的输出是下面两种之一。只有发布填了地址时才出现 `Release:` 一行。
+
+由 Broker 执行：
 
 ```text
-agent-peer 0.2.0 is installed; version 0.2.1 is available.
-Release: https://github.com/wangzw/agent-peer/releases/tag/v0.2.1
-Update to 0.2.1? [y/N] y
-agent-peer 0.2.1 is installed.
-Restarted the agent-peer service.
-User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.
-Open Claude Code sessions must reconnect with /mcp or be restarted to use the new version.
+agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
+The Broker is restarting to version 0.2.1.
+The Broker is running agent-peer 0.2.1.
+Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.
 ```
 
-给了 `--yes` 时不打印询问。用户回答 `n` 时，命令输出 `Update canceled; the binary and service were not changed.`，以退出码 0 结束。没有安装为服务时，重启那一行换成 `The Broker is not installed as a service; restart it to use the new version.`。
+本地替换：
+
+```text
+agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
+agent-peer 0.2.0 is installed; version 0.2.1 is available.
+Release: https://github.com/wangzw/agent-peer/releases/tag/v0.2.1
+agent-peer 0.2.1 is installed.
+The new binary takes effect the next time the Broker starts.
+```
 
 失败信息写到标准错误，前缀为 `agent-peer update: `，包括：
 
@@ -190,18 +210,18 @@ Open Claude Code sessions must reconnect with /mcp or be restarted to use the ne
 - `standard input is not a terminal; run "agent-peer update --yes" to update without asking`
 - `checksum mismatch for <archive>`
 - `downloaded binary reported "<x>", want "agent-peer <v>"`
-- `restarting the service: ...`
-
-用法错误以退出码 2 结束，其余失败以退出码 1 结束。更新成功、已是最新与取消更新都以退出码 0 结束。
+- `the Broker did not report version <v> within <duration>; check the service log with <command or path>`
+- `the Broker is not running under a service manager, so it cannot start the new binary again; install it as a service and run the update against that service (for example, "agent-peer service install" or "sudo agent-peer service install --system")`
+- `another update is already in progress`
 
 ## agent-peer service install
 
 写入并启用服务定义，然后立即启动 Broker。它会等 Broker 应答，最多等 20 秒；超时会使安装失败，并给出服务日志的位置。重新安装会用新的二进制替换正在运行的 Broker。
 
 - 不带 `--system` 时安装用户级服务，账户登录时启动 Broker。不能以 root 运行。在 macOS 上只能在图形登录会话里运行。`~/.agent-peer/config.yaml` 不存在时，生成这个文件，属主为执行安装的账户，权限 `0600`；已存在的文件不改动。
-- 带 `--system` 时安装系统级服务，开机时启动 Broker。必须以 root 运行。`/etc/agent-peer/config.yaml` 不存在时，生成这个文件，属主为 root，权限 `0600`；已存在的文件不改动。
+- 带 `--system` 时安装系统级服务，开机时启动 Broker。必须以 root 运行。组 `agent-peer` 不存在时，命令新建它；已存在时直接使用，不改动成员。`/etc/agent-peer/config.yaml` 不存在时，生成这个文件，属主为 `root`，组为 `agent-peer`，权限 `0660`；已存在的文件不改动。`--admin-group <name>` 只在带 `--system` 时有效，用于改用另一个组；组名只能以小写字母或下划线开头，其后只能是小写字母、数字、下划线或连字符。
 
-生成的文件是一份列出全部键的模板：有固定默认值的键写出取值，其余键写成注释并附示例值或空占位。安装写入文件时输出 `generated the configuration file <path>`，文件已存在时输出 `kept the existing configuration file <path>`。
+生成的文件是一份列出全部键的模板：有固定默认值的键写出取值，其余键写成注释并附示例值或空占位。安装写入文件时输出 `generated the configuration file <path>`，文件已存在时输出 `kept the existing configuration file <path>`，系统级安装还会输出 `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`。执行这条命令就把已有安装交给该组，组成员随后不用 `sudo` 就能管理 Broker；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。
 
 如果这一级别已有 Broker 正在应答，而且不是这个服务启动的，安装会被拒绝，并提示先停掉它。
 

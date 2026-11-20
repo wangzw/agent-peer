@@ -20,6 +20,7 @@ A Claude Code session reaches agent-peer through an MCP server named `peer`. The
 | `create_pairing_key` | Creates a one-time pairing key and reports this Broker's addresses. | None. | Write |
 | `get_config` | Reads this Broker's configuration. | `key` (string, optional): one key such as `broker.alias`; omit it for every key. | Read |
 | `set_config` | Changes one configuration key. | `key` (string, required). `value` (string, required): the new value as text, such as `10m`, `true` or `[a, b]`. | Write |
+| `update_broker` | Upgrades this Broker to the latest formal release and restarts it. | None. | Write |
 
 ## Results
 
@@ -45,23 +46,29 @@ A Claude Code session reaches agent-peer through an MCP server named `peer`. The
 
 `get_config` returns `entries`, each with a `key` and a `value`. For a secret key the value is only `(set)` or `(not set)`. `set_config` returns the key with its `old_value` and `new_value`.
 
+### Updates
+
+`update_broker` returns `from_version`, `to_version`, `restarting` and a `result` sentence. When the Broker upgrades, `restarting` is true and the result is `Upgrading the Broker from <from> to <to>; the Broker restarts and the connection recovers automatically. Reopen this session to use the new MCP server.` When it is already up to date, `to_version` is empty, `restarting` is false, and the result is `The Broker is already up to date (<from>).` The call returns as soon as the Broker answers, before the restart finishes.
+
 ### Update notice
 
 Each MCP server process queries the Broker for the update state on its first tool call, and then at most once every 10 minutes. When a newer formal release is known, that tool result ends with one more text block:
 
 ```text
-agent-peer <v> is available (this host runs <c>). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
+agent-peer <v> is available (this Broker runs <c>). Ask the agent to call update_broker, or run `agent-peer update` in a terminal.
 ```
 
-`<v>` is the available version and `<c>` is the current version. A session shows the notice once for a given version; if a newer release appears while the session stays open, a later tool call carries the notice again. A tool call that ends in a tool error still carries it. The notice is omitted and the tool result is unchanged when the query fails or times out, when the Broker does not support the query because it is an older Broker, or when `update.check` is off. The session has no tool that installs an update; run `agent-peer update` in a terminal.
+`<v>` is the available version and `<c>` is the current version. A session shows the notice once for a given version; if a newer release appears while the session stays open, a later tool call carries the notice again. A tool call that ends in a tool error still carries it. The notice is omitted and the tool result is unchanged when the query fails or times out, when the Broker does not support the query because it is an older Broker, or when `update.check` is off.
 
 ## Config-file permission
 
 The permission column in the table names the level of access the calling account has to the Broker's configuration file. The account is taken from the process credentials the operating system reports for the local socket, not from anything the call says.
 
 - A user Broker's configuration file belongs to the account, so every call passes.
-- A system Broker uses the file to decide: read access allows `get_config`; write access allows `connect_broker`, `disconnect_broker`, `create_pairing_key` and `set_config`. An administrator delegates these operations by granting a group access to the file.
+- A system Broker uses the file to decide: read access allows `get_config`; write access allows `connect_broker`, `disconnect_broker`, `create_pairing_key`, `set_config` and `update_broker`. An administrator delegates these operations by granting the `agent-peer` group access to the file; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group.
 - The messaging and topic tools, and `list_brokers`, need no file permission.
+
+Unlike the read-only tools, `update_broker` does not carry the read-only annotation and is declared destructive, so Claude Code asks by default for confirmation before the call runs. Do not add it to automatic approval: that confirmation is the last manual check before the Broker is replaced and restarted.
 
 `list_agents`, `send_message`, `list_topics`, `join_topic` and `leave_topic` act for the session and need a registered session. The discovery, pairing and configuration tools also work while registration is still pending.
 

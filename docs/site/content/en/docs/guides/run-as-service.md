@@ -32,7 +32,7 @@ The unit or plist runs `agent-peer broker` as that account. It starts when the a
 
 ## Install a system-level service
 
-A system-level install runs as root and makes the Broker start at boot. From an extracted release archive, `sudo sh ./install.sh --system` installs the binary and the service in one step, and so does the online system-level command in [Getting Started]({{< relref "/docs/getting-started" >}}). The steps below do the two parts by hand.
+A system-level install runs as root and makes the Broker start at boot. From an extracted release archive, `sudo sh ./install.sh --system` installs the binary and the service in one step, and so does the online system-level command in [Getting Started]({{< relref "/docs/getting-started" >}}). The steps below do the two parts by hand. The script also asks whether to add the account that ran `sudo` to the admin group, with the answer defaulting to no; [The admin group]({{< relref "management-permissions.md" >}}#the-admin-group) covers the group and the options that control the question.
 
 The binary must be in a directory that root owns and that group and others cannot write, such as `/usr/local/bin`. The service starts the binary as root, so an ordinary account that can modify the binary or one of its parent directories could take over the service:
 
@@ -46,7 +46,7 @@ On an Intel Mac with Homebrew, `/usr/local/bin` belongs to the ordinary user, so
 
 The install checks the binary and every directory above it, then starts the Broker immediately.
 
-On Linux the command writes `/etc/systemd/system/agent-peer.service`, enables it and starts it. On macOS it writes and loads `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`. A system install also generates the configuration file at `/etc/agent-peer/config.yaml` from the system-level template if it does not exist, owned by root with mode `0600`; an existing file is left unchanged.
+On Linux the command writes `/etc/systemd/system/agent-peer.service`, enables it and starts it. On macOS it writes and loads `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist`. A system install also generates the configuration file at `/etc/agent-peer/config.yaml` from the system-level template if it does not exist, owned by root, with group `agent-peer` and mode `0660`; an existing file is left unchanged, and the install prints the command to give it to the group. [The admin group]({{< relref "management-permissions.md" >}}#the-admin-group) covers the group.
 
 ## Uninstall a service
 
