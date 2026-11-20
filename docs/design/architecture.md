@@ -53,7 +53,7 @@ Agent 地址是相对于看到它的 Broker 而言的。同一个 Agent 在两�
 | 发送调用返回时给出最终结果，不留后续状态 | 发送全程同步，结果是成功、未送达或结果未知；接收方按消息标识去重；系统自身不为消息排队（[ADR-synchronous-delivery](../adr/adr-synchronous-delivery.md)） | [broker](modules/design-broker.md) |
 | 回复时地址一定能解析，对端也不能冒用别的对端的别名 | Agent 地址相对于看到它的 Broker，署名由接收方的 Broker 按自己对发送方 Broker 的生效别名（为对方设的本地别名，没有时是对方自报的别名）拼出；别名冲突在每次得知对方别名时检查 | [broker](modules/design-broker.md)、[pairing](modules/design-pairing.md) |
 | 同一主机上既要有管理员统一提供的 Broker，又要让没有特权的账户自行使用 | 系统级与用户级两种形态；同一账户至多一个实例，由只取决于账户的锁保证（[ADR-broker-deployment-modes](../adr/adr-broker-deployment-modes.md)） | [broker](modules/design-broker.md)、[config](modules/design-config.md) |
-| 两台主机默认就能配对，同一主机上的多个 Broker 又不互相顶替 | 默认配置下即在本机全部地址上监听；监听地址无法绑定时启动失败，不自动更换（[ADR-listen-by-default](../adr/adr-listen-by-default.md)） | [broker](modules/design-broker.md)、[link](modules/design-link.md)、[config](modules/design-config.md) |
+| 两台主机默认就能配对，同一主机上的多个 Broker 又不互相顶替 | 默认配置下即在本机全部地址上监听；监听地址无法绑定时不自动更换，前台运行启动失败，作为服务的进入降级运行，本机功能照常（[ADR-listen-by-default](../adr/adr-listen-by-default.md)、[ADR-degraded-run](../adr/adr-degraded-run.md)） | [broker](modules/design-broker.md)、[link](modules/design-link.md)、[config](modules/design-config.md) |
 | 监听全部地址的 Broker 不知道别的 Broker 该连向哪里 | 对外地址是一个列表，默认取默认路由所在接口的地址，可改为指定的地址或追加地址；接受方在握手应答、`Hello` 与 `PeerInfo` 中把它告诉拨号方，公开 Broker 把它签进名片；列表的每一项带有种类，种类不认识的项被跳过；拨号方按顺序逐个尝试候选地址并核对指纹（[ADR-advertised-address](../adr/adr-advertised-address.md)） | [link](modules/design-link.md)、[pairing](modules/design-pairing.md)、[directory](modules/design-directory.md)、[config](modules/design-config.md) |
 | 多个账户共用一个 Broker 时确定谁在调用、谁能做管理操作 | 调用方的账户取自本机 socket 另一端进程的凭据（进程凭据）；管理操作以调用方账户对配置文件的写权限为前提（[ADR-management-by-config-file-permission](../adr/adr-management-by-config-file-permission.md)） | [broker](modules/design-broker.md) |
 | 让用户能分别控制读配置与改配置，并能事后追查 | 读写分成不同的工具并标注只读属性，每次变更写审计日志（[ADR-config-through-tools](../adr/adr-config-through-tools.md)） | [mcpserver](modules/design-mcpserver.md)、[config](modules/design-config.md) |
@@ -141,7 +141,7 @@ MCP 服务进程由 Claude Code 作为会话的子进程启动，生命周期与
 | MCP 服务进程，`agent-peer mcp` | Claude Code 按会话的工具配置启动 | 每会话一个 | 无 |
 | 终端命令，例如 `agent-peer status` | 用户执行 | 按需 | 无 |
 
-默认配置下 `broker.listen` 是 `:17443`，Broker 在本机全部地址的 17443 端口上监听，启用了 IPv6 时包括 IPv6 地址（[ADR-listen-by-default](../adr/adr-listen-by-default.md)，`REQ-broker-config-028`）；这个端口只是默认配置中的取值，代码不为任何端口设特例。同一主机上第二个账户的 Broker 按默认配置启动时，监听地址已被占用，它启动失败并报告该地址不可用，由用户在启动参数 `--listen` 或配置中改用其他地址或端口（`REQ-broker-config-024`、`REQ-broker-config-025`）。`--listen` 只作用于本次运行，不读写配置文件，其间经工具修改监听地址的调用失败（`REQ-broker-config-029`）。其他 Broker 连接它时使用它的对外地址，默认是默认路由所在接口的地址，每个地址都配上监听端口（[ADR-advertised-address](../adr/adr-advertised-address.md)，`REQ-broker-config-030`）。
+默认配置下 `broker.listen` 是 `:17443`，Broker 在本机全部地址的 17443 端口上监听，启用了 IPv6 时包括 IPv6 地址（[ADR-listen-by-default](../adr/adr-listen-by-default.md)，`REQ-broker-config-028`）；这个端口只是默认配置中的取值，代码不为任何端口设特例。同一主机上第二个账户的 Broker 按默认配置启动时，监听地址已被占用：新装或重装时，预检发现地址被其他进程占用，安装失败且不注册服务（`REQ-broker-config-064`）；已经装好的服务之后再启动，服务进入仅本机降级，在前台启动则启动失败并报告该地址不可用，由用户在启动参数 `--listen` 或配置中改用其他地址或端口（`REQ-broker-config-024`、`REQ-broker-config-025`、`REQ-broker-config-058`）。`--listen` 只作用于本次运行，不读写配置文件，其间经工具修改监听地址的调用失败（`REQ-broker-config-029`）。其他 Broker 连接它时使用它的对外地址，默认是默认路由所在接口的地址，每个地址都配上监听端口（[ADR-advertised-address](../adr/adr-advertised-address.md)，`REQ-broker-config-030`）。
 
 各类文件的位置随形态而定，完整的路径表见 [config](modules/design-config.md)：用户级的配置、数据与审计日志在账户的 `~/.agent-peer/` 下，系统级的分别在 `/etc/agent-peer/`、`/var/lib/agent-peer/` 与 `/var/log/agent-peer/` 下；运行时目录内有本机 socket 和账户锁，账户锁是保证同一账户至多运行一个 Broker 实例的锁文件；运行时目录只取决于账户，与形态、配置内容、监听地址和环境变量无关。系统级服务在 macOS 上是 launchd 的守护进程，在 Linux 上是 systemd 的系统单元；用户级服务在 macOS 上是 launchd 的用户代理，在 Linux 上是 systemd 的用户单元。两种服务都在安装时立即启动 Broker 并等待本机 socket 应答；卸载先停止服务再删除服务定义，配置、身份与审计日志保留。
 
@@ -192,6 +192,8 @@ sequenceDiagram
 | `pairing_rejected` | 配对密钥无效或已过期、验证失败或尝试过于频繁 | `pairing` |
 | `needs_local_alias` | 发起配对时别名冲突，需要调用方提供本地别名 | `pairing` |
 | `permission_denied` | 调用方账户对 Broker 的配置文件没有该调用所需的读或写权限 | `broker` |
+| `broker_offline` | 本 Broker 下线时拒绝对端的投递 | `broker` |
+| `broker_degraded` | 降级运行中调用不可用的功能 | `broker` |
 | `not_registered` | 调用需要 Agent 身份，而所在会话没有完成登记：找不到会话记录、会话名不可用、登记首帧没有 socket 路径，或 socket 不属于调用方账户；或给出的 Agent 标识无效、不属于调用方账户 | `broker`、`mcpserver` |
 | `version_mismatch` | 本机接口或链路的协议版本不兼容 | `broker`、`link` |
 | `quota_exceeded` | 名录的数量限制已满 | `directory` |
@@ -252,7 +254,7 @@ Broker 内每条链路有一个读协程、一个写协程和一个按序处理�
 
 ### 失败与降级
 
-系统没有降级模式。链路断开期间，远端 Agent 从列表中消失，向它们的发送在重试或等待之后失败。Claude Code 更新导致帧格式不兼容时，全部入站投递失败，由更新 [inbox](modules/design-inbox.md) 依赖的库来恢复。Broker 进程退出后，各 MCP 服务进程的登记连接随之断开，MCP 服务进程按退避重连原来那个 Broker，退避只在登记完成后复位，连上后重新登记（`REQ-broker-config-037`），不等下一次工具调用，空闲的会话因此在 Broker 重启后仍能收到消息：原来连的是用户级 Broker 的，只退避重连它的本机 socket，等待用户级的服务管理机制或用户重新启动它；原来连的是系统级 Broker 的，同样只退避重连它，等待系统的服务管理机制重新启动；两者都不改连其他 Broker。配置的监听地址无法绑定时 Broker 启动失败，工具调用返回说明没有可用 Broker 的错误，直到用户改用其他地址或端口并重新启动它。默认路由所在接口的地址在地址转换之外连不上时，拨号持续失败，直到用户把对外地址配置为指定的地址或追加地址。接受方在链路断开之后、重新建立之前更换了地址，而拨号方又没有从名片得到新地址时，链路无法自行恢复，要重新配对；链路断开期间，接受方发出的消息只在发送的预算内等待对方连入（[ADR-initiator-redials](../adr/adr-initiator-redials.md)）。辅助进程意外退出时，系统级 Broker 有监听时立即在后台重新派生，没有监听时等下一次调用再派生，经它进行中的写入按结果未知处理。Broker 不可用或登记未完成时，MCP 服务进程不退出，工具调用返回说明原因的错误，连接在后台持续重试，会话不需要用户重新连接MCP 服务（`REQ-agent-messaging-038`）。
+作为服务运行的 Broker 带 `--allow-degraded`，取得账户锁之后的监听绑定失败，或数据目录、审计日志不可用，使它进入降级运行，不退出（[ADR-degraded-run](../adr/adr-degraded-run.md)）：只有监听地址无法绑定时，本机 Agent 照常登记与互通，对端连不进来，Broker 按退避重试绑定；数据目录或审计日志不可用时，本机 socket 只提供诊断，工具调用返回 `broker_degraded` 及原因，并每分钟重试，条件恢复后不重启即退出降级。配置文件读不出、解析失败、取值不合法，以及其他与数据目录无关的启动失败，即使带该参数也使进程退出。在前台运行的 Broker 不带该参数，任何启动失败都退出，工具调用返回说明没有可用 Broker 的错误。链路断开期间，远端 Agent 从列表中消失，向它们的发送在重试或等待之后失败。Claude Code 更新导致帧格式不兼容时，全部入站投递失败，由更新 [inbox](modules/design-inbox.md) 依赖的库来恢复。Broker 进程退出后，各 MCP 服务进程的登记连接随之断开，MCP 服务进程按退避重连原来那个 Broker，退避只在登记完成后复位，连上后重新登记（`REQ-broker-config-037`），不等下一次工具调用，空闲的会话因此在 Broker 重启后仍能收到消息：原来连的是用户级 Broker 的，只退避重连它的本机 socket，等待用户级的服务管理机制或用户重新启动它；原来连的是系统级 Broker 的，同样只退避重连它，等待系统的服务管理机制重新启动；两者都不改连其他 Broker。默认路由所在接口的地址在地址转换之外连不上时，拨号持续失败，直到用户把对外地址配置为指定的地址或追加地址。接受方在链路断开之后、重新建立之前更换了地址，而拨号方又没有从名片得到新地址时，链路无法自行恢复，要重新配对；链路断开期间，接受方发出的消息只在发送的预算内等待对方连入（[ADR-initiator-redials](../adr/adr-initiator-redials.md)）。辅助进程意外退出时，系统级 Broker 有监听时立即在后台重新派生，没有监听时等下一次调用再派生，经它进行中的写入按结果未知处理。Broker 不可用或登记未完成时，MCP 服务进程不退出，工具调用返回说明原因的错误，连接在后台持续重试，会话不需要用户重新连接MCP 服务（`REQ-agent-messaging-038`）。
 
 ### 可观测性
 
@@ -290,7 +292,7 @@ Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间�
 - 向 inbox socket 写入的连接上不发送认证行。
 - Broker 进程与它派生的进程都不是任何 Claude Code 会话进程的后代。
 - 同一账户下同一时刻至多有一个 Broker 进程持有账户锁；账户锁的路径不随形态、配置内容、监听地址和环境变量变化。带 `agentpeer_testenv` 构建标签的测试构建例外：`AGENT_PEER_TEST_RUNTIME_ROOT` 与 `AGENT_PEER_TEST_HOME` 可以改变运行时目录与账户家目录，发布构建不含这段代码。
-- 配置的监听地址无法绑定时，Broker 不在任何其他地址或端口上监听：启动时退出，运行期间的修改不提交。
+- 配置的监听地址无法绑定时，Broker 不在任何其他地址或端口上监听：前台运行时在启动阶段退出，带 `--allow-degraded` 的服务进入仅本机降级并重试绑定，运行期间的修改不提交。
 - 修改配置、生成配对密钥、发起配对、解除配对，只在调用方账户对该 Broker 的配置文件有写权限时执行；读取配置与审计只在有读权限时返回。
 - 密钥类配置项的取值不经本机接口返回，也不写入运行日志与审计日志。
 - 调用方的账户只取自本机 socket 的进程凭据；调用中携带的 Agent 标识，以及登记请求所报的 socket 路径与配置目录，都不作为身份的依据。Agent 的 inbox socket 的属主是登记它的调用方账户。

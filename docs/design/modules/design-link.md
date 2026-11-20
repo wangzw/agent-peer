@@ -372,6 +372,8 @@ TLS 握手阶段接受任意的对方证书，握手完成后立即取出对方�
 
 `link` 自己写四类审计事件：`link_up`、`link_down`、`connection_rejected` 与 `rejected_by_peer`。`link_up` 与 `link_down` 在每次投递建立与断开通知时各写一条，`Peer` 填对端指纹与生效别名，`link_down` 的 `detail` 是断开原因的名字；这两类事件不填 `MergeKey`，v0.1.0 不合并。`connection_rejected` 在未知指纹的连接被拒时写，`Peer` 只填指纹，按指纹合并（`REQ-broker-pairing-015`）；`rejected_by_peer` 在收到原因为“不是对端”的 `Reject` 时写（`REQ-broker-pairing-035`）。
 
+链路协议与帧不变，链路协议版本不提升。投递应答中的 `broker_offline` 与 `broker_degraded` 由 [broker](design-broker.md) 解读，本包只转交应答帧，不因新增错误码而改动；未升级的发送方把不认识的数值错误码按 `internal` 处理，提示文字仍带接收方给出的说明。下线不改变链路状态，`list_brokers` 中对端的状态不反映对端是否下线。降级运行仅本机时，本包没有监听，本方是接受方的对端停在等待对方；本方是拨号方的对端照常拨号。
+
 ## 并发与事务边界
 
 每条链路有一个读协程、一个写协程、一个路由协程和一个状态帧处理协程。写协程从有序发送队列取帧，保证同一链路上的帧按 `Send` 返回的顺序发出。`Send` 不阻塞：队列已满时关闭连接并返回 `ErrQueueFull`。

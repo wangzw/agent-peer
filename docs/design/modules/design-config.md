@@ -149,7 +149,9 @@ type PathSet struct {
 }
 ```
 
-加载之前调用导出函数的语义：`Get`、`Set`、`ReadAudit` 返回 `ErrNotLoaded`；`All` 与 `Advertised` 返回 `nil`；`Secret` 返回空字符串；`Paths` 返回零值；`Validate`、`Subscribe`、`SubscribeAdvertised` 是装配错误，直接 panic；`Audit` 以错误级别写一条运行日志并丢弃该事件；`Close` 无动作。`Load` 只能成功一次，第二次返回 `ErrAlreadyLoaded`。`Close` 之后本包回到未加载的状态，各导出函数按上面的语义处理：`Set` 返回 `ErrNotLoaded`，`Secret` 返回空字符串，其余同未加载时。错误以哨兵值导出（`ErrNotLoaded`、`ErrAlreadyLoaded`、`ErrUnknownKey`、`ErrSecretKey`、`ErrListenOverridden`、`ErrInvalidValue`、`ErrInvalidCombination`、`ErrTooManyAddresses`、`ErrFileWrite`），调用方用 `errors.Is` 区分。
+加载之前调用导出函数的语义：`Get`、`Set`、`ReadAudit` 返回 `ErrNotLoaded`；`All` 与 `Advertised` 返回 `nil`；`Secret` 返回空字符串；`Paths` 返回零值；`Validate`、`Subscribe`、`SubscribeAdvertised` 是装配错误，直接 panic；`Audit` 以错误级别写一条运行日志并丢弃该事件；`Close` 无动作。`Load` 只能成功一次，第二次返回 `ErrAlreadyLoaded`。`Close` 之后本包回到未加载的状态，各导出函数按上面的语义处理：`Set` 返回 `ErrNotLoaded`，`Secret` 返回空字符串，其余同未加载时。错误以哨兵值导出（`ErrNotLoaded`、`ErrAlreadyLoaded`、`ErrUnknownKey`、`ErrSecretKey`、`ErrListenOverridden`、`ErrInvalidValue`、`ErrInvalidCombination`、`ErrTooManyAddresses`、`ErrFileWrite`），调用方用 `errors.Is` 区分。数据目录与审计日志不可用的失败另包上可判别的哨兵错误，供 `broker` 决定是否进入仅诊断；`Load` 的其余失败不带这一标记。
+
+启动时的低端口检查不属于 `Load`。`Load` 成功之后、绑定监听地址之前，由 `broker` 调用本包导出的检查函数；`broker.listen` 的端口小于 1024 而配置文件可被组或其他人写入时返回错误，按监听地址不可用处理。
 
 下表是配置键的完整集合：
 
@@ -163,6 +165,7 @@ type PathSet struct {
 | `broker.address_check_interval` | 时长 | `1m` | 重新枚举本机地址的间隔（`REQ-broker-discovery-016`） |
 | `broker.local_socket_group` | 字符串 | 空 | 系统级 Broker 本机 socket 的属组；空表示沿用运行时目录的属组，用户级忽略；组必须存在于账户数据库（Linux 上经 getent 按 NSS 配置查询，见 [ADR-account-database-source](../../adr/adr-account-database-source.md)），运行期间修改立即生效（`REQ-broker-config-027`） |
 | `broker.local_socket_mode` | 字符串 | `0666` | 系统级 Broker 本机 socket 的文件权限；用户级的固定为 `0600`（`REQ-broker-config-027`） |
+| `broker.offline` | 布尔 | `false` | 是否下线；为真时拒绝对端发来的消息，链路与名录照常，运行期间修改立即生效（`REQ-broker-config-065`、`REQ-agent-messaging-039`） |
 | `pairing.static_key` | 字符串，密钥类 | 空 | 预置静态密钥，长度 16 至 128 个字符，有值即生效（[ADR-static-pairing-key](../../adr/adr-static-pairing-key.md)，`REQ-broker-pairing-008`、`REQ-broker-pairing-009`、`REQ-broker-pairing-029`） |
 | `pairing.max_failures` | 整数 | `5` | 一次性配对密钥作废前允许的验证失败次数 |
 | `pairing.max_attempts_per_minute` | 整数 | `10` | 每分钟允许的、没有匹配上任何配对密钥的配对请求数；匹配上预置静态密钥的成功请求不计入 |
@@ -221,7 +224,7 @@ type PathSet struct {
 
 监听地址：`broker.listen` 的主机部分为空时，在本机的全部地址上监听，启用了 IPv6 时包括 IPv6 地址；写出了主机部分的，按字面绑定该地址，其中 `0.0.0.0` 与 `::` 在计算对外地址时按全部地址对待。端口不得为 0。
 
-系统级 Broker 的 `broker.listen` 端口小于 1024 时，只有在配置文件只有 root 可写时才生效：属组与其他人都没有写权限，访问控制列表里也没有额外的写授权。经本机接口把 `broker.listen` 设为低端口而调用方不是 root 的，由 `broker` 返回 `permission_denied`，说明低端口需要 root 修改，并且配置文件只能由 root 写。配置文件可被组或其他人写入时，热加载不采用新的低端口，保留旧值，运行日志以 Warn 级记录并追加一条 `config_rejected` 审计记录；启动时同样的条件下拒绝启动，退出码取配置非法时的取值。用户级 Broker 不受这条规则影响（[ADR-admin-group](../../adr/adr-admin-group.md)，`REQ-broker-config-043`）。
+系统级 Broker 的 `broker.listen` 端口小于 1024 时，只有在配置文件只有 root 可写时才生效：属组与其他人都没有写权限，访问控制列表里也没有额外的写授权。经本机接口把 `broker.listen` 设为低端口而调用方不是 root 的，由 `broker` 返回 `permission_denied`，说明低端口需要 root 修改，并且配置文件只能由 root 写。配置文件可被组或其他人写入时，热加载不采用新的低端口，保留旧值，运行日志以 Warn 级记录并追加一条 `config_rejected` 审计记录。启动时这条规则不改变 `Load` 的结果，而在绑定监听地址前由 `broker` 检查：前台运行以退出码 4 结束，带 `--allow-degraded` 的服务进入仅本机降级，修复提示为 `chmod g-w <配置文件>` 或改用 1024 以上的端口。用户级 Broker 不受这条规则影响（[ADR-admin-group](../../adr/adr-admin-group.md)，`REQ-broker-config-043`、`REQ-broker-config-058`）。
 
 对外地址：本次运行的对外地址列表由生效的监听地址与 `broker.advertise` 按下表得出，`broker.advertise_extra` 的各项追加在其后（[ADR-advertised-address](../../adr/adr-advertised-address.md)，`REQ-broker-config-030`、`REQ-broker-config-031`、`REQ-broker-config-033`）。
 
@@ -337,6 +340,8 @@ type PathSet struct {
 
 本次运行的监听地址来自启动参数时，`broker.listen` 不参与比较与校验：文件中这一项的值变化时不采用，不写审计记录，运行日志记录一次；其他键照常重载（`REQ-broker-config-017`）。
 
+`Load` 失败时本包不启动监视。降级运行中的 Broker 自己监视配置文件所在目录，文件变化时重新执行启动步骤，`Load` 成功后由本包照常监视（[broker](design-broker.md) 的“降级运行”）。
+
 ### 审计日志的表示与合并
 
 每行一个 JSON 对象，UTF-8。`time` 是 UTC 的 RFC 3339 纳秒时间；`event` 是事件类型的字符串值；`actor`、`account`、`key`、`detail` 为空时省略。`peer` 是 `{"fingerprint":"<64 位小写十六进制>","alias":"..."}`。`old` 与 `new` 是带类型的对象 `{"kind":"...","value":...}`，`kind` 取 `string`、`bool`、`int`、`duration`、`string_list`：时长的 `value` 是 `10m` 这样的字符串，整数的 `value` 是 JSON 数字。审计文件是 config 的私有格式；`GetConfig` 与 `SetConfig` 的应答使用 `ConfigValue`，与此处的类型对应，密钥类配置项另以是否已设置表示。密钥类配置项的变化只保留 `key`，不写 `old` 与 `new`。打开审计文件时，如果文件末尾不是换行，先追加一个换行；崩溃留下的半行仍然无法解析，但不会吞掉下一条记录。
@@ -367,7 +372,9 @@ type PathSet struct {
 
 | 情形 | 行为 |
 |---|---|
-| 启动时配置文件无法解析或含不合法的值 | 拒绝启动；无法解析时错误信息给出行号与列号，或指出出错的段名、键名，或说明失败的原因，不引用文件中的取值；含不合法的值时指出键与原因，不含密钥类配置项的取值 |
+| 启动时配置文件无法解析或含不合法的值 | 拒绝启动，带 `--allow-degraded` 时同样拒绝；无法解析时错误信息给出行号与列号，或指出出错的段名、键名，或说明失败的原因，不引用文件中的取值；含不合法的值时指出键与原因，不含密钥类配置项的取值 |
+| 启动时数据目录或审计日志不可用 | `Load` 返回错误；带 `--allow-degraded` 时 `broker` 进入仅诊断降级，否则拒绝启动 |
+| 启动时 `broker.listen` 端口小于 1024 且配置文件可被组或其他人写入 | 由 `broker` 在绑定监听地址前拒绝：前台运行退出码为 4，带 `--allow-degraded` 时进入仅本机降级 |
 | 启动时监听地址与对外地址配置的组合非法，或对外地址的配置超过 8 项 | 拒绝启动；组合非法时错误信息同时指出 `broker.listen` 与 `broker.advertise` 或 `broker.advertise_extra`，超过 8 项时指出 `broker.advertise_extra` |
 | 启动时枚举默认路由失败 | 不拒绝启动，这部分地址取空，运行日志以错误级别记录，周期枚举在后续轮次补上 |
 | 运行时目录或账户锁所在目录的属主、权限不符 | 拒绝启动，错误信息指出目录 |
@@ -407,3 +414,5 @@ type PathSet struct {
 | 配置文件模板的生成 | 已实现 | `internal/config/template.go`（`Template`、`templateExamples`、`templateSections`） |
 | 修改配置项时替换注释占位行 | 已实现 | `internal/config/file.go`（`replacePlaceholderLine`、`setKey`） |
 | 审计日志的追加、合并与读取 | 已实现 | `internal/config/audit.go`（`openAudit`、`append`、`mergeLocked`、`flushExpiredLocked`、`read`、`terminatePartialLine`） |
+| `broker.offline` 配置项 | 未实现 | — |
+| `Load` 失败的分类与绑定前的低端口检查 | 未实现 | — |

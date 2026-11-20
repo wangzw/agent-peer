@@ -35,19 +35,22 @@ MCP 服务的名字是 `peer`，模型看到的工具全名是 `mcp__peer__<工�
 | `list_agents` | `topic?`、`broker?`、`name?` 作为过滤条件 | 是 | 无 | 调用方自己的地址；每个可见 Agent 的地址、共同 topic、状态，改名后 10 分钟内的另注明曾用名 | `REQ-agent-messaging-008` 至 `REQ-agent-messaging-011`、`REQ-agent-messaging-032` |
 | `send_message` | `to`、`message` | 否 | 无 | 成功；以 `Not sent` 开头的错误；以 `Delivery unknown` 开头的结果未知 | `REQ-agent-messaging-013`、`REQ-agent-messaging-027` |
 | `list_topics` | 无 | 是 | 无 | 已加入的 topic；已知的公开 topic 及简介 | `REQ-topics-013` |
-| `join_topic` | `name`、`public?`、`description?` | 否 | 无 | 加入后的 topic 列表 | `REQ-topics-001`、`REQ-topics-010`、`REQ-topics-023` |
-| `leave_topic` | `name` | 否 | 无 | 退出后的 topic 列表 | `REQ-topics-003` |
-| `list_brokers` | 无 | 是 | 无 | 每个已知 Broker 的别名、指纹、对外地址列表、是否对端、状态；对端另标明本方是它的拨号方还是接受方 | `REQ-broker-discovery-012` 至 `REQ-broker-discovery-014` |
+| `join_topic` | `name?`、`public?`、`description?` | 否 | 无 | 加入后的 topic 列表；`name` 为空时加入本会话的默认 topic | `REQ-topics-001`、`REQ-topics-010`、`REQ-topics-023`、`REQ-topics-026` |
+| `leave_topic` | `name?` | 否 | 无 | 退出后的 topic 列表；`name` 为空时退出本会话的默认 topic | `REQ-topics-003`、`REQ-topics-027` |
+| `list_brokers` | 无 | 是 | 无 | 每个已知 Broker 的别名、指纹、对外地址列表、是否对端、状态；对端另标明本方是它的拨号方还是接受方；另带 `local`：本 Broker 的 `offline` 与 `degraded_reason` | `REQ-broker-discovery-012` 至 `REQ-broker-discovery-014`、`REQ-broker-config-068` |
 | `connect_broker` | `address`，对方的连接地址，写作 `地址:端口` 或 `主机名(地址:端口)`；`key`，配对密钥；`local_alias?` | 否 | 写 | 对方的别名与指纹，`address` 带主机名时一并给出，可能附带警告；或以 `Not connected` 开头的错误 | `REQ-broker-pairing-010`、`REQ-broker-config-021` |
 | `disconnect_broker` | `broker`，对端的别名或 64 位十六进制指纹 | 否 | 写 | 解除配对的结果 | `REQ-broker-pairing-021`、`REQ-broker-config-021` |
 | `create_pairing_key` | 无 | 否 | 写 | 一次性配对密钥及其失效时间；另行展示本机 Broker 的地址，写作 `主机名(地址:端口)`，对外地址列表有多项时一并列出，为空时说明没有可展示的地址、需要用户自行告知对方连接地址；本 Broker 不监听时返回错误，提示由对方生成密钥、本方发起配对 | `REQ-broker-pairing-005`、`REQ-broker-pairing-025`、`REQ-broker-pairing-028`、`REQ-broker-pairing-036`、`REQ-broker-config-021` |
 | `get_config` | `key?` | 是 | 读 | 配置项及其当前值；密钥类配置项只给出是否已设置 | `REQ-broker-config-001`、`REQ-broker-config-022`、`REQ-broker-pairing-030` |
 | `set_config` | `key`、`value` | 否 | 写 | 修改前后的值；修改密钥类配置项一律失败 | `REQ-broker-config-002`、`REQ-broker-config-021`、`REQ-broker-config-029`、`REQ-broker-pairing-031` |
+| `set_broker_online` | `online`，布尔，必填 | 否 | 写 | `online`，修改后的状态；`changed`，是否有变化 | `REQ-broker-config-067` |
 | `update_broker` | 无 | 否 | 写 | 升级前的版本、目标版本与 Broker 是否即将重启；已是最新版本时目标版本为空 | `REQ-update-008` |
 
 权限一栏为“无”的工具不以对配置文件的任何权限为前提（`REQ-broker-config-023`）。权限不足的调用得到 `permission_denied`，转给模型的文字说明所缺的是读权限还是写权限。这一判定与 Claude Code 对工具调用的权限确认各自独立，一次调用要两者都通过才执行。
 
 `update_broker` 的声明带 `readOnlyHint=false` 与 `destructiveHint=true`，模型看到的说明写明它把 Broker 升级到本项目最新的正式版本并重启 Broker，并且需要对配置文件有写权限（`REQ-broker-config-004`、`REQ-update-008`）。
+
+`set_broker_online` 调用 `SetConfig`，键为 `broker.offline`，取值为 `online` 的反值，带本会话的 `agent_id` 填审计；声明 `readOnlyHint=false`，不声明 `destructiveHint`，与 `set_config` 分开声明，Claude Code 的权限设置可以单独放行它。说明文字写明它只影响其他主机发来的消息。
 
 `list_agents` 的过滤条件均为可选，同时给出时须全部满足。`topic` 按精确匹配筛选，保留共同 topic 中含有该 topic 的条目；`broker` 与 Agent 地址中 `@` 后的生效别名精确匹配；`name` 先按名字规范化规则规范化过滤值，再与 Agent 当前规范化后的名字精确比较。过滤只决定返回哪些条目，不改变每个条目列出的共同 topic。
 
@@ -57,12 +60,13 @@ MCP 服务的名字是 `peer`，模型看到的工具全名是 `mcp__peer__<工�
 - `send_message`：`result`、`to`。
 - `list_topics`：`joined_topics`、`public_topics`；每项有 `name`、`description`。
 - `join_topic`、`leave_topic`：`topics`。
-- `list_brokers`：`brokers`；每项有 `alias`、`fingerprint`、`advertised_addresses`、`is_peer`、`role`、`link_state`、`status`、`status_detail`，地址项有 `kind`、`addr`。
+- `list_brokers`：`brokers` 与 `local`；每个 Broker 项有 `alias`、`fingerprint`、`advertised_addresses`、`is_peer`、`role`、`link_state`、`status`、`status_detail`，地址项有 `kind`、`addr`；`local` 有 `offline`、`degraded_reason`。
 - `connect_broker`：`alias`、`fingerprint`、`shown_host`、`warnings`。
 - `disconnect_broker`：`result`。
 - `create_pairing_key`：`key`、`expires_at`、`shown_addresses`、`note`。
 - `get_config`：`entries`；每项有 `key`、`value`。
 - `set_config`：`key`、`old_value`、`new_value`。
+- `set_broker_online`：`online`、`changed`。
 - `update_broker`：`from_version`、`to_version`、`restarting`。
 
 `update_broker` 作用于本会话已登记的 Broker。它在收到 Broker 的应答后立即返回，不在工具调用中等待重启。成功时的文字为 `Upgrading the Broker from <from> to <to>; the Broker restarts and the connection recovers automatically. Reopen this session to use the new MCP server.`；已经是最新版本时为 `The Broker is already up to date (<from>).`
@@ -78,6 +82,7 @@ MCP 服务的使用说明随工具一起进入会话上下文。下列要点是�
 - 向多个 Agent 发送时逐个调用。不为致谢或确认收到而回复。
 - 不要在短时间内向同一个 Agent 重复发送内容完全相同的消息：接收方会丢弃重复的那一条，而发送照样返回成功（[ADR-no-broker-rate-limiting](../../adr/adr-no-broker-rate-limiting.md)）。
 - 本会话中遭到拒绝或会遭到拦截的操作，不得请其他 Agent 代做。
+- 结果带 `broker_offline` 时对方 Broker 已下线，不要重发同一条消息。
 
 项目配置文件是工作区内的 `.agent-peer.yaml`，从会话工作目录向上逐级查找，以先找到的为准。查找时跟随符号链接：链接指向普通文件时按普通文件采用；链接悬空、或它指向的不是普通文件时，视作没有这个文件，继续向上查找。
 
@@ -129,6 +134,10 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 
 重新登记以同一个 socket 路径进行，得到的 Agent 标识不变；消歧标识按当时本 Broker 上的 Agent 集合重新计算，集合未变时其他 Agent 手里的地址继续有效。登记完成后按原来的公开声明与简介重新加入本进程记着的全部 topic；Broker 撤销登记后再次发出登记完成时同样如此。默认 topic 只在本进程第一次收到登记完成时确定一次，结果先记入记忆再逐个加入，加入途中断开时下次仍能恢复。Broker 已改为不公开的，公开声明失败，该 topic 仍以不公开方式加入。带错误详情而被拒绝的不公开 topic 从记忆中删除，没有错误详情的错误（连接中断）保留，等下一次登记完成再试。本进程退出后，它记着的 topic 随之丢失：MCP 服务被停用后重新启用，新的进程只重新加入默认 topic。
 
+默认 topic 的列表另存一份，不随退出而删除。`join_topic` 的 `name` 为空时逐个加入列表中的 topic，`public` 与 `description` 对每一个生效；`leave_topic` 的 `name` 为空时逐个退出其中已加入的 topic，未加入的跳过。列表为空时，两者都返回 `invalid_argument` 类的本地错误，说明本会话没有默认 topic。退出的 topic 按现有规则从记忆中删除，本会话内重新登记时不再加入；新的会话重新确定默认 topic 并自动加入（`REQ-topics-026`、`REQ-topics-027`）。
+
+不带名字的 `join_topic` 是用户明确的请求，忽略 `topics.auto_join` 与项目配置文件的 `auto_join`，按“默认 topic 的确定”的第三至第五步得出列表。
+
 ### 默认 topic 的确定
 
 按下列顺序判断，前面的条件成立即得出结果：
@@ -173,6 +182,10 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 
 错误文字的固定格式是 `开头短语: 说明 (code: <错误码名>)`，开头短语与说明之间是 `: `；涉及远端 Broker 时再接 ` (reported by Broker <64 位小写十六进制指纹>)`，有附加提示时提示接在最后。开头短语由错误码与调用它的工具确定，不取自 Broker 给出的说明：错误码为 `delivery_unknown` 时一律为 `Delivery unknown`，其余按工具取默认值，`send_message` 为 `Not sent`，`connect_broker` 为 `Not connected`，其他工具为 `<工具名> failed`。Broker 的说明若已以 `Not sent: `、`Delivery unknown: ` 或 `Not connected: ` 之一开头，先去掉这个开头短语，再按上述规则加上正确的短语。未连接、正在连接与没有可用 Broker 这些本机状态产生的错误用 `internal` 码，登记未完成用 `not_registered`，版本不兼容用 `version_mismatch`。登记未完成的说明优先取 Broker 事件里的 `detail`，它点名具体原因；`detail` 为空时按原因枚举使用固定句子，因此本进程连接不发送 `detail` 的旧 Broker 时，文字与之前一致。`send_message` 的请求发出后连接中断，按结果未知处理，开头为 `Delivery unknown`，说明消息可能已送达、重发可能使对方收到两份；`connect_broker` 的同情形以 `Not connected` 开头，说明配对可能已完成，可查看 `list_brokers`。
 
+`codeName` 加两个名字 `broker_offline` 与 `broker_degraded`。更新提示的中间件把 `broker_degraded` 与查询失败同样处理，跳过提示。
+
+“没有可用的 Broker”的错误文字中，用户级启动方法 `agent-peer broker` 不变；服务定义带 `--allow-degraded`，安装为服务的 Broker 遇到可降级的启动失败后会进入降级运行，会话看到的是 `broker_degraded` 而不是没有可用的 Broker。
+
 `update_broker` 的错误开头短语为 `Upgrade failed`。`permission_denied` 的说明原样保留，包括配置文件路径；`failed_precondition` 的说明之后追加 ``Run `agent-peer update` in a terminal instead.``；`aborted` 的说明写明已有一次升级在进行。
 
 | 情形 | 工具调用得到 |
@@ -183,6 +196,9 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 | `send_message` 的请求发出后连接中断 | `Delivery unknown`，说明消息可能已送达，重发可能使对方收到两份 |
 | `connect_broker` 的请求发出后连接中断 | 以 `Not connected` 开头，说明配对可能已完成，可查看 `list_brokers` |
 | 登记未完成或失败：找不到会话记录，会话名不可用，或 socket 不属于本账户 | 需要 Agent 身份的工具返回 `not_registered` 并说明原因；`list_brokers`、`get_config`、`set_config`、`connect_broker`、`disconnect_broker`、`create_pairing_key` 不需要 Agent 身份，仍按权限执行 |
+| 登记流收到 `not_registered` 且原因为 `broker_degraded` | 需要 Agent 身份的工具返回 `broker_degraded`，说明取事件的 `detail`；不需要身份的工具照常调用 Broker，同样得到 `broker_degraded` |
+| `send_message` 得到对端的 `broker_offline` | 以 `Not sent` 开头，附 `(code: broker_offline)` 与 `(reported by Broker <指纹>)`，提示对方 Broker 已下线、重发无用，可以经其他途径告知对方用户 |
+| `create_pairing_key` 在仅本机降级时 | `broker_degraded`，说明含地址、`broker.listen` 与修复命令 |
 | 调用方账户缺少所需的权限 | `permission_denied` |
 | Broker 以启动参数给定监听地址运行时，`set_config` 修改 `broker.listen` | `invalid_argument`，说明本次运行的监听地址由启动参数给定，配置文件未改动 |
 | `set_config` 修改 `pairing.static_key` | `invalid_argument`，说明该项只能在配置文件中设置 |
@@ -202,3 +218,6 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 | 工具调用转发与错误转换 | 已实现 | `internal/mcpserver/handlers_messaging.go`、`handlers_topics.go`、`handlers_brokers.go`、`handlers_config.go`（`handlers` 的各工具方法）、`internal/mcpserver/errtext.go`（`rpcError`、`codeName`） |
 | 更新提示 | 已实现 | `internal/mcpserver/updatehint.go`（`updateHint`、`middleware`、`take`）、`internal/mcpserver/update_status.go`（`brokerUpdateStatus`、`queryUpdateStatus`）、`internal/mcpserver/run.go` |
 | 升级工具 | 已实现 | `internal/mcpserver/handlers_update.go`（`UpdateBroker`、`updateBrokerError`）、`internal/mcpserver/tools.go`（`UpdateBrokerOut`、`addDestructiveTool`） |
+| 默认 topic 的无名加入与退出 | 未实现 | — |
+| `set_broker_online` | 未实现 | — |
+| `broker_degraded` 与 `broker_offline` 的错误文字 | 未实现 | — |
