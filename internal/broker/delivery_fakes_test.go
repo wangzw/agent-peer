@@ -93,6 +93,7 @@ type fakeSettings struct {
 	mu       sync.Mutex
 	settings sendSettings
 	alias    string
+	offline  bool
 }
 
 func newFakeSettings(settings sendSettings, alias string) *fakeSettings {
@@ -109,6 +110,19 @@ func (s *fakeSettings) LocalAlias() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.alias
+}
+
+func (s *fakeSettings) Offline() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.offline
+}
+
+// SetOffline changes the broker.offline value a test sees.
+func (s *fakeSettings) SetOffline(offline bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.offline = offline
 }
 
 // SetSettings replaces the send settings.

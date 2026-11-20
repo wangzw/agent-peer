@@ -88,6 +88,18 @@ func (s configSettings) LocalAlias() string {
 	return v.String
 }
 
+// Offline reports the current broker.offline value. It is never cached: the
+// setting changes while the Broker runs. A failed read is treated as online
+// and logged, the same way a failed duration read falls back to its default.
+func (s configSettings) Offline() bool {
+	v, err := s.cfg.Get("broker.offline")
+	if err != nil {
+		s.readFailed("broker.offline", err)
+		return false
+	}
+	return v.Bool
+}
+
 // duration reads a duration key, falling back to def on error.
 func (s configSettings) duration(key string, def time.Duration) time.Duration {
 	v, err := s.cfg.Get(key)

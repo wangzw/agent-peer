@@ -16,6 +16,10 @@ import (
 // Broker processes.
 const EvDeliver = "deliver"
 
+// EvDeliveryRefusedOffline is the runtime log event recorded instead of
+// EvDeliver when broker.offline refused the request.
+const EvDeliveryRefusedOffline = "delivery_refused_offline"
+
 // register installs the kind-400 handler. It is called once, before the link
 // starts, so no request can arrive unhandled.
 func (d *delivery) register() {
@@ -39,6 +43,21 @@ func (d *delivery) handleDeliver(ctx context.Context, peer peerID, f link.Frame)
 		// the only record that the peer tried to deliver something.
 		d.logDeliver(peer, deliverRequest{}, resultLabel(errorRecord(decodeErr)), start)
 		return encodeDeliverResult(decodeErr)
+	}
+
+	// Offline is checked after decoding and before the dedupe table, so a
+	// refused message id can still be delivered after going online. The
+	// configuration is read for every request; a change takes effect on the
+	// next one without subscribing.
+	if d.deps.Settings.Offline() {
+		d.logDeliveryRefusedOffline(peer, req)
+		// LocalAlias reads broker.alias afresh and would return the empty
+		// string on a failed read, unlike Broker.localAlias, which keeps the
+		// last valid value for registration streams that outlive the link.
+		// The failure cannot happen on this path: Run closes the configuration
+		// only after the link has stopped and its handlers have returned.
+		return encodeDeliverResult(Errorf(localpb.ErrorCode_ERROR_CODE_BROKER_OFFLINE,
+			"Broker %s is offline and refuses messages from other hosts", d.deps.Settings.LocalAlias()))
 	}
 
 	entry, owner := d.dedupe.acquire(dedupeKey{Source: peer, MessageID: req.MessageID})
@@ -215,6 +234,22 @@ func resultLabel(res *deliverpb.DeliverResult) string {
 	default:
 		return "unknown"
 	}
+}
+
+// logDeliveryRefusedOffline records a request refused because broker.offline
+// is set. It is the only line for that request, and it records no message text
+// (architecture.md:279).
+func (d *delivery) logDeliveryRefusedOffline(peer peerID, req deliverRequest) {
+	logger := d.deps.Log
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Debug(EvDeliveryRefusedOffline,
+		"message_id", req.MessageID,
+		"sender", req.SenderName,
+		"target", req.TargetName,
+		"peer", peer.String(),
+	)
 }
 
 // logDeliver records one delivery event. It records no message text

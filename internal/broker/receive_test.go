@@ -62,6 +62,8 @@ func newReceiveFixture(t *testing.T, settings sendSettings, views ...agentView) 
 	}
 	logs := &syncBuffer{}
 	var level slog.LevelVar
+	// The refusal is a debug event, so the fixture records debug records.
+	level.Set(slog.LevelDebug)
 	settingsFake := newFakeSettings(settings, "hostA")
 
 	d := newDelivery(deliveryDeps{
@@ -807,6 +809,123 @@ func TestReceiveDedupeOutlivesShortWindow(t *testing.T) {
 
 	if rec.Count() != 1 {
 		t.Fatalf("inbox calls = %d, want 1: a resend inside the sender's budget must hit the dedupe entry", rec.Count())
+	}
+}
+
+// TestReceiveRefusedWhileOffline checks that a peer delivery is refused with
+// broker_offline without a write, a dedupe entry or a regular delivery log
+// line (REQ-agent-messaging-039).
+func TestReceiveRefusedWhileOffline(t *testing.T) {
+	target := testAgent("frontend", "/tmp/ap-receive-offline.sock")
+	f := newReceiveFixture(t, defaultReceiveSettings(), target)
+	f.keepReread(target.ID)
+	sender := remoteMember{Name: "api-worker", Ref: "1a2b3c"}
+	f.member(sender, "t1")
+	f.share(target.ID, "t1")
+
+	rec := newRecordingInbox()
+	f.setInbox(target.ID, rec)
+	f.settings.SetOffline(true)
+
+	const text = "refused-offline-marker"
+	reply := f.handle(f.requestFrame(sender, target, text, time.Second))
+	detail := wantReceiveError(t, reply, localpb.ErrorCode_ERROR_CODE_BROKER_OFFLINE, "")
+	if want := "Broker hostA is offline and refuses messages from other hosts"; detail.GetMessage() != want {
+		t.Fatalf("reply message = %q, want %q", detail.GetMessage(), want)
+	}
+	if got := rec.Count(); got != 0 {
+		t.Fatalf("inbox calls = %d, want 0", got)
+	}
+	if n := f.d.dedupe.len(); n != 0 {
+		t.Fatalf("dedupe entries = %d, want 0", n)
+	}
+
+	logs := f.logs.String()
+	if !strings.Contains(logs, `"event":"delivery_refused_offline"`) {
+		t.Fatalf("the log has no delivery_refused_offline event: %s", logs)
+	}
+	if !strings.Contains(logs, `"level":"DEBUG"`) {
+		t.Fatalf("the refusal is not logged at debug level: %s", logs)
+	}
+	if strings.Contains(logs, `"event":"deliver"`) {
+		t.Fatalf("a refusal also wrote a regular deliver line: %s", logs)
+	}
+	if strings.Contains(logs, text) {
+		t.Fatalf("the log contains the message body: %s", logs)
+	}
+}
+
+// TestReceiveOfflineRefusalLeavesMessageIDDeliverable checks that the refusal
+// happens before the dedupe table: going online lets the same message id
+// deliver, so a sender may retry it.
+func TestReceiveOfflineRefusalLeavesMessageIDDeliverable(t *testing.T) {
+	target := testAgent("frontend", "/tmp/ap-receive-offline-retry.sock")
+	f := newReceiveFixture(t, defaultReceiveSettings(), target)
+	f.keepReread(target.ID)
+	sender := remoteMember{Name: "api-worker", Ref: "1a2b3c"}
+	f.member(sender, "t1")
+	f.share(target.ID, "t1")
+
+	rec := newRecordingInbox()
+	f.setInbox(target.ID, rec)
+	frame := f.requestFrame(sender, target, "hello", time.Second)
+
+	f.settings.SetOffline(true)
+	wantReceiveError(t, f.handle(frame), localpb.ErrorCode_ERROR_CODE_BROKER_OFFLINE, "")
+	if n := f.d.dedupe.len(); n != 0 {
+		t.Fatalf("dedupe entries after refusal = %d, want 0", n)
+	}
+
+	f.settings.SetOffline(false)
+	wantDelivered(t, f.handle(frame))
+	if got := rec.Count(); got != 1 {
+		t.Fatalf("inbox calls after going online = %d, want 1", got)
+	}
+	if n := f.d.dedupe.len(); n != 1 {
+		t.Fatalf("dedupe entries after the retry = %d, want 1", n)
+	}
+}
+
+// TestReceiveOfflineTakesEffectImmediately checks that a runtime change of
+// broker.offline applies to the next delivery without a restart.
+func TestReceiveOfflineTakesEffectImmediately(t *testing.T) {
+	target := testAgent("frontend", "/tmp/ap-receive-offline-toggle.sock")
+	f := newReceiveFixture(t, defaultReceiveSettings(), target)
+	f.keepReread(target.ID)
+	sender := remoteMember{Name: "api-worker", Ref: "1a2b3c"}
+	f.member(sender, "t1")
+	f.share(target.ID, "t1")
+
+	rec := newRecordingInbox()
+	f.setInbox(target.ID, rec)
+
+	frame := f.requestFrame(sender, target, "first", time.Second)
+	wantDelivered(t, f.handle(frame))
+
+	f.settings.SetOffline(true)
+	second := f.requestFrame(sender, target, "second", time.Second)
+	wantReceiveError(t, f.handle(second), localpb.ErrorCode_ERROR_CODE_BROKER_OFFLINE, "")
+
+	if got := rec.Count(); got != 1 {
+		t.Fatalf("inbox calls = %d, want 1 before the switch and none after", got)
+	}
+}
+
+// TestReceiveDecodeFailureWhileOffline checks that an undecodable request still
+// takes the existing invalid_argument path and keeps its deliver log line.
+func TestReceiveDecodeFailureWhileOffline(t *testing.T) {
+	f := newReceiveFixture(t, defaultReceiveSettings())
+	f.settings.SetOffline(true)
+
+	reply := f.handle(link.Frame{Kind: link.FrameKind(deliverpb.KindDeliver), Payload: []byte("not a protobuf")})
+	wantReceiveError(t, reply, localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT, "Not sent")
+
+	logs := f.logs.String()
+	if strings.Contains(logs, `"event":"delivery_refused_offline"`) {
+		t.Fatalf("a decode failure was logged as an offline refusal: %s", logs)
+	}
+	if got := strings.Count(logs, `"event":"deliver"`); got != 1 {
+		t.Fatalf("deliver log lines = %d, want 1: %s", got, logs)
 	}
 }
 

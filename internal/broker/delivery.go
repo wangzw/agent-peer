@@ -74,10 +74,14 @@ type sendSettings struct {
 	LinkRetries, InboxRetries                                             int
 }
 
-// settingsSource supplies the send configuration and the local alias.
+// settingsSource supplies the send configuration, the local alias and the
+// offline switch.
 type settingsSource interface {
 	Send() sendSettings
 	LocalAlias() string
+	// Offline reports the current broker.offline value. It is read afresh on
+	// every delivery; a failed read is treated as online and logged.
+	Offline() bool
 }
 
 // deliveryDeps is everything a delivery uses. The fields are interfaces so the
