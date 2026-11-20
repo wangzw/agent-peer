@@ -209,6 +209,8 @@ On Linux the command uses systemd and runs `systemctl daemon-reload`, `systemctl
 
 The service files and paths are listed under [Files and paths]({{< relref "docs/reference/files" >}}); [Guides]({{< relref "docs/guides" >}}) covers installing and running the service.
 
+The install script in the release archive installs the service with this command.
+
 ## agent-peer service uninstall
 
 Stops and removes the installed service. Configuration, identity and audit logs are kept. If no service is installed, the command succeeds and reports that nothing is installed, so it can be repeated.

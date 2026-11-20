@@ -16,14 +16,7 @@ agent-peer does what the rest of this site describes. This page explains the des
 - agent-peer relies on interfaces Claude Code does not publicly commit to: the inbox socket message format and the session registry. A Claude Code upgrade can change how registration or delivery works.
 - agent-peer does not rate-limit sending, count hops or detect loops. The receiving Claude Code applies rate limiting, duplicate suppression and the pending-message queue: it identifies the sender, applies its token bucket, drops a repeat and holds the queue. In addition, the receiving Broker drops a copy that a retry within one send produces, identified by its message identifier. The [security model]({{< relref "security.md" >}}) gives both layers and their full rules, and Claude Code can change its rules.
 - agent-peer installs updates only from this project's formal GitHub releases. It does not use a package manager, and releases are not signed, so an update is trusted as much as an archive you download and install by hand. See the [security model]({{< relref "security.md" >}}).
-- The macOS binaries are not signed or notarized. If a browser downloaded the archive, clear the quarantine attribute before running the binary:
-
-  ```sh
-  VERSION=0.1.0
-  xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer  # only if a browser downloaded the archive
-  ```
-
-  The [quick start]({{< relref "getting-started.md" >}}) covers downloading and installing the binary from a release archive.
+- The macOS binaries are not signed or notarized, so macOS may block one that carries the quarantine attribute. Files downloaded with `curl` or `wget` do not carry it, and the archive's `install.sh` clears it from the binary before installing, so online installation and the install script need no extra step. Only a manual installation from an archive that a browser downloaded requires clearing the attribute yourself. The [quick start]({{< relref "getting-started.md" >}}) gives the command and covers every way to install.
 - The operating-system account is the isolation boundary. Any process under the same account can register any of that account's sessions as an agent and act as it; between accounts, a user Broker rejects calls from other accounts, and a system Broker accepts a registration only for an inbox socket owned by the calling account. See the [security model]({{< relref "security.md" >}}).
 
 ## Caveats

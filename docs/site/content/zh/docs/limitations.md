@@ -16,14 +16,7 @@ agent-peer 能做到本站其他页面介绍的事。本页说明这些做法背
 - agent-peer 依赖 Claude Code 内部的两个接口，Claude Code 没有公开承诺保持兼容：inbox socket 的消息格式与会话注册表。Claude Code 升级可能改变登记或投递的方式。
 - agent-peer 不限制发送频率，不携带跳数，也不检测消息循环。接收端的 Claude Code 负责限速、去重和待处理消息的排队：它识别发送方，为发送方维护令牌桶，丢弃重复的消息，并对待处理消息排队。此外，接收端的 Broker 也按消息标识丢弃同一次发送中重试产生的副本。两层规则的完整说明见[安全模型]({{< relref "security.md" >}})，Claude Code 可以改动它那一层的规则。
 - agent-peer 只从本项目的 GitHub 正式发布版本安装更新。它不使用包管理器，发布也没有签名，所以一次更新的可信程度与手工下载发布包相同。见[安全模型]({{< relref "security.md" >}})。
-- macOS 二进制没有签名，也没有经过公证。用浏览器下载的归档，运行前要清除隔离属性：
-
-  ```sh
-  VERSION=0.1.0
-  xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer  # only if a browser downloaded the archive
-  ```
-
-  [快速开始]({{< relref "getting-started.md" >}})的安装一节介绍怎样从发布归档下载并安装二进制。
+- macOS 二进制没有签名，也没有经过公证，因此带隔离属性的二进制可能被 macOS 拦下。用 `curl` 或 `wget` 下载的文件不带隔离属性，发布包里的 `install.sh` 也会在安装前清除二进制上的隔离属性，所以在线安装和执行安装脚本都不需要额外处理。只有用浏览器下载的发布包做手动安装时，才需要自己清除隔离属性。[快速开始]({{< relref "getting-started.md" >}})给出了命令，并介绍各种安装方式。
 - 操作系统账户是隔离边界。同一账户下运行的任何进程，都能把该账户的任意会话登记为 Agent 并冒用它的身份；账户之间，用户级 Broker 拒绝其他账户的调用，系统级 Broker 只接受调用方账户所拥有的 inbox socket 的登记。见[安全模型]({{< relref "security.md" >}})。
 
 ## 注意事项

@@ -5,7 +5,29 @@ weight: 8
 
 ## 如何安装 agent-peer？
 
-从 [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest) 下载对应平台的归档，用 `checksums.txt` 校验后把二进制放进 `PATH`。然后按[快速开始]({{< relref "getting-started.md" >}})用名字 `peer` 注册 MCP 服务。
+用一条命令安装最新版本，并为你的账户注册 MCP 服务：
+
+```sh
+curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
+```
+
+发布包解压后也有一个 `install.sh`，在解压后的目录里运行 `sh ./install.sh`；也可以手动安装二进制。[快速开始]({{< relref "getting-started.md" >}})介绍各种安装方式，包括系统级安装。
+
+主机上已经有你能使用的系统级 Broker 时，只需注册 MCP 服务，不要安装用户级 Broker；命令见[运行系统级 Broker]({{< relref "guides/system-broker.md" >}})。
+
+## 如何卸载 agent-peer？
+
+停止并移除服务，移除 MCP 注册，再删除二进制：
+
+```sh
+agent-peer service uninstall
+claude mcp remove -s user peer
+rm ~/.local/bin/agent-peer
+```
+
+用 `--prefix` 安装的，改为删除该目录下的二进制。
+
+系统级安装用 `sudo agent-peer service uninstall --system` 移除服务，用同样的命令移除注册，再从系统级目录删除二进制，例如 `sudo rm /usr/local/bin/agent-peer`。移除服务时，配置、身份与审计日志都会保留；不再需要时另行删除。其他账户如果自己注册过 MCP 服务，也要用 `claude mcp remove -s user peer` 移除注册。
 
 ## 配置文件在哪里？
 
@@ -25,7 +47,7 @@ Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见
 
 ## 需要手动启动 Broker 吗？
 
-会话不会自己启动 Broker。主机上已经有你能使用的系统级 Broker 时，什么都不用装，会话会连接到它。否则需要自己启动：用 `agent-peer service install` 把它安装为用户级服务，安装完成就会启动，此后随登录启动；另一种做法是在 Claude Code 之外的终端里运行 `agent-peer broker`。在会话里启动的 Broker 会以退出码 6 退出。见[把 Broker 安装为服务]({{< relref "guides/run-as-service.md" >}})。
+会话不会自己启动 Broker。主机上已经有你能使用的系统级 Broker 时，只需注册 MCP 服务，会话会连接到它。否则需要自己启动：用 `agent-peer service install` 把它安装为用户级服务，安装完成就会启动，此后随登录启动；另一种做法是在 Claude Code 之外的终端里运行 `agent-peer broker`。安装脚本已经默认安装并启动用户级服务，用它装好之后无需再做这一步。在会话里启动的 Broker 会以退出码 6 退出。见[把 Broker 安装为服务]({{< relref "guides/run-as-service.md" >}})。
 
 ## 没有 Broker 在运行时会怎样？
 

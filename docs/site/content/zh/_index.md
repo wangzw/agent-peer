@@ -45,7 +45,7 @@ layout: hextra-home
   <div class="home-steps">
     <a class="home-step" href="docs/getting-started">
       <span class="home-step-number">1</span>
-      <span class="home-step-text">安装 agent-peer，并为你的账户注册 MCP 服务。</span>
+      <span class="home-step-text">用一条命令安装 agent-peer，并为你的账户注册 MCP 服务。</span>
     </a>
     <a class="home-step" href="docs/guides/pair-hosts">
       <span class="home-step-number">2</span>
@@ -56,5 +56,5 @@ layout: hextra-home
       <span class="home-step-text">同一 topic 下的会话互相可见，并可互发消息。</span>
     </a>
   </div>
-  <pre class="home-how-code"><code>claude mcp add --scope user peer -- agent-peer mcp</code></pre>
+  <pre class="home-how-code"><code>curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh</code></pre>
 </div>

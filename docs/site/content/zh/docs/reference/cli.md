@@ -209,6 +209,8 @@ Open Claude Code sessions must reconnect with /mcp or be restarted to use the ne
 
 [文件与路径]({{< relref "docs/reference/files" >}})列出服务的文件和位置，[使用指南]({{< relref "docs/guides" >}})介绍怎样安装和运行服务。
 
+发布包里的安装脚本就是用这个命令安装服务的。
+
 ## agent-peer service uninstall
 
 停止并卸载已安装的服务。配置、身份与审计日志都保留。没有安装过服务时，命令照常成功，并报告未安装，所以可以重复执行。

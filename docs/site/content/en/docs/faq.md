@@ -5,7 +5,29 @@ weight: 8
 
 ## How do I install agent-peer?
 
-Download the archive for your platform from [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest), check it against `checksums.txt`, and put the binary on your `PATH`. Then follow the [quick start]({{< relref "getting-started.md" >}}) to register the MCP server with the name `peer`.
+Install the latest release and register the MCP server for your account with one command:
+
+```sh
+curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
+```
+
+The release archive also contains an `install.sh`; after extracting it, run `sh ./install.sh`. You can also install the binary by hand. The [quick start]({{< relref "getting-started.md" >}}) covers every way to install, including system-level installation.
+
+If the host already has a system Broker you can use, register the MCP server only instead of installing a user-level Broker; [Run a system Broker]({{< relref "guides/system-broker.md" >}}) gives the command.
+
+## How do I uninstall agent-peer?
+
+Stop and remove the service, remove the MCP registration, and delete the binary:
+
+```sh
+agent-peer service uninstall
+claude mcp remove -s user peer
+rm ~/.local/bin/agent-peer
+```
+
+If you installed with `--prefix`, delete the binary from that directory instead.
+
+For a system-level installation, run `sudo agent-peer service uninstall --system`, remove the registration the same way, and delete the binary from the system prefix, such as `sudo rm /usr/local/bin/agent-peer`. Configuration, identity and audit logs are kept when the service is removed; delete them separately if you no longer need them. Other accounts that registered the MCP server themselves must remove that registration too, with `claude mcp remove -s user peer`.
 
 ## Where is the configuration file?
 
@@ -25,7 +47,7 @@ No. Brokers connect directly, messages are not relayed, and there is no central 
 
 ## Do I have to start a Broker by hand?
 
-A session never starts a Broker. If the host already has a system Broker you can use, install nothing; the session connects to it. Otherwise, start one yourself: install a user-level service with `agent-peer service install`, which starts it immediately and starts it at login from then on, or run `agent-peer broker` in a terminal outside Claude Code. A Broker started inside a session exits with code 6. See [Run the Broker as a service]({{< relref "guides/run-as-service.md" >}}).
+A session never starts a Broker. If the host already has a system Broker you can use, register the MCP server only; the session connects to it. Otherwise, start one yourself: install a user-level service with `agent-peer service install`, which starts it immediately and starts it at login from then on, or run `agent-peer broker` in a terminal outside Claude Code. The install script already installs and starts the user-level service, so an installation done with it needs no further step. A Broker started inside a session exits with code 6. See [Run the Broker as a service]({{< relref "guides/run-as-service.md" >}}).
 
 ## What happens when no Broker is running?
 
