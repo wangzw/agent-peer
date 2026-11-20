@@ -85,6 +85,39 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 	}
 }
 
+func TestServiceInstallMapsAdminGroup(t *testing.T) {
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"service", "install", "--system"}, service.DefaultAdminGroup},
+		{[]string{"service", "install", "--system", "--admin-group", "broker-ops"}, "broker-ops"},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			var installed service.Options
+			setServiceSeams(t,
+				func(system bool) (service.Options, error) {
+					return service.Options{System: system, Exe: "/usr/local/bin/agent-peer"}, nil
+				},
+				func(opts service.Options) (service.Result, error) {
+					installed = opts
+					return service.Result{UnitPath: "/x/agent-peer.service"}, nil
+				},
+				nil,
+			)
+
+			a, _, stderr, _ := newDispatchApp("dev")
+			if got := a.run(context.Background(), tc.args); got != exitOK {
+				t.Fatalf("run(%q) = %d, want %d (stderr %q)", tc.args, got, exitOK, stderr.String())
+			}
+			if installed.AdminGroup != tc.want {
+				t.Errorf("install AdminGroup = %q, want %q", installed.AdminGroup, tc.want)
+			}
+		})
+	}
+}
+
 func TestServiceInstallPrintsTheLaunchdDomain(t *testing.T) {
 	setServiceSeams(t,
 		func(bool) (service.Options, error) { return service.Options{}, nil },
@@ -120,6 +153,26 @@ func TestServiceInstallPrintsTheConfigurationFile(t *testing.T) {
 			result: service.Result{ConfigPath: "/home/alice/.agent-peer/config.yaml"},
 			want: "installed and started agent-peer.service\n" +
 				"kept the existing configuration file /home/alice/.agent-peer/config.yaml\n",
+		},
+		{
+			name: "kept system configuration with an administration hint",
+			result: service.Result{
+				ConfigPath: "/etc/agent-peer/config.yaml",
+				AdminGroup: "agent-peer",
+			},
+			want: "installed and started agent-peer.service\n" +
+				"kept the existing configuration file /etc/agent-peer/config.yaml\n" +
+				"To delegate administration, run: chgrp agent-peer /etc/agent-peer/config.yaml && chmod 0660 /etc/agent-peer/config.yaml\n",
+		},
+		{
+			name: "generated system configuration has no hint",
+			result: service.Result{
+				ConfigPath: "/etc/agent-peer/config.yaml",
+				ConfigNew:  true,
+				AdminGroup: "agent-peer",
+			},
+			want: "installed and started agent-peer.service\n" +
+				"generated the configuration file /etc/agent-peer/config.yaml\n",
 		},
 	}
 	for _, tc := range cases {
@@ -292,6 +345,9 @@ func TestServiceUsageErrors(t *testing.T) {
 		{[]string{"service", "bogus"}, "agent-peer service: unknown command \"bogus\"\n"},
 		{[]string{"service", "install", "extra"}, "agent-peer service install: unexpected argument \"extra\"\n"},
 		{[]string{"service", "install", "--bogus"}, "agent-peer service install: flag provided but not defined: -bogus\n"},
+		{[]string{"service", "install", "--admin-group", "ops"}, "agent-peer service install: --admin-group requires --system\n"},
+		{[]string{"service", "install", "--system", "--admin-group", "-ops"}, "agent-peer service install: invalid --admin-group \"-ops\": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens\n"},
+		{[]string{"service", "install", "--system", "--admin-group", "Ops"}, "agent-peer service install: invalid --admin-group \"Ops\": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens\n"},
 		{[]string{"service", "uninstall", "extra"}, "agent-peer service uninstall: unexpected argument \"extra\"\n"},
 		{[]string{"service", "uninstall", "--bogus"}, "agent-peer service uninstall: flag provided but not defined: -bogus\n"},
 	}

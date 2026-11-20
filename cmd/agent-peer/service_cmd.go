@@ -10,7 +10,7 @@ import (
 	"github.com/wangzw/agent-peer/internal/broker/service"
 )
 
-const serviceUsage = "usage: agent-peer service install [--system]\n" +
+const serviceUsage = "usage: agent-peer service install [--system] [--admin-group <name>]\n" +
 	"       agent-peer service uninstall [--system]\n"
 
 // The test seams replace the installation steps so the command tests can check
@@ -46,6 +46,13 @@ func (a *app) serviceCmd(_ context.Context, args []string) int {
 	fs := flag.NewFlagSet("service "+command, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	system := fs.Bool("system", false, "use the system-level service")
+	var (
+		adminGroup    string
+		adminGroupSet bool
+	)
+	if command == "install" {
+		fs.StringVar(&adminGroup, "admin-group", service.DefaultAdminGroup, "group that administers a system-level Broker")
+	}
 	if err := fs.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			_, _ = fmt.Fprint(a.stdout, serviceUsage)
@@ -56,6 +63,20 @@ func (a *app) serviceCmd(_ context.Context, args []string) int {
 	if fs.NArg() > 0 {
 		return a.serviceUsageError("service "+command, fmt.Sprintf("unexpected argument %q", fs.Arg(0)))
 	}
+	if command == "install" {
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "admin-group" {
+				adminGroupSet = true
+			}
+		})
+		if adminGroupSet && !*system {
+			return a.serviceUsageError("service install", "--admin-group requires --system")
+		}
+		if !service.ValidAdminGroupName(adminGroup) {
+			return a.serviceUsageError("service install", fmt.Sprintf(
+				"invalid --admin-group %q: a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens", adminGroup))
+		}
+	}
 
 	opts, err := defaultOptionsFn(*system)
 	if err != nil {
@@ -63,6 +84,7 @@ func (a *app) serviceCmd(_ context.Context, args []string) int {
 		return exitFailure
 	}
 	if command == "install" {
+		opts.AdminGroup = adminGroup
 		result, err := installFn(opts)
 		if err != nil {
 			_, _ = fmt.Fprintf(a.stderr, "agent-peer service install: %s\n", err)
@@ -95,6 +117,10 @@ func (a *app) printInstalled(result service.Result) {
 		_, _ = fmt.Fprintf(a.stdout, "generated the configuration file %s\n", result.ConfigPath)
 	default:
 		_, _ = fmt.Fprintf(a.stdout, "kept the existing configuration file %s\n", result.ConfigPath)
+		if result.AdminGroup != "" {
+			_, _ = fmt.Fprintf(a.stdout, "To delegate administration, run: chgrp %s %s && chmod 0660 %s\n",
+				result.AdminGroup, result.ConfigPath, result.ConfigPath)
+		}
 	}
 }
 

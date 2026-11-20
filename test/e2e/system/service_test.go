@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -25,6 +26,9 @@ const (
 	systemSocket = "/run/agent-peer/broker.sock"
 	// releaseBinary is the release build the base image installs.
 	releaseBinary = "/usr/local/bin/agent-peer"
+	// systemAdminGroup is the default group a system-level install delegates
+	// administration to.
+	systemAdminGroup = "agent-peer"
 )
 
 // TestServiceInstall checks the system-level installation inside a container
@@ -102,11 +106,22 @@ func TestServiceInstall(t *testing.T) {
 		}
 
 		uid, gid, mode := fileOwnerAndMode(t, systemConfigPath)
-		if uid != 0 || gid != 0 {
-			t.Errorf("configuration file owner = %d:%d, want 0:0", uid, gid)
+		if uid != 0 {
+			t.Errorf("configuration file owner = %d, want 0", uid)
 		}
-		if mode != 0o600 {
-			t.Errorf("configuration file mode = %#o, want 0600", mode)
+		adminGroup, err := user.LookupGroup(systemAdminGroup)
+		if err != nil {
+			t.Fatalf("looking up group %s: %v", systemAdminGroup, err)
+		}
+		wantGID, err := strconv.ParseUint(adminGroup.Gid, 10, 32)
+		if err != nil {
+			t.Fatalf("parsing gid %q of group %s: %v", adminGroup.Gid, systemAdminGroup, err)
+		}
+		if uint64(gid) != wantGID {
+			t.Errorf("configuration file group = %d, want %s (%d)", gid, systemAdminGroup, wantGID)
+		}
+		if mode != 0o660 {
+			t.Errorf("configuration file mode = %#o, want 0660", mode)
 		}
 	})
 

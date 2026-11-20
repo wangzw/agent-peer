@@ -31,6 +31,9 @@ func baseOptions(t *testing.T) Options {
 		Root:     t.TempDir(),
 		LookPath: func(file string) (string, error) { return filepath.Join("/bin", file), nil },
 		Run:      func(string, ...string) ([]byte, error) { return nil, nil },
+		// The administration group already exists with a fixed id, so tests that
+		// do not exercise group creation emit no group commands.
+		GroupGID: func(string) (int, bool, error) { return 999, true, nil },
 		Probe:    func(string) (int, bool) { return 0, false },
 		Owner:    fakeOwner(nil),
 		EvalSymlinks: func(path string) (string, error) {
@@ -265,12 +268,15 @@ func TestInstallLinuxSystem(t *testing.T) {
 	if got := mustReadFile(t, configPath); got != string(config.Template(config.ModeSystem)) {
 		t.Errorf("config content = %q, want the system template", got)
 	}
-	assertMode(t, configPath, 0o600)
+	assertMode(t, configPath, 0o660)
 	if !res.ConfigNew {
 		t.Error("ConfigNew = false, want true")
 	}
 	if res.ConfigPath != "/etc/agent-peer/config.yaml" {
 		t.Errorf("ConfigPath = %q", res.ConfigPath)
+	}
+	if res.AdminGroup != DefaultAdminGroup {
+		t.Errorf("AdminGroup = %q, want %q", res.AdminGroup, DefaultAdminGroup)
 	}
 
 	wantCmds := []string{
@@ -355,6 +361,18 @@ func TestInstallKeepsExistingSystemConfig(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(existing), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// A group and mode the new installation must not touch.
+	if err := os.Chmod(configPath, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	opts.Chown = func(string, int, int) error {
+		t.Error("Install changed the owner of an existing configuration file")
+		return nil
+	}
+	opts.Chmod = func(string, fs.FileMode) error {
+		t.Error("Install changed the mode of an existing configuration file")
+		return nil
+	}
 
 	res, err := Install(opts)
 	if err != nil {
@@ -363,11 +381,236 @@ func TestInstallKeepsExistingSystemConfig(t *testing.T) {
 	if got := mustReadFile(t, configPath); got != existing {
 		t.Errorf("config was overwritten: %q", got)
 	}
+	assertMode(t, configPath, 0o640)
 	if res.ConfigNew {
 		t.Error("ConfigNew = true, want false")
 	}
 	if res.ConfigPath != "/etc/agent-peer/config.yaml" {
 		t.Errorf("ConfigPath = %q", res.ConfigPath)
+	}
+	if res.AdminGroup != DefaultAdminGroup {
+		t.Errorf("AdminGroup = %q, want %q", res.AdminGroup, DefaultAdminGroup)
+	}
+}
+
+// systemInstallWithGroupRun builds a Linux system install whose command runner
+// answers the group database and the service manager. created reports whether
+// ensureAdminGroup's groupadd has run; gid is the id getent reports once it has.
+func systemInstallWithGroupRun(t *testing.T, opts *Options, gid int) (cmds *[]string, created *bool) {
+	t.Helper()
+	cmds = &[]string{}
+	created = new(bool)
+	started := false
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		*cmds = append(*cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case name == "getent" && !*created:
+			return []byte(""), exitError(t, 2)
+		case name == "getent":
+			return []byte(fmt.Sprintf("%s:x:%d:\n", args[1], gid)), nil
+		case name == "groupadd":
+			*created = true
+			return nil, nil
+		case slices.Contains(args, "show"):
+			return []byte("4242\n"), nil
+		case slices.Contains(args, "restart"):
+			started = true
+		}
+		return nil, nil
+	}
+	opts.Probe = probeAfterStart(&started, 4242)
+	return cmds, created
+}
+
+func TestInstallSystemCreatesAdminGroup(t *testing.T) {
+	opts := baseOptions(t)
+	opts.System = true
+	opts.EUID = 0
+	opts.GroupGID = nil // exercise the platform lookup through the command runner
+	const gid = 999
+	cmds, created := systemInstallWithGroupRun(t, &opts, gid)
+	var chowns []string
+	var chmods []string
+	opts.Chown = func(path string, uid, gid int) error {
+		chowns = append(chowns, fmt.Sprintf("%s %d:%d", path, uid, gid))
+		return nil
+	}
+	opts.Chmod = func(path string, mode fs.FileMode) error {
+		chmods = append(chmods, fmt.Sprintf("%s %#o", path, mode))
+		return os.Chmod(path, mode)
+	}
+
+	res, err := Install(opts)
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if !*created {
+		t.Error("the administration group was not created")
+	}
+	wantCmds := []string{
+		"getent group agent-peer",
+		"groupadd --system agent-peer",
+		"getent group agent-peer",
+		"systemctl daemon-reload",
+		"systemctl enable agent-peer.service",
+		"systemctl restart agent-peer.service",
+		"systemctl show --property MainPID --value agent-peer.service",
+	}
+	if !slices.Equal(*cmds, wantCmds) {
+		t.Errorf("commands = %q, want %q", *cmds, wantCmds)
+	}
+	if want := "groupadd --system agent-peer"; !slices.Contains(res.Commands, want) {
+		t.Errorf("Result.Commands = %q, want %q", res.Commands, want)
+	}
+	if res.AdminGroup != DefaultAdminGroup {
+		t.Errorf("AdminGroup = %q, want %q", res.AdminGroup, DefaultAdminGroup)
+	}
+
+	configPath := filepath.Join(opts.Root, "etc/agent-peer/config.yaml")
+	want := fmt.Sprintf("%s 0:%d", configPath, gid)
+	if !slices.Equal(chowns, []string{want}) {
+		t.Errorf("chown calls = %q, want %q", chowns, want)
+	}
+	wantChmod := fmt.Sprintf("%s %#o", configPath, 0o660)
+	if !slices.Equal(chmods, []string{wantChmod}) {
+		t.Errorf("chmod calls = %q, want %q", chmods, wantChmod)
+	}
+	assertMode(t, configPath, 0o660)
+}
+
+func TestInstallSystemUsesAnExistingGroup(t *testing.T) {
+	opts := baseOptions(t)
+	opts.System = true
+	opts.EUID = 0
+	const gid = 777
+	opts.GroupGID = func(name string) (int, bool, error) {
+		if name != DefaultAdminGroup {
+			t.Errorf("looked up group %q, want %q", name, DefaultAdminGroup)
+		}
+		return gid, true, nil
+	}
+	var cmds []string
+	started := false
+	opts.Run = recordCommandsUntil(&cmds, &started, "restart")
+	opts.Probe = probeAfterStart(&started, 4242)
+	var gotGID int
+	opts.Chown = func(_ string, uid, gid int) error {
+		if uid != 0 {
+			t.Errorf("chown uid = %d, want 0", uid)
+		}
+		gotGID = gid
+		return nil
+	}
+
+	res, err := Install(opts)
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	for _, cmd := range cmds {
+		if strings.HasPrefix(cmd, "groupadd") || strings.HasPrefix(cmd, "getent") {
+			t.Errorf("an existing group still ran %q", cmd)
+		}
+	}
+	if gotGID != gid {
+		t.Errorf("configuration group = %d, want %d", gotGID, gid)
+	}
+	if got, want := mustReadFile(t, filepath.Join(opts.Root, "etc/agent-peer/config.yaml")), string(config.Template(config.ModeSystem)); got != want {
+		t.Errorf("config content = %q, want the system template", got)
+	}
+	if res.AdminGroup != DefaultAdminGroup {
+		t.Errorf("AdminGroup = %q, want %q", res.AdminGroup, DefaultAdminGroup)
+	}
+}
+
+func TestInstallSystemFailsWhenTheAdminGroupCannotBeCreated(t *testing.T) {
+	opts := baseOptions(t)
+	opts.System = true
+	opts.EUID = 0
+	opts.GroupGID = nil
+	var cmds []string
+	started := false
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case name == "getent":
+			return []byte(""), exitError(t, 2)
+		case name == "groupadd":
+			return []byte("groupadd: cannot create group"), errors.New("exit status 9")
+		case slices.Contains(args, "restart"):
+			started = true
+		}
+		return nil, nil
+	}
+	opts.Probe = probeAfterStart(&started, 4242)
+	opts.Chown = func(string, int, int) error {
+		t.Error("chown ran after a failed group creation")
+		return nil
+	}
+	opts.Chmod = func(string, fs.FileMode) error {
+		t.Error("chmod ran after a failed group creation")
+		return nil
+	}
+
+	_, err := Install(opts)
+	if err == nil || !strings.Contains(err.Error(), "cannot create group") {
+		t.Fatalf("Install error = %v, want the groupadd failure", err)
+	}
+	if want := []string{"getent group agent-peer", "groupadd --system agent-peer"}; !slices.Equal(cmds, want) {
+		t.Errorf("commands = %q, want %q", cmds, want)
+	}
+	assertNoEntries(t, opts.Root)
+}
+
+func TestInstallSystemHonoursAdminGroup(t *testing.T) {
+	opts := baseOptions(t)
+	opts.System = true
+	opts.EUID = 0
+	opts.AdminGroup = "broker-ops"
+	const gid = 555
+	var lookedUp []string
+	opts.GroupGID = func(name string) (int, bool, error) {
+		lookedUp = append(lookedUp, name)
+		return gid, true, nil
+	}
+	var cmds []string
+	started := false
+	opts.Run = recordCommandsUntil(&cmds, &started, "restart")
+	opts.Probe = probeAfterStart(&started, 4242)
+	var gotGID int
+	opts.Chown = func(_ string, _, gid int) error {
+		gotGID = gid
+		return nil
+	}
+
+	res, err := Install(opts)
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if !slices.Equal(lookedUp, []string{"broker-ops"}) {
+		t.Errorf("group lookups = %q, want [broker-ops]", lookedUp)
+	}
+	if gotGID != gid {
+		t.Errorf("configuration group = %d, want %d", gotGID, gid)
+	}
+	if res.AdminGroup != "broker-ops" {
+		t.Errorf("AdminGroup = %q, want broker-ops", res.AdminGroup)
+	}
+}
+
+func TestInstallSystemCreatesTheNamedAdminGroup(t *testing.T) {
+	opts := baseOptions(t)
+	opts.System = true
+	opts.EUID = 0
+	opts.AdminGroup = "broker-ops"
+	opts.GroupGID = nil
+	const gid = 556
+	cmds, _ := systemInstallWithGroupRun(t, &opts, gid)
+
+	if _, err := Install(opts); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if want := "groupadd --system broker-ops"; !slices.Contains(*cmds, want) {
+		t.Errorf("commands = %q, want %q", *cmds, want)
 	}
 }
 
@@ -413,7 +656,7 @@ func TestCreateConfigRemovesPartialFileOnWriteFailure(t *testing.T) {
 		}
 		return os.Open(path) // read-only, so Write fails
 	}
-	err := createConfigWith(opts, &res, open)
+	err := createConfigWith(opts, &res, -1, 0o600, open)
 	if err == nil || !strings.Contains(err.Error(), "write configuration file") {
 		t.Fatalf("createConfigWith error = %v, want the write failure", err)
 	}
@@ -853,7 +1096,7 @@ func TestInstallDarwinSystem(t *testing.T) {
 	if got := mustReadFile(t, configPath); got != string(config.Template(config.ModeSystem)) {
 		t.Errorf("config content = %q, want the system template", got)
 	}
-	assertMode(t, configPath, 0o600)
+	assertMode(t, configPath, 0o660)
 
 	wantCmds := []string{
 		"launchctl bootout system/io.github.wangzw.agent-peer",

@@ -49,9 +49,13 @@ type Options struct {
 	XDGConfigHome string                                                      // XDG_CONFIG_HOME
 	TempDir       string                                                      // os.TempDir()
 	Root          string                                                      // filesystem prefix for tests; empty in production
+	AdminGroup    string                                                      // group that administers a system-level Broker; empty uses DefaultAdminGroup
 	LookPath      func(file string) (string, error)                           // exec.LookPath
 	Run           func(name string, args ...string) ([]byte, error)           // run a command, returning combined output
+	GroupGID      func(name string) (gid int, exists bool, err error)         // group id lookup; nil queries the platform through Run
 	Owner         func(path string) (uid uint32, mode fs.FileMode, err error) // owner and permission bits, not following symlinks
+	Chown         func(path string, uid, gid int) error                       // ownership setter for the configuration file; nil uses os.Chown in production
+	Chmod         func(path string, mode fs.FileMode) error                   // permission setter for the configuration file; nil uses os.Chmod
 	EvalSymlinks  func(path string) (string, error)                           // filepath.EvalSymlinks
 	Probe         func(socketPath string) (pid int, answering bool)           // peer pid of the Broker answering on the local socket
 	ReadyTimeout  time.Duration                                               // wait for the local socket after start; zero uses readyBound
@@ -63,6 +67,7 @@ type Result struct {
 	UnitPath   string   // written or removed unit file or plist
 	ConfigPath string   // configuration file for the install's level
 	ConfigNew  bool     // this run created the configuration file
+	AdminGroup string   // system-level: group delegated administration; empty for the user level
 	Commands   []string // commands that changed state, in order
 	Domain     string   // macOS: the launchd domain the service was loaded into or out of
 	Removed    bool     // Uninstall: a unit file or plist was removed
@@ -89,6 +94,7 @@ func DefaultOptions(system bool) (Options, error) {
 		UID:           os.Getuid(),
 		Exe:           exe,
 		Home:          home,
+		AdminGroup:    DefaultAdminGroup,
 		XDGConfigHome: os.Getenv("XDG_CONFIG_HOME"),
 		TempDir:       os.TempDir(),
 		LookPath:      exec.LookPath,
@@ -186,13 +192,26 @@ func Install(opts Options) (Result, error) {
 		return res, err
 	}
 
+	// The administration group is resolved before any file is written, so a
+	// group that cannot be created fails the installation without leaving a
+	// configuration file behind.
+	adminGID := -1
+	if opts.System {
+		gid, err := ensureAdminGroup(opts, &res)
+		if err != nil {
+			return res, err
+		}
+		adminGID = gid
+		res.AdminGroup = adminGroupName(opts)
+	}
+
 	unitPath, err := writeUnit(opts)
 	if err != nil {
 		return res, err
 	}
 	res.UnitPath = unitPath
 
-	if err := createConfig(opts, &res); err != nil {
+	if err := createConfig(opts, &res, adminGID); err != nil {
 		return res, err
 	}
 
@@ -512,18 +531,26 @@ func configFilePath(opts Options) string {
 
 // createConfig creates the configuration file for the install's level if it is
 // absent and reports what happened in res. The file is created exclusively, so
-// an existing file is never modified. The system-level file belongs to root;
-// the user-level file belongs to the installing account. The content is the
-// template the config package generates for the level.
-func createConfig(opts Options, res *Result) error {
-	return createConfigWith(opts, res, func(path string) (*os.File, error) {
-		return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+// an existing file is never modified: its content, group and permissions stay
+// as they are. The system-level file belongs to root and to the administration
+// group, mode 0660; the user-level file belongs to the installing account, mode
+// 0600. The content is the template the config package generates for the level.
+// adminGID is the administration group for the system level and ignored
+// otherwise.
+func createConfig(opts Options, res *Result, adminGID int) error {
+	fileMode := fs.FileMode(0o600)
+	if opts.System {
+		fileMode = 0o660
+	}
+	return createConfigWith(opts, res, adminGID, fileMode, func(path string) (*os.File, error) {
+		return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fileMode)
 	})
 }
 
-// createConfigWith implements createConfig; open lets a test force a write
-// failure after the file was created.
-func createConfigWith(opts Options, res *Result, open func(string) (*os.File, error)) error {
+// createConfigWith implements createConfig; fileMode is the mode the new file
+// must end up with, and open lets a test force a write failure after the file
+// was created.
+func createConfigWith(opts Options, res *Result, adminGID int, fileMode fs.FileMode, open func(string) (*os.File, error)) error {
 	path := configFilePath(opts)
 	res.ConfigPath = path
 
@@ -537,7 +564,8 @@ func createConfigWith(opts Options, res *Result, open func(string) (*os.File, er
 		return fmt.Errorf("service: create configuration directory: %w", err)
 	}
 
-	f, err := open(rooted(opts, path))
+	fsPath := rooted(opts, path)
+	f, err := open(fsPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			res.ConfigNew = false
@@ -548,7 +576,7 @@ func createConfigWith(opts Options, res *Result, open func(string) (*os.File, er
 	// A file this run created is removed when a later step fails, so the next
 	// install does not mistake a partial file for an existing configuration.
 	removePartial := func() {
-		_ = os.Remove(rooted(opts, path))
+		_ = os.Remove(fsPath)
 	}
 	mode := config.ModeUser
 	if opts.System {
@@ -559,14 +587,14 @@ func createConfigWith(opts Options, res *Result, open func(string) (*os.File, er
 		removePartial()
 		return fmt.Errorf("service: write configuration file: %w", err)
 	}
-	if opts.System && opts.Root == "" {
-		if err := f.Chown(0, 0); err != nil {
+	if opts.System {
+		if err := setConfigOwner(opts, fsPath, adminGID); err != nil {
 			_ = f.Close()
 			removePartial()
 			return fmt.Errorf("service: set configuration file owner: %w", err)
 		}
 	}
-	if err := f.Chmod(0o600); err != nil {
+	if err := setConfigMode(opts, fsPath, fileMode); err != nil {
 		_ = f.Close()
 		removePartial()
 		return fmt.Errorf("service: set configuration file mode: %w", err)
@@ -577,6 +605,29 @@ func createConfigWith(opts Options, res *Result, open func(string) (*os.File, er
 	}
 	res.ConfigNew = true
 	return nil
+}
+
+// setConfigOwner makes the system configuration file root-owned and gives it
+// the administration group. Options.Chown replaces the operation in a test; a
+// test that roots the filesystem and supplies no Chown cannot change ownership
+// without root, so the step is skipped there.
+func setConfigOwner(opts Options, path string, gid int) error {
+	if opts.Chown != nil {
+		return opts.Chown(path, 0, gid)
+	}
+	if opts.Root != "" {
+		return nil
+	}
+	return os.Chown(path, 0, gid)
+}
+
+// setConfigMode sets the configuration file's permission bits, through
+// Options.Chmod when a test supplies it.
+func setConfigMode(opts Options, path string, mode fs.FileMode) error {
+	if opts.Chmod != nil {
+		return opts.Chmod(path, mode)
+	}
+	return os.Chmod(path, mode)
 }
 
 // runSystemctl reloads the unit database, enables the unit and starts it.
