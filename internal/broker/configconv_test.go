@@ -230,6 +230,30 @@ func TestAuditEventKindMappingIsComplete(t *testing.T) {
 	}
 }
 
+// TestUpdateAuditEventNumbersMatchTheProtocol pins the numbers the update
+// events were assigned on the local protocol. The audit log and the design use
+// the event names; the numbers are what a peer that reads the wire sees, so a
+// renumbering must be a deliberate protocol change rather than a side effect
+// of editing the enum.
+func TestUpdateAuditEventNumbersMatchTheProtocol(t *testing.T) {
+	cases := []struct {
+		kind   config.EventKind
+		wire   localpb.AuditEventKind
+		number int32
+	}{
+		{config.EventUpdateApplied, localpb.AuditEventKind_AUDIT_EVENT_KIND_UPDATE_APPLIED, 13},
+		{config.EventUpdateFailed, localpb.AuditEventKind_AUDIT_EVENT_KIND_UPDATE_FAILED, 14},
+	}
+	for _, tc := range cases {
+		if got := toAuditEventKind(tc.kind); got != tc.wire {
+			t.Errorf("%s maps to %s, want %s", tc.kind, got, tc.wire)
+		}
+		if got := int32(tc.wire); got != tc.number {
+			t.Errorf("%s has protocol number %d, want %d", tc.wire, got, tc.number)
+		}
+	}
+}
+
 // TestToAuditEventSecretChange covers REQ-broker-config-006 and
 // REQ-broker-config-008: a secret key change is audited without either value,
 // so the key itself never reaches the audit stream.
