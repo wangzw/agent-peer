@@ -15,7 +15,7 @@ Pairing makes two Brokers trust each other by their fingerprints. It is the only
 
 ## Create the pairing key
 
-On the accepting host, ask the model to call `create_pairing_key` and approve the call, or run:
+On the accepting host, say “Create a pairing key.” and approve the call (the model calls `create_pairing_key`), or run:
 
 ```sh
 agent-peer pairing-key create
@@ -30,7 +30,7 @@ Pass the key and one address to the other user through a channel outside agent-p
 
 ## Connect from the other host
 
-On the other host, ask the model to call `connect_broker` with the `address` and the `key`, or run:
+On the other host, say “Connect to the Broker at <address> with the key <key>.” (the model calls `connect_broker`), or run:
 
 ```sh
 agent-peer peer connect <address> --key <key>
@@ -42,14 +42,14 @@ Either way the result gives the accepting Broker's alias and fingerprint.
 
 ## Check the link
 
-Ask the model to call `list_brokers` on both hosts, or run `agent-peer peer list`. Each side lists the other as a peer with status `connected`. For a peer, the result also gives this Broker's role: the side that called `connect_broker` or ran `agent-peer peer connect` is the `dialer`, and the side that created the key is the `acceptor`.
+Say “List the Brokers this Broker knows.” on both hosts (the model calls `list_brokers`), or run `agent-peer peer list`. Each side lists the other as a peer with status `connected`. For a peer, the result also gives this Broker's role: the side that called `connect_broker` or ran `agent-peer peer connect` is the `dialer`, and the side that created the key is the `acceptor`.
 
 The dialer re-establishes the link after a network interruption without any user action. The acceptor never dials, so the two-way link only needs one reachable direction.
 
 ## Special cases
 
 - The key expired or was used. A one-time key is valid for 10 minutes and for one pairing. Using it later returns an error that the key is invalid or expired, and neither side stores the other's identity. Create a new key and start again.
-- The alias is already taken. A common cause is the default alias, which contains only the first segment of the hostname: two hosts whose hostnames share that segment, for example `workstation.example.com` and `workstation.example.net`, give their system Brokers the same alias, and so do the user Brokers of the same-named account on each host. If the accepting Broker's alias matches this Broker's own alias or another peer's alias, `connect_broker` asks for a local alias. Call it again with `local_alias` set to a name of up to 24 characters, or run `agent-peer peer connect <address> --key <key> --alias <alias>` with the same limit; the alias applies only on this Broker.
-- The shown address does not work. The addresses returned with the key may not be reachable from the other side, for example when the accepting host is behind port forwarding. Pass an address that the other side can reach and use it in `connect_broker` or `agent-peer peer connect`.
-- The network drops. Once the Brokers are paired, the dialer reconnects without a key. Wait a moment and check again with `list_brokers` or `agent-peer peer list`; the peer returns to `connected`.
-- The deployment is repeated. Instead of a one-time key, the accepting Broker can have a pre-provisioned static key in its configuration file, under `pairing.static_key`. The value is 16 to 128 characters, does not expire, and works for any number of pairings. The tools never generate it, set it or return it; before the deployment, uncomment the `static_key` line in the configuration file and fill in a key such as the output of `openssl rand -hex 32`. A file from an older version, or one written by running the Broker or `agent-peer config set` directly, has no such line; in that case add `static_key: "<key>"` under `pairing:`. Then use the key as the `key` in `connect_broker` or `agent-peer peer connect <address> --key <key>`.
+- The alias is already taken. A common cause is the default alias, which contains only the first segment of the hostname: two hosts whose hostnames share that segment, for example `workstation.example.com` and `workstation.example.net`, give their system Brokers the same alias, and so do the user Brokers of the same-named account on each host. If the accepting Broker's alias matches this Broker's own alias or another peer's alias, `connect_broker` asks for a local alias. Say “Connect to the Broker at <address> with the key <key> and the local alias <alias>.” with an alias of up to 24 characters (the model calls `connect_broker`), or run `agent-peer peer connect <address> --key <key> --alias <alias>` with the same limit; the alias applies only on this Broker.
+- The shown address does not work. The addresses returned with the key may not be reachable from the other side, for example when the accepting host is behind port forwarding. Say “Connect to the Broker at <address> with the key <key>.” with an address that the other side can reach (the model calls `connect_broker`), or use it in `agent-peer peer connect`.
+- The network drops. Once the Brokers are paired, the dialer reconnects without a key. Wait a moment and say “List the Brokers this Broker knows.” again (the model calls `list_brokers`), or run `agent-peer peer list`; the peer returns to `connected`.
+- The deployment is repeated. Instead of a one-time key, the accepting Broker can have a pre-provisioned static key in its configuration file, under `pairing.static_key`. The value is 16 to 128 characters, does not expire, and works for any number of pairings. The tools never generate it, set it or return it; before the deployment, uncomment the `static_key` line in the configuration file and fill in a key such as the output of `openssl rand -hex 32`. A file from an older version, or one written by running the Broker or `agent-peer config set` directly, has no such line; in that case add `static_key: "<key>"` under `pairing:`. Then say “Connect to the Broker at <address> with the key <key>.” with that key (the model calls `connect_broker`), or run `agent-peer peer connect <address> --key <key>`.

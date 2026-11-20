@@ -18,7 +18,7 @@ Start a session in the working copy on each host and enable the agent-peer tools
 
 With no topics declared in a project configuration file, both sessions join the default topic for the repository. The topic comes from the git `origin` address, normalized to the lower-case host name followed by the repository path: `git@github.com:org/repo.git`, `ssh://git@GitHub.com:22/org/repo.git` and `https://github.com/org/repo` all become `github.com/org/repo`.
 
-In one session, ask the model to call `list_agents`. Besides your own address, the result lists the other agent with its address and the topics you share. The address ends with the other Broker's alias, such as `frontend@hostB`. When the other side uses a user Broker, it looks like `frontend@hostB.alice`.
+In one session, say “List the agents.” (the model calls `list_agents`). Besides your own address, the result lists the other agent with its address and the topics you share. The address ends with the other Broker's alias, such as `frontend@hostB`. When the other side uses a user Broker, it looks like `frontend@hostB.alice`.
 
 ## Set the topic in the project
 
@@ -34,12 +34,12 @@ Every session started in that directory or one of its descendants joins these to
 
 ## Send and reply
 
-Ask the model to call `send_message` with the other agent's address and a plain-text message. The sending session reports success once the message is written into the receiving session's inbox socket.
+Say “Send hello to <address>.” (the model calls `send_message`). The sending session reports success once the message is written into the receiving session's inbox socket.
 
 The receiving Broker writes the message into the target session's inbox socket with the sender's address as the receiver sees it. An idle session starts working on the message without user input. A session can call `send_message` with the sender's address to send a message back.
 
 ## When there is no shared topic
 
-If the two working copies have different `origin` addresses, the agents do not appear in each other's lists. Learn the topic name from the other user through a channel outside agent-peer, then ask the model to call `join_topic` with that name. The call needs no approval from any other agent or user.
+If the two working copies have different `origin` addresses, the agents do not appear in each other's lists. Learn the topic name from the other user through a channel outside agent-peer, then say “Join the topic <topic-name>.” (the model calls `join_topic`). The call needs no approval from any other agent or user.
 
 `list_topics` shows the topics this session has joined and the public topics this Broker knows. `leave_topic` removes a membership. Called without a name, `join_topic` and `leave_topic` act on this session's default topics; see [Topics]({{< relref "/docs/concepts/topics" >}}). An agent that belongs to no topic appears in no other agent's list.

@@ -49,11 +49,11 @@ Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见
 
 ## 升级后 Agent 地址为什么变了？
 
-从 v0.2.0 起，默认别名不再包含监听端口：主机名为 `workstation` 的系统级 Broker 报出 `workstation`，不再是旧形式 `workstation-17443`；账户 alice 的用户级 Broker 报出 `workstation.alice`。因此，从 v0.1.0 升级、又没有设置 `broker.alias` 的 Broker 别名通常会变，对端看到的 Agent 地址也随之改变，除非对端已经为它设了本地别名；保存了旧地址的会话要改用新地址。对端遇到与已有别名冲突时会自行处理：为改了别名的 Broker 生成一个本地别名，原有地址不会因此指向另一个 Broker。想沿用旧别名，就在升级前把它读出来：用 `get_config` 工具读 `broker.alias`，或者从 `agent-peer status` 输出的 Agent 地址里取 `@` 后面的部分；升级后把配置文件里的 `broker.alias` 设回该值，例如 `workstation-17443`。默认端口下，旧别名是完整主机名加上 `-17443`，截短到 24 个字符。无论用哪种方式升级，包括在线安装、发布包里的 `install.sh`、`agent-peer update` 或手工替换二进制，情形都一样。
+从 v0.2.0 起，默认别名不再包含监听端口：主机名为 `workstation` 的系统级 Broker 报出 `workstation`，不再是旧形式 `workstation-17443`；账户 alice 的用户级 Broker 报出 `workstation.alice`。因此，从 v0.1.0 升级、又没有设置 `broker.alias` 的 Broker 别名通常会变，对端看到的 Agent 地址也随之改变，除非对端已经为它设了本地别名；保存了旧地址的会话要改用新地址。对端遇到与已有别名冲突时会自行处理：为改了别名的 Broker 生成一个本地别名，原有地址不会因此指向另一个 Broker。想沿用旧别名，就在升级前把它读出来：说“读取 broker.alias 这个配置键。”（模型会调用 `get_config`），或者从 `agent-peer status` 输出的 Agent 地址里取 `@` 后面的部分；升级后把配置文件里的 `broker.alias` 设回该值，例如 `workstation-17443`。默认端口下，旧别名是完整主机名加上 `-17443`，截短到 24 个字符。无论用哪种方式升级，包括在线安装、发布包里的 `install.sh`、`agent-peer update` 或手工替换二进制，情形都一样。
 
 ## 怎样更新 agent-peer？
 
-在终端运行 `agent-peer update`，或在会话里调用 `update_broker`。系统级安装由管理组成员更新，不用 `sudo`；不在组内的账户用 `sudo agent-peer update`，或先加入管理组。同一账户还运行着用户级 Broker 时，用 `sudo agent-peer update` 到达系统级 Broker。更新会校验下载内容、替换二进制；作为服务运行的 Broker 会用新版本重启，没有在运行的 Broker，或者不在服务管理器下运行的用户级 Broker，下次启动时才用上新版本。已经打开的会话要用 `/mcp` 重连或重开。见[更新 agent-peer]({{< relref "guides/update.md" >}})。
+在终端运行 `agent-peer update`，或在会话里说“更新 Broker。”并批准这次调用（模型会调用 `update_broker`）。系统级安装由管理组成员更新，不用 `sudo`；不在组内的账户用 `sudo agent-peer update`，或先加入管理组。同一账户还运行着用户级 Broker 时，用 `sudo agent-peer update` 到达系统级 Broker。更新会校验下载内容、替换二进制；作为服务运行的 Broker 会用新版本重启，没有在运行的 Broker，或者不在服务管理器下运行的用户级 Broker，下次启动时才用上新版本。已经打开的会话要用 `/mcp` 重连或重开。见[更新 agent-peer]({{< relref "guides/update.md" >}})。
 
 ## 能关闭更新检查吗？
 
@@ -61,7 +61,7 @@ Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见
 
 ## 两台主机如何开始互相信任？
 
-两台主机里至少要有一台能连到另一台。在对方能连上的那台主机上用 `create_pairing_key` 或 `agent-peer pairing-key create` 生成一次性配对密钥，连同显示的地址一起，通过系统之外的途径交给另一台。另一台用 `connect_broker` 或 `agent-peer peer connect <address> --key <key>` 配对，使用该一次性密钥或接受方配置的预置静态密钥，此后双方各凭指纹认对方。见[配对]({{< relref "concepts/pairing.md" >}})与[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。
+两台主机里至少要有一台能连到另一台。在对方能连上的那台主机上说“生成一个配对密钥。”并批准这次调用（模型会调用 `create_pairing_key`），或运行 `agent-peer pairing-key create` 生成一次性配对密钥，连同显示的地址一起，通过系统之外的途径交给另一台。另一台说“连接到 <address> 上的 Broker，密钥是 <key>。”并批准这次调用（模型会调用 `connect_broker`），或运行 `agent-peer peer connect <address> --key <key>` 配对，使用该一次性密钥或接受方配置的预置静态密钥，此后双方各凭指纹认对方。见[配对]({{< relref "concepts/pairing.md" >}})与[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。
 
 ## 什么是 topic？需要自己创建吗？
 

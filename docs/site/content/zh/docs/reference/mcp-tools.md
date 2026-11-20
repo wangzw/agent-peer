@@ -3,6 +3,8 @@ title: MCP 工具
 weight: 1
 ---
 
+本页列出的是模型替你调用的 MCP 工具。你平时用自然语言提出要求即可；这些工具不是斜杠命令，输入 `/` 不会列出。用 `/mcp` 可以查看 `peer` 服务是否已连上。
+
 Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer，安装会为运行它的账户注册这个服务：系统级安装为执行安装的账户注册，即使命令经 `sudo` 重新执行自己也是这个账户；以 root 直接执行时只打印注册命令，不做注册。手动注册用 `claude mcp add --scope user peer -- agent-peer mcp`。模型看到的工具名是 `mcp__peer__<tool>`，权限规则也按这个名字写，例如 `mcp__peer__send_message`。
 
 ## 工具
