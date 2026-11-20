@@ -614,15 +614,15 @@ Broker 处理 `ApplyUpdate`：
 
 `agent-peer uninstall [--purge]` 的步骤：
 
-1. 确定级别。root 为系统级。非 root 账户：本账户有用户级安装时为用户级；否则有系统级安装时询问 `Uninstall the system-wide installation (requires sudo)? [y/N]`，回答 y 时以 `sudo <本二进制> uninstall [--purge]` 重新执行，回答其他或无法询问时说明 `sudo agent-peer uninstall` 并以 0 退出；两者都没有时，MCP 注册指向本二进制的按用户级卸载，否则报告没有安装并以 0 退出。root 同时有用户级与系统级安装时卸载系统级；非 root 同时有时卸载用户级，结束后说明主机上仍有系统级安装及 `sudo agent-peer uninstall`。一次只卸载一个级别。“有安装”的判定沿用 `service uninstall`：服务定义文件存在，或服务管理器仍有启用或加载的状态。
-2. 确定是否删除数据：`--purge` 为删。不带时询问 `Also remove configuration, identity, audit and service logs? [y/N]`，无法询问时按留。系统级的询问在第 1 步经 `sudo` 重新执行之后由 root 进程执行；只有用户自己给出 `--purge` 时才把它传给 root 进程，重新执行时不为用户补上。每句只问一次。
-3. 从服务定义中读出它启动的二进制路径（`ExecStart` 的第一个字段，或 `ProgramArguments` 的第一项）。
+1. 确定级别。root 为系统级。非 root 账户：本账户有用户级安装时为用户级；否则有系统级安装时询问 `Uninstall the system-wide installation (requires sudo)? [y/N]`，回答 y 时以 `sudo <本二进制> uninstall [--purge]` 重新执行，回答其他或无法询问时说明 `sudo agent-peer uninstall` 并以 0 退出；两者都没有时，MCP 注册指向默认安装前缀下的本可执行文件的按用户级卸载，否则报告没有安装并以 0 退出。默认安装前缀为用户级的 `~/.local/bin/agent-peer`、系统级的 `/usr/local/bin/agent-peer`；经 `sudo` 运行的其他位置的副本不算安装。root 同时有用户级与系统级安装时卸载系统级；非 root 同时有时卸载用户级，结束后说明主机上仍有系统级安装及 `sudo agent-peer uninstall`。一次只卸载一个级别。“有安装”的判定沿用 `service uninstall`：服务定义文件存在，或服务管理器仍有启用或加载的状态。
+2. 确定是否删除数据：`--purge` 为删。不带时询问 `Also remove configuration, identity, audit and service logs? [y/N]`，无法询问时按留。系统级的询问在第 1 步经 `sudo` 重新执行之后由 root 进程执行；只有用户自己给出 `--purge` 时才把它传给 root 进程，重新执行时不为用户补上。每句只问一次。`$HOME` 不是绝对路径时，命令在调用 `service.Uninstall` 与删除 MCP 注册之前失败，以 1 退出，不做任何删除。
+3. 从服务定义中读出它启动的二进制路径（`ExecStart` 的第一个字段，或 `ProgramArguments` 的第一项）。解析 `ExecStart` 时先去掉 systemd 允许的前缀字符 `-@+!:`。
 4. 调用现有的 `service.Uninstall` 停止并删除服务定义。
 5. 删除 MCP 注册：用户级为执行命令的账户；系统级为 `SUDO_USER`，为空或为 root 时跳过并给出手工命令。只在 `claude mcp get peer` 报告的命令等于第 3 步的二进制路径时执行 `claude mcp remove -s user peer`，与安装脚本只认自己注册的条目相同；找不到 `claude` 时给出手工命令。
 6. 删除运行时目录：系统级为 Linux 的 `/run/agent-peer/` 或 macOS 的 `/var/run/agent-peer/`，用户级为 `/tmp/agent-peer-<uid>/`（[config](design-config.md) 的路径表）。
-7. 删除数据（第 2 步为删时）：配置文件与配置目录、数据目录、审计日志、服务日志，系统级另删除管理组与 systemd 的 drop-in 目录 `agent-peer.service.d`。完整位置如下表。
+7. 删除数据（第 2 步为删时）：配置文件与配置目录、数据目录、审计日志、服务日志，系统级另按下面的规则删除管理组与 systemd 的 drop-in 目录 `agent-peer.service.d`。完整位置如下表。
 8. 删除系统级二进制之前，查看 `/tmp/agent-peer-*/broker.sock`；有其他账户的 Broker 在应答时列出这些账户并提示，照常删除。
-9. 最后删除第 3 步的二进制。
+9. 最后删除第 3 步的二进制。只删除同时满足以下条件的文件：绝对路径；文件名为 `agent-peer`；与当前进程的可执行文件是同一文件（同设备同 inode）。任一条件不满足时保留该文件，输出保留原因与手动删除命令 `rm <路径>`；命令不执行这个文件来判断它的版本。没有服务定义时，只有第 1 步按默认安装前缀认定安装的情况下，才把当前可执行文件当作第 3 步的路径；经 `sudo` 运行的其他位置的副本保留。
 
 | 内容 | Linux 用户级 | Linux 系统级 | macOS 用户级 | macOS 系统级 |
 |---|---|---|---|---|
@@ -634,9 +634,9 @@ Broker 处理 `ApplyUpdate`：
 | 运行时目录 | `/tmp/agent-peer-<uid>/` | `/run/agent-peer/` | `/tmp/agent-peer-<uid>/` | `/var/run/agent-peer/` |
 | 管理组 | 无 | `groupdel <组>` | 无 | `dseditgroup -o delete <组>` |
 
-drop-in 不在服务定义之内，只在删除数据时删除，因为其中可能有用户写入的代理设置。管理组名取安装时的 `--admin-group`，卸载无从得知时取配置文件的属组；配置文件已不存在时取默认的 `agent-peer`，组不存在则跳过。
+drop-in 不在服务定义之内，只在删除数据时删除，因为其中可能有用户写入的代理设置。管理组只在安装记录能够证明它由本项目创建，或者它是 v0.2.0 安装的默认组时才删除。安装创建组时在 `/var/lib/agent-peer/admin-group` 写入组名，卸载在删除数据目录之前读取。同时满足以下条件才删除：有记录，且记录中的组名与配置文件当前的属组名一致；gid 不为 0；组不是任何账户的主组。没有记录时，只有配置文件存在、其属组恰好是默认的 `agent-peer`，且后两项也满足时才删除；记录存在而配置文件已不存在时，按记录中的组名检查后两项。主组检查枚举平台目录查询返回的账户，查询不到的账户不会被看到，`groupdel` 本身也拒绝删除本地账户的主组。任一条件不满足时保留该组，输出保留原因与手动删除命令（`groupdel <组>`，macOS 上 `dseditgroup -o delete <组>`）。没有记录的 v0.2.0 安装中，`--admin-group` 指定的非默认组不删除。组不存在时跳过。
 
-任一步失败时不回滚已完成的步骤，错误写明是哪一步、哪个路径与原因，以 1 退出；再次执行可以继续完成（`REQ-broker-config-049`）。`service uninstall` 的行为不变，只处理服务。
+任一步失败时不回滚已完成的步骤，错误写明是哪一步、哪个路径与原因，以 1 退出；再次执行可以继续完成（`REQ-broker-config-049`）。删除数据中途失败时，先逐个输出已经删除的路径再报错。`service uninstall` 的行为不变，只处理服务。
 
 ## 错误与失败语义
 
@@ -740,5 +740,5 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 下线时拒绝投递 | 未实现 | — |
 | `offline` 与 `online` 命令 | 未实现 | — |
 | `service start`、`stop`、`restart` | 未实现 | — |
-| `uninstall` | 未实现 | — |
+| `uninstall` | 已实现 | `cmd/agent-peer/uninstall_cmd.go`、`internal/broker/service/remove.go`、`internal/broker/service/admin_group.go` |
 | 安装汇总与降级检查 | 未实现 | — |

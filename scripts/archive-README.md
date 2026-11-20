@@ -90,23 +90,19 @@ When the update runs through the Broker, the Broker restarts and open sessions r
 
 ## Uninstall
 
-Stop and remove the service, remove the MCP registration, and delete the binary:
+Remove the service, the binary, the runtime directory and this account's MCP registration:
 
 ```sh
-agent-peer service uninstall
-claude mcp remove -s user peer
-rm ~/.local/bin/agent-peer
+agent-peer uninstall
 ```
 
-For a system-level installation, use `sudo` for the service and delete the binary from its system prefix:
+Add `--purge` to remove the configuration, identity, audit log and service logs as well; without it, uninstall asks before deleting them.
+
+A system-level installation is removed as root, or by answering the question when another account runs the command:
 
 ```sh
-sudo agent-peer service uninstall --system
-claude mcp remove -s user peer
-sudo rm /usr/local/bin/agent-peer
+sudo agent-peer uninstall
 ```
-
-Configuration, identity and audit logs are kept when the service is removed.
 
 ## Documentation
 

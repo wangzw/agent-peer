@@ -428,32 +428,32 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 `agent-peer uninstall` 必须判别已安装的级别，并删除该级别的服务定义、服务定义所启动的二进制、执行卸载的账户在 Claude Code 中的 MCP 注册，以及该级别的运行时目录。
 
 - **验收**：在完成用户级安装的主机上执行 `agent-peer uninstall` 并对数据询问直接回车：之后该账户的 Broker 进程不存在，服务定义文件、二进制、运行时目录都不存在，`claude mcp get peer` 报告未注册；配置文件、身份、审计日志与服务日志仍在。对系统级安装执行，结果相同。主机上同时有系统级与用户级安装时，非 root 账户只卸载用户级，结束后输出说明主机上仍有系统级安装及 `sudo agent-peer uninstall`。再执行一次，命令成功并报告没有安装。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/uninstall_test.go` 的 `TestUninstallREQBrokerConfig051UserLevel`、`TestUninstallREQBrokerConfig051SystemLevel`、`TestUninstallREQBrokerConfig051NoService`、`TestUninstallREQBrokerConfig051UnrecordedGroup`；`test/e2e/darwinservice/uninstall_test.go` 的 `TestUninstallREQBrokerConfig051UserLevel`
 
 ### REQ-broker-config-052
 
 非 root 账户卸载系统级安装时，`agent-peer uninstall` 必须先询问，回答 y 时经 sudo 完成卸载。
 
 - **验收**：主机上只有系统级安装，以普通账户执行 `agent-peer uninstall`：出现询问；回答 y 并输入 sudo 密码后系统级安装按 `REQ-broker-config-051` 删除；回答 n 时主机上没有改动，命令以 0 退出。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/uninstall_test.go` 的 `TestUninstallREQBrokerConfig052NonRootSystemOnly`、`TestUninstallREQBrokerConfig052TwoLevels`
 
 ### REQ-broker-config-053
 
 卸载必须询问 `Also remove configuration, identity, audit and service logs? [y/N]`，只有回答 y 时才删除这些数据，系统级安装同时删除管理组；不带 `--purge` 的卸载在其他情况下不得删除它们。
 
 - **验收**：在系统级安装的主机上卸载，对这句询问直接回车：配置文件、身份与对端表、审计日志都在，管理组仍存在；重新安装后，Broker 的指纹与卸载前相同，原有对端仍是对端。另一台主机上回答 y：这些数据与管理组都不存在。无法询问时按不删除处理。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/uninstall_test.go` 的 `TestUninstallREQBrokerConfig051UserLevel`、`TestUninstallREQBrokerConfig051SystemLevel`（保留数据与管理组的断言）
 
 ### REQ-broker-config-054
 
 `agent-peer uninstall --purge` 必须不经数据询问删除 `REQ-broker-config-051` 与 `REQ-broker-config-053` 所列的全部内容；删除后这些路径下都没有本系统的文件或目录，服务定义、二进制、MCP 注册与管理组都不存在。
 
 - **验收**：在分别完成用户级与系统级安装、配对过一个对端、产生过审计记录的主机上执行 `agent-peer uninstall --purge`：命令不询问数据去留；之后配置文件与配置目录、数据目录、审计日志、运行时目录都不存在，`getent group agent-peer`（macOS 上 `dscl . -read /Groups/agent-peer`）报告不存在，服务管理器中查不到 agent-peer 服务，`claude mcp get peer` 报告未注册。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/uninstall_test.go` 的 `TestUninstallREQBrokerConfig051UserLevel`、`TestUninstallREQBrokerConfig051SystemLevel`、`TestUninstallREQBrokerConfig051UnrecordedGroup`、`TestUninstallREQBrokerConfig054OtherAccountBroker`
 
 ### REQ-broker-config-055
 
