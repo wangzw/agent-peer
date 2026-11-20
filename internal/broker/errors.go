@@ -91,7 +91,9 @@ func grpcCode(code localpb.ErrorCode) codes.Code {
 		localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH,
 		localpb.ErrorCode_ERROR_CODE_NEEDS_LOCAL_ALIAS,
 		localpb.ErrorCode_ERROR_CODE_PAIRING_REJECTED,
-		localpb.ErrorCode_ERROR_CODE_NOT_UNDER_SERVICE_MANAGER:
+		localpb.ErrorCode_ERROR_CODE_NOT_UNDER_SERVICE_MANAGER,
+		localpb.ErrorCode_ERROR_CODE_BROKER_OFFLINE,
+		localpb.ErrorCode_ERROR_CODE_BROKER_DEGRADED:
 		return codes.FailedPrecondition
 	case localpb.ErrorCode_ERROR_CODE_UPDATE_IN_PROGRESS:
 		return codes.Aborted

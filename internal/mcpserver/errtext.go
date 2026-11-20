@@ -203,6 +203,10 @@ func codeName(c localpb.ErrorCode) string {
 		return "quota_exceeded"
 	case localpb.ErrorCode_ERROR_CODE_INTERNAL:
 		return "internal"
+	case localpb.ErrorCode_ERROR_CODE_BROKER_OFFLINE:
+		return "broker_offline"
+	case localpb.ErrorCode_ERROR_CODE_BROKER_DEGRADED:
+		return "broker_degraded"
 	default:
 		return "internal"
 	}

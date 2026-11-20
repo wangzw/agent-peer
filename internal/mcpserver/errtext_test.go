@@ -640,9 +640,11 @@ func TestCodeName(t *testing.T) {
 		{localpb.ErrorCode_ERROR_CODE_VERSION_MISMATCH, "version_mismatch"},
 		{localpb.ErrorCode_ERROR_CODE_QUOTA_EXCEEDED, "quota_exceeded"},
 		{localpb.ErrorCode_ERROR_CODE_INTERNAL, "internal"},
+		{localpb.ErrorCode_ERROR_CODE_BROKER_OFFLINE, "broker_offline"},
+		{localpb.ErrorCode_ERROR_CODE_BROKER_DEGRADED, "broker_degraded"},
 	}
-	if len(tests) != 16 {
-		t.Fatalf("covered %d enum values, want 16", len(tests))
+	if len(tests) != 18 {
+		t.Fatalf("covered %d enum values, want 18", len(tests))
 	}
 	for _, tt := range tests {
 		if got := codeName(tt.code); got != tt.want {
