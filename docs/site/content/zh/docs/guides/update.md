@@ -13,13 +13,13 @@ Broker 的正式发布版本启动后会检查 GitHub：先等约一分钟，检
 有新版本时，两个地方会显示。`agent-peer status` 的最后一行是：
 
 ```text
-Update: 0.1.2 available (current 0.1.1); run agent-peer update
+Update: 0.2.1 available (current 0.2.0); run agent-peer update
 ```
 
 有可用新版本时，某次工具结果的末尾会附上：
 
 ```text
-agent-peer 0.1.2 is available (this host runs 0.1.1). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
+agent-peer 0.2.1 is available (this host runs 0.2.0). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
 ```
 
 同一个版本在一个会话中只提示一次；会话开着期间出了新版本，之后的工具调用会再提示一次。MCP 服务在第一次工具调用时向 Broker 查询更新状态，此后最多每 10 分钟查询一次。不是正式发布版本的构建，例如不带 `-ldflags` 从源码构建的二进制，不检查，也不会出现这两行。
@@ -37,10 +37,10 @@ agent-peer update
 命令打印已安装版本与可用版本，以及发布页面，并在改动任何东西之前询问。回答 `y` 或 `yes` 才会继续；其他回答会取消更新，二进制与服务都保持原样。有可用新版本时，输出如下：
 
 ```text
-agent-peer 0.1.1 is installed; version 0.1.2 is available.
-Release: https://github.com/wangzw/agent-peer/releases/tag/v0.1.2
-Update to 0.1.2? [y/N] y
-agent-peer 0.1.2 is installed.
+agent-peer 0.2.0 is installed; version 0.2.1 is available.
+Release: https://github.com/wangzw/agent-peer/releases/tag/v0.2.1
+Update to 0.2.1? [y/N] y
+agent-peer 0.2.1 is installed.
 Restarted the agent-peer service.
 User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.
 Open Claude Code sessions must reconnect with /mcp or be restarted to use the new version.
@@ -50,7 +50,7 @@ Open Claude Code sessions must reconnect with /mcp or be restarted to use the ne
 
 下载任何内容之前，命令先确认自己能否写入二进制所在的目录。之后下载适用于本平台与架构的发布包，与 `checksums.txt` 比对，再运行新二进制，核对它报出的版本是否符合预期。全部通过后，它才替换二进制，并保留原有的权限模式与属主。替换之前的任何一步失败，命令都会停下，二进制与服务都不改动。替换之后重启服务失败时，新二进制已经装好，按报错手动重启服务即可。
 
-已是最新版本时，命令打印 `agent-peer 0.1.1 is up to date`，直接退出，不做任何改动。
+已是最新版本时，命令打印 `agent-peer 0.2.0 is up to date`，直接退出，不做任何改动。
 
 命令的完整说明见[命令行]({{< relref "/docs/reference/cli" >}})。
 

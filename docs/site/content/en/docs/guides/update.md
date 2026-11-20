@@ -13,13 +13,13 @@ A release build of the Broker checks GitHub shortly after it starts: it waits ab
 When a newer release exists, you see it in two places. The last line of `agent-peer status` is:
 
 ```text
-Update: 0.1.2 available (current 0.1.1); run agent-peer update
+Update: 0.2.1 available (current 0.2.0); run agent-peer update
 ```
 
 When a newer release is available, a tool result in the session ends with:
 
 ```text
-agent-peer 0.1.2 is available (this host runs 0.1.1). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
+agent-peer 0.2.1 is available (this host runs 0.2.0). Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.
 ```
 
 A session shows the notice once for a given version. If a newer release appears while the session stays open, a later tool call shows the notice again. The MCP server queries the Broker for the update state on its first tool call and then at most once every 10 minutes. A build that is not a formal release, such as a binary built from source without `-ldflags`, does not check and never shows either line.
@@ -37,10 +37,10 @@ agent-peer update
 It prints the installed and available versions together with the release page, and asks before changing anything. Answering `y` or `yes` goes ahead; any other answer cancels the update, and the binary and the service stay as they were. With a newer version available, the output looks like this:
 
 ```text
-agent-peer 0.1.1 is installed; version 0.1.2 is available.
-Release: https://github.com/wangzw/agent-peer/releases/tag/v0.1.2
-Update to 0.1.2? [y/N] y
-agent-peer 0.1.2 is installed.
+agent-peer 0.2.0 is installed; version 0.2.1 is available.
+Release: https://github.com/wangzw/agent-peer/releases/tag/v0.2.1
+Update to 0.2.1? [y/N] y
+agent-peer 0.2.1 is installed.
 Restarted the agent-peer service.
 User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.
 Open Claude Code sessions must reconnect with /mcp or be restarted to use the new version.
@@ -50,7 +50,7 @@ Add `--yes` to skip the question. When standard input is not a terminal, as in a
 
 Before downloading anything, the command checks that it can write to the directory that holds the binary. It then downloads the archive for this platform and this architecture, checks it against `checksums.txt`, and runs the new binary to make sure that it reports the expected version. Only then does it replace the binary, keeping the original mode and owner. If any step before the replacement fails, the command stops and leaves the binary and the service unchanged. If restarting the service fails after the replacement, the new binary is already installed; restart the service yourself as the error message describes.
 
-When the installed version is already the latest, the command prints `agent-peer 0.1.1 is up to date` and exits without changing anything.
+When the installed version is already the latest, the command prints `agent-peer 0.2.0 is up to date` and exits without changing anything.
 
 [Command line]({{< relref "/docs/reference/cli" >}}) gives the full description of the command.
 

@@ -172,10 +172,10 @@ The command proceeds in this order:
 The output of a successful update looks like this. `Release:` appears only when the release has a URL.
 
 ```text
-agent-peer 0.1.1 is installed; version 0.1.2 is available.
-Release: https://github.com/wangzw/agent-peer/releases/tag/v0.1.2
-Update to 0.1.2? [y/N] y
-agent-peer 0.1.2 is installed.
+agent-peer 0.2.0 is installed; version 0.2.1 is available.
+Release: https://github.com/wangzw/agent-peer/releases/tag/v0.2.1
+Update to 0.2.1? [y/N] y
+agent-peer 0.2.1 is installed.
 Restarted the agent-peer service.
 User-level Brokers that run this binary keep the old version until they are restarted, for example with `agent-peer service install` as that user.
 Open Claude Code sessions must reconnect with /mcp or be restarted to use the new version.
