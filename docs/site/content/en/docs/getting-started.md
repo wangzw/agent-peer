@@ -46,17 +46,17 @@ VERSION=0.1.0
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --version "$VERSION" --system
 ```
 
-`--version` must come before every other argument. It names a published version to install; when that version has no release archive to install, the script stops with `version <v> not found`. Every other argument is passed unchanged to the archive's `install.sh`, so the options in the next section work here as well.
+`--version` must come before every other argument. It names a published version to install; when that version has no release archive to install, the script stops with `version <version> not found`. Every other argument is passed unchanged to the archive's `install.sh`, so the options in the next section work here as well.
 
 The command needs macOS or Linux on amd64 or arm64; `curl` to fetch the script, while the script itself uses `curl` or `wget` to download the archive; `tar`; `sha256sum` or `shasum`; and access to github.com. The system-level form needs `sudo`.
 
-Unless `--version` names a release, the script resolves the latest stable release; it downloads this platform's archive and the same release's `checksums.txt` into a temporary directory, verifies the archive, extracts it and runs the `install.sh` it contains. If a download fails or the checksum does not match, it stops and leaves the host unchanged, and the temporary directory is removed when the script exits or is interrupted. An interrupted download of the script itself runs nothing, because the work starts on its last line.
+Unless `--version` names a release, the script resolves the latest stable release; it downloads this platform's archive and the same release's `checksums.txt` into a temporary directory, verifies the archive, extracts it and runs the `install.sh` it contains. Every download the script makes goes over HTTPS; with either `curl` or `wget`, it refuses a redirect to an http address. If a download fails or the checksum does not match, it stops and leaves the host unchanged, and the temporary directory is removed when the script exits or is interrupted. An interrupted download of the script itself runs nothing, because the work starts on its last line.
 
-Piping a script into a shell trusts it to the same degree as downloading the archive by hand from GitHub Releases. Releases are not signed, and `checksums.txt` comes from the same release as the archive, so a matching checksum catches a damaged download but does not prove that the release is trustworthy. To read the script first, download it and then run it:
+Piping a script into a shell trusts it to the same degree as downloading the archive by hand from GitHub Releases. Releases are not signed, and `checksums.txt` comes from the same release as the archive, so a matching checksum catches a damaged download but does not prove that the release is trustworthy. To inspect the script first, download it, read it, and run it from the directory that holds it:
 
 ```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh -o agent-peer-install.sh
-sh agent-peer-install.sh
+curl -fsSLO https://github.com/wangzw/agent-peer/releases/latest/download/install.sh
+sh install.sh
 ```
 
 The script does the same work as the `install.sh` in the archive, described in the next section.

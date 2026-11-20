@@ -46,17 +46,17 @@ VERSION=0.1.0
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --version "$VERSION" --system
 ```
 
-`--version` 必须写在所有其他参数之前。它指定一个已发布的版本；这个版本没有可安装的发布包时，脚本中止并报 `version <v> not found`。其余参数原样传给发布包里的 `install.sh`，所以下一节的选项在这里同样可用。
+`--version` 必须写在所有其他参数之前。它指定一个已发布的版本；这个版本没有可安装的发布包时，脚本中止并报 `version <version> not found`。其余参数原样传给发布包里的 `install.sh`，所以下一节的选项在这里同样可用。
 
 这条命令要求 macOS 或 Linux、amd64 或 arm64；用 `curl` 取脚本，脚本内部下载发布包时用 `curl` 或 `wget`；有 `tar`；有 `sha256sum` 或 `shasum`；能访问 github.com。系统级形式还需要 `sudo`。
 
-除非用 `--version` 指定了版本，脚本会取最新正式版本的版本号，然后把本平台的发布包和同一版本的 `checksums.txt` 下载到临时目录，校验发布包，解压后执行其中的 `install.sh`。下载失败或校验和不符时，脚本中止，主机上不留任何改动；脚本退出或被中断时，临时目录会被删除。脚本自身没下载完整时什么都不会执行，因为它的工作在最后一行才开始。
+除非用 `--version` 指定了版本，脚本会取最新正式版本的版本号，然后把本平台的发布包和同一版本的 `checksums.txt` 下载到临时目录，校验发布包，解压后执行其中的 `install.sh`。脚本的每次下载都只走 HTTPS；无论用 `curl` 还是 `wget`，遇到跳转到 http 地址都会拒绝。下载失败或校验和不符时，脚本中止，主机上不留任何改动；脚本退出或被中断时，临时目录会被删除。脚本自身没下载完整时什么都不会执行，因为它的工作在最后一行才开始。
 
-把脚本通过管道交给 shell，信任程度与手动从 GitHub Releases 下载发布包相同。发布没有签名，`checksums.txt` 与发布包来自同一个发布，所以校验和相符只能说明下载没有损坏，证明不了这个发布本身可信。想先看过再执行，可以把脚本下载下来再运行：
+把脚本通过管道交给 shell，信任程度与手动从 GitHub Releases 下载发布包相同。发布没有签名，`checksums.txt` 与发布包来自同一个发布，所以校验和相符只能说明下载没有损坏，证明不了这个发布本身可信。想先看过再执行，可以先把脚本下载下来，读一遍，再在它所在的目录执行：
 
 ```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh -o agent-peer-install.sh
-sh agent-peer-install.sh
+curl -fsSLO https://github.com/wangzw/agent-peer/releases/latest/download/install.sh
+sh install.sh
 ```
 
 脚本做的事情与发布包里的 `install.sh` 相同，见下一节。
