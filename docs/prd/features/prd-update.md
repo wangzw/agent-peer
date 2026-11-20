@@ -79,16 +79,16 @@ Broker 必须按配置的间隔检查本项目在 GitHub 上是否有比当前�
 对系统级 Broker 的配置文件有写权限的账户，必须能在不取得 root 的情况下执行更新：Broker 自行下载、校验并替换二进制，由服务管理器以新二进制重新启动；更新命令在 Broker 以新版本运行之后才报告成功。Broker 不在服务管理器下运行时，这种更新必须被拒绝并说明原因。
 
 - **验收**：在安装为系统级服务、二进制位于 root 所有目录的主机上，以对配置文件有写权限、但不是 root 的账户执行更新命令并确认。命令结束时，Broker 以新版本运行，二进制的属主与权限不变，审计中记录该账户与新旧版本；已登记的会话不重新连接 MCP 服务，下一次列出 Agent 成功。以没有写权限的账户执行时，在任何下载之前返回权限不足。在终端手工运行的系统级 Broker 上执行时，命令报错说明需要服务管理器，二进制不变。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/self_update_test.go` 的 `TestREQUpdate007_SystemUpdateByAdminGroup`、`TestREQUpdate007_SystemUpdateRefusedOutsideAdminGroup`、`TestREQUpdate007_CLIWithoutUserBrokerUsesSystemBroker`、`TestREQUpdate007_CLIWithUserBrokerUsesUserBroker`、`TestREQUpdate007_RootUpdateUsesSystemBroker`、`TestREQUpdate007_SudoWithUserBrokerUsesSystemBroker`、`TestREQUpdate007_TerminalSystemBrokerNeedsServiceManager`
 
 ### REQ-update-008
 
 会话中必须能发起升级：Agent 可以调用一个不带参数的工具，让当前会话所连的 Broker 下载、校验并安装本项目最新的正式发布版本，然后由服务管理器以新版本重新启动该 Broker。工具在收到 Broker 的应答后立即返回，不等待重启完成。Broker 不在服务管理器下运行时，工具必须失败，并说明可以在终端执行更新命令。
 
 - **验收**：在安装为服务的用户级与系统级 Broker 上，会话调用该工具：返回升级前的版本与目标版本，Broker 随后以新版本运行，会话与 Broker 的连接自动恢复；已经是最新版本时返回说明，Broker 不重启；对配置文件没有写权限的账户调用时返回权限不足并给出配置文件路径；Broker 不在服务管理器下运行时返回错误，并给出终端替代做法；已有一次升级在进行时返回相应的错误。检查工具声明，它不带只读标记。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/self_update_test.go` 的 `TestREQUpdate008_UpdateBrokerUnderUserService`、`TestREQUpdate008_UpdateBrokerUnderSystemService`、`TestREQUpdate008_UpdateBrokerRefusedOutsideAdminGroup`
 
 ## 假设与依赖
 
