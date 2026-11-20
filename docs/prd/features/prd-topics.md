@@ -223,6 +223,22 @@ Broker 由公开改为不公开后，它此前的公开 topic 声明必须从连
 - **状态**：已实现
 - **端到端测试**：`test/e2e/discovery_test.go` 的 `TestPublicTopicFollowsLastMember`
 
+### REQ-topics-026
+
+不带名字加入 topic 时，Agent 必须加入本会话的默认 topic。
+
+- **验收**：在 `origin` 为 `https://github.com/org/repo` 的仓库中启动的 Agent 先按名字退出 `github.com/org/repo`，再不带名字加入，列出自己所在的 topic，结果含 `github.com/org/repo`；项目配置文件声明 `t1` 与 `t2` 时，不带名字加入后结果含这两个。会话没有默认 topic 时，调用返回错误，说明本会话没有默认 topic。
+- **状态**：未实现
+- **端到端测试**：未实现
+
+### REQ-topics-027
+
+不带名字退出 topic 时，Agent 必须退出本会话的默认 topic，此后在本会话内不得自动重新加入，新的会话照常自动加入。
+
+- **验收**：在 `origin` 为 `https://github.com/org/repo` 的仓库中启动的 Agent 不带名字退出，列出自己所在的 topic，结果不含 `github.com/org/repo`；重启 Broker，MCP 服务进程重新登记后仍不含；在同一工作区新开一个会话，新 Agent 所在的 topic 含 `github.com/org/repo`。
+- **状态**：未实现
+- **端到端测试**：未实现
+
 ## 数据需求
 
 topic 成员关系只在内存中保留，不写入磁盘。项目的 topic 声明保存在项目配置文件里，随仓库管理。
