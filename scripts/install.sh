@@ -7,13 +7,16 @@
 # downloads anything, so it works on a host without network access.
 #
 # Usage:
-#   sh ./install.sh [--system] [--prefix <dir>] [--no-service] [--no-mcp]
-#                   [--admin-group <name>] [--join-admin-group]
+#   sh ./install.sh [--system | --user] [--prefix <dir>] [--no-service]
+#                   [--no-mcp] [--admin-group <name>] [--join-admin-group]
 #                   [--no-admin-group]
 #
-#   --system        install for the whole host. Must run as root, usually
-#                   through sudo. The binary goes to /usr/local/bin unless
-#                   --prefix says otherwise, and the service runs at boot.
+#   --system        install for the whole host. The script runs itself through
+#                   sudo when it is not root. The binary goes to /usr/local/bin
+#                   unless --prefix says otherwise, and the service runs at
+#                   boot.
+#   --user          install for the account that runs the script. The account
+#                   must not be root.
 #   --prefix <dir>  install the binary in <dir> instead of the default:
 #                   $HOME/.local/bin for a user-level install and
 #                   /usr/local/bin for a system-level install.
@@ -31,19 +34,27 @@
 #                   group.
 #   -h, --help      print this usage and exit.
 #
+# Without --system or --user the script chooses the level itself. Root installs
+# system-wide without asking. An account without a controlling terminal gets a
+# user-level install without waiting for input. An account with a controlling
+# terminal is asked whether to install system-wide, and is asked whether to
+# upgrade the existing system-wide installation when the host already has one;
+# answering no to the upgrade leaves the host unchanged.
+#
 # A system-level install asks, on the controlling terminal, whether to add the
 # account that ran sudo to the admin group, so that account can manage the
 # Broker without sudo after logging in again. The answer defaults to no. The
 # prompt is skipped when the answer cannot be read, and when the account is
 # already in the group.
 #
-# Uninstall with "agent-peer service uninstall [--system]", then
-# "claude mcp remove -s user peer", then remove the installed binary. This
-# script does not uninstall anything.
+# Uninstall with "agent-peer uninstall". This script does not uninstall
+# anything.
 
 set -eu
 
 system=0
+system_set=0
+user_set=0
 prefix=
 prefix_set=0
 install_service=1
@@ -61,16 +72,34 @@ fail() {
 	exit 1
 }
 
+# ask_tty writes the prompt to the controlling terminal and reads one line from
+# it, never from stdin: when the script is piped into sh, stdin is the script
+# itself. It prints the answer without its newline and returns 0 when a line was
+# read, so an empty answer is distinct from a terminal that could not be read.
+ask_tty() {
+	printf '%s' "$1" 2>/dev/null >/dev/tty || return 1
+	_reply=
+	if ! _reply=$( { read -r _line && printf '%s' "$_line"; } 2>/dev/null </dev/tty ); then
+		printf '\n' 2>/dev/null >/dev/tty || true
+		return 1
+	fi
+	printf '\n' 2>/dev/null >/dev/tty || true
+	printf '%s' "$_reply"
+	return 0
+}
+
 usage() {
 	cat <<'EOF'
-usage: sh ./install.sh [--system] [--prefix <dir>] [--no-service] [--no-mcp]
-                       [--admin-group <name>] [--join-admin-group]
+usage: sh ./install.sh [--system | --user] [--prefix <dir>] [--no-service]
+                       [--no-mcp] [--admin-group <name>] [--join-admin-group]
                        [--no-admin-group]
 
 Install agent-peer from the extracted release archive.
 
-  --system        install for the whole host; must run as root, usually
-                  through sudo
+  --system        install for the whole host; the script runs itself through
+                  sudo when it is not root
+  --user          install for the account that runs the script; the account
+                  must not be root
   --prefix <dir>  install the binary in <dir> instead of $HOME/.local/bin
                   for a user-level install or /usr/local/bin for a
                   system-level install
@@ -87,6 +116,9 @@ Install agent-peer from the extracted release archive.
                   do not ask to add the account that ran sudo to the admin
                   group
   -h, --help      print this usage and exit
+
+Uninstall with "agent-peer uninstall". This script does not uninstall
+anything.
 EOF
 }
 
@@ -116,6 +148,10 @@ while [ "$#" -gt 0 ]; do
 	case $1 in
 		--system)
 			system=1
+			system_set=1
+			;;
+		--user)
+			user_set=1
 			;;
 		--prefix)
 			if [ "$#" -lt 2 ]; then
@@ -170,6 +206,12 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 
+if [ "$system_set" -eq 1 ] && [ "$user_set" -eq 1 ]; then
+	printf 'install.sh: --system and --user cannot be used together\n' >&2
+	usage >&2
+	exit 2
+fi
+
 if [ "$prefix_set" -eq 1 ] && [ -z "$prefix" ]; then
 	printf 'install.sh: --prefix needs a non-empty directory\n' >&2
 	usage >&2
@@ -197,8 +239,71 @@ if [ "$join_admin_group" -eq 1 ] && [ "$no_admin_group" -eq 1 ]; then
 	exit 2
 fi
 
+if ! _current_uid=$(id -u); then
+	fail "determining the current user id"
+fi
+
+if ! _os=$(uname -s); then
+	fail "determining the operating system"
+fi
+
+# Choose the install level. An explicit option wins. Root installs system-wide
+# without asking. An account with a controlling terminal is asked whether to
+# install system-wide, and whether to upgrade the system-wide installation when
+# the host already has one. An account without a terminal gets a user-level
+# install without waiting for input.
+if [ "$system_set" -eq 1 ]; then
+	system=1
+elif [ "$user_set" -eq 1 ]; then
+	system=0
+elif [ "$_current_uid" -eq 0 ]; then
+	system=1
+elif true 2>/dev/null </dev/tty; then
+	case $_os in
+		Darwin) _definition=/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist ;;
+		*) _definition=/etc/systemd/system/agent-peer.service ;;
+	esac
+	_existing_system=0
+	# stat takes a bare path on both platforms and succeeds only when it exists.
+	if stat "$_definition" >/dev/null 2>&1; then
+		_existing_system=1
+	fi
+	if [ "$_existing_system" -eq 1 ]; then
+		_prompt='Upgrade the system-wide installation? [Y/n] '
+		_default=1
+	else
+		_prompt='Install system-wide (all accounts)? [y/N] '
+		_default=0
+	fi
+	_choice=0
+	if _answer=$(ask_tty "$_prompt"); then
+		case $_answer in
+			[yY]|[yY][eE][sS]) _choice=1 ;;
+			'') _choice=$_default ;;
+		esac
+	fi
+	if [ "$_choice" -eq 1 ]; then
+		system=1
+	else
+		system=0
+		if [ "$_existing_system" -eq 1 ]; then
+			printf 'install.sh: the system-wide installation was left unchanged; rerun with --user to install for this account instead.\n'
+			exit 0
+		fi
+	fi
+else
+	system=0
+fi
+
+# A root account that asked for a user-level install is told to drop --user
+# rather than silently installing system-wide instead.
+if [ "$system" -eq 0 ] && [ "$_current_uid" -eq 0 ]; then
+	fail "a user-level install must not run as root; drop --user to install system-wide"
+fi
+
 # The admin group belongs to a system-level install. Reject the options on a
-# user-level install rather than silently doing nothing.
+# user-level install rather than silently doing nothing. The level is known
+# only now: an account without --system may have chosen it at the prompt.
 if [ "$system" -eq 0 ]; then
 	if [ "$admin_group_set" -eq 1 ]; then
 		printf 'install.sh: --admin-group is only valid with --system\n' >&2
@@ -216,13 +321,43 @@ if [ ! -f "$archive_binary" ]; then
 	fail "no agent-peer binary next to $0; extract the whole release archive and run sh ./install.sh from it"
 fi
 
+# A system-level install needs root. Recheck the same script under sudo with the
+# options the caller gave, so a system-wide choice made at the prompt and an
+# explicit --system take the same path.
+if [ "$system" -eq 1 ] && [ "$_current_uid" -ne 0 ]; then
+	set -- --system
+	if [ "$prefix_set" -eq 1 ]; then
+		set -- "$@" --prefix "$prefix"
+	fi
+	if [ "$install_service" -eq 0 ]; then
+		set -- "$@" --no-service
+	fi
+	if [ "$install_mcp" -eq 0 ]; then
+		set -- "$@" --no-mcp
+	fi
+	if [ "$admin_group_set" -eq 1 ]; then
+		set -- "$@" --admin-group "$admin_group"
+	fi
+	if [ "$join_admin_group" -eq 1 ]; then
+		set -- "$@" --join-admin-group
+	fi
+	if [ "$no_admin_group" -eq 1 ]; then
+		set -- "$@" --no-admin-group
+	fi
+	if ! command -v sudo >/dev/null 2>&1; then
+		fail "a system-level install needs sudo, which was not found; install sudo, or pass --user for a user-level install"
+	fi
+	_sudo_status=0
+	sudo sh "$script_dir/install.sh" "$@" || _sudo_status=$?
+	case $_sudo_status in
+		0|3) exit "$_sudo_status" ;;
+	esac
+	printf 'install.sh: the system-level installation did not complete: sudo exited with status %d.\n' "$_sudo_status" >&2
+	printf 'See the error above; rerun with --user for a user-level install.\n' >&2
+	exit "$_sudo_status"
+fi
+
 if [ "$system" -eq 1 ]; then
-	if ! _current_uid=$(id -u); then
-		fail "determining the current user id"
-	fi
-	if [ "$_current_uid" -ne 0 ]; then
-		fail "a system-level install must run as root; run: sudo sh ./install.sh --system"
-	fi
 	if [ -z "$prefix" ]; then
 		prefix=/usr/local/bin
 	fi
@@ -231,12 +366,6 @@ if [ "$system" -eq 1 ]; then
 		*) fail "a system-level --prefix must be an absolute path" ;;
 	esac
 else
-	if ! _current_uid=$(id -u); then
-		fail "determining the current user id"
-	fi
-	if [ "$_current_uid" -eq 0 ]; then
-		fail "a user-level install must not run as root; run sh ./install.sh as your own account, or sudo sh ./install.sh --system for a system-level install"
-	fi
 	if [ -z "$prefix" ]; then
 		if [ -z "${HOME:-}" ]; then
 			fail "HOME is not set; pass --prefix with the directory to install into"
@@ -308,9 +437,6 @@ fi
 # carries the quarantine attribute, and macOS blocks the binary until it is
 # removed. The attribute is absent after a command-line download, and xattr
 # then fails; that is not an error here.
-if ! _os=$(uname -s); then
-	fail "determining the operating system"
-fi
 if [ "$_os" = "Darwin" ]; then
 	xattr -d com.apple.quarantine "$archive_binary" 2>/dev/null || true
 fi

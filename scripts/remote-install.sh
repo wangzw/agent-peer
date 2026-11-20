@@ -3,15 +3,19 @@
 #
 # Usage:
 #   curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
-#   curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --system
 #   curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version <version>
+#
+# The packaged install.sh chooses the installation level. It asks on the
+# controlling terminal whether to install system-wide, runs itself through sudo
+# for that choice, and installs system-wide without asking when it runs as root.
+# Pass --system or --user after "--" to skip the question.
 #
 # The script selects the release for this host's operating system and
 # architecture, downloads the archive and checksums.txt, verifies the archive
 # against its SHA-256 checksum, extracts it, and runs the install.sh the archive
-# contains. The installation rules, including which arguments are accepted and
-# which user may run a system-level install, belong to that packaged install.sh.
-# This script forwards every argument it does not use itself unchanged.
+# contains. The installation rules, including the installation level and the
+# sudo run, belong to that packaged install.sh. This script forwards every
+# argument it does not use itself unchanged.
 #
 # The whole body is the main function, and the call to it is the last line of
 # this file. If the download is cut short before that line, the shell defines
