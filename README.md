@@ -93,6 +93,8 @@ The script installs the binary into `~/.local/bin`, installs and starts the user
 sudo sh ./install.sh --system
 ```
 
+On a host where a system-level Broker already runs, that Broker serves every account, so a user-level one is usually unnecessary. To install a user-level Broker anyway, set `broker.listen` in `~/.agent-peer/config.yaml` to another port, or leave it empty to run without a TCP listener; otherwise both Brokers use the same port, and the installation stops with the address reported as already in use.
+
 The script accepts these options:
 
 | Option | Effect |

@@ -147,7 +147,7 @@ service Local {
 - `peer connect`：一行 `Paired with <alias> (<fingerprint>)`；应答中的 warnings 每条一行写到标准错误，前缀 `warning: `，退出码仍为 0。
 - `peer disconnect`：一行 `Disconnected <broker>`。
 
-`service install` 写入服务定义、启用服务并立即启动 Broker，随后用本机 socket 轮询 Broker 是否应答，上限为 20 秒。上限覆盖 Broker 自身的启动时间与 launchd 默认 10 秒的节流；超时使安装失败，错误给出服务日志的位置：Linux 为 `journalctl --user -u agent-peer.service`（系统级去掉 `--user`），macOS 为 `~/Library/Logs/agent-peer/broker.log`（系统级为 `/var/log/agent-peer/broker.log`）。
+`service install` 写入服务定义、启用服务并立即启动 Broker，随后用本机 socket 轮询 Broker 是否应答，上限为 20 秒。上限覆盖 Broker 自身的启动时间与 launchd 默认 10 秒的节流；超时使安装失败，错误给出服务日志的位置，并并入日志中最后一条 `startup_failed` 记录的 `error` 字段：Linux 为 `journalctl --user -u agent-peer.service`（系统级去掉 `--user`），macOS 为 `~/Library/Logs/agent-peer/broker.log`（系统级为 `/var/log/agent-peer/broker.log`）。
 
 发布包的安装脚本把二进制放进目标目录、以它调用 `service install`、为执行安装的用户注册 MCP 服务（`REQ-broker-config-041`）；服务定义的写入、启动与重装仍只由 `service install` 负责，它可重复执行，安装脚本因此不另做判断。远程安装脚本负责下载发布包、核对发布包的 sha256 并在解压后调用包内的 `install.sh`；权限检查、拒绝以 `root` 走用户级安装等判断仍由包内脚本负责（`REQ-broker-config-042`）。
 
@@ -160,6 +160,8 @@ macOS 上，用户级 plist 写到 `~/Library/LaunchAgents/io.github.wangzw.agen
 `--system` 时按解析符号链接后的真实路径检查二进制及其每一级目录：属主必须是 root，组与其他人不可写，二进制对其他人可执行，各级目录对其他人可进入；二进制位于临时目录下时，用户级与系统级都拒绝安装。
 
 安装时，该级别的配置文件不存在就生成一份列出全部配置项的模板。系统级写到 `/etc/agent-peer/config.yaml`，以 root 为属主、管理组为属组、`0660` 为权限，内容为 `config.Template(config.ModeSystem)`；用户级写到 `~/.agent-peer/config.yaml`，以本账户为属主、`0600` 为权限，内容为 `config.Template(config.ModeUser)`，所在目录不存在时按数据目录的规则创建。两者都以独占方式创建（`O_EXCL`），文件已存在时不改动；本机已有的配置文件不迁移，也不改写。安装输出写明“已生成配置文件 <路径>”或“沿用已有配置文件 <路径>”（`REQ-broker-config-040`）。
+
+注册服务之前，安装读取这次安装将生效的 `broker.listen`，包括本次刚生成的模板。值不为空时试绑该地址再释放：地址被占用时，安装先停掉同名的已运行服务再试一次，地址随之释放说明占用者就是本服务（重装或升级），安装继续并用新二进制启动它；地址仍被占用则安装失败，不注册、不启动服务。报错写明地址、`already in use`、配置文件路径与 `broker.listen` 键，并提示改用其他端口，或留空表示不监听。就绪失败（Broker 启动失败或 20 秒内不应答）后，安装停止并卸载本次注册的服务：Linux 执行 `systemctl --user disable --now agent-peer.service`（系统级去掉 `--user`），macOS 执行 `launchctl bootout <域>/io.github.wangzw.agent-peer`。单元文件或 plist 与配置文件保留，报错说明修好后重新执行 `service install`。预检与真正的绑定之间仍有竞态，启动失败时由上面的日志原因兜底。
 
 系统级安装创建管理组：组不存在时 Linux 执行 `groupadd --system <名称>`，macOS 用 `dseditgroup` 创建；组已存在时直接使用，不改成员。组名默认为 `agent-peer`，由 `--admin-group` 指定；建组失败时安装失败，并且不改动配置文件。配置文件已存在时，内容、属组与权限都不动，安装输出给出把已有文件交给管理组的命令 `chgrp <组> <路径> && chmod 0660 <路径>`。发布包内的安装脚本询问是否把执行安装的账户加入该组，默认不加入（[ADR-admin-group](../../adr/adr-admin-group.md)，`REQ-broker-config-043`）。
 

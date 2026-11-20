@@ -343,6 +343,36 @@ func ProbeListen(addr string) error {
 	return nil
 }
 
+// ListenFromFile returns the effective broker.listen value of the configuration
+// file at path: the value in the file, or the default when the key is absent.
+// A missing file is an empty configuration and yields the default; an invalid
+// value is reported as an error. The function only reads: it neither loads the
+// package nor creates any path, so the service installer can check the address
+// before it registers anything.
+func ListenFromFile(path string) (string, error) {
+	doc, err := readConfigFile(path)
+	if err != nil {
+		return "", err
+	}
+	if err, bad := doc.invalid["broker.listen"]; bad {
+		return "", err
+	}
+	value := ""
+	if doc.present["broker.listen"] {
+		value = doc.values["broker.listen"].String
+	} else {
+		spec, ok := lookupKey("broker.listen")
+		if !ok {
+			return "", errors.New("config: broker.listen is not a known key")
+		}
+		value = defaultValue(spec, defaultContext{}).String
+	}
+	if _, err := parseListen(value); err != nil {
+		return "", wrapInvalid("broker.listen", err.Error())
+	}
+	return value, nil
+}
+
 // Subscribe registers a callback for changes of one key.
 func Subscribe(key string, onChange func(old, new Value)) {
 	c := currentCore()

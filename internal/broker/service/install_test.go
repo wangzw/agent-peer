@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,7 +36,11 @@ func baseOptions(t *testing.T) Options {
 		// do not exercise group creation emit no group commands.
 		GroupGID: func(string) (int, bool, error) { return 999, true, nil },
 		Probe:    func(string) (int, bool) { return 0, false },
-		Owner:    fakeOwner(nil),
+		// Most tests do not exercise the listen precheck; report every address
+		// free so they never bind the template's real port. The precheck tests
+		// replace this with config.ProbeListen or a stand-in.
+		ListenProbe: func(string) error { return nil },
+		Owner:       fakeOwner(nil),
 		EvalSymlinks: func(path string) (string, error) {
 			return path, nil
 		},
@@ -1463,6 +1468,235 @@ func TestInstallWaitsForTheBroker(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "/Users/alice/Library/Logs/agent-peer/broker.log") {
 			t.Errorf("error %q does not name the user log", err)
+		}
+	})
+}
+
+// writeListenConfig writes a configuration file for opts with broker.listen set
+// to addr, as if an earlier install had generated it.
+func writeListenConfig(t *testing.T, opts Options, addr string) {
+	t.Helper()
+	path := rooted(opts, configFilePath(opts))
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := "broker:\n  listen: \"" + addr + "\"\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func commandIndex(cmds []string, want string) int {
+	return slices.Index(cmds, want)
+}
+
+func TestInstallRefusesAnOccupiedListenAddress(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	addr := ln.Addr().String()
+
+	opts := baseOptions(t)
+	writeListenConfig(t, opts, addr)
+	var cmds []string
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		if slices.Contains(args, "show") {
+			return []byte("4242\n"), nil
+		}
+		return nil, nil
+	}
+	opts.Probe = func(string) (int, bool) { return 0, false }
+	opts.ListenProbe = config.ProbeListen
+	opts.ReadyTimeout = 20 * time.Millisecond
+
+	_, err = Install(opts)
+	if err == nil {
+		t.Fatal("Install succeeded while broker.listen was held by another process")
+	}
+	for _, want := range []string{addr, "already in use", "/home/alice/.agent-peer/config.yaml", "broker.listen"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if !strings.Contains(err.Error(), "leave it empty") {
+		t.Errorf("error %q does not suggest an empty broker.listen", err)
+	}
+	for _, verb := range []string{"enable", "restart"} {
+		if cmd := "systemctl --user " + verb + " " + UnitName; slices.Contains(cmds, cmd) {
+			t.Errorf("commands = %q, want no %q before the listen precheck passes", cmds, cmd)
+		}
+	}
+}
+
+func TestInstallReinstallsOverItsOwnRunningService(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	addr := ln.Addr().String()
+
+	opts := baseOptions(t)
+	writeListenConfig(t, opts, addr)
+	var cmds []string
+	started := false
+	held := true
+	opts.Run = func(name string, args ...string) ([]byte, error) {
+		cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+		switch {
+		case slices.Contains(args, "stop"):
+			if held {
+				_ = ln.Close()
+				held = false
+			}
+		case slices.Contains(args, "show"):
+			return []byte("4242\n"), nil
+		case slices.Contains(args, "restart"):
+			started = true
+		}
+		return nil, nil
+	}
+	opts.Probe = probeAfterStart(&started, 4242)
+	opts.ListenProbe = config.ProbeListen
+
+	if _, err := Install(opts); err != nil {
+		t.Fatalf("reinstall over a running service: %v", err)
+	}
+	stop := commandIndex(cmds, "systemctl --user stop "+UnitName)
+	if stop < 0 {
+		t.Fatalf("commands = %q, want the running service stopped before the listen precheck", cmds)
+	}
+	if enable := commandIndex(cmds, "systemctl --user enable "+UnitName); enable >= 0 && stop > enable {
+		t.Errorf("commands = %q, want stop before enable", cmds)
+	}
+	if held {
+		t.Error("the occupying listener was not stopped")
+	}
+}
+
+func TestInstallReportsTheStartupFailureOnTimeout(t *testing.T) {
+	const reason = "listen tcp :17443: bind: address already in use"
+	fakeRun := func(name string, args ...string) ([]byte, error) {
+		switch {
+		case name == "journalctl":
+			return []byte(fmt.Sprintf("{\"event\":\"startup_failed\",\"error\":%q}\n", reason)), nil
+		case slices.Contains(args, "show"):
+			return []byte("4242\n"), nil
+		}
+		return nil, nil
+	}
+
+	t.Run("linux user", func(t *testing.T) {
+		opts := baseOptions(t)
+		opts.Run = fakeRun
+		opts.Probe = func(string) (int, bool) { return 0, false }
+		opts.ReadyTimeout = 20 * time.Millisecond
+
+		_, err := Install(opts)
+		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+			t.Fatalf("Install error = %v, want the readiness timeout", err)
+		}
+		if !strings.Contains(err.Error(), reason) {
+			t.Errorf("error %q does not carry the last startup_failed reason %q", err, reason)
+		}
+	})
+
+	t.Run("darwin user log file", func(t *testing.T) {
+		opts := baseOptions(t)
+		opts.GOOS = "darwin"
+		opts.EUID = 501
+		opts.UID = 501
+		opts.Home = "/Users/alice"
+		logPath := filepath.Join(opts.Root, "Users/alice/Library/Logs/agent-peer/broker.log")
+		if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		line := fmt.Sprintf("{\"event\":\"broker_started\"}\n{\"event\":\"startup_failed\",\"error\":%q}\n", reason)
+		if err := os.WriteFile(logPath, []byte(line), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		opts.Run = func(name string, args ...string) ([]byte, error) {
+			if len(args) > 0 && args[0] == "bootout" {
+				return nil, exitError(t, 3)
+			}
+			return nil, nil
+		}
+		opts.Probe = func(string) (int, bool) { return 0, false }
+		opts.ReadyTimeout = 20 * time.Millisecond
+
+		_, err := Install(opts)
+		if err == nil || !strings.Contains(err.Error(), reason) {
+			t.Fatalf("Install error = %v, want the readiness failure with %q", err, reason)
+		}
+	})
+}
+
+func TestInstallUninstallsAfterAReadinessFailure(t *testing.T) {
+	t.Run("linux user", func(t *testing.T) {
+		opts := baseOptions(t)
+		var cmds []string
+		opts.Run = func(name string, args ...string) ([]byte, error) {
+			cmds = append(cmds, strings.Join(append([]string{name}, args...), " "))
+			if slices.Contains(args, "show") {
+				return []byte("4242\n"), nil
+			}
+			return nil, nil
+		}
+		opts.Probe = func(string) (int, bool) { return 0, false }
+		opts.ReadyTimeout = 20 * time.Millisecond
+
+		_, err := Install(opts)
+		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+			t.Fatalf("Install error = %v, want the readiness timeout", err)
+		}
+		for _, want := range []string{"stopped and uninstalled", "run service install again"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not contain %q", err, want)
+			}
+		}
+		if cmd := "systemctl --user disable --now " + UnitName; !slices.Contains(cmds, cmd) {
+			t.Errorf("commands = %q, want %q after the readiness failure", cmds, cmd)
+		}
+		unit := rooted(opts, "/home/alice/.config/systemd/user/"+UnitName)
+		if _, statErr := os.Stat(unit); statErr != nil {
+			t.Errorf("unit file was not kept after the failure: %v", statErr)
+		}
+		configPath := rooted(opts, configFilePath(opts))
+		if _, statErr := os.Stat(configPath); statErr != nil {
+			t.Errorf("configuration file was not kept after the failure: %v", statErr)
+		}
+	})
+
+	t.Run("darwin user", func(t *testing.T) {
+		opts := baseOptions(t)
+		opts.GOOS = "darwin"
+		opts.EUID = 501
+		opts.UID = 501
+		opts.Home = "/Users/alice"
+		bootouts := 0
+		opts.Run = func(name string, args ...string) ([]byte, error) {
+			if len(args) > 0 && args[0] == "bootout" {
+				bootouts++
+				return nil, exitError(t, 3)
+			}
+			return nil, nil
+		}
+		opts.Probe = func(string) (int, bool) { return 0, false }
+		opts.ReadyTimeout = 20 * time.Millisecond
+
+		_, err := Install(opts)
+		if err == nil || !strings.Contains(err.Error(), "stopped and uninstalled") {
+			t.Fatalf("Install error = %v, want the readiness failure with the uninstall note", err)
+		}
+		if bootouts < 2 {
+			t.Errorf("bootout calls = %d, want one before the start and one after the failure", bootouts)
+		}
+		plist := rooted(opts, "/Users/alice/Library/LaunchAgents/"+Label+".plist")
+		if _, statErr := os.Stat(plist); statErr != nil {
+			t.Errorf("plist was not kept after the failure: %v", statErr)
 		}
 	})
 }

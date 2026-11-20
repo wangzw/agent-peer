@@ -1,8 +1,10 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -58,6 +60,7 @@ type Options struct {
 	Chmod         func(path string, mode fs.FileMode) error                   // permission setter for the configuration file; nil uses os.Chmod
 	EvalSymlinks  func(path string) (string, error)                           // filepath.EvalSymlinks
 	Probe         func(socketPath string) (pid int, answering bool)           // peer pid of the Broker answering on the local socket
+	ListenProbe   func(addr string) error                                     // whether broker.listen can be bound; nil uses config.ProbeListen
 	ReadyTimeout  time.Duration                                               // wait for the local socket after start; zero uses readyBound
 }
 
@@ -215,6 +218,14 @@ func Install(opts Options) (Result, error) {
 		return res, err
 	}
 
+	// The address is checked after the configuration exists, so the check sees
+	// both a generated template and a file an earlier install left. It runs
+	// before the service is registered or started, so an occupied address
+	// fails the installation without leaving a service that restarts forever.
+	if err := precheckListen(opts, domain, &res); err != nil {
+		return res, err
+	}
+
 	switch opts.GOOS {
 	case "linux":
 		if err := runSystemctl(opts, &res); err != nil {
@@ -226,7 +237,7 @@ func Install(opts Options) (Result, error) {
 		}
 	}
 	if err := waitReady(opts, domain); err != nil {
-		return res, err
+		return res, abandonInstall(opts, domain, &res, err)
 	}
 
 	res.Domain = domain
@@ -282,6 +293,94 @@ func checkExistingBroker(opts Options, domain string) error {
 		level = "system-level Broker"
 	}
 	return fmt.Errorf("service: a %s is already answering on %s and was not started by the agent-peer service (service pid %d, socket peer pid %d); stop it before installing", level, path, servicePID, brokerPID)
+}
+
+// precheckListen refuses the installation when the address this install's
+// configuration makes the Broker listen on cannot be bound. It reads the
+// effective broker.listen from the configuration file, including a template
+// this run just generated, and binds the address once through ListenProbe,
+// which releases it again. An empty value means the Broker does not listen and
+// passes without a probe.
+//
+// When the address is already in use, the running instance of this same
+// service may own it: an install also reinstalls and restarts a service. The
+// service is stopped once and the address probed again, so a reinstall is not
+// mistaken for a foreign process; the start step that follows brings the
+// service back with the new binary. If the address is still taken, the
+// installation fails before the service is registered or started.
+func precheckListen(opts Options, domain string, res *Result) error {
+	path := configFilePath(opts)
+	addr, err := config.ListenFromFile(rooted(opts, path))
+	if err != nil {
+		return fmt.Errorf("service: read broker.listen from %s: %w", path, err)
+	}
+	if addr == "" {
+		return nil
+	}
+	probe := opts.ListenProbe
+	if probe == nil {
+		probe = config.ProbeListen
+	}
+	err = probe(addr)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, syscall.EADDRINUSE) {
+		return listenError(path, addr, err)
+	}
+
+	stopForPrecheck(opts, domain, res)
+	deadline := time.Now().Add(time.Second)
+	for {
+		if probe(addr) == nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return listenError(path, addr, err)
+		}
+		time.Sleep(readyPollInterval / 2)
+	}
+}
+
+// stopForPrecheck stops the service during the listen precheck. A service that
+// is not installed or not running makes the command fail; the second probe
+// decides whether the address is still taken, so that failure is not reported
+// here. The call is recorded in res.Commands with the other state changes.
+func stopForPrecheck(opts Options, domain string, res *Result) {
+	switch opts.GOOS {
+	case "linux":
+		_ = runSystemctlCommand(opts, res, "stop", UnitName)
+	case "darwin":
+		_ = bootoutService(opts, domain, res)
+	}
+}
+
+// listenError explains why the installation cannot use this install's
+// broker.listen and what the operator can change.
+func listenError(path, addr string, err error) error {
+	advice := "change broker.listen to another port, or leave it empty to run without a TCP listener, and run service install again"
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return fmt.Errorf("service: broker.listen %q from %s is already in use; %s", addr, path, advice)
+	}
+	return fmt.Errorf("service: cannot bind broker.listen %q from %s: %w; %s", addr, path, err, advice)
+}
+
+// abandonInstall stops and unregisters the service a failed install started.
+// The unit or plist and the configuration file are kept, so fixing the cause
+// and running service install again finds them. The service is stopped rather
+// than left to restart on every launchd or systemd cycle.
+func abandonInstall(opts Options, domain string, res *Result, cause error) error {
+	var cleanup error
+	switch opts.GOOS {
+	case "linux":
+		cleanup = runSystemctlCommand(opts, res, "disable", "--now", UnitName)
+	case "darwin":
+		cleanup = bootoutService(opts, domain, res)
+	}
+	if cleanup != nil {
+		return fmt.Errorf("%w; the service could not be stopped and uninstalled: %v; fix the problem and run service install again", cause, cleanup)
+	}
+	return fmt.Errorf("%w; the service was stopped and uninstalled; fix the problem and run service install again", cause)
 }
 
 // serviceMainPID returns the pid the service manager reports for the unit and
@@ -432,6 +531,13 @@ func waitReady(opts Options, domain string) error {
 			if answering {
 				return fmt.Errorf("service: the Broker answering on %s is not the service's process (service pid %d, socket peer pid %d); stop it and check the service log with %s", path, servicePID, peerPID, logHint(opts))
 			}
+			// The precheck can pass and the Broker still fail to start; the
+			// service log records the cause. Include it so the timeout names
+			// the real problem instead of only the silent socket.
+			reason := startupFailureReason(opts)
+			if reason != "" {
+				return fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s; its last startup_failed record says: %s", path, bound, logHint(opts), reason)
+			}
 			return fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s", path, bound, logHint(opts))
 		}
 		time.Sleep(readyPollInterval)
@@ -440,16 +546,97 @@ func waitReady(opts Options, domain string) error {
 
 // logHint names where the service manager writes the Broker's standard error.
 func logHint(opts Options) string {
-	switch {
-	case opts.GOOS == "darwin" && !opts.System:
-		return filepath.Join(opts.Home, "Library", "Logs", "agent-peer", "broker.log")
-	case opts.GOOS == "darwin":
-		return "/var/log/agent-peer/broker.log"
-	case opts.System:
-		return "journalctl -u " + UnitName
-	default:
-		return "journalctl --user -u " + UnitName
+	if path := logFile(opts); path != "" {
+		return path
 	}
+	if opts.System {
+		return "journalctl -u " + UnitName
+	}
+	return "journalctl --user -u " + UnitName
+}
+
+// logFile returns the service log file macOS launchd writes, or an empty
+// string on a platform whose service manager reads the log from journald.
+func logFile(opts Options) string {
+	if opts.GOOS != "darwin" {
+		return ""
+	}
+	if opts.System {
+		return "/var/log/agent-peer/broker.log"
+	}
+	return filepath.Join(opts.Home, "Library", "Logs", "agent-peer", "broker.log")
+}
+
+// startupFailureReason returns the error of the last startup_failed record in
+// the service log, or an empty string when there is none or the log cannot be
+// read. It never fails an installation: the record is only additional context
+// for a readiness timeout.
+func startupFailureReason(opts Options) string {
+	if path := logFile(opts); path != "" {
+		data, err := readLogTail(rooted(opts, path))
+		if err != nil {
+			return ""
+		}
+		return lastStartupFailure(string(data))
+	}
+	args := []string{"-u", UnitName, "-n", "100", "--no-pager", "-o", "cat"}
+	if !opts.System {
+		args = append([]string{"--user"}, args...)
+	}
+	out, err := opts.Run("journalctl", args...)
+	if err != nil {
+		return ""
+	}
+	return lastStartupFailure(string(out))
+}
+
+// logTailBytes bounds how much of the service log startupFailureReason reads
+// from the end. The record that matters is the last one, and the log may hold
+// weeks of runtime records.
+const logTailBytes = 64 << 10
+
+// readLogTail returns at most the last logTailBytes of the file. A cut line at
+// the start is harmless because lastStartupFailure ignores records it cannot
+// parse.
+func readLogTail(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if start := info.Size() - logTailBytes; start > 0 {
+		if _, err := f.Seek(start, io.SeekStart); err != nil {
+			return nil, err
+		}
+	}
+	return io.ReadAll(f)
+}
+
+// lastStartupFailure scans the log from the end and returns the error field of
+// the last startup_failed JSON record.
+func lastStartupFailure(log string) string {
+	lines := strings.Split(log, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || !strings.Contains(line, `"startup_failed"`) {
+			continue
+		}
+		var record struct {
+			Event string `json:"event"`
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			continue
+		}
+		if record.Event == "startup_failed" && record.Error != "" {
+			return record.Error
+		}
+	}
+	return ""
 }
 
 // configHome returns the base directory for user configuration.
