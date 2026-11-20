@@ -28,7 +28,7 @@ When `~/.agent-peer/config.yaml` does not exist, the install generates it as a t
 
 On Linux with systemd, the unit is `~/.config/systemd/user/agent-peer.service` (or under `$XDG_CONFIG_HOME`). On macOS, the LaunchAgent is `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`, and the install must run in a graphical login session; a host without one uses the system-level service instead.
 
-The unit or plist runs `agent-peer broker` as that account. It starts when the account logs in and restarts the Broker if it exits.
+The unit or plist runs `agent-peer broker --allow-degraded` as that account, so a Broker that cannot bind its listen address keeps serving this account in a local-only degraded run. It starts when the account logs in and restarts the Broker if it exits.
 
 ## Install a system-level service
 
@@ -60,4 +60,4 @@ Run `agent-peer service stop` and `agent-peer service start` to stop and start t
 
 Run `agent-peer status` in a terminal. The output has an `Agents` table and a `Peers` table, or `Agents: none` and `Peers: none`. The service manager shows the Broker too: `systemctl --user status agent-peer.service`, `systemctl status agent-peer.service`, or `launchctl print` with the label `io.github.wangzw.agent-peer`.
 
-Keep one Broker per account. Starting a second Broker under the same account fails with an error that an instance is already running, whichever address it would use.
+Keep one Broker per account. Starting a second Broker under the same account fails with an error that an instance is already running, whichever address it would use. When another account's Broker already holds the port, an install fails; a service that was installed and only later finds the port taken enters local-only degraded run.

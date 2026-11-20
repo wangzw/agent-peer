@@ -25,13 +25,15 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer，安装会�
 
 ## 返回结果
 
+Broker 的降级运行会体现在工具调用上。仅诊断降级时，每个工具都返回错误码为 `broker_degraded` 的错误并附原因，`agent-peer status` 也会给出同样的原因与修复方法。仅本机降级时，工具照常工作，只有 `create_pairing_key` 返回 `broker_degraded`，错误说明里给出无法绑定的地址，以及修改 `broker.listen` 的方法。两档降级都会自行恢复，不重启进程；重试时机见 [agent-peer broker]({{< relref "/docs/reference/cli" >}}#agent-peer-broker)。
+
 ### Agent
 
 `list_agents` 返回 `self_address` 和 `agents`。每个 Agent 有 `address`、与本会话共有的 `shared_topics`、`status`，改名后十分钟内还有 `previous_name`。`status` 为 `idle`、`busy`、`waiting` 或 `shell`。
 
 ### 消息
 
-`send_message` 返回 `result` 和 `to`。`result` 为 `delivered to the recipient's session (not necessarily read)`：成功只表示 Broker 把消息写进了接收方会话的 inbox socket，不表示对方 Agent 读过。确定没有送达时，调用返回以 `Not sent` 开头的错误。请求已经发出、但没有收到明确答复时，返回以 `Delivery unknown` 开头的错误，并提示重发可能让对方收到两份。接收方所在主机上的 Broker 已下线时，调用返回以 `Not sent` 开头、错误码为 `broker_offline` 的错误，由对方 Broker 报告；重发这条消息没有用。
+`send_message` 返回 `result` 和 `to`。`result` 为 `delivered to the recipient's session (not necessarily read)`：成功只表示 Broker 把消息写进了接收方会话的 inbox socket，不表示对方 Agent 读过。确定没有送达时，调用返回以 `Not sent` 开头的错误。请求已经发出、但没有收到明确答复时，返回以 `Delivery unknown` 开头的错误，并提示重发可能让对方收到两份。接收方所在主机上的 Broker 已下线时，调用返回以 `Not sent` 开头、错误码为 `broker_offline` 的错误，由对方 Broker 报告；重发这条消息没有用。本 Broker 处于仅本机降级时，向以本 Broker 为接受方的对端发送，返回错误码为 `peer_unreachable` 的错误，说明末尾附降级原因。
 
 ### topic
 
@@ -39,7 +41,7 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer，安装会�
 
 ### Broker
 
-`list_brokers` 返回 `brokers`。每项有 `alias`、小写十六进制的 `fingerprint`、`advertised_addresses`（每项含 `kind` 与 `addr`，只有 `direct` 一种）、`is_peer`、`status`（`connected`、`connectable` 或 `not_directly_reachable`）以及 `status_detail`。对端还有 `role`，取 `dialer` 或 `acceptor`，表示本 Broker 的角色；还有 `link_state`：`dialing`、`waiting`、`handshaking`、`established`、`backoff` 或 `rejected`。结果还带 `local`，描述本 Broker；其中 `offline` 表示它是否拒绝其他主机发来的消息。
+`list_brokers` 返回 `brokers`。每项有 `alias`、小写十六进制的 `fingerprint`、`advertised_addresses`（每项含 `kind` 与 `addr`，只有 `direct` 一种）、`is_peer`、`status`（`connected`、`connectable` 或 `not_directly_reachable`）以及 `status_detail`。对端还有 `role`，取 `dialer` 或 `acceptor`，表示本 Broker 的角色；还有 `link_state`：`dialing`、`waiting`、`handshaking`、`established`、`backoff` 或 `rejected`。结果还带 `local`，描述本 Broker；其中 `offline` 表示它是否拒绝其他主机发来的消息，`degraded` 在降级运行时给出档位、原因与修复方法。
 
 `set_broker_online` 返回修改后的 `online`，以及表示是否有变化的 `changed`。`connect_broker` 返回对端的 `alias` 和 `fingerprint`，以及 `shown_host` 和可能的 `warnings`。`disconnect_broker` 返回 `result`。`create_pairing_key` 返回 `key`、RFC 3339 UTC 格式的 `expires_at`、`shown_addresses` 和可选的 `note`。地址只是给用户转交对端的，不属于密钥本身。
 

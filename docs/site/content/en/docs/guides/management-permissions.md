@@ -43,9 +43,14 @@ sudo chmod 0660 /etc/agent-peer/config.yaml
 
 Use `0640` instead of `0660` to grant read access only.
 
-Skip giving the file to the group when `broker.listen` uses a port below 1024, because such a Broker refuses to start while another account can write the file. Read-only access (`0640`) is not subject to this limit, because the rule looks only at whether the group or others can write the file.
+These limits come with the group:
 
-Two limits come with the group. A port below 1024 in `broker.listen` takes effect only while the configuration file can be written by root alone, so a group that can write the file cannot move the Broker to a privileged port. A file that a group or others can write and that sets such a port makes the Broker refuse to start; when the file is changed to that combination while the Broker runs, the Broker keeps the old value instead of applying the new port. A change made by editing the file directly is recorded in the audit log with no account, because only changes through the local socket carry the caller's account. Installing and uninstalling the system-level service still needs root.
+- a port below 1024 in `broker.listen` takes effect only while the configuration file can be written by root alone; `chmod g-w <path>` or a port of 1024 or higher fixes it, and [Configuration keys]({{< relref "configuration.md" >}}#types-and-constraints) gives the rule.
+- installing and uninstalling the system-level service still needs root.
+
+A read-only grant (`0640`) is not subject to the low-port rule, because it looks only at whether the group or others can write the file.
+
+A change made by editing the file directly is recorded in the audit log with no account, because only changes through the local socket carry the caller's account.
 
 Being allowed to use the Broker and being allowed to manage it are separate. The settings in [Run a system Broker]({{< relref "system-broker.md" >}}) decide which accounts can connect to the local socket; the permissions on the configuration file decide which of them can read or change the Broker.
 

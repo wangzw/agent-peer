@@ -80,15 +80,15 @@ pairing:
 - 时长写成 Go 时长语法，例如 `10m`、`500ms`、`1s` 或 `1h30m`。时长必须大于零。
 - 整数必须大于零，`send.link_retries` 和 `send.inbox_retries` 例外，可以取 `0`。
 - `link.reconnect_max` 不得小于 `link.reconnect_min`；`link.keepalive_timeout` 必须小于 `link.keepalive_interval`。修改其中一对里的一个键时，会与另一个一起校验。
-- `broker.listen` 写作 `host:port`、`:port` 或 `[v6]:port`，端口为 1 至 65535。修改为另一个值时，系统会先探测该地址，无法绑定的地址会被拒绝。系统级 Broker 的端口小于 1024 时，只有在配置文件只能由 root 写时才生效；配置文件可被组或其他人写入时，Broker 遇到这样的端口会拒绝启动。这条限制见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}}#管理组)。
+- `broker.listen` 写作 `host:port`、`:port` 或 `[v6]:port`，端口为 1 至 65535。修改为另一个值时，系统会先探测该地址，无法绑定的地址会被拒绝。系统级 Broker 的端口小于 1024 时，只有在配置文件只能由 root 写时才生效。配置文件可被组或其他人写入时，前台运行的 Broker 会拒绝启动，作为服务运行的 Broker 会进入仅本机降级；执行 `chmod g-w <path>`，或把端口改为不小于 1024，即可恢复。这条规则见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}}#管理组)。
 - `broker.advertise` 与 `broker.advertise_extra` 要求有监听地址；只有端口的 `broker.advertise` 还要求监听本机全部地址。
 - 配置的对外地址，连同监听特定地址时隐含的那一项，最多 8 项。默认路由所在接口的地址会使列表超过 8 项时，从这部分末尾舍去；配置的项全部保留。
-- `broker.local_socket_group` 必须指向存在的组，不存在时启动失败。
+- `broker.local_socket_group` 必须指向存在的组，不存在时启动失败，带 `--allow-degraded` 也一样。
 - `broker.local_socket_mode` 接受 3 或 4 位八进制数，最大 `0777`。
 - `pairing.static_key` 接受 16 至 128 个字符；空值表示不设静态密钥。
 - `update.check_interval` 不得小于 `1h`。
 
-未通过检查的值会被拒绝，配置保持原样。
+未通过检查的值会被拒绝，配置保持原样。启动时，配置文件读不出、无法解析，或某个值未通过检查，Broker 都会退出，前台运行与作为服务运行都一样。只有数据目录或审计日志不可用时才会进入仅诊断降级。
 
 ## 修改配置
 

@@ -93,11 +93,11 @@ topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会�
 
 ## 端口被占用时会怎样？
 
-Broker 启动失败，并报告该地址不可用。它不会另选地址或端口；腾出端口，或者修改监听地址。见[配置键]({{< relref "reference/configuration.md" >}})。
+前台运行的 Broker 启动失败。另一个进程占用地址时，新装或重装会失败，说明地址已被占用，不注册服务。已经安装为服务的 Broker 在启动时发现端口被占用，会进入仅本机降级：本机 Agent 照常工作，生成配对密钥失败，对端连不进来。它不会另选地址或端口；腾出端口，或者修改监听地址，不用重启就会恢复。见[配置键]({{< relref "reference/configuration.md" >}})与 [agent-peer service install]({{< relref "reference/cli.md" >}}#agent-peer-service-install)。
 
 ## 怎么看运行日志和审计记录？
 
-用 `agent-peer status` 查看 Agent、topic、对端和链路，用 `agent-peer audit` 查看审计日志。把 Broker 安装为服务，运行日志由服务管理器保存：Linux 上用 `journalctl --user -u agent-peer.service`，系统级服务用 `journalctl -u agent-peer.service`；macOS 上用户级服务写入 `~/Library/Logs/agent-peer/broker.log`，系统级写入 `/var/log/agent-peer/broker.log`。在终端运行 `agent-peer broker`，日志就留在那个终端里。见[文件与路径]({{< relref "reference/files.md" >}})的“日志”一节。
+用 `agent-peer status` 查看 Agent、topic、对端和链路，用 `agent-peer audit` 查看审计日志。Broker 处于降级运行时，`agent-peer status` 会给出原因与修复方法。把 Broker 安装为服务，运行日志由服务管理器保存：Linux 上用 `journalctl --user -u agent-peer.service`，系统级服务用 `journalctl -u agent-peer.service`；macOS 上用户级服务写入 `~/Library/Logs/agent-peer/broker.log`，系统级写入 `/var/log/agent-peer/broker.log`。在终端运行 `agent-peer broker`，日志就留在那个终端里。见[文件与路径]({{< relref "reference/files.md" >}})的“日志”一节。
 
 ## 无界面会话能收到消息吗？
 

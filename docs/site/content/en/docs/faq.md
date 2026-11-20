@@ -93,11 +93,11 @@ An account with write permission on the Broker's configuration file can change i
 
 ## What happens if the port is already in use?
 
-The Broker fails to start and reports that the address is unavailable. It never chooses another address or port; free the port or change the listen address. See [Configuration keys]({{< relref "reference/configuration.md" >}}).
+A Broker started in the foreground fails to start. A new install or a reinstall fails when another process holds the address, says so, and registers no service. A Broker that is already installed as a service and finds the port taken when it starts enters local-only degraded run: agents on this host still work, creating a pairing key fails, and peers cannot connect to it. The Broker never chooses another address or port; free the port or change the listen address, and it recovers without a restart. See [Configuration keys]({{< relref "reference/configuration.md" >}}) and [agent-peer service install]({{< relref "reference/cli.md" >}}#agent-peer-service-install).
 
 ## How do I see logs and audit records?
 
-Use `agent-peer status` for agents, topics, peers, and links, and `agent-peer audit` for the audit log. Install the Broker as a service and the service manager keeps its run log: on Linux, `journalctl --user -u agent-peer.service`, or `journalctl -u agent-peer.service` for a system-level service; on macOS, `~/Library/Logs/agent-peer/broker.log`, or `/var/log/agent-peer/broker.log` for a system-level service. A Broker run in a terminal writes its log to that terminal. See the Logs section of [Files and paths]({{< relref "reference/files.md" >}}).
+Use `agent-peer status` for agents, topics, peers, and links, and `agent-peer audit` for the audit log. When the Broker runs degraded, `agent-peer status` shows the reason and the fix. Install the Broker as a service and the service manager keeps its run log: on Linux, `journalctl --user -u agent-peer.service`, or `journalctl -u agent-peer.service` for a system-level service; on macOS, `~/Library/Logs/agent-peer/broker.log`, or `/var/log/agent-peer/broker.log` for a system-level service. A Broker run in a terminal writes its log to that terminal. See the Logs section of [Files and paths]({{< relref "reference/files.md" >}}).
 
 ## Can a headless session receive messages?
 

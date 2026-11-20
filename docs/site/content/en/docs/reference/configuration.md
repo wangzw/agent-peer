@@ -80,15 +80,15 @@ When `broker.alias` is not set, a system Broker uses the first segment of the sy
 - A duration is a string in Go duration syntax, for example `10m`, `500ms`, `1s` or `1h30m`. Durations must be greater than zero.
 - Integers must be greater than zero, except `send.link_retries` and `send.inbox_retries`, which accept `0`.
 - `link.reconnect_max` must be greater than or equal to `link.reconnect_min`, and `link.keepalive_timeout` must be less than `link.keepalive_interval`. Changing one key of either pair is checked against the other.
-- `broker.listen` is written `host:port`, `:port` or `[v6]:port`; the port is 1 to 65535. Setting a different value probes the address, and an address that cannot be bound is rejected. On a system Broker, a port below 1024 takes effect only while the configuration file can be written by root alone, and a Broker refuses to start when it finds one in a file that a group or others can write; [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}#the-admin-group) describes the limit.
+- `broker.listen` is written `host:port`, `:port` or `[v6]:port`; the port is 1 to 65535. Setting a different value probes the address, and an address that cannot be bound is rejected. On a system Broker, a port below 1024 takes effect only while the configuration file can be written by root alone. When a group or others can write the file, a Broker started in the foreground fails to start, and one running as a service enters local-only degraded run; `chmod g-w <path>` or a port of 1024 or higher fixes it. [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}#the-admin-group) describes the rule.
 - `broker.advertise` and `broker.advertise_extra` require a listen address, and a port-only `broker.advertise` also requires listening on every address.
 - The configured advertised addresses, including the implicit one for a specific listen address, may hold at most 8 entries. Addresses taken from the default-route interfaces are dropped from the end when the list would exceed 8; configured entries are all kept.
-- `broker.local_socket_group` must name a group that exists; startup fails when it does not.
+- `broker.local_socket_group` must name a group that exists; startup fails when it does not, even with `--allow-degraded`.
 - `broker.local_socket_mode` accepts 3 or 4 octal digits, up to `0777`.
 - `pairing.static_key` accepts 16 to 128 characters; an empty value means no static key.
 - `update.check_interval` must be at least `1h`.
 
-A value that fails a check is rejected, and the configuration remains as it was.
+A value that fails a check is rejected, and the configuration remains as it was. At startup, a file that cannot be read or parsed, or a value that fails a check, stops the Broker, in the foreground and as a service alike. Only an unavailable data directory or audit log leads to the diagnostics-only degraded run.
 
 ## Changing the configuration
 

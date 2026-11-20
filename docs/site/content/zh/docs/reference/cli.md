@@ -10,7 +10,7 @@ usage: agent-peer <command> [arguments]
 
 Commands:
   --version                   print the version and exit
-  broker [--system] [--listen <address>]
+  broker [--system] [--listen <address>] [--allow-degraded]
                               run the Broker
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker
@@ -53,6 +53,7 @@ Commands:
 
 - `--system` 运行系统级 Broker，需要 root。
 - `--listen <address>` 只对本次运行覆盖 `broker.listen`。地址写法与配置键相同，例如 `:17443` 或 `127.0.0.1:17443`。空值会被拒绝；要停止监听，把配置文件里的 `broker.listen` 设为空值。
+- `--allow-degraded` 让 Broker 在某些启动失败后继续运行，而不是退出。监听地址无法绑定（包括被低端口规则拒绝）时，它进入仅本机降级，继续服务本机会话；数据目录或审计日志不可用时，它进入仅诊断降级。两种情况下它都在本机 socket 上应答并报告故障。不带该参数时，任何启动失败都在标准错误写明原因并退出，其中监听地址不可用以退出码 4 结束。配置错误、`broker.local_socket_group` 指向不存在的组，以及取得账户锁之前的失败，带不带该参数都会退出。服务定义总会带上该参数，前台运行不带。仅本机降级时，地址变为可用或改动 `broker.listen` 后会自动开始监听。仅诊断降级时，配置文件变化时重试，并每分钟重试一次；修好后也可以执行 `agent-peer service restart`。两档恢复都不重启进程。
 
 不给 `--listen` 时使用配置的 `broker.listen`。
 
@@ -68,6 +69,8 @@ Commands:
 - `Peers`：每个对端的别名、指纹、本 Broker 的角色、状态、链路状态、对外地址与详细信息。
 
 某一节为空时打印为 `Agents: none` 或 `Peers: none`。没有 Broker 配置文件的读权限时，只列出调用方自己的 Agent；对端与链路照常显示。本 Broker 下线时，两张表之前先输出一行 `Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.`
+
+Broker 处于降级运行时，两张表之前先输出 `Broker: degraded (local only): <reason>` 或 `Broker: degraded (diagnostics only): <reason>`，再输出 `Fix: <fix>`。仅本机降级时照常输出两张表。仅诊断降级时只输出这两行，并以退出码 1 结束。
 
 有更新的正式发布版本时，`agent-peer status` 在最后多打印一行：
 
@@ -132,7 +135,7 @@ Addresses:
 
 ## agent-peer peer list
 
-把正在运行的 Broker 已知的全部 Broker 列成表格，包括还不是对端的 Broker。列为 `ALIAS`、`FINGERPRINT`、`PEER`（`yes` 或 `no`）、`STATUS`、`DIRECTION` 与 `ADDRESSES`，按别名排序。`ADDRESSES` 列用逗号连接各地址。没有任何 Broker 时输出 `Brokers: none`。本 Broker 下线时，表格之前同样先输出 `Broker: offline; …` 这一行。
+把正在运行的 Broker 已知的全部 Broker 列成表格，包括还不是对端的 Broker。列为 `ALIAS`、`FINGERPRINT`、`PEER`（`yes` 或 `no`）、`STATUS`、`DIRECTION` 与 `ADDRESSES`，按别名排序。`ADDRESSES` 列用逗号连接各地址。没有任何 Broker 时输出 `Brokers: none`。本 Broker 下线时，表格之前同样先输出 `Broker: offline; …` 这一行。Broker 处于降级运行时，表格之前同样先输出 `Broker: degraded …` 与 `Fix: …` 两行；仅诊断降级时不在表格前输出状态行，而是把原因写到标准错误，并以退出码 1 结束。
 
 不需要权限。用法错误以退出码 2 结束，其余失败以退出码 1 结束。
 
@@ -237,14 +240,18 @@ The new binary takes effect the next time the Broker starts.
 
 ## agent-peer service install
 
-写入并启用服务定义，然后立即启动 Broker。它会等 Broker 应答，最多等 20 秒；超时会使安装失败，并给出服务日志的位置。重新安装会用新的二进制替换正在运行的 Broker。输出给出级别、二进制路径、版本、配置文件路径、运行日志与审计日志的位置，以及启动、停止、重启与卸载 Broker 的命令；各项见[安装 agent-peer]({{< relref "/docs/guides/install" >}}#安装输出)。
+写入并启用服务定义，然后立即启动 Broker。它会等 Broker 应答，最多等 20 秒；超时会使安装失败，给出服务日志的位置，并附上该日志中最后一条 `startup_failed` 记录的原因。重新安装会用新的二进制替换正在运行的 Broker。安装报告的内容见[安装 agent-peer]({{< relref "/docs/guides/install" >}}#安装输出)。
 
 - 不带 `--system` 时安装用户级服务，账户登录时启动 Broker。不能以 root 运行。在 macOS 上只能在图形登录会话里运行。`~/.agent-peer/config.yaml` 不存在时，生成这个文件，属主为执行安装的账户，权限 `0600`；已存在的文件不改动。
 - 带 `--system` 时安装系统级服务，开机时启动 Broker。必须以 root 运行。组 `agent-peer` 不存在时，命令新建它；已存在时直接使用，不改动成员。`/etc/agent-peer/config.yaml` 不存在时，生成这个文件，属主为 `root`，组为 `agent-peer`，权限 `0660`；已存在的文件不改动。`--admin-group <name>` 只在带 `--system` 时有效，用于改用另一个组；组名只能以小写字母或下划线开头，其后只能是小写字母、数字、下划线或连字符。
 
-生成的文件是一份列出全部键的模板：有固定默认值的键写出取值，其余键写成注释并附示例值或空占位。安装写入文件时输出 `generated the configuration file <path>`，文件已存在时输出 `kept the existing configuration file <path>`，系统级安装还会输出 `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`。执行这条命令就把已有安装交给该组，组成员随后不用 `sudo` 就能管理 Broker；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。`broker.listen` 使用小于 1024 的端口时跳过这条命令，因为这类 Broker 在另一个账户能写这个文件时会拒绝启动。
+生成的文件是一份列出全部键的模板：有固定默认值的键写出取值，其余键写成注释并附示例值或空占位。安装写入文件时输出 `generated the configuration file <path>`，文件已存在时输出 `kept the existing configuration file <path>`，系统级安装还会输出 `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`。执行这条命令就把已有安装交给该组，组成员随后不用 `sudo` 就能管理 Broker；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。`broker.listen` 使用小于 1024 的端口时，不要把文件交给这个组；规则与修复方法见[配置键]({{< relref "/docs/reference/configuration" >}}#类型与约束)。
 
 如果这一级别已有 Broker 正在应答，而且不是这个服务启动的，安装会被拒绝，并提示先停掉它。
+
+安装写入或启用服务之前，会预检本次安装将要使用的监听地址。地址已被占用时，安装失败，不注册服务，错误中给出地址、配置文件与 `broker.listen`。重装时认出自己的服务，先停掉它并最多等 20 秒让它释放地址；地址被别的进程占用时，已安装的服务保持原样。安装失败时写入或启用的服务，不会在开机或登录时自动启动；如果停过原有的服务，错误给出恢复它的命令。
+
+服务定义以 `--allow-degraded` 启动 Broker。服务注册之后 Broker 进入降级运行时，安装会保留已安装并在运行的服务，输出故障原因与修复命令，并以退出码 3 结束。`agent-peer service start` 与 `agent-peer service restart` 遇到同样情况也以退出码 3 结束。
 
 在 Linux 上，命令使用 systemd，执行 `systemctl daemon-reload`、`systemctl enable` 和 `systemctl restart`。在 macOS 上写入并加载 launchd 作业。`--system` 还要求可执行文件及其上每一级目录属于 root、组和其他人不可写，各级目录对其他账户可进入，并且可执行文件对其他账户可执行。位于临时目录下的可执行文件会被拒绝。Intel Mac 上用 Homebrew 时，`/usr/local/bin` 属于普通用户，要改选一个 root 拥有、组和其他人不可写的目录。
 

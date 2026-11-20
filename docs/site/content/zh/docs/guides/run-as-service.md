@@ -28,7 +28,7 @@ agent-peer service install
 
 在装有 systemd 的 Linux 上，单元文件是 `~/.config/systemd/user/agent-peer.service`（或位于 `$XDG_CONFIG_HOME` 下）。在 macOS 上，LaunchAgent 是 `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist`，安装只能在图形登录会话里执行；没有图形会话的主机改用系统级服务。
 
-单元或 plist 以该账户身份运行 `agent-peer broker`。它在账户登录时启动，Broker 退出后重新启动。
+单元或 plist 以该账户身份运行 `agent-peer broker --allow-degraded`，所以 Broker 无法绑定监听地址时会进入仅本机降级，继续服务这个账户。它在账户登录时启动，Broker 退出后重新启动。
 
 ## 安装系统级服务
 
@@ -60,4 +60,4 @@ Intel Mac 上用 Homebrew 时，`/usr/local/bin` 属于普通用户，安装会�
 
 在终端运行 `agent-peer status`。输出包含一张 `Agents` 表和一张 `Peers` 表，没有内容时分别写 `Agents: none` 和 `Peers: none`。服务管理器里也能看到 Broker：`systemctl --user status agent-peer.service`、`systemctl status agent-peer.service`，或者用 `launchctl print` 查看标签 `io.github.wangzw.agent-peer`。
 
-每个账户只保留一个 Broker。用同一个账户再启动一个 Broker 会失败，错误说明已有实例在运行，无论它要绑定哪个地址。
+每个账户只保留一个 Broker。用同一个账户再启动一个 Broker 会失败，错误说明已有实例在运行，无论它要绑定哪个地址。另一个账户的 Broker 已占了端口时，安装失败；已装好的服务之后才遇到端口被占用时，进入仅本机降级。

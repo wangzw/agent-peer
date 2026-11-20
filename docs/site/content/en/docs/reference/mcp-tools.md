@@ -25,13 +25,15 @@ A Claude Code session reaches agent-peer through the MCP server `peer`, which th
 
 ## Results
 
+A Broker can report a degraded run through the tools. In a diagnostics-only run every tool returns an error with the code `broker_degraded` and the reason, and `agent-peer status` shows the same reason with the fix. In a local-only run the tools work except `create_pairing_key`, which returns `broker_degraded` with the address that cannot be bound and the `broker.listen` fix. Both kinds of degraded run recover without restarting the process; [agent-peer broker]({{< relref "/docs/reference/cli" >}}#agent-peer-broker) describes when they retry.
+
 ### Agents
 
 `list_agents` returns `self_address` and `agents`. Each agent has an `address`, the `shared_topics` it has in common with this session, a `status`, and, for ten minutes after a rename, a `previous_name`. The status is `idle`, `busy`, `waiting` or `shell`.
 
 ### Messages
 
-`send_message` returns `result` and `to`. The result is `delivered to the recipient's session (not necessarily read)`: success means the Broker wrote the message into the recipient session's inbox socket, not that the agent read it. If delivery definitively failed, the call returns an error beginning `Not sent`. If the request went out and no definite answer came back, it returns an error beginning `Delivery unknown`, warning that a resend may deliver a second copy. When the recipient's host runs a Broker that is offline, the call returns an error beginning `Not sent` with the code `broker_offline`, reported by that Broker; resending the message does not help.
+`send_message` returns `result` and `to`. The result is `delivered to the recipient's session (not necessarily read)`: success means the Broker wrote the message into the recipient session's inbox socket, not that the agent read it. If delivery definitively failed, the call returns an error beginning `Not sent`. If the request went out and no definite answer came back, it returns an error beginning `Delivery unknown`, warning that a resend may deliver a second copy. When the recipient's host runs a Broker that is offline, the call returns an error beginning `Not sent` with the code `broker_offline`, reported by that Broker; resending the message does not help. When this Broker runs local-only degraded, a send to a peer for which this Broker is the acceptor returns the code `peer_unreachable`, and the description ends with the degraded reason.
 
 ### Topics
 
@@ -39,7 +41,7 @@ A Claude Code session reaches agent-peer through the MCP server `peer`, which th
 
 ### Brokers
 
-`list_brokers` returns `brokers`. Each entry has an `alias`, a lowercase hexadecimal `fingerprint`, `advertised_addresses` (each with a `kind` and an `addr`; the only kind is `direct`), `is_peer`, a `status` of `connected`, `connectable` or `not_directly_reachable`, and a `status_detail`. A peer also has `role`, either `dialer` or `acceptor` for this Broker, and `link_state`: `dialing`, `waiting`, `handshaking`, `established`, `backoff` or `rejected`. The result also has `local`, which describes this Broker; `offline` tells whether it refuses messages from other hosts.
+`list_brokers` returns `brokers`. Each entry has an `alias`, a lowercase hexadecimal `fingerprint`, `advertised_addresses` (each with a `kind` and an `addr`; the only kind is `direct`), `is_peer`, a `status` of `connected`, `connectable` or `not_directly_reachable`, and a `status_detail`. A peer also has `role`, either `dialer` or `acceptor` for this Broker, and `link_state`: `dialing`, `waiting`, `handshaking`, `established`, `backoff` or `rejected`. The result also has `local`, which describes this Broker; `offline` tells whether it refuses messages from other hosts, and `degraded`, when present, gives the level, the reason and the fix of a degraded run.
 
 `set_broker_online` returns `online`, the state after the change, and `changed`, which says whether the call changed it. `connect_broker` returns the peer's `alias` and `fingerprint`, a `shown_host`, and any `warnings`. `disconnect_broker` returns `result`. `create_pairing_key` returns `key`, `expires_at` in RFC 3339 UTC, `shown_addresses` and an optional `note`. The addresses are shown for the user to pass on; they are not part of the key.
 

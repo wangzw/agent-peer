@@ -10,7 +10,7 @@ usage: agent-peer <command> [arguments]
 
 Commands:
   --version                   print the version and exit
-  broker [--system] [--listen <address>]
+  broker [--system] [--listen <address>] [--allow-degraded]
                               run the Broker
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker
@@ -53,6 +53,7 @@ Runs a Broker in the foreground until it receives `SIGINT` or `SIGTERM`. A Broke
 
 - `--system` runs the system Broker. It requires root.
 - `--listen <address>` overrides `broker.listen` for this run only. The address uses the same syntax as the configuration key, for example `:17443` or `127.0.0.1:17443`. An empty value is rejected; to stop listening, set `broker.listen` to an empty value in the configuration file.
+- `--allow-degraded` keeps the Broker running after certain startup failures instead of exiting. An unavailable listen address, including one rejected by the low-port rule, leaves it serving local sessions in a local-only degraded run; an unavailable data directory or audit log leaves it in a diagnostics-only run. Either way it answers on the local socket and reports the failure. Without the option, a startup failure reports its cause on standard error and exits, and an unavailable listen address exits with code 4. Configuration errors, a `broker.local_socket_group` that does not exist, and failures before the account lock exit either way. The service definition always passes the option; a foreground run does not. A local-only run starts listening by itself once the address becomes available or `broker.listen` changes. A diagnostics-only run retries when the configuration file changes and once a minute, and `agent-peer service restart` also works after the fix. Neither recovery restarts the process.
 
 Without `--listen`, the configured `broker.listen` applies.
 
@@ -68,6 +69,8 @@ Connects to a running Broker, without starting one, and prints two tables:
 - `Peers`: each peer's alias, fingerprint, this Broker's role, status, link state, advertised addresses and detail.
 
 An empty section is printed as `Agents: none` or `Peers: none`. Without read permission on the Broker's configuration file, only the caller's own agents are listed; peers and links are still shown. When this Broker is offline, a `Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.` line comes before the tables.
+
+When the Broker runs degraded, the lines `Broker: degraded (local only): <reason>` or `Broker: degraded (diagnostics only): <reason>` and `Fix: <fix>` come before the tables. A local-only run still prints both tables. A diagnostics-only run prints only these two lines and exits with code 1.
 
 When a newer formal release is available, `agent-peer status` prints one more line at the end:
 
@@ -132,7 +135,7 @@ Requires write permission on the Broker's configuration file. A usage error exit
 
 ## agent-peer peer list
 
-Lists every Broker known to a running Broker, including Brokers that are not peers, as a table with the columns `ALIAS`, `FINGERPRINT`, `PEER` (`yes` or `no`), `STATUS`, `DIRECTION` and `ADDRESSES`, sorted by alias. The `ADDRESSES` column joins the addresses with commas. With no known Broker it prints `Brokers: none`. When this Broker is offline, the same `Broker: offline; …` line comes before the table.
+Lists every Broker known to a running Broker, including Brokers that are not peers, as a table with the columns `ALIAS`, `FINGERPRINT`, `PEER` (`yes` or `no`), `STATUS`, `DIRECTION` and `ADDRESSES`, sorted by alias. The `ADDRESSES` column joins the addresses with commas. With no known Broker it prints `Brokers: none`. When this Broker is offline, the same `Broker: offline; …` line comes before the table. When it runs degraded, the same `Broker: degraded …` and `Fix: …` lines come before the table; a diagnostics-only run writes the reason to standard error instead and exits with code 1.
 
 Requires no permission. A usage error exits with code 2; any other failure exits with code 1.
 
@@ -237,14 +240,18 @@ When the update goes through a Broker, a checksum or version mismatch appears af
 
 ## agent-peer service install
 
-Installs a service definition, enables the service, and starts the Broker immediately. It waits up to 20 seconds for the Broker to answer; a timeout fails the install and reports where the service logs go. Reinstalling replaces the running Broker with the new binary. It prints the level, the binary path, the version, the configuration file path, the run log and audit log locations, and the commands to start, stop, restart and uninstall the Broker; [Install agent-peer]({{< relref "/docs/guides/install" >}}#installation-output) lists the items.
+Installs a service definition, enables the service, and starts the Broker immediately. It waits up to 20 seconds for the Broker to answer; a timeout fails the install, reports where the service logs go, and includes the reason from the last `startup_failed` entry in that log. Reinstalling replaces the running Broker with the new binary. [Install agent-peer]({{< relref "/docs/guides/install" >}}#installation-output) lists what the install reports.
 
 - Without `--system`, installs a user-level service that starts the Broker when the account logs in. It must not run as root. On macOS it must run in a graphical login session. If `~/.agent-peer/config.yaml` does not exist, it generates the file, owned by the account that runs the install with mode `0600`; an existing file is left unchanged.
 - With `--system`, installs a system-level service that starts the Broker at boot. It must run as root. The command creates the `agent-peer` group when it does not exist, and uses it without changing its members when it does. If `/etc/agent-peer/config.yaml` does not exist, it generates the file, owned by `root` with group `agent-peer` and mode `0660`; an existing file is left unchanged. `--admin-group <name>`, only with `--system`, uses another group; the name may start only with a lowercase letter or an underscore and may contain only lowercase letters, digits, underscores and hyphens.
 
-The generated file is a template that lists every configuration key: keys with a fixed default are written out, and the remaining keys are comments with an example value or an empty placeholder. When the install writes the file it prints `generated the configuration file <path>`; when the file already exists it prints `kept the existing configuration file <path>` and, for a system-level install, `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`. Running that command hands an existing installation to the group, whose members then manage the Broker without `sudo`; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group. Skip it when `broker.listen` uses a port below 1024, because such a Broker refuses to start while another account can write the file.
+The generated file is a template that lists every configuration key: keys with a fixed default are written out, and the remaining keys are comments with an example value or an empty placeholder. When the install writes the file it prints `generated the configuration file <path>`; when the file already exists it prints `kept the existing configuration file <path>` and, for a system-level install, `To delegate administration, run: chgrp <group> <path> && chmod 0660 <path>`. Running that command hands an existing installation to the group, whose members then manage the Broker without `sudo`; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group. Do not hand the file to the group when `broker.listen` uses a port below 1024; [Configuration keys]({{< relref "/docs/reference/configuration" >}}#types-and-constraints) gives the rule and the fix.
 
 If a Broker that this service did not start is already running at that level, the install refuses and asks you to stop it first.
+
+Before it writes or enables the service, the install checks the listen address it will use. When the address is in use, the install fails without registering a service, and the error gives the address, the configuration file and `broker.listen`. A reinstall recognizes its own running service, stops it and waits up to 20 seconds for it to release the address; when another process holds the address, an installed service is left alone. A service that a failed install wrote or enabled does not start at boot or login, and when it stopped an existing service, the error gives the command to restore it.
+
+The service definition starts the Broker with `--allow-degraded`. When the Broker runs degraded after the service is registered, the install keeps the service installed and running, prints the reason and the fix command, and exits with code 3. `agent-peer service start` and `agent-peer service restart` exit with code 3 in the same situation.
 
 On Linux the command uses systemd and runs `systemctl daemon-reload`, `systemctl enable` and `systemctl restart`. On macOS it writes and loads a launchd job. A `--system` install additionally requires the executable and every directory above it to be root-owned, not writable by group or others, and searchable by other accounts, and the executable to be executable by other accounts. An executable under the temporary directory is refused. On an Intel Mac with Homebrew, `/usr/local/bin` belongs to the ordinary user, so choose a root-owned directory that group and others cannot write instead.
 
