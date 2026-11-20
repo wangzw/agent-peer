@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"math"
 	"strconv"
+
+	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
 )
 
 func init() {
@@ -40,6 +43,12 @@ func (a *app) statusCmd(ctx context.Context, args []string) int {
 	}
 
 	if err := a.deps.runStatus(ctx, a.stdout); err != nil {
+		// The status already names the cause and the repair; a degraded Broker
+		// that serves diagnostics only makes the command fail without repeating
+		// them on standard error.
+		if errors.Is(err, termcmd.ErrDiagnosticsOnly) {
+			return exitFailure
+		}
 		_, _ = fmt.Fprintf(a.stderr, "agent-peer status: %v\n", err)
 		return exitFailure
 	}

@@ -95,6 +95,40 @@ func TestRunStatusUsesSelectedSocket(t *testing.T) {
 	}
 }
 
+// TestRunStatusDiagnosticsOnly checks that the status lines are written and
+// the sentinel comes back, so the command can exit with 1 without repeating the
+// reason on standard error.
+func TestRunStatusDiagnosticsOnly(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	const reason = "config parse failed"
+	const fix = "fix the config"
+	srv := fakelocal.Start(t, path, fakelocal.Handlers{
+		Status: func(context.Context, *localpb.StatusRequest) (*localpb.StatusResponse, error) {
+			return &localpb.StatusResponse{
+				CurrentVersion: "0.2.0",
+				Degraded: &localpb.DegradedState{
+					Level:  localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY,
+					Reason: reason,
+					Fix:    fix,
+				},
+			}, nil
+		},
+	})
+
+	var got bytes.Buffer
+	err := RunStatus(t.Context(), fixedSelector(path), &got)
+	if !errors.Is(err, ErrDiagnosticsOnly) {
+		t.Fatalf("RunStatus error = %v, want ErrDiagnosticsOnly", err)
+	}
+	want := "Broker: degraded (diagnostics only): " + reason + "\nFix: " + fix + "\n"
+	if got.String() != want {
+		t.Errorf("RunStatus output = %q, want %q", got.String(), want)
+	}
+	if n := methodCalls(srv, "Status"); n != 1 {
+		t.Errorf("Status calls = %d, want 1", n)
+	}
+}
+
 func TestRunStatusSelectorError(t *testing.T) {
 	const noBroker = "no Broker is available for this account; if a system-level Broker is installed on this host, ask the administrator to start it. Otherwise start a user-level Broker with `agent-peer service install`, or run `agent-peer broker` in a terminal outside the Claude Code session (a Broker started inside the session exits with code 6)"
 	want := "cannot reach the Broker: " + noBroker
@@ -543,7 +577,7 @@ func TestRunPeerList(t *testing.T) {
 		t.Fatalf("RunPeerList: %v", err)
 	}
 	var want bytes.Buffer
-	if err := WriteBrokerList(&want, resp.GetBrokers()); err != nil {
+	if err := WriteBrokerList(&want, resp.GetBrokers(), resp.GetLocal()); err != nil {
 		t.Fatalf("WriteBrokerList: %v", err)
 	}
 	if got.String() != want.String() {
@@ -568,6 +602,66 @@ func TestRunPeerListEmpty(t *testing.T) {
 	}
 	if want := "Brokers: none\n"; got.String() != want {
 		t.Errorf("RunPeerList output = %q, want %q", got.String(), want)
+	}
+}
+
+// TestRunPeerListShowsLocalState checks that peer list prints the state the
+// Broker reports for itself, without calling Status.
+func TestRunPeerListShowsLocalState(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	srv := fakelocal.Start(t, path, fakelocal.Handlers{
+		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
+			return &localpb.ListBrokersResponse{Local: &localpb.LocalBrokerState{
+				Offline: true,
+				Degraded: &localpb.DegradedState{
+					Level:  localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY,
+					Reason: "listen address :17443 is unavailable",
+					Fix:    "agent-peer config set broker.listen <free address>",
+				},
+			}}, nil
+		},
+	})
+
+	var got bytes.Buffer
+	if err := RunPeerList(t.Context(), fixedSelector(path), &got); err != nil {
+		t.Fatalf("RunPeerList: %v", err)
+	}
+	want := "Broker: degraded (local only): listen address :17443 is unavailable\n" +
+		"Fix: agent-peer config set broker.listen <free address>\n" +
+		"Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.\n" +
+		"Brokers: none\n"
+	if got.String() != want {
+		t.Errorf("RunPeerList output = %q, want %q", got.String(), want)
+	}
+	if n := methodCalls(srv, "Status"); n != 0 {
+		t.Errorf("Status calls = %d, want 0", n)
+	}
+}
+
+// TestRunPeerListBrokerDegraded checks the diagnostics-only path: the Broker
+// refuses ListBrokers, and the command reports the described error.
+func TestRunPeerListBrokerDegraded(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	fail, err := status.New(codes.FailedPrecondition, "config parse failed").WithDetails(&localpb.ErrorDetail{
+		Code:    localpb.ErrorCode_ERROR_CODE_BROKER_DEGRADED,
+		Message: "config parse failed",
+	})
+	if err != nil {
+		t.Fatalf("building the error detail: %v", err)
+	}
+	fakelocal.Start(t, path, fakelocal.Handlers{
+		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
+			return nil, fail.Err()
+		},
+	})
+
+	var got bytes.Buffer
+	err = RunPeerList(t.Context(), fixedSelector(path), &got)
+	if err == nil || err.Error() != "broker_degraded: config parse failed" {
+		t.Fatalf("RunPeerList error = %v, want %q", err, "broker_degraded: config parse failed")
+	}
+	if got.Len() != 0 {
+		t.Errorf("RunPeerList wrote %q, want nothing", got.String())
 	}
 }
 

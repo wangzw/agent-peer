@@ -25,10 +25,27 @@ const (
 const emptyCell = "-"
 
 // WriteStatus writes resp as the two sections shown by "agent-peer status":
-// a table of registered agents followed by a table of peers. Each section is
-// sorted and its columns are aligned with text/tabwriter. An empty section is
-// written as "Agents: none" or "Peers: none".
+// a table of registered agents followed by a table of peers. A Broker that runs
+// degraded or offline gets status lines before the sections. A degraded Broker
+// that runs diagnostics only prints just those lines and no sections.
+//
+// Each section is sorted and its columns are aligned with text/tabwriter. An
+// empty section is written as "Agents: none" or "Peers: none".
 func WriteStatus(w io.Writer, resp *localpb.StatusResponse) error {
+	if resp.GetDegraded() != nil {
+		if err := writeDegradedState(w, resp.GetDegraded()); err != nil {
+			return err
+		}
+		if resp.GetDegraded().GetLevel() == localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY {
+			return nil
+		}
+	}
+	if resp.GetOffline() {
+		if _, err := io.WriteString(w, "Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.\n"); err != nil {
+			return err
+		}
+	}
+
 	agents, peers := statusEntries(resp)
 
 	if len(agents) == 0 {
@@ -89,6 +106,29 @@ func WriteStatus(w io.Writer, resp *localpb.StatusResponse) error {
 	}
 
 	return nil
+}
+
+// writeDegradedState writes the two lines that say why the Broker runs
+// degraded: the cause on the first line and the repair on the second.
+func writeDegradedState(w io.Writer, degraded *localpb.DegradedState) error {
+	if _, err := fmt.Fprintf(w, "Broker: degraded (%s): %s\n",
+		degradedLevelName(degraded.GetLevel()), degraded.GetReason()); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(w, "Fix: %s\n", degraded.GetFix())
+	return err
+}
+
+// degradedLevelName renders the level as the words status and peer list use.
+func degradedLevelName(level localpb.DegradedLevel) string {
+	switch level {
+	case localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY:
+		return "local only"
+	case localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY:
+		return "diagnostics only"
+	default:
+		return "unspecified"
+	}
 }
 
 // WriteAuditEvent writes ev as one line: the event time, the event name and
@@ -191,7 +231,25 @@ func WritePairingKey(w io.Writer, resp *localpb.CreatePairingKeyResponse) error 
 // WriteBrokerList writes the Brokers named by brokers as a table sorted by
 // alias. A Broker shows whether it is a peer, its status, which side dialed and
 // its advertised addresses. With no Brokers it writes "Brokers: none".
-func WriteBrokerList(w io.Writer, brokers []*localpb.BrokerInfo) error {
+//
+// local is the state of the Broker that answered; a nil value reads as online
+// and not degraded, which is what an older Broker reports. The status lines it
+// produces come before the table, exactly as WriteStatus writes them.
+func WriteBrokerList(w io.Writer, brokers []*localpb.BrokerInfo, local *localpb.LocalBrokerState) error {
+	if degraded := local.GetDegraded(); degraded != nil {
+		if err := writeDegradedState(w, degraded); err != nil {
+			return err
+		}
+		if degraded.GetLevel() == localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY {
+			return nil
+		}
+	}
+	if local.GetOffline() {
+		if _, err := io.WriteString(w, "Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.\n"); err != nil {
+			return err
+		}
+	}
+
 	if len(brokers) == 0 {
 		_, err := io.WriteString(w, "Brokers: none\n")
 		return err

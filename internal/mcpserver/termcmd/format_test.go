@@ -77,6 +77,98 @@ func TestWriteStatusEmptySections(t *testing.T) {
 	}
 }
 
+// TestWriteStatusBrokerState fixes the status lines for the combinations of
+// degraded level and offline, and checks that only diagnostics-only hides the
+// sections.
+func TestWriteStatusBrokerState(t *testing.T) {
+	const reason = "listen address :17443 is unavailable: address already in use"
+	const fix = "agent-peer config set broker.listen <free address>"
+	const degradedLocal = "Broker: degraded (local only): " + reason + "\nFix: " + fix + "\n"
+	const degradedDiagnostics = "Broker: degraded (diagnostics only): " + reason + "\nFix: " + fix + "\n"
+	const offline = "Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.\n"
+	const sections = "Agents: none\nPeers: none\n"
+
+	cases := []struct {
+		name string
+		resp *localpb.StatusResponse
+		want string
+	}{
+		{
+			name: "local only",
+			resp: &localpb.StatusResponse{Degraded: &localpb.DegradedState{
+				Level:  localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY,
+				Reason: reason,
+				Fix:    fix,
+			}},
+			want: degradedLocal + sections,
+		},
+		{
+			name: "diagnostics only",
+			resp: &localpb.StatusResponse{Degraded: &localpb.DegradedState{
+				Level:  localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY,
+				Reason: reason,
+				Fix:    fix,
+			}},
+			want: degradedDiagnostics,
+		},
+		{
+			name: "offline",
+			resp: &localpb.StatusResponse{Offline: true},
+			want: offline + sections,
+		},
+		{
+			name: "local only and offline",
+			resp: &localpb.StatusResponse{
+				Offline: true,
+				Degraded: &localpb.DegradedState{
+					Level:  localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY,
+					Reason: reason,
+					Fix:    fix,
+				},
+			},
+			want: degradedLocal + offline + sections,
+		},
+		{
+			name: "normal stays unchanged",
+			resp: &localpb.StatusResponse{},
+			want: sections,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := WriteStatus(&buf, tc.resp); err != nil {
+				t.Fatalf("WriteStatus: %v", err)
+			}
+			if got := buf.String(); got != tc.want {
+				t.Errorf("WriteStatus output = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestWriteStatusDiagnosticsOnlyKeepsUpdateLineOut checks that a diagnostics
+// only Broker prints exactly its two status lines.
+func TestWriteStatusDiagnosticsOnlyKeepsUpdateLineOut(t *testing.T) {
+	resp := &localpb.StatusResponse{
+		CurrentVersion:   "0.2.0",
+		AvailableVersion: "0.3.0",
+		Degraded: &localpb.DegradedState{
+			Level:  localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY,
+			Reason: "config parse failed",
+			Fix:    "fix the config",
+		},
+	}
+	var buf bytes.Buffer
+	if err := WriteStatus(&buf, resp); err != nil {
+		t.Fatalf("WriteStatus: %v", err)
+	}
+	want := "Broker: degraded (diagnostics only): config parse failed\nFix: fix the config\n"
+	if got := buf.String(); got != want {
+		t.Errorf("WriteStatus output = %q, want %q", got, want)
+	}
+}
+
 func TestWriteStatusPeersOmitted(t *testing.T) {
 	resp := &localpb.StatusResponse{
 		Agents: []*localpb.AgentStatusEntry{
@@ -331,7 +423,7 @@ func TestWriteBrokerList(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := WriteBrokerList(&buf, brokers); err != nil {
+	if err := WriteBrokerList(&buf, brokers, nil); err != nil {
 		t.Fatalf("WriteBrokerList: %v", err)
 	}
 
@@ -346,11 +438,64 @@ func TestWriteBrokerList(t *testing.T) {
 
 func TestWriteBrokerListEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WriteBrokerList(&buf, nil); err != nil {
+	if err := WriteBrokerList(&buf, nil, nil); err != nil {
 		t.Fatalf("WriteBrokerList: %v", err)
 	}
 	if got, want := buf.String(), "Brokers: none\n"; got != want {
 		t.Errorf("WriteBrokerList output = %q, want %q", got, want)
+	}
+}
+
+// TestWriteBrokerListBrokerState covers the local state peer list shows before
+// the table: a nil local state from an older Broker, local only degradation,
+// offline, and both together.
+func TestWriteBrokerListBrokerState(t *testing.T) {
+	const reason = "listen address :17443 is unavailable: address already in use"
+	const fix = "agent-peer config set broker.listen <free address>"
+	const degradedLocal = "Broker: degraded (local only): " + reason + "\nFix: " + fix + "\n"
+	const offline = "Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.\n"
+	const table = "Brokers: none\n"
+
+	cases := []struct {
+		name  string
+		local *localpb.LocalBrokerState
+		want  string
+	}{
+		{name: "older Broker without local state", local: nil, want: table},
+		{name: "online and not degraded", local: &localpb.LocalBrokerState{}, want: table},
+		{
+			name: "local only",
+			local: &localpb.LocalBrokerState{Degraded: &localpb.DegradedState{
+				Level:  localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY,
+				Reason: reason,
+				Fix:    fix,
+			}},
+			want: degradedLocal + table,
+		},
+		{name: "offline", local: &localpb.LocalBrokerState{Offline: true}, want: offline + table},
+		{
+			name: "local only and offline",
+			local: &localpb.LocalBrokerState{
+				Offline: true,
+				Degraded: &localpb.DegradedState{
+					Level:  localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY,
+					Reason: reason,
+					Fix:    fix,
+				},
+			},
+			want: degradedLocal + offline + table,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := WriteBrokerList(&buf, nil, tc.local); err != nil {
+				t.Fatalf("WriteBrokerList: %v", err)
+			}
+			if got := buf.String(); got != tc.want {
+				t.Errorf("WriteBrokerList output = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

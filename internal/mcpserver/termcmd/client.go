@@ -22,6 +22,11 @@ const UnaryTimeout = 10 * time.Second
 // UnaryTimeout because the update command polls it while a Broker restarts.
 const updateStatusTimeout = 2 * time.Second
 
+// ErrDiagnosticsOnly reports that the Broker runs degraded with diagnostics
+// only. Its status has already been written when RunStatus returns it; the
+// status command exits with 1 without repeating the reason on standard error.
+var ErrDiagnosticsOnly = errors.New("the Broker runs degraded with diagnostics only")
+
 // Dialer opens a client connection to the Broker on the selected socket. The
 // production value checks the peer before gRPC uses the connection. It is an
 // alias so that a function returning this signature directly satisfies
@@ -52,10 +57,8 @@ func RunStatus(ctx context.Context, sel Selector, w io.Writer) error {
 	if err := WriteStatus(w, resp); err != nil {
 		return err
 	}
-	// A diagnostics-only Broker is not usable; the command exits non-zero so a
-	// caller can detect it. The status line itself belongs to the display work.
-	if d := resp.GetDegraded(); d != nil && d.GetLevel() == localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY {
-		return errors.New("the Broker runs degraded with diagnostics only")
+	if resp.GetDegraded().GetLevel() == localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY {
+		return ErrDiagnosticsOnly
 	}
 	return nil
 }
@@ -161,7 +164,7 @@ func RunPeerList(ctx context.Context, sel Selector, w io.Writer) error {
 	if err != nil {
 		return errors.New(Describe(err))
 	}
-	return WriteBrokerList(w, resp.GetBrokers())
+	return WriteBrokerList(w, resp.GetBrokers(), resp.GetLocal())
 }
 
 // RunPeerConnect connects to the selected Broker and pairs with the Broker at

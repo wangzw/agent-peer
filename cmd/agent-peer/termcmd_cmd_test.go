@@ -8,6 +8,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
 )
 
 // configGetCall records one runConfigGet call.
@@ -144,6 +146,23 @@ func TestStatusErrorExitsOne(t *testing.T) {
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+}
+
+// TestStatusDiagnosticsOnlyExitsOne checks that the status command fails
+// without adding a line: the status output already names the cause and repair.
+func TestStatusDiagnosticsOnlyExitsOne(t *testing.T) {
+	stub := &termcmdStub{statusErr: termcmd.ErrDiagnosticsOnly}
+	a, stdout, stderr := newTermcmdApp(stub)
+
+	if got := a.statusCmd(context.Background(), nil); got != exitFailure {
+		t.Fatalf("statusCmd returned %d, want %d", got, exitFailure)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty; the runner wrote the status itself", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
 }
 
