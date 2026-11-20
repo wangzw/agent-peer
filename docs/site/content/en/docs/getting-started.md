@@ -12,7 +12,7 @@ agent-peer runs on macOS and Linux, on amd64 and arm64; native Windows is not su
 
 ## Install
 
-There are four ways to install agent-peer, in order of convenience: with one command from GitHub Releases; from the release archive with the `install.sh` it contains; by hand from the same archive; or by building from source. To keep an agent-peer installed from a release up to date, run `agent-peer update`; the Update agent-peer guide covers it. A binary built from source reports `dev` and is not updated this way.
+There are four ways to install agent-peer, in order of convenience: with one command from GitHub Releases; from the release archive with the `install.sh` it contains; by hand from the same archive; or by building from source. To keep an agent-peer installed from a release up to date, run `agent-peer update`; [Update agent-peer]({{< relref "guides/update.md" >}}) covers it. A binary built from source reports `dev` and is not updated this way.
 
 Whatever way you install it, the MCP server must be registered for your account; reopen any Claude Code session that is already open so that it loads the new server, and check the registration with `claude mcp get peer`.
 

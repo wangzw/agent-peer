@@ -12,7 +12,7 @@ agent-peer 运行在 macOS 与 Linux 上，支持 amd64 和 arm64；不支持原
 
 ## 安装
 
-agent-peer 有四种安装方式，按方便程度排列：用一条命令从 GitHub Releases 安装；下载发布包，执行包里的 `install.sh`；从同一个发布包手动安装；从源码构建。从发布包安装的 agent-peer 要保持更新，运行 `agent-peer update`，详见《更新 agent-peer》指南。从源码构建的二进制版本是 `dev`，不能用这种方式更新。
+agent-peer 有四种安装方式，按方便程度排列：用一条命令从 GitHub Releases 安装；下载发布包，执行包里的 `install.sh`；从同一个发布包手动安装；从源码构建。从发布包安装的 agent-peer 要保持更新，运行 `agent-peer update`，详见[《更新 agent-peer》指南]({{< relref "guides/update.md" >}})。从源码构建的二进制版本是 `dev`，不能用这种方式更新。
 
 无论用哪种方式安装，都要为账户注册 MCP 服务；已经打开的 Claude Code 会话要重开才能加载新的 MCP 服务，并用 `claude mcp get peer` 检查注册结果。
 
