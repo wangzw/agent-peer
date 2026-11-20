@@ -60,8 +60,8 @@ func TestM1SameHostRoundTrip(t *testing.T) {
 
 	// Discovery: alpha lists beta under the alias of their shared Broker and
 	// under the default topic both joined automatically.
-	harness.Eventually(t, slWaitBound, "alpha discovers beta in the default topic", func() (bool, string) {
-		out, state := slListAgents(t, alpha, nil)
+	harness.EventuallyPoll(t, slWaitBound, "alpha discovers beta in the default topic", func(deadline time.Time) (bool, string) {
+		out, state := slListAgentsPoll(t, deadline, alpha, nil)
 		if state != "" {
 			return false, state
 		}
@@ -125,8 +125,8 @@ func TestLocalSend(t *testing.T) {
 
 		// Both twins are listed with their disambiguation refs.
 		var addresses []string
-		harness.Eventually(t, slWaitBound, "the caller lists both twins with refs", func() (bool, string) {
-			out, state := slListAgents(t, caller, nil)
+		harness.EventuallyPoll(t, slWaitBound, "the caller lists both twins with refs", func(deadline time.Time) (bool, string) {
+			out, state := slListAgentsPoll(t, deadline, caller, nil)
 			if state != "" {
 				return false, state
 			}
@@ -474,9 +474,9 @@ func slPlain(t *testing.T) string {
 func slWaitRegistered(t *testing.T, s *harness.Session, name string) mcpserver.ListAgentsOut {
 	t.Helper()
 	var out mcpserver.ListAgentsOut
-	harness.Eventually(t, slWaitBound, "the session "+name+" is registered and lists itself", func() (bool, string) {
+	harness.EventuallyPoll(t, slWaitBound, "the session "+name+" is registered and lists itself", func(deadline time.Time) (bool, string) {
 		var state string
-		out, state = slListAgents(t, s, nil)
+		out, state = slListAgentsPoll(t, deadline, s, nil)
 		if state != "" {
 			return false, state
 		}
@@ -488,20 +488,12 @@ func slWaitRegistered(t *testing.T, s *harness.Session, name string) mcpserver.L
 	return out
 }
 
-// slListAgents calls list_agents and returns the decoded listing. A tool error
-// is reported as a state string so Eventually can retry and so a caller can
-// inspect the error instead of failing the test inside it.
-func slListAgents(t *testing.T, s *harness.Session, args map[string]any) (mcpserver.ListAgentsOut, string) {
+// slListAgentsPoll calls list_agents from a wait and returns the decoded
+// listing. The call is bounded by the wait's deadline and a transport error is
+// returned as state.
+func slListAgentsPoll(t *testing.T, deadline time.Time, s *harness.Session, args map[string]any) (mcpserver.ListAgentsOut, string) {
 	t.Helper()
-	r := s.Call(t, "list_agents", args)
-	if r.IsError {
-		return mcpserver.ListAgentsOut{}, r.Text
-	}
-	out, err := harness.Decode[mcpserver.ListAgentsOut](string(r.Structured))
-	if err != nil {
-		return mcpserver.ListAgentsOut{}, "decoding list_agents: " + err.Error()
-	}
-	return out, ""
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, s, "list_agents", args)
 }
 
 // slJoin joins name, retrying while the session is still registering.
@@ -526,8 +518,8 @@ func slJoin(t *testing.T, s *harness.Session, name string) {
 // right after both sessions register can still see the target as invisible.
 func slWaitVisible(t *testing.T, observer *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, slWaitBound, "the agent "+name+" is visible", func() (bool, string) {
-		out, state := slListAgents(t, observer, nil)
+	harness.EventuallyPoll(t, slWaitBound, "the agent "+name+" is visible", func(deadline time.Time) (bool, string) {
+		out, state := slListAgentsPoll(t, deadline, observer, nil)
 		if state != "" {
 			return false, state
 		}

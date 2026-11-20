@@ -778,8 +778,12 @@ func randomHex6() string {
 }
 
 // WaitFor waits up to three seconds for cond to return true, delegating the
-// polling to harness.Eventually. Longer waits use harness.Eventually with the
-// sum of the relevant timers plus three seconds.
+// polling to harness.Eventually. It is for a filesystem, socket or process
+// condition that makes no tool call. A condition that calls a tool uses
+// harness.EventuallyPoll with Session.PollCall instead: the callback receives
+// the wait's deadline, so each call is bounded and clamped to the time the wait
+// has left. Longer non-tool waits use harness.Eventually with the sum of the
+// relevant timers plus three seconds.
 func WaitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	harness.Eventually(t, 3*time.Second, what, func() (bool, string) {

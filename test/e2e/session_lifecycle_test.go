@@ -97,8 +97,8 @@ func TestLocalSessionChanges(t *testing.T) {
 		lifecycleWaitAgent(t, observer, "api-worker")
 
 		api.Fake().Rename("api-v2")
-		harness.Eventually(t, 3*time.Second, "the listing names api-worker as the previous name", func() (bool, string) {
-			out, state := lifecycleListAgents(t, observer, nil)
+		harness.EventuallyPoll(t, 3*time.Second, "the listing names api-worker as the previous name", func(deadline time.Time) (bool, string) {
+			out, state := lifecycleListAgentsPoll(t, deadline, observer, nil)
 			if state != "" {
 				return false, state
 			}
@@ -158,8 +158,8 @@ func TestLocalSessionChanges(t *testing.T) {
 
 		want := []string{"github.com/org/repo", "t1"}
 		var address string
-		harness.Eventually(t, 3*time.Second, "clearer shares the manual topic with observer", func() (bool, string) {
-			out, state := lifecycleListAgents(t, observer, nil)
+		harness.EventuallyPoll(t, 3*time.Second, "clearer shares the manual topic with observer", func(deadline time.Time) (bool, string) {
+			out, state := lifecycleListAgentsPoll(t, deadline, observer, nil)
 			if state != "" {
 				return false, state
 			}
@@ -218,8 +218,8 @@ func TestLocalSessionChanges(t *testing.T) {
 		lifecycleJoin(t, observer, "manual")
 		lifecycleWaitTopic(t, observer, "manual")
 		lifecycleJoin(t, worker, "manual")
-		harness.Eventually(t, 3*time.Second, "worker shares the manual topic with observer", func() (bool, string) {
-			out, state := lifecycleListAgents(t, observer, nil)
+		harness.EventuallyPoll(t, 3*time.Second, "worker shares the manual topic with observer", func(deadline time.Time) (bool, string) {
+			out, state := lifecycleListAgentsPoll(t, deadline, observer, nil)
 			if state != "" {
 				return false, state
 			}
@@ -235,8 +235,8 @@ func TestLocalSessionChanges(t *testing.T) {
 		lifecycleWaitNoAgent(t, observer, "worker")
 
 		worker.RestartMCP(t)
-		harness.Eventually(t, 3*time.Second, "the agent is registered again with the same name", func() (bool, string) {
-			out, state := lifecycleListAgents(t, observer, nil)
+		harness.EventuallyPoll(t, 3*time.Second, "the agent is registered again with the same name", func(deadline time.Time) (bool, string) {
+			out, state := lifecycleListAgentsPoll(t, deadline, observer, nil)
 			if state != "" {
 				return false, state
 			}
@@ -259,8 +259,8 @@ func TestLocalSessionChanges(t *testing.T) {
 		lifecycleWaitAgent(t, observer, "doomed")
 
 		doomed.End(t)
-		harness.Eventually(t, 3*time.Second, "an ended session leaves the local list", func() (bool, string) {
-			out, state := lifecycleListAgents(t, observer, nil)
+		harness.EventuallyPoll(t, 3*time.Second, "an ended session leaves the local list", func(deadline time.Time) (bool, string) {
+			out, state := lifecycleListAgentsPoll(t, deadline, observer, nil)
 			if state != "" {
 				return false, state
 			}
@@ -287,8 +287,8 @@ func TestLocalSessionChanges(t *testing.T) {
 		// the Broker failed to clear would show up in its listing, and wait
 		// until the ended session is out of the agent table first so the new
 		// connection cannot attach to the old agent instead.
-		harness.Eventually(t, 3*time.Second, "the ended session leaves the local list", func() (bool, string) {
-			out, state := lifecycleListAgents(t, observer, nil)
+		harness.EventuallyPoll(t, 3*time.Second, "the ended session leaves the local list", func(deadline time.Time) (bool, string) {
+			out, state := lifecycleListAgentsPoll(t, deadline, observer, nil)
 			if state != "" {
 				return false, state
 			}
@@ -304,8 +304,8 @@ func TestLocalSessionChanges(t *testing.T) {
 			SocketPath: socketPath,
 		})
 		defer second.End(t)
-		harness.Eventually(t, 3*time.Second, "the new session has only the default topic", func() (bool, string) {
-			out, state := lifecycleListTopics(t, second)
+		harness.EventuallyPoll(t, 3*time.Second, "the new session has only the default topic", func(deadline time.Time) (bool, string) {
+			out, state := lifecycleListTopicsPoll(t, deadline, second)
 			if state != "" {
 				return false, state
 			}
@@ -321,8 +321,8 @@ func TestLocalSessionChanges(t *testing.T) {
 		lifecycleJoin(t, observer, "t1")
 		lifecycleWaitTopic(t, observer, "t1")
 		lifecycleJoin(t, y, "t1")
-		harness.Eventually(t, 3*time.Second, "y shares t1 with observer", func() (bool, string) {
-			out, state := lifecycleListAgents(t, observer, nil)
+		harness.EventuallyPoll(t, 3*time.Second, "y shares t1 with observer", func(deadline time.Time) (bool, string) {
+			out, state := lifecycleListAgentsPoll(t, deadline, observer, nil)
 			if state != "" {
 				return false, state
 			}
@@ -336,15 +336,15 @@ func TestLocalSessionChanges(t *testing.T) {
 
 		lifecycleRestartBroker(t, host, brokerConfig, listen)
 
-		harness.Eventually(t, lifecycleRestoreBound, "the MCP server process restores its topics after the Broker restart", func() (bool, string) {
-			out, state := lifecycleListTopics(t, y)
+		harness.EventuallyPoll(t, lifecycleRestoreBound, "the MCP server process restores its topics after the Broker restart", func(deadline time.Time) (bool, string) {
+			out, state := lifecycleListTopicsPoll(t, deadline, y)
 			if state != "" {
 				return false, state
 			}
 			return lifecycleSameSet(out.Joined, []string{"github.com/org/repo", "t1"}), fmt.Sprintf("joined topics are %v", out.Joined)
 		})
-		harness.Eventually(t, lifecycleRestoreBound, "observer sees the restored membership", func() (bool, string) {
-			out, state := lifecycleListAgents(t, observer, nil)
+		harness.EventuallyPoll(t, lifecycleRestoreBound, "observer sees the restored membership", func(deadline time.Time) (bool, string) {
+			out, state := lifecycleListAgentsPoll(t, deadline, observer, nil)
 			if state != "" {
 				return false, state
 			}
@@ -414,9 +414,9 @@ func lifecycleWorkspace(t *testing.T) string {
 func lifecycleWaitRegistered(t *testing.T, s *harness.Session, name string) mcpserver.ListAgentsOut {
 	t.Helper()
 	var out mcpserver.ListAgentsOut
-	harness.Eventually(t, 3*time.Second, "the session is registered and lists itself", func() (bool, string) {
+	harness.EventuallyPoll(t, 3*time.Second, "the session is registered and lists itself", func(deadline time.Time) (bool, string) {
 		var state string
-		out, state = lifecycleListAgents(t, s, nil)
+		out, state = lifecycleListAgentsPoll(t, deadline, s, nil)
 		if state != "" {
 			return false, state
 		}
@@ -444,18 +444,19 @@ func lifecycleListAgents(t *testing.T, s *harness.Session, args map[string]any) 
 	return out, ""
 }
 
-// lifecycleListTopics calls list_topics and returns the decoded listing.
-func lifecycleListTopics(t *testing.T, s *harness.Session) (mcpserver.ListTopicsOut, string) {
+// lifecycleListAgentsPoll is lifecycleListAgents for a wait callback: the call
+// is bounded by the wait's deadline and a transport error is returned as state.
+func lifecycleListAgentsPoll(t *testing.T, deadline time.Time, s *harness.Session, args map[string]any) (mcpserver.ListAgentsOut, string) {
 	t.Helper()
-	r := s.Call(t, "list_topics", nil)
-	if r.IsError {
-		return mcpserver.ListTopicsOut{}, r.Text
-	}
-	out, err := harness.Decode[mcpserver.ListTopicsOut](string(r.Structured))
-	if err != nil {
-		return mcpserver.ListTopicsOut{}, "decoding list_topics: " + err.Error()
-	}
-	return out, ""
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, s, "list_agents", args)
+}
+
+// lifecycleListTopicsPoll calls list_topics from a wait and returns the decoded
+// listing. The call is bounded by the wait's deadline and a transport error is
+// returned as state.
+func lifecycleListTopicsPoll(t *testing.T, deadline time.Time, s *harness.Session) (mcpserver.ListTopicsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListTopicsOut](t, deadline, s, "list_topics", nil)
 }
 
 // lifecycleJoin joins name, retrying while the session is still registering.
@@ -478,8 +479,8 @@ func lifecycleJoin(t *testing.T, s *harness.Session, name string) {
 // lifecycleWaitTopic waits until the session's own listing reports the topic.
 func lifecycleWaitTopic(t *testing.T, s *harness.Session, topic string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "list_topics contains "+topic, func() (bool, string) {
-		out, state := lifecycleListTopics(t, s)
+	harness.EventuallyPoll(t, 3*time.Second, "list_topics contains "+topic, func(deadline time.Time) (bool, string) {
+		out, state := lifecycleListTopicsPoll(t, deadline, s)
 		if state != "" {
 			return false, state
 		}
@@ -496,8 +497,8 @@ func lifecycleWaitTopic(t *testing.T, s *harness.Session, topic string) {
 // name.
 func lifecycleWaitAgent(t *testing.T, observer *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "the agent "+name+" is listed", func() (bool, string) {
-		out, state := lifecycleListAgents(t, observer, nil)
+	harness.EventuallyPoll(t, 3*time.Second, "the agent "+name+" is listed", func(deadline time.Time) (bool, string) {
+		out, state := lifecycleListAgentsPoll(t, deadline, observer, nil)
 		if state != "" {
 			return false, state
 		}
@@ -511,8 +512,8 @@ func lifecycleWaitAgent(t *testing.T, observer *harness.Session, name string) {
 // lifecycleWaitNoAgent waits until observer no longer lists a name.
 func lifecycleWaitNoAgent(t *testing.T, observer *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "the agent "+name+" is gone from the list", func() (bool, string) {
-		out, state := lifecycleListAgents(t, observer, nil)
+	harness.EventuallyPoll(t, 3*time.Second, "the agent "+name+" is gone from the list", func(deadline time.Time) (bool, string) {
+		out, state := lifecycleListAgentsPoll(t, deadline, observer, nil)
 		if state != "" {
 			return false, state
 		}
@@ -527,8 +528,8 @@ func lifecycleWaitNoAgent(t *testing.T, observer *harness.Session, name string) 
 // word; an empty want means the field is omitted.
 func lifecycleWaitStatus(t *testing.T, observer *harness.Session, name, want string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "the agent "+name+" has status "+want, func() (bool, string) {
-		out, state := lifecycleListAgents(t, observer, nil)
+	harness.EventuallyPoll(t, 3*time.Second, "the agent "+name+" has status "+want, func(deadline time.Time) (bool, string) {
+		out, state := lifecycleListAgentsPoll(t, deadline, observer, nil)
 		if state != "" {
 			return false, state
 		}

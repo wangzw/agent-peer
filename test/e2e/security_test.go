@@ -191,8 +191,8 @@ func TestLinkEncrypted(t *testing.T) {
 
 		// Both sessions must be visible to each other before a message can be
 		// addressed; this also proves the name travelled over the link.
-		harness.Eventually(t, secWaitBound, "the two sessions see each other", func() (bool, string) {
-			out, state := secListAgents(t, a1)
+		harness.EventuallyPoll(t, secWaitBound, "the two sessions see each other", func(deadline time.Time) (bool, string) {
+			out, state := secListAgentsPoll(t, deadline, a1)
 			if state != "" {
 				return false, state
 			}
@@ -352,8 +352,8 @@ func TestPrivateTopicNamesStayHome(t *testing.T) {
 		assertQuiet(t)
 
 		secJoin(t, observer, secretTopic)
-		harness.Eventually(t, secWaitBound, "hostB sees the member after joining the topic", func() (bool, string) {
-			out, state := secListAgents(t, observer)
+		harness.EventuallyPoll(t, secWaitBound, "hostB sees the member after joining the topic", func(deadline time.Time) (bool, string) {
+			out, state := secListAgentsPoll(t, deadline, observer)
 			if state != "" {
 				return false, state
 			}
@@ -458,8 +458,8 @@ func secOperator(t *testing.T, node *harness.Node) *harness.Session {
 // secWaitRegistered waits until the session is registered and lists itself.
 func secWaitRegistered(t *testing.T, session *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, secWaitBound, "session "+name+" is registered", func() (bool, string) {
-		out, state := secListAgents(t, session)
+	harness.EventuallyPoll(t, secWaitBound, "session "+name+" is registered", func(deadline time.Time) (bool, string) {
+		out, state := secListAgentsPoll(t, deadline, session)
 		if state != "" {
 			return false, state
 		}
@@ -537,6 +537,13 @@ func secListAgents(t *testing.T, session *harness.Session) (mcpserver.ListAgents
 		return mcpserver.ListAgentsOut{}, "decoding list_agents: " + err.Error()
 	}
 	return out, ""
+}
+
+// secListAgentsPoll is secListAgents for a wait callback: the call is bounded
+// by the wait's deadline and a transport error is returned as state.
+func secListAgentsPoll(t *testing.T, deadline time.Time, session *harness.Session) (mcpserver.ListAgentsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, session, "list_agents", nil)
 }
 
 // secListBrokers calls list_brokers and returns the decoded answer.

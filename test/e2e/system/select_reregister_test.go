@@ -37,7 +37,9 @@ const (
 	// at most mcpserver.ConnBackoffCap. The margin covers the dial, Hello and
 	// registration: SystemRetryDeadline + ConnBackoffCap + 5s.
 	srLaunchBudget = mcpserver.SystemRetryDeadline + mcpserver.ConnBackoffCap + 5*time.Second
-	// srRestartBudget is systemd's RestartSec=5 plus three seconds.
+	// srRestartBudget is systemd's RestartSec=5 plus three seconds. The wait
+	// that uses it polls a tool through EventuallyPoll, which lifts the value
+	// to ToolCallWaitBound (fourteen seconds).
 	srRestartBudget = 8 * time.Second
 	// statusClientRole is the TestMain role that reads an agent ID as the
 	// account that owns the Broker.
@@ -101,9 +103,12 @@ func srWriteAccountConfig(t *testing.T, account, content string) {
 // srWaitRegistered waits until the session has registered with its Broker.
 func srWaitRegistered(t *testing.T, s *syscontainer.Session, what string) {
 	t.Helper()
-	syscontainer.WaitFor(t, "session "+what+" to register", func() bool {
-		_, isError := s.Call(t, "list_agents", map[string]any{})
-		return !isError
+	harness.EventuallyPoll(t, harness.ToolCallWaitBound, "session "+what+" to register", func(deadline time.Time) (bool, string) {
+		_, isError, err := s.PollCall(t, deadline, "list_agents", map[string]any{})
+		if err != nil {
+			return false, err.Error()
+		}
+		return !isError, ""
 	})
 }
 

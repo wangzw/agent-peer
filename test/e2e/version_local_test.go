@@ -18,7 +18,9 @@ import (
 
 const (
 	// versionLocalNoBrokerBudget bounds the first failed attempt after the
-	// Broker stops: one connection attempt and the probe that follows it.
+	// Broker stops: one connection attempt and the probe that follows it. The
+	// wait that uses it polls a tool through EventuallyPoll, which lifts the
+	// value to harness.ToolCallWaitBound (fourteen seconds).
 	versionLocalNoBrokerBudget = 3 * time.Second
 	// versionLocalRecoveryBudget bounds the reconnect after the user starts a
 	// compatible Broker. mcpserver.ConnBackoffCap is the longest wait between

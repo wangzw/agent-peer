@@ -322,6 +322,9 @@ func sgMCPPIDs(t *testing.T, account string) []int {
 	return out
 }
 
+// sgWaitRegistered waits until the session's MCP server has registered it.
+// EventuallyPoll lifts the three-second allowance to ToolCallWaitBound so one
+// poll call gets its own bound.
 func sgWaitRegistered(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
 	harness.EventuallyPoll(t, 3*time.Second, "the session "+session.Account+" to register", func(deadline time.Time) (bool, string) {
@@ -334,6 +337,8 @@ func sgWaitRegistered(t *testing.T, session *syscontainer.Session) {
 }
 
 // sgWaitConnected waits until the session's MCP server has reached a Broker.
+// EventuallyPoll lifts the three-second allowance for the same reason as
+// sgWaitRegistered.
 func sgWaitConnected(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
 	harness.EventuallyPoll(t, 3*time.Second, "the MCP server of "+session.Account+" to reach its Broker",

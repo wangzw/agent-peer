@@ -135,12 +135,18 @@ func discAgent(t *testing.T, d *discNode, name, workdir string) *harness.Session
 
 // discCallOK retries a tool that must succeed until it does or the bound
 // expires. The MCP server may still be wiring itself to the Broker right after
-// it starts, which it reports as an internal error asking for a retry. A topic
-// tool spends topicRPCTimeout inside the handler before the update hint runs,
-// so it polls with harness.TopicCallPollBound and the wait gets
-// harness.TopicCallWaitBound.
+// it starts, which it reports as an internal error asking for a retry. A
+// read-only or idempotent tool polls with Session.PollCallWithin, so a
+// transport error is retried; any other tool is a side effect and goes through
+// Session.CallUntilOK, which fails on a transport error instead of repeating a
+// call the server may already have applied. A topic tool spends
+// topicRPCTimeout inside the handler before the update hint runs, so it polls
+// with harness.TopicCallPollBound and the wait gets harness.TopicCallWaitBound.
 func discCallOK(t *testing.T, s *harness.Session, tool string, args map[string]any, bound time.Duration) harness.Result {
 	t.Helper()
+	if !pollableTool(tool) {
+		return s.CallUntilOK(t, bound, tool, args)
+	}
 	pollBound, waitBound := harness.ToolCallPollBound, bound
 	if brokerTopicTool(tool) {
 		pollBound, waitBound = harness.TopicCallPollBound, harness.TopicCallWaitBound
@@ -358,6 +364,13 @@ func discListTopics(t *testing.T, s *harness.Session) (mcpserver.ListTopicsOut, 
 	return out, ""
 }
 
+// discListTopicsPoll is discListTopics for a wait callback: the call is bounded
+// by the wait's deadline and a transport error is returned as state.
+func discListTopicsPoll(t *testing.T, deadline time.Time, s *harness.Session) (mcpserver.ListTopicsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListTopicsOut](t, deadline, s, "list_topics", nil)
+}
+
 // discJoinTopic joins name, declaring it public when public is set.
 func discJoinTopic(t *testing.T, s *harness.Session, name string, public bool, description string) harness.Result {
 	t.Helper()
@@ -425,8 +438,8 @@ func TestDiscoveryPrivateByDefault(t *testing.T) {
 	defer agent.End(t)
 
 	var privateTopics []string
-	harness.Eventually(t, 3*time.Second, "A's Agent joins its automatic topic", func() (bool, string) {
-		out, state := discListTopics(t, agent)
+	harness.EventuallyPoll(t, 3*time.Second, "A's Agent joins its automatic topic", func(deadline time.Time) (bool, string) {
+		out, state := discListTopicsPoll(t, deadline, agent)
 		if state != "" {
 			return false, state
 		}
@@ -509,8 +522,8 @@ func TestDiscoveryPrivateByDefault(t *testing.T) {
 	discJoinOK(t, agent, "t2", false, "")
 	privateTopics = append(privateTopics, "t2")
 
-	harness.Eventually(t, discBound(2), "C sees A's public control topic", func() (bool, string) {
-		out, state := discListTopics(t, watcher)
+	harness.EventuallyPoll(t, discBound(2), "C sees A's public control topic", func(deadline time.Time) (bool, string) {
+		out, state := discListTopicsPoll(t, deadline, watcher)
 		if state != "" {
 			return false, state
 		}
@@ -600,8 +613,8 @@ func TestDiscoveryCardReachesWholeNetwork(t *testing.T) {
 	ws := a.Workspace(t, "git", "https://"+originTopic, "")
 	agent := discAgent(t, a, "config-agent", ws)
 	defer agent.End(t)
-	harness.Eventually(t, 3*time.Second, "the Agent joins its automatic topic", func() (bool, string) {
-		out, state := discListTopics(t, agent)
+	harness.EventuallyPoll(t, 3*time.Second, "the Agent joins its automatic topic", func(deadline time.Time) (bool, string) {
+		out, state := discListTopicsPoll(t, deadline, agent)
 		if state != "" {
 			return false, state
 		}
@@ -845,8 +858,8 @@ func TestPublicTopicVisibleAcrossNetwork(t *testing.T) {
 	watcher := discAgent(t, c, "watcher", t.TempDir())
 	defer watcher.End(t)
 
-	harness.Eventually(t, discBound(2), "C sees both public topics from A", func() (bool, string) {
-		out, state := discListTopics(t, watcher)
+	harness.EventuallyPoll(t, discBound(2), "C sees both public topics from A", func(deadline time.Time) (bool, string) {
+		out, state := discListTopicsPoll(t, deadline, watcher)
 		if state != "" {
 			return false, state
 		}
@@ -1005,8 +1018,8 @@ func TestPublicTopicFollowsLastMember(t *testing.T) {
 // discWaitPublicTopic waits until the session's public list contains name.
 func discWaitPublicTopic(t *testing.T, s *harness.Session, name string, bound time.Duration) {
 	t.Helper()
-	harness.Eventually(t, bound, "public topics contain "+name, func() (bool, string) {
-		out, state := discListTopics(t, s)
+	harness.EventuallyPoll(t, bound, "public topics contain "+name, func(deadline time.Time) (bool, string) {
+		out, state := discListTopicsPoll(t, deadline, s)
 		if state != "" {
 			return false, state
 		}
@@ -1021,8 +1034,8 @@ func discWaitPublicTopic(t *testing.T, s *harness.Session, name string, bound ti
 // contains name.
 func discWaitPublicTopicGone(t *testing.T, s *harness.Session, name string, bound time.Duration) {
 	t.Helper()
-	harness.Eventually(t, bound, "public topics no longer contain "+name, func() (bool, string) {
-		out, state := discListTopics(t, s)
+	harness.EventuallyPoll(t, bound, "public topics no longer contain "+name, func(deadline time.Time) (bool, string) {
+		out, state := discListTopicsPoll(t, deadline, s)
 		if state != "" {
 			return false, state
 		}

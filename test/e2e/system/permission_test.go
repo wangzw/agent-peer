@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/mcpserver"
 	"github.com/wangzw/agent-peer/test/e2e/harness"
 	"github.com/wangzw/agent-peer/test/e2e/node"
 	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
@@ -163,9 +164,12 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 	if paired.Alias == "" {
 		t.Fatalf("connect_broker as root returned no peer alias: %s", text)
 	}
-	harness.Eventually(t, 3*time.Second, "the system Broker to report the paired peer as connected",
-		func() (bool, string) {
-			status, isPeer, ok := permBrokerStatus(t, root, paired.Alias)
+	harness.EventuallyPoll(t, 3*time.Second, "the system Broker to report the paired peer as connected",
+		func(deadline time.Time) (bool, string) {
+			status, isPeer, ok, state := permBrokerStatusPoll(t, deadline, root, paired.Alias)
+			if state != "" {
+				return false, state
+			}
 			return ok && isPeer && status == "connected", status
 		})
 
@@ -566,6 +570,8 @@ func permNonEmptyLines(s string) []string {
 }
 
 // permWaitRegistered waits until the session's MCP server has registered it.
+// EventuallyPoll lifts the three-second allowance to ToolCallWaitBound so one
+// poll call gets its own bound.
 func permWaitRegistered(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
 	harness.EventuallyPoll(t, 3*time.Second, "the session "+session.Account+" to register", func(deadline time.Time) (bool, string) {
@@ -578,6 +584,8 @@ func permWaitRegistered(t *testing.T, session *syscontainer.Session) {
 }
 
 // permWaitConnected waits until the session's MCP server has reached a Broker.
+// EventuallyPoll lifts the three-second allowance for the same reason as
+// permWaitRegistered.
 func permWaitConnected(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
 	harness.EventuallyPoll(t, 3*time.Second, "the MCP server of "+session.Account+" to reach its Broker",
@@ -666,6 +674,23 @@ func permBrokerStatus(t *testing.T, session *syscontainer.Session, alias string)
 		}
 	}
 	return "", false, false
+}
+
+// permBrokerStatusPoll is permBrokerStatus for a wait callback: the call is
+// bounded by the wait's deadline, and a transport or tool error is returned as
+// state instead of failing the test.
+func permBrokerStatusPoll(t *testing.T, deadline time.Time, session *syscontainer.Session, alias string) (status string, isPeer, found bool, state string) {
+	t.Helper()
+	out, state := sysPollDecode[mcpserver.ListBrokersOut](t, deadline, session, "list_brokers", map[string]any{})
+	if state != "" {
+		return "", false, false, state
+	}
+	for _, broker := range out.Brokers {
+		if broker.Alias == alias {
+			return broker.Status, broker.IsPeer, true, ""
+		}
+	}
+	return "", false, false, ""
 }
 
 // permPairingKey creates a one-time pairing key at the session's Broker.

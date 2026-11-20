@@ -20,7 +20,9 @@ import (
 	"github.com/wangzw/agent-peer/test/e2e/harness"
 )
 
-// alWaitBound is the bound of a wait that no product timer governs.
+// alWaitBound is the bound of a wait that no product timer governs. When the
+// wait polls a tool through EventuallyPoll, the harness lifts it to
+// ToolCallWaitBound (fourteen seconds) so one poll call gets its own bound.
 const alWaitBound = 3 * time.Second
 
 // alRelinkBound is reconnect_max (400ms) + dial_timeout (500ms) + 3s.
@@ -292,8 +294,11 @@ func TestAliases(t *testing.T) {
 		b1 = alSession(t, bNode, "b1")
 
 		var bAddr string
-		harness.Eventually(t, alRelinkBound, "A keeps C under @hostC and gives B a local alias", func() (bool, string) {
-			out := alListAgents(t, a1)
+		harness.EventuallyPoll(t, alRelinkBound, "A keeps C under @hostC and gives B a local alias", func(deadline time.Time) (bool, string) {
+			out, state := alListAgentsPoll(t, deadline, a1)
+			if state != "" {
+				return false, state
+			}
 			var cAddr string
 			bAddr = ""
 			for _, agent := range out.Agents {
@@ -533,16 +538,12 @@ func alIdentityFingerprint(t *testing.T, node *harness.Node) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// alListAgents calls list_agents on s.
-func alListAgents(t *testing.T, s *harness.Session) mcpserver.ListAgentsOut {
+// alListAgentsPoll calls list_agents from a wait and returns the decoded answer.
+// The call is bounded by the wait's deadline and a transport error is returned
+// as state.
+func alListAgentsPoll(t *testing.T, deadline time.Time, s *harness.Session) (mcpserver.ListAgentsOut, string) {
 	t.Helper()
-	r := s.Call(t, "list_agents", map[string]any{})
-	r.MustOK(t)
-	out, err := harness.Decode[mcpserver.ListAgentsOut](string(r.Structured))
-	if err != nil {
-		t.Fatalf("decoding list_agents: %v", err)
-	}
-	return out
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, s, "list_agents", map[string]any{})
 }
 
 // alWaitAgentSuffix waits until s lists name with an address ending in suffix.

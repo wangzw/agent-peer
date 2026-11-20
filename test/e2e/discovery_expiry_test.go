@@ -420,9 +420,9 @@ func TestPublicTopicExpiresWithDeclarer(t *testing.T) {
 			return true, ""
 		})
 
-	harness.Eventually(t, dxExpiryBound, "B lists "+dxPublicTopic,
-		func() (bool, string) {
-			out, state := dxListTopics(t, b1)
+	harness.EventuallyPoll(t, dxExpiryBound, "B lists "+dxPublicTopic,
+		func(deadline time.Time) (bool, string) {
+			out, state := dxListTopicsPoll(t, deadline, b1)
 			if state != "" {
 				return false, state
 			}
@@ -454,9 +454,9 @@ func TestPublicTopicExpiresWithDeclarer(t *testing.T) {
 	// Eight days after issuance the declaration has expired. A is dead, so
 	// only the expiry can remove it.
 	dxSetClock(t, clockB, 192*time.Hour)
-	harness.Eventually(t, dxExpiryBound, "B drops "+dxPublicTopic+" with its declarer's card",
-		func() (bool, string) {
-			out, state := dxListTopics(t, b1)
+	harness.EventuallyPoll(t, dxExpiryBound, "B drops "+dxPublicTopic+" with its declarer's card",
+		func(deadline time.Time) (bool, string) {
+			out, state := dxListTopicsPoll(t, deadline, b1)
 			if state != "" {
 				return false, state
 			}
@@ -609,6 +609,13 @@ func dxListTopics(t *testing.T, session *harness.Session) (mcpserver.ListTopicsO
 		return mcpserver.ListTopicsOut{}, err.Error()
 	}
 	return out, ""
+}
+
+// dxListTopicsPoll is dxListTopics for a wait callback: the call is bounded by
+// the wait's deadline and a transport error is returned as state.
+func dxListTopicsPoll(t *testing.T, deadline time.Time, session *harness.Session) (mcpserver.ListTopicsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListTopicsOut](t, deadline, session, "list_topics", map[string]any{})
 }
 
 // dxHasPublicTopic reports whether name is among the public topics.

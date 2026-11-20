@@ -49,17 +49,10 @@ func TestRegistrationListAgentsAbandonsAStalledCall(t *testing.T) {
 
 	// send_message needs the agent identity, so its success proves the MCP
 	// server applied registration_complete. list_agents would prove it too, but
-	// it is the call under test.
-	registrationEventually(t, harness.ToolCallWaitBound, "the session is registered", func(deadline time.Time) (bool, string) {
-		r, err := s.PollCall(t, deadline, "send_message", map[string]any{"to": "someone@test", "message": "hi"})
-		if err != nil {
-			return false, err.Error()
-		}
-		if r.IsError {
-			return false, r.Text
-		}
-		return true, ""
-	})
+	// it is the call under test. The probe is not read-only, so it goes through
+	// CallUntilOK: only the tool's own error is retried, never a transport error
+	// that may already have delivered the message.
+	s.CallUntilOK(t, harness.ToolCallWaitBound, "send_message", map[string]any{"to": "someone@test", "message": "hi"})
 
 	start := time.Now()
 	_, state := registrationListAgentsInWait(t, s, start.Add(harness.ToolCallPollBound), nil)

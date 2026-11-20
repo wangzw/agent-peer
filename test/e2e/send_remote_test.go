@@ -262,8 +262,8 @@ func TestRemoteSendFaults(t *testing.T) {
 		defer duplicate.End(t)
 
 		var ref string
-		harness.Eventually(t, srWaitBound, "b1's address carries its ref", func() (bool, string) {
-			out, state := srListAgents(t, b1)
+		harness.EventuallyPoll(t, srWaitBound, "b1's address carries its ref", func(deadline time.Time) (bool, string) {
+			out, state := srListAgentsPoll(t, deadline, b1)
 			if state != "" {
 				return false, state
 			}
@@ -358,8 +358,8 @@ func srSession(t *testing.T, node *harness.Node, name string) *harness.Session {
 // srWaitRegistered waits until the session lists itself under name.
 func srWaitRegistered(t *testing.T, s *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, srWaitBound, "session "+name+" is registered", func() (bool, string) {
-		out, state := srListAgents(t, s)
+	harness.EventuallyPoll(t, srWaitBound, "session "+name+" is registered", func(deadline time.Time) (bool, string) {
+		out, state := srListAgentsPoll(t, deadline, s)
 		if state != "" {
 			return false, state
 		}
@@ -373,8 +373,8 @@ func srWaitRegistered(t *testing.T, s *harness.Session, name string) {
 // srWaitSessionVisible waits until the session's listing contains name.
 func srWaitSessionVisible(t *testing.T, s *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, srRelinkBound+srWaitBound, "the session "+name+" is visible again", func() (bool, string) {
-		out, state := srListAgents(t, s)
+	harness.EventuallyPoll(t, srRelinkBound+srWaitBound, "the session "+name+" is visible again", func(deadline time.Time) (bool, string) {
+		out, state := srListAgentsPoll(t, deadline, s)
 		if state != "" {
 			return false, state
 		}
@@ -494,6 +494,13 @@ func srListAgents(t *testing.T, s *harness.Session) (mcpserver.ListAgentsOut, st
 		return mcpserver.ListAgentsOut{}, "decoding list_agents: " + err.Error()
 	}
 	return out, ""
+}
+
+// srListAgentsPoll is srListAgents for a wait callback: the call is bounded by
+// the wait's deadline and a transport error is returned as state.
+func srListAgentsPoll(t *testing.T, deadline time.Time, s *harness.Session) (mcpserver.ListAgentsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, s, "list_agents", nil)
 }
 
 // srFindAgent returns the entry whose name part is name.

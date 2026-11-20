@@ -555,19 +555,12 @@ func bpAlias(address string) string {
 	return address[at+1:]
 }
 
-// bpListAgents calls list_agents and returns the decoded answer, with a tool
-// or decode error reported as a state string for Eventually.
-func bpListAgents(t *testing.T, session *harness.Session) (mcpserver.ListAgentsOut, string) {
+// bpListAgentsPoll calls list_agents from a wait and returns the decoded answer.
+// The call is bounded by the wait's deadline and a transport error is returned
+// as state.
+func bpListAgentsPoll(t *testing.T, deadline time.Time, session *harness.Session) (mcpserver.ListAgentsOut, string) {
 	t.Helper()
-	r := session.Call(t, "list_agents", nil)
-	if r.IsError {
-		return mcpserver.ListAgentsOut{}, r.Text
-	}
-	out, err := harness.Decode[mcpserver.ListAgentsOut](string(r.Structured))
-	if err != nil {
-		return mcpserver.ListAgentsOut{}, "decoding list_agents: " + err.Error()
-	}
-	return out, ""
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, session, "list_agents", nil)
 }
 
 // bpJoinTopic joins topic, retrying while the session is still registering.
@@ -589,8 +582,8 @@ func bpJoinTopic(t *testing.T, session *harness.Session, topic string) {
 func bpSelfAddress(t *testing.T, session *harness.Session) string {
 	t.Helper()
 	var address string
-	harness.Eventually(t, brokerReadyBound, "the session reports its address", func() (bool, string) {
-		out, state := bpListAgents(t, session)
+	harness.EventuallyPoll(t, brokerReadyBound, "the session reports its address", func(deadline time.Time) (bool, string) {
+		out, state := bpListAgentsPoll(t, deadline, session)
 		if state != "" {
 			return false, state
 		}
@@ -606,8 +599,8 @@ func bpSelfAddress(t *testing.T, session *harness.Session) string {
 // bpWaitVisible waits until observer lists an agent at address.
 func bpWaitVisible(t *testing.T, observer *harness.Session, address string) {
 	t.Helper()
-	harness.Eventually(t, brokerReadyBound, "the agent "+address+" is visible", func() (bool, string) {
-		out, state := bpListAgents(t, observer)
+	harness.EventuallyPoll(t, brokerReadyBound, "the agent "+address+" is visible", func(deadline time.Time) (bool, string) {
+		out, state := bpListAgentsPoll(t, deadline, observer)
 		if state != "" {
 			return false, state
 		}

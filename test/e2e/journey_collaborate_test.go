@@ -56,8 +56,8 @@ func TestJourneyCollaborateInTopic(t *testing.T) {
 
 	// Step 3: the automatic topic makes the other session visible, under the
 	// alias each Broker uses for its peer.
-	harness.Eventually(t, 3*time.Second, "api-worker sees frontend in the shared default topic", func() (bool, string) {
-		out, state := collabListAgents(t, api)
+	harness.EventuallyPoll(t, 3*time.Second, "api-worker sees frontend in the shared default topic", func(deadline time.Time) (bool, string) {
+		out, state := collabListAgentsPoll(t, deadline, api)
 		if state != "" {
 			return false, state
 		}
@@ -146,8 +146,8 @@ func TestJourneyCollaborateInTopic(t *testing.T) {
 		})
 
 		collabJoin(t, frontend2, collabTopic)
-		harness.Eventually(t, 3*time.Second, "frontend2 appears after joining the repository topic", func() (bool, string) {
-			out, state := collabListAgents(t, api)
+		harness.EventuallyPoll(t, 3*time.Second, "frontend2 appears after joining the repository topic", func(deadline time.Time) (bool, string) {
+			out, state := collabListAgentsPoll(t, deadline, api)
 			if state != "" {
 				return false, state
 			}
@@ -227,8 +227,8 @@ func collabConnect(t *testing.T, session *harness.Session, address, key string) 
 // collabWaitRegistered waits until the session is registered and lists itself.
 func collabWaitRegistered(t *testing.T, session *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "session "+name+" is registered", func() (bool, string) {
-		out, state := collabListAgents(t, session)
+	harness.EventuallyPoll(t, 3*time.Second, "session "+name+" is registered", func(deadline time.Time) (bool, string) {
+		out, state := collabListAgentsPoll(t, deadline, session)
 		if state != "" {
 			return false, state
 		}
@@ -251,6 +251,13 @@ func collabListAgents(t *testing.T, session *harness.Session) (mcpserver.ListAge
 		return mcpserver.ListAgentsOut{}, "decoding list_agents: " + err.Error()
 	}
 	return out, ""
+}
+
+// collabListAgentsPoll is collabListAgents for a wait callback: the call is
+// bounded by the wait's deadline and a transport error is returned as state.
+func collabListAgentsPoll(t *testing.T, deadline time.Time, session *harness.Session) (mcpserver.ListAgentsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, session, "list_agents", nil)
 }
 
 // collabFindAgent returns the entry whose name part is name.

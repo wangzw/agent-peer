@@ -123,8 +123,8 @@ func TestJourneyPairBrokers(t *testing.T) {
 
 	// Step 5 and 6: both sides list the other as a peer and report the link.
 	var bobView mcpserver.BrokerOut
-	harness.Eventually(t, 3*time.Second, "both Brokers report the established link", func() (bool, string) {
-		bobOut, state := pairListBrokers(t, bob)
+	harness.EventuallyPoll(t, 3*time.Second, "both Brokers report the established link", func(deadline time.Time) (bool, string) {
+		bobOut, state := pairListBrokersPoll(t, deadline, bob)
 		if state != "" {
 			return false, "bob: " + state
 		}
@@ -146,7 +146,7 @@ func TestJourneyPairBrokers(t *testing.T) {
 		}
 		bobView = peerOfBob
 
-		aliceOut, state := pairListBrokers(t, alice)
+		aliceOut, state := pairListBrokersPoll(t, deadline, alice)
 		if state != "" {
 			return false, "alice: " + state
 		}
@@ -232,8 +232,8 @@ func TestJourneyPairBrokers(t *testing.T) {
 		pairJoin(t, sb, "t")
 		pairJoin(t, sc, "t")
 
-		harness.Eventually(t, 3*time.Second, "a1 sees b1@macbook and c1@macbook-2", func() (bool, string) {
-			out, state := pairListAgents(t, sa)
+		harness.EventuallyPoll(t, 3*time.Second, "a1 sees b1@macbook and c1@macbook-2", func(deadline time.Time) (bool, string) {
+			out, state := pairListAgentsPoll(t, deadline, sa)
 			if state != "" {
 				return false, state
 			}
@@ -371,8 +371,8 @@ func pairOperator(t *testing.T, node *harness.Node, workdir string) *harness.Ses
 // pairWaitRegistered waits until the session is registered and lists itself.
 func pairWaitRegistered(t *testing.T, session *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "session "+name+" is registered", func() (bool, string) {
-		out, state := pairListAgents(t, session)
+	harness.EventuallyPoll(t, 3*time.Second, "session "+name+" is registered", func(deadline time.Time) (bool, string) {
+		out, state := pairListAgentsPoll(t, deadline, session)
 		if state != "" {
 			return false, state
 		}
@@ -435,18 +435,19 @@ func pairListBrokers(t *testing.T, session *harness.Session) (mcpserver.ListBrok
 	return out, ""
 }
 
-// pairListAgents calls list_agents and returns the decoded answer.
-func pairListAgents(t *testing.T, session *harness.Session) (mcpserver.ListAgentsOut, string) {
+// pairListBrokersPoll is pairListBrokers for a wait callback: the call is
+// bounded by the wait's deadline and a transport error is returned as state.
+func pairListBrokersPoll(t *testing.T, deadline time.Time, session *harness.Session) (mcpserver.ListBrokersOut, string) {
 	t.Helper()
-	r := session.Call(t, "list_agents", nil)
-	if r.IsError {
-		return mcpserver.ListAgentsOut{}, r.Text
-	}
-	out, err := harness.Decode[mcpserver.ListAgentsOut](string(r.Structured))
-	if err != nil {
-		return mcpserver.ListAgentsOut{}, "decoding list_agents: " + err.Error()
-	}
-	return out, ""
+	return pollDecode[mcpserver.ListBrokersOut](t, deadline, session, "list_brokers", nil)
+}
+
+// pairListAgentsPoll calls list_agents from a wait and returns the decoded
+// answer. The call is bounded by the wait's deadline and a transport error is
+// returned as state.
+func pairListAgentsPoll(t *testing.T, deadline time.Time, session *harness.Session) (mcpserver.ListAgentsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, session, "list_agents", nil)
 }
 
 // pairJoin joins a topic, retrying while the session is still registering.

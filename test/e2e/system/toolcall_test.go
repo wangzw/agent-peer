@@ -1,0 +1,31 @@
+//go:build e2e
+
+package e2e
+
+import (
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
+)
+
+// sysPollDecode calls tool from inside a wait on a container session and
+// decodes its JSON text into T. A transport or tool failure is returned as the
+// state string the wait callback reports, so the wait can poll again.
+func sysPollDecode[T any](t *testing.T, deadline time.Time, session *syscontainer.Session, tool string, args map[string]any) (T, string) {
+	t.Helper()
+	var zero T
+	text, isError, err := session.PollCall(t, deadline, tool, args)
+	if err != nil {
+		return zero, err.Error()
+	}
+	if isError {
+		return zero, text
+	}
+	var out T
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		return zero, "decoding " + tool + ": " + err.Error()
+	}
+	return out, ""
+}

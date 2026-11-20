@@ -166,8 +166,8 @@ func TestREQBrokerPairing002_DefaultAliasHostAndAccount(t *testing.T) {
 // address ends with suffix.
 func aliasSysWaitSuffix(t *testing.T, session *syscontainer.Session, name, suffix string, bound time.Duration) {
 	t.Helper()
-	harness.Eventually(t, bound, "the address of "+name+" seen by "+session.Account+" ends with "+suffix, func() (bool, string) {
-		out, state := e2eSysListAgents(t, session, map[string]any{"topic": aliasSysTopic})
+	harness.EventuallyPoll(t, bound, "the address of "+name+" seen by "+session.Account+" ends with "+suffix, func(deadline time.Time) (bool, string) {
+		out, state := e2eSysListAgentsPoll(t, deadline, session, map[string]any{"topic": aliasSysTopic})
 		if state != "" {
 			return false, state
 		}

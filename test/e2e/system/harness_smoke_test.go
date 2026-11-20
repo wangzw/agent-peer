@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wangzw/agent-peer/test/e2e/harness"
 	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
 )
 
@@ -256,9 +257,12 @@ func TestHarnessSystemService(t *testing.T) {
 // Broker. Registration happens in the background after the MCP handshake.
 func waitRegistered(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
-	syscontainer.WaitFor(t, "session "+session.Account+" to register", func() bool {
-		_, isError := session.Call(t, "list_agents", map[string]any{})
-		return !isError
+	harness.EventuallyPoll(t, harness.ToolCallWaitBound, "session "+session.Account+" to register", func(deadline time.Time) (bool, string) {
+		_, isError, err := session.PollCall(t, deadline, "list_agents", map[string]any{})
+		if err != nil {
+			return false, err.Error()
+		}
+		return !isError, ""
 	})
 }
 

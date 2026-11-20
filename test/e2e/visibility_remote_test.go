@@ -66,8 +66,8 @@ func TestRemoteVisibility(t *testing.T) {
 	defer b1.End(t)
 
 	t.Run("REQ-agent-messaging-008 lists remote", func(t *testing.T) {
-		harness.Eventually(t, vrWaitBound, "a1 sees b1 in the shared topic", func() (bool, string) {
-			out, state := vrListAgents(t, a1)
+		harness.EventuallyPoll(t, vrWaitBound, "a1 sees b1 in the shared topic", func(deadline time.Time) (bool, string) {
+			out, state := vrListAgentsPoll(t, deadline, a1)
 			if state != "" {
 				return false, state
 			}
@@ -85,8 +85,8 @@ func TestRemoteVisibility(t *testing.T) {
 			return true, ""
 		})
 
-		harness.Eventually(t, vrWaitBound, "b1 sees a1 in the shared topic", func() (bool, string) {
-			out, state := vrListAgents(t, b1)
+		harness.EventuallyPoll(t, vrWaitBound, "b1 sees a1 in the shared topic", func(deadline time.Time) (bool, string) {
+			out, state := vrListAgentsPoll(t, deadline, b1)
 			if state != "" {
 				return false, state
 			}
@@ -224,8 +224,8 @@ func TestRemoteVisibility(t *testing.T) {
 		addr1 := "api-worker [" + ref1 + "]@hostB.peer"
 		addr2 := "api-worker [" + ref2 + "]@hostB.peer"
 
-		harness.Eventually(t, vrWaitBound, "a1 lists both api-worker addresses with refs", func() (bool, string) {
-			out, state := vrListAgents(t, a1)
+		harness.EventuallyPoll(t, vrWaitBound, "a1 lists both api-worker addresses with refs", func(deadline time.Time) (bool, string) {
+			out, state := vrListAgentsPoll(t, deadline, a1)
 			if state != "" {
 				return false, state
 			}
@@ -423,8 +423,8 @@ func TestRemoteVisibility(t *testing.T) {
 		auto := aNode.StartSession(t, harness.SessionSpec{Name: "auto", StartMCP: true, Workdir: ws})
 		defer auto.End(t)
 		vrWaitListable(t, auto)
-		harness.Eventually(t, vrWaitBound, "the git workspace joins its default topic", func() (bool, string) {
-			out, state := vrListTopics(t, auto)
+		harness.EventuallyPoll(t, vrWaitBound, "the git workspace joins its default topic", func(deadline time.Time) (bool, string) {
+			out, state := vrListTopicsPoll(t, deadline, auto)
 			if state != "" {
 				return false, state
 			}
@@ -483,8 +483,8 @@ func vrStartSession(t *testing.T, node *harness.Node, name string, topics ...str
 // not_registered until the Broker has registered the session.
 func vrWaitListable(t *testing.T, s *harness.Session) {
 	t.Helper()
-	harness.Eventually(t, vrWaitBound, "the session is registered", func() (bool, string) {
-		_, state := vrListAgents(t, s)
+	harness.EventuallyPoll(t, vrWaitBound, "the session is registered", func(deadline time.Time) (bool, string) {
+		_, state := vrListAgentsPoll(t, deadline, s)
 		return state == "", state
 	})
 }
@@ -577,6 +577,13 @@ func vrListAgents(t *testing.T, s *harness.Session) (mcpserver.ListAgentsOut, st
 	return out, ""
 }
 
+// vrListAgentsPoll is vrListAgents for a wait callback: the call is bounded by
+// the wait's deadline and a transport error is returned as state.
+func vrListAgentsPoll(t *testing.T, deadline time.Time, s *harness.Session) (mcpserver.ListAgentsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, s, "list_agents", nil)
+}
+
 // vrListTopics calls list_topics and returns the decoded answer, with a tool
 // error reported as a state string.
 func vrListTopics(t *testing.T, s *harness.Session) (mcpserver.ListTopicsOut, string) {
@@ -590,6 +597,13 @@ func vrListTopics(t *testing.T, s *harness.Session) (mcpserver.ListTopicsOut, st
 		return mcpserver.ListTopicsOut{}, "decoding list_topics: " + err.Error()
 	}
 	return out, ""
+}
+
+// vrListTopicsPoll is vrListTopics for a wait callback: the call is bounded by
+// the wait's deadline and a transport error is returned as state.
+func vrListTopicsPoll(t *testing.T, deadline time.Time, s *harness.Session) (mcpserver.ListTopicsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListTopicsOut](t, deadline, s, "list_topics", nil)
 }
 
 // vrSees reports whether the session's listing contains name. A failed
@@ -620,8 +634,8 @@ func vrFindAgent(out mcpserver.ListAgentsOut, name string) (mcpserver.AgentOut, 
 func vrWaitSelfRef(t *testing.T, s *harness.Session, name string) string {
 	t.Helper()
 	var ref string
-	harness.Eventually(t, vrWaitBound, "the address of "+name+" carries a ref", func() (bool, string) {
-		out, state := vrListAgents(t, s)
+	harness.EventuallyPoll(t, vrWaitBound, "the address of "+name+" carries a ref", func(deadline time.Time) (bool, string) {
+		out, state := vrListAgentsPoll(t, deadline, s)
 		if state != "" {
 			return false, state
 		}

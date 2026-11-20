@@ -262,8 +262,12 @@ func TestLinks(t *testing.T) {
 			}
 			return true, ""
 		})
-		harness.Eventually(t, lkWaitBound, "B's session disappears from A's list", func() (bool, string) {
-			if lkHasAgent(lkListAgents(t, a1), "b1") {
+		harness.EventuallyPoll(t, lkWaitBound, "B's session disappears from A's list", func(deadline time.Time) (bool, string) {
+			out, state := lkListAgentsPoll(t, deadline, a1)
+			if state != "" {
+				return false, state
+			}
+			if lkHasAgent(out, "b1") {
 				return false, "A still lists b1"
 			}
 			return true, ""
@@ -535,16 +539,12 @@ func lkCutAndWaitDown(t *testing.T, c *harness.Cluster, aNode, bNode *harness.No
 	})
 }
 
-// lkListAgents calls list_agents.
-func lkListAgents(t *testing.T, s *harness.Session) mcpserver.ListAgentsOut {
+// lkListAgentsPoll calls list_agents from a wait and returns the decoded answer.
+// The call is bounded by the wait's deadline and a transport error is returned
+// as state.
+func lkListAgentsPoll(t *testing.T, deadline time.Time, s *harness.Session) (mcpserver.ListAgentsOut, string) {
 	t.Helper()
-	r := s.Call(t, "list_agents", map[string]any{})
-	r.MustOK(t)
-	out, err := harness.Decode[mcpserver.ListAgentsOut](string(r.Structured))
-	if err != nil {
-		t.Fatalf("decoding list_agents: %v", err)
-	}
-	return out
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, s, "list_agents", map[string]any{})
 }
 
 // lkHasAgent reports whether the listing contains an agent named name.

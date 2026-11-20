@@ -126,9 +126,12 @@ func TestREQBrokerConfig018_TwoAccountsShareSystemBroker(t *testing.T) {
 // server has registered the session with the Broker.
 func e2eSysWaitRegistered(t *testing.T, session *syscontainer.Session) {
 	t.Helper()
-	syscontainer.WaitFor(t, "session "+session.Account+" to register", func() bool {
-		_, isError := session.Call(t, "list_agents", map[string]any{})
-		return !isError
+	harness.EventuallyPoll(t, harness.ToolCallWaitBound, "session "+session.Account+" to register", func(deadline time.Time) (bool, string) {
+		_, isError, err := session.PollCall(t, deadline, "list_agents", map[string]any{})
+		if err != nil {
+			return false, err.Error()
+		}
+		return !isError, ""
 	})
 }
 
@@ -144,13 +147,16 @@ func e2eSysJoinTopic(t *testing.T, session *syscontainer.Session, topic string) 
 func e2eSysSelfAddress(t *testing.T, session *syscontainer.Session) string {
 	t.Helper()
 	var address string
-	syscontainer.WaitFor(t, "session "+session.Account+" to report its address", func() bool {
-		out, state := e2eSysListAgents(t, session, nil)
-		if state != "" || out.Self == "" {
-			return false
+	harness.EventuallyPoll(t, harness.ToolCallWaitBound, "session "+session.Account+" to report its address", func(deadline time.Time) (bool, string) {
+		out, state := e2eSysListAgentsPoll(t, deadline, session, nil)
+		if state != "" {
+			return false, state
+		}
+		if out.Self == "" {
+			return false, "self_address is empty"
 		}
 		address = out.Self
-		return true
+		return true, ""
 	})
 	return address
 }
@@ -159,17 +165,17 @@ func e2eSysSelfAddress(t *testing.T, session *syscontainer.Session) string {
 // share topic.
 func e2eSysWaitVisible(t *testing.T, observer *syscontainer.Session, topic, address string) {
 	t.Helper()
-	syscontainer.WaitFor(t, "agent "+address+" to be visible to "+observer.Account, func() bool {
-		out, state := e2eSysListAgents(t, observer, map[string]any{"topic": topic})
+	harness.EventuallyPoll(t, harness.ToolCallWaitBound, "agent "+address+" to be visible to "+observer.Account, func(deadline time.Time) (bool, string) {
+		out, state := e2eSysListAgentsPoll(t, deadline, observer, map[string]any{"topic": topic})
 		if state != "" {
-			return false
+			return false, state
 		}
 		for _, agent := range out.Agents {
 			if agent.Address == address {
-				return true
+				return true, ""
 			}
 		}
-		return false
+		return false, address + " is not listed"
 	})
 }
 
@@ -186,6 +192,13 @@ func e2eSysListAgents(t *testing.T, session *syscontainer.Session, args map[stri
 		return mcpserver.ListAgentsOut{}, "decoding list_agents: " + err.Error()
 	}
 	return out, ""
+}
+
+// e2eSysListAgentsPoll is e2eSysListAgents for a wait callback: the call is
+// bounded by the wait's deadline and a transport error is returned as state.
+func e2eSysListAgentsPoll(t *testing.T, deadline time.Time, session *syscontainer.Session, args map[string]any) (mcpserver.ListAgentsOut, string) {
+	t.Helper()
+	return sysPollDecode[mcpserver.ListAgentsOut](t, deadline, session, "list_agents", args)
 }
 
 // e2eSysStatusLine returns the status table line that names address.

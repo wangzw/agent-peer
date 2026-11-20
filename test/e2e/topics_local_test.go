@@ -97,8 +97,8 @@ func TestLocalTopics(t *testing.T) {
 	t.Run("REQ-topics-006 no topic means invisible", func(t *testing.T) {
 		lonely := topicsSession(t, host, "lonely", topicsPlain(t))
 		defer lonely.End(t)
-		harness.Eventually(t, 3*time.Second, "the session with no topics is registered", func() (bool, string) {
-			out, state := topicsList(t, lonely)
+		harness.EventuallyPoll(t, 3*time.Second, "the session with no topics is registered", func(deadline time.Time) (bool, string) {
+			out, state := topicsListPoll(t, deadline, lonely)
 			if state != "" {
 				return false, state
 			}
@@ -160,8 +160,8 @@ func TestLocalTopics(t *testing.T) {
 	t.Run("REQ-topics-018 non-git", func(t *testing.T) {
 		loner := topicsSession(t, host, "loner", topicsPlain(t))
 		defer loner.End(t)
-		harness.Eventually(t, 3*time.Second, "a session outside a git repository joins no topic", func() (bool, string) {
-			out, state := topicsList(t, loner)
+		harness.EventuallyPoll(t, 3*time.Second, "a session outside a git repository joins no topic", func(deadline time.Time) (bool, string) {
+			out, state := topicsListPoll(t, deadline, loner)
 			if state != "" {
 				return false, state
 			}
@@ -319,8 +319,8 @@ func topicsProject(t *testing.T, projectYAML, origin string) string {
 // topicsWaitRegistered waits until the session is registered.
 func topicsWaitRegistered(t *testing.T, s *harness.Session) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "the session is registered", func() (bool, string) {
-		_, state := topicsList(t, s)
+	harness.EventuallyPoll(t, 3*time.Second, "the session is registered", func(deadline time.Time) (bool, string) {
+		_, state := topicsListPoll(t, deadline, s)
 		if state != "" {
 			return false, state
 		}
@@ -343,6 +343,13 @@ func topicsList(t *testing.T, s *harness.Session) (mcpserver.ListTopicsOut, stri
 	return out, ""
 }
 
+// topicsListPoll is topicsList for a wait callback: the call is bounded by the
+// wait's deadline and a transport error is returned as state.
+func topicsListPoll(t *testing.T, deadline time.Time, s *harness.Session) (mcpserver.ListTopicsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListTopicsOut](t, deadline, s, "list_topics", nil)
+}
+
 // topicsListAgents calls list_agents and returns the decoded listing.
 func topicsListAgents(t *testing.T, s *harness.Session, args map[string]any) (mcpserver.ListAgentsOut, string) {
 	t.Helper()
@@ -357,6 +364,13 @@ func topicsListAgents(t *testing.T, s *harness.Session, args map[string]any) (mc
 	return out, ""
 }
 
+// topicsListAgentsPoll is topicsListAgents for a wait callback: the call is
+// bounded by the wait's deadline and a transport error is returned as state.
+func topicsListAgentsPoll(t *testing.T, deadline time.Time, s *harness.Session, args map[string]any) (mcpserver.ListAgentsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, s, "list_agents", args)
+}
+
 // brokerTopicTool reports whether tool is a topic tool that reaches the
 // Broker, whose handler may spend topicRPCTimeout before the update hint runs.
 // A wait polling it uses harness.TopicCallPollBound and, when the caller's
@@ -366,6 +380,22 @@ func topicsListAgents(t *testing.T, s *harness.Session, args map[string]any) (mc
 func brokerTopicTool(tool string) bool {
 	switch tool {
 	case "join_topic", "leave_topic":
+		return true
+	}
+	return false
+}
+
+// pollableTool reports whether a wait may retry tool after a transport error.
+// Only a tool with no side effect or with a design-guaranteed idempotent effect
+// qualifies. design-mcpserver.md marks list_agents, list_topics, list_brokers
+// and get_config read-only. design-topic.md makes joining an already joined
+// topic and leaving an unjoined one succeed without changing state. Every other
+// tool is a side effect: a transport error leaves it unknown whether the server
+// applied the call, so it goes through harness.Session.CallUntilOK, which fails
+// on a transport error and retries only the tool's own error result.
+func pollableTool(tool string) bool {
+	switch tool {
+	case "list_agents", "list_brokers", "list_topics", "get_config", "join_topic", "leave_topic":
 		return true
 	}
 	return false
@@ -412,8 +442,8 @@ func topicsLeave(t *testing.T, s *harness.Session, name string) {
 // topicsWaitJoinedSet waits until the joined topics are exactly want.
 func topicsWaitJoinedSet(t *testing.T, s *harness.Session, want ...string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "the joined topics are exactly "+strings.Join(want, ", "), func() (bool, string) {
-		out, state := topicsList(t, s)
+	harness.EventuallyPoll(t, 3*time.Second, "the joined topics are exactly "+strings.Join(want, ", "), func(deadline time.Time) (bool, string) {
+		out, state := topicsListPoll(t, deadline, s)
 		if state != "" {
 			return false, state
 		}
@@ -425,8 +455,8 @@ func topicsWaitJoinedSet(t *testing.T, s *harness.Session, want ...string) {
 // name.
 func topicsWaitVisible(t *testing.T, observer *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "the agent "+name+" is visible", func() (bool, string) {
-		out, state := topicsListAgents(t, observer, nil)
+	harness.EventuallyPoll(t, 3*time.Second, "the agent "+name+" is visible", func(deadline time.Time) (bool, string) {
+		out, state := topicsListAgentsPoll(t, deadline, observer, nil)
 		if state != "" {
 			return false, state
 		}
@@ -440,8 +470,8 @@ func topicsWaitVisible(t *testing.T, observer *harness.Session, name string) {
 // topicsWaitInvisible waits until observer no longer lists name.
 func topicsWaitInvisible(t *testing.T, observer *harness.Session, name string) {
 	t.Helper()
-	harness.Eventually(t, 3*time.Second, "the agent "+name+" is no longer visible", func() (bool, string) {
-		out, state := topicsListAgents(t, observer, nil)
+	harness.EventuallyPoll(t, 3*time.Second, "the agent "+name+" is no longer visible", func(deadline time.Time) (bool, string) {
+		out, state := topicsListAgentsPoll(t, deadline, observer, nil)
 		if state != "" {
 			return false, state
 		}

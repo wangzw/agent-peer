@@ -142,8 +142,8 @@ func TestConfigTools(t *testing.T) {
 		if got := ctGetConfig(t, host, "topics.auto_join"); got != "true" {
 			t.Fatalf("get_config topics.auto_join = %q, want true", got)
 		}
-		harness.Eventually(t, ctWaitBound, "the default topic is joined", func() (bool, string) {
-			topics, state := topicsList(t, s)
+		harness.EventuallyPoll(t, ctWaitBound, "the default topic is joined", func(deadline time.Time) (bool, string) {
+			topics, state := topicsListPoll(t, deadline, s)
 			if state != "" {
 				return false, state
 			}

@@ -26,7 +26,10 @@ import (
 //
 // The waits follow the project rule: a wait that no product timer governs is
 // the three-second allowance; a wait governed by the configuration watcher's
-// debounce is that debounce plus the allowance.
+// debounce is that debounce plus the allowance. A wait that polls a tool uses
+// EventuallyPoll, which lifts these values to ToolCallWaitBound (fourteen
+// seconds) so one poll call gets its own bound; the three seconds are the
+// product-timer allowance the wait is written against.
 const (
 	cteWaitBound = 3 * time.Second
 	// cteReloadDebounce mirrors internal/config's defaultWatchDebounce

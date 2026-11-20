@@ -36,8 +36,8 @@ func TestOtherAccountRejected(t *testing.T) {
 
 	owner := host.StartSession(t, harness.SessionSpec{Name: "owner", StartMCP: true})
 	defer owner.End(t)
-	harness.Eventually(t, 3*time.Second, "the owner session is registered", func() (bool, string) {
-		out, state := accountsListAgents(t, owner)
+	harness.EventuallyPoll(t, 3*time.Second, "the owner session is registered", func(deadline time.Time) (bool, string) {
+		out, state := accountsListAgentsPoll(t, deadline, owner)
 		if state != "" {
 			return false, state
 		}
@@ -331,6 +331,13 @@ func accountsListAgents(t *testing.T, s *harness.Session) (mcpserver.ListAgentsO
 		return mcpserver.ListAgentsOut{}, "decoding list_agents: " + err.Error()
 	}
 	return out, ""
+}
+
+// accountsListAgentsPoll is accountsListAgents for a wait callback: the call is
+// bounded by the wait's deadline and a transport error is returned as state.
+func accountsListAgentsPoll(t *testing.T, deadline time.Time, s *harness.Session) (mcpserver.ListAgentsOut, string) {
+	t.Helper()
+	return pollDecode[mcpserver.ListAgentsOut](t, deadline, s, "list_agents", nil)
 }
 
 // accountsAddressName returns the name part of an agent address.

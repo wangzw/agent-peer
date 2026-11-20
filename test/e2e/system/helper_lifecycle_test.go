@@ -62,9 +62,9 @@ func TestSystemAccountHelperLifecycle(t *testing.T) {
 	t.Logf("the account helper %d was replaced by %d", killed.PID, rebuilt.PID)
 
 	second.Fake.Rename("renamed")
-	harness.Eventually(t, helperLifecycleBound, "the renamed session to reach list_agents",
-		func() (bool, string) {
-			out, state := e2eSysListAgents(t, second, nil)
+	harness.EventuallyPoll(t, helperLifecycleBound, "the renamed session to reach list_agents",
+		func(deadline time.Time) (bool, string) {
+			out, state := e2eSysListAgentsPoll(t, deadline, second, nil)
 			if state != "" {
 				return false, state
 			}

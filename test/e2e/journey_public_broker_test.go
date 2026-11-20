@@ -44,12 +44,18 @@ func journeyNodeAddr(c *harness.Cluster, node string) string {
 }
 
 // journeyCallOK retries a tool that must succeed, covering the short window in
-// which a fresh MCP server process is still connecting. A topic tool spends
+// which a fresh MCP server process is still connecting. A read-only or
+// idempotent tool polls with Session.PollCallWithin, so a transport error is
+// retried; any other tool is a side effect and goes through
+// Session.CallUntilOK, which fails on a transport error instead of repeating a
+// call the server may already have applied. A topic tool spends
 // topicRPCTimeout inside the handler before the update hint runs, so it polls
-// with harness.TopicCallPollBound and the wait gets
-// harness.TopicCallWaitBound.
+// with harness.TopicCallPollBound and the wait gets harness.TopicCallWaitBound.
 func journeyCallOK(t *testing.T, session *harness.Session, tool string, args map[string]any, bound time.Duration) harness.Result {
 	t.Helper()
+	if !pollableTool(tool) {
+		return session.CallUntilOK(t, bound, tool, args)
+	}
 	pollBound, waitBound := harness.ToolCallPollBound, bound
 	if brokerTopicTool(tool) {
 		pollBound, waitBound = harness.TopicCallPollBound, harness.TopicCallWaitBound
@@ -113,8 +119,8 @@ func journeyPair(t *testing.T, acceptor, dialer *harness.Node, acceptorAddr stri
 // the given role.
 func journeyWaitPeer(t *testing.T, session *harness.Session, alias, role string, bound time.Duration) {
 	t.Helper()
-	harness.Eventually(t, bound, "the session reports "+alias+" connected as "+role, func() (bool, string) {
-		out, state := pairListBrokers(t, session)
+	harness.EventuallyPoll(t, bound, "the session reports "+alias+" connected as "+role, func(deadline time.Time) (bool, string) {
+		out, state := pairListBrokersPoll(t, deadline, session)
 		if state != "" {
 			return false, state
 		}
@@ -166,8 +172,8 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 
 		// Step 1: C discovers A's card and its public topic.
 		var discovered mcpserver.BrokerOut
-		harness.Eventually(t, discBound(2), "C discovers A's card", func() (bool, string) {
-			out, state := pairListBrokers(t, scout)
+		harness.EventuallyPoll(t, discBound(2), "C discovers A's card", func(deadline time.Time) (bool, string) {
+			out, state := pairListBrokersPoll(t, deadline, scout)
 			if state != "" {
 				return false, state
 			}
@@ -229,8 +235,8 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 		// each other. Step 7: list_agents shows A's Agent.
 		journeyCallOK(t, scout, "join_topic", map[string]any{"name": "infra-help"}, 3*time.Second)
 		var target string
-		harness.Eventually(t, discBound(1), "C sees A's Agent in infra-help", func() (bool, string) {
-			out, state := pairListAgents(t, scout)
+		harness.EventuallyPoll(t, discBound(1), "C sees A's Agent in infra-help", func(deadline time.Time) (bool, string) {
+			out, state := pairListAgentsPoll(t, deadline, scout)
 			if state != "" {
 				return false, state
 			}
@@ -256,8 +262,8 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 		}
 
 		// Result: A is now C's peer, as the Broker it dialed.
-		harness.Eventually(t, 3*time.Second, "C lists A as its connected peer", func() (bool, string) {
-			out, state := pairListBrokers(t, scout)
+		harness.EventuallyPoll(t, 3*time.Second, "C lists A as its connected peer", func(deadline time.Time) (bool, string) {
+			out, state := pairListBrokersPoll(t, deadline, scout)
 			if state != "" {
 				return false, state
 			}
@@ -274,8 +280,8 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 		// The reverse view: A accepted C's connection and sees its Agent.
 		journeyWaitPeer(t, infra, "hostC.peer", "acceptor", discBound(1))
 		var scoutAddr string
-		harness.Eventually(t, discBound(1), "A sees scout in infra-help", func() (bool, string) {
-			out, state := pairListAgents(t, infra)
+		harness.EventuallyPoll(t, discBound(1), "A sees scout in infra-help", func(deadline time.Time) (bool, string) {
+			out, state := pairListAgentsPoll(t, deadline, infra)
 			if state != "" {
 				return false, state
 			}
@@ -316,8 +322,8 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 		pairWaitRegistered(t, scout, "scout")
 
 		var oldFingerprint string
-		harness.Eventually(t, discBound(2), "C sees A's card before A changes identity", func() (bool, string) {
-			out, state := pairListBrokers(t, scout)
+		harness.EventuallyPoll(t, discBound(2), "C sees A's card before A changes identity", func(deadline time.Time) (bool, string) {
+			out, state := pairListBrokersPoll(t, deadline, scout)
 			if state != "" {
 				return false, state
 			}
@@ -371,8 +377,8 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 		defer scout.End(t)
 		pairWaitRegistered(t, scout, "scout")
 
-		harness.Eventually(t, discBound(2), "C sees A as not directly reachable", func() (bool, string) {
-			out, state := pairListBrokers(t, scout)
+		harness.EventuallyPoll(t, discBound(2), "C sees A as not directly reachable", func(deadline time.Time) (bool, string) {
+			out, state := pairListBrokersPoll(t, deadline, scout)
 			if state != "" {
 				return false, state
 			}
