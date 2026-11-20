@@ -476,15 +476,15 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 带 `--allow-degraded` 启动的 Broker 取得账户锁之后，监听地址无法绑定，或数据目录、审计日志不可用时，必须不退出，并在本机 socket 上应答；配置文件读取或解析失败、取值不合法，以及其他与数据目录无关的启动失败，仍必须像不带该参数时一样退出。
 
 - **验收**：以 `agent-peer broker --allow-degraded` 启动，把数据目录中的身份文件改成当前账户不可读，或让审计日志所在目录不可写：进程持续运行，`agent-peer status` 能连上它并输出故障；监听地址被占用时同样如此。把配置文件写成无法解析的内容再以同一个参数启动，进程以非零退出码结束，与不带该参数时相同。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-057 diagnostics entry and recovery`
 
 ### REQ-broker-config-058
 
 降级运行中只有监听地址无法绑定时，Broker 必须照常提供本机的登记、列出、topic 与本机消息功能，生成配对密钥必须失败，错误写明无法绑定的地址与配置项 `broker.listen`。系统级 Broker 的监听端口小于 1024 而配置文件可被其他账户写入时，按本条处理。
 
 - **验收**：另一个进程占用 17443 端口时以 `--allow-degraded` 和默认配置启动 Broker：两个会话登记成功、加入同一 topic 后互发消息成功；会话调用 `create_pairing_key` 返回 `broker_degraded`，说明含 `:17443` 与 `broker.listen`；本机不在任何端口上监听；`agent-peer status` 输出该故障；向本方作为接受方的对端发送时返回 `peer_unreachable`，说明末尾附降级原因。另把系统级 Broker 的监听端口设为 1024 以下并让配置文件可被组写入，启动后同样进入仅本机降级，`status` 的修复提示含 `chmod g-w` 或改用 1024 以上的端口。
-- **状态**：未实现
+- **状态**：已实现
 - **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-058 local only keeps local features`；peer_unreachable 附带降级原因由单元测试 `internal/broker/degradedrpc_test.go` 的 `TestPeerUnreachableReasonOnlyForAcceptor` 覆盖
 
 ### REQ-broker-config-059
@@ -492,8 +492,8 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 降级运行中数据目录或审计日志不可用时，`agent-peer status` 必须输出故障与修复提示，会话中每个工具调用都必须返回 `broker_degraded` 及原因。
 
 - **验收**：以 `--allow-degraded` 启动、审计日志所在目录不可写时，`agent-peer status` 输出审计日志的路径、原因与修复方法，退出码非零；会话中调用 `list_agents`、`send_message`、`get_config` 都返回 `broker_degraded`，说明与 `status` 输出的原因一致；会话不需要重新连接 MCP 服务。
-- **状态**：未实现
-- **端到端测试**：未实现
+- **状态**：已实现
+- **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-059 diagnostics from the audit log`
 
 ### REQ-broker-config-060
 
