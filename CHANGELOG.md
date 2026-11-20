@@ -7,6 +7,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - `join_topic` and `leave_topic` accept an omitted `name` and then act on the session's default topics: the topics named by the project configuration file, or the one named by the workspace's git origin. These calls ignore the automatic-joining switches, so a session whose Broker or project file turns automatic joining off can still join its default topics on request. A session with no default topic gets an `invalid_argument` error that says to pass a name. Leaving the default topics only affects the current session; a new session joins them again when automatic joining is on.
+- An `--allow-degraded` option for `agent-peer broker`. A Broker started with it that fails after taking the account lock does not exit: an unusable data directory or audit log keeps the process running with a diagnostics-only local interface, a failed `broker.listen` bind keeps the full local interface, and both retry and recover without a restart. Service definitions written by `agent-peer service install` pass the option.
+
+### Changed
+
+- A Broker that refuses a `broker.listen` port below 1024 now fails at the listen step and exits with code 4 (listen address unavailable) instead of 5 (invalid configuration).
+- Without `--allow-degraded`, a startup failure caused by the data directory or the audit log now reads `the configuration is invalid: config: data directory or audit log unavailable: ...` instead of the bare file error. The failure class, exit code and behavior are unchanged.
 
 ### Fixed
 
