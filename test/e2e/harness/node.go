@@ -236,6 +236,7 @@ type backend interface {
 	startSession(t testing.TB, spec SessionSpec) *Session
 	tryStartSession(spec SessionSpec) (*Session, error)
 	exec(t testing.TB, argv []string, env map[string]string) ExecResult
+	execWithin(t testing.TB, argv []string, env map[string]string, timeout time.Duration) ExecResult
 	oracle() *OracleClient
 	freeAddr(t testing.TB) string
 	accountHome() string
@@ -289,6 +290,13 @@ func (n *Node) TryStartSession(spec SessionSpec) (*Session, error) {
 func (n *Node) Exec(t testing.TB, argv []string, env map[string]string) ExecResult {
 	t.Helper()
 	return n.impl.exec(t, argv, env)
+}
+
+// ExecTimeout is Exec with an upper bound on the command. A command that does
+// not finish fails the test instead of hanging it.
+func (n *Node) ExecTimeout(t testing.TB, argv []string, env map[string]string, timeout time.Duration) ExecResult {
+	t.Helper()
+	return n.impl.execWithin(t, argv, env, timeout)
 }
 
 // Oracle returns a client for the local socket of the node's Broker.

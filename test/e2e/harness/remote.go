@@ -169,11 +169,20 @@ func (r *remoteNode) newSession(spec SessionSpec, info ctl.SessionInfo, tb testi
 
 func (r *remoteNode) exec(tb testing.TB, argv []string, env map[string]string) ExecResult {
 	tb.Helper()
+	return r.execWithin(tb, argv, env, 0)
+}
+
+func (r *remoteNode) execWithin(tb testing.TB, argv []string, env map[string]string, timeout time.Duration) ExecResult {
+	tb.Helper()
 	if len(argv) == 0 {
 		tb.Fatalf("harness: node %s: Exec needs a command", r.name)
 		return ExecResult{}
 	}
-	res, err := r.client.Exec(context.Background(), ctl.ExecRequest{Argv: argv, Env: env})
+	req := ctl.ExecRequest{Argv: argv, Env: env}
+	if timeout > 0 {
+		req.TimeoutMS = timeout.Milliseconds()
+	}
+	res, err := r.client.Exec(context.Background(), req)
 	if err != nil {
 		tb.Fatalf("harness: node %s: running %v: %v", r.name, argv, err)
 		return ExecResult{}

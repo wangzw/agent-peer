@@ -208,12 +208,26 @@ func (l *localNode) workspace(t testing.TB, kind, origin, projectYAML string) st
 
 func (l *localNode) exec(t testing.TB, argv []string, env map[string]string) ExecResult {
 	t.Helper()
+	return l.execWithin(t, argv, env, 0)
+}
+
+func (l *localNode) execWithin(t testing.TB, argv []string, env map[string]string, timeout time.Duration) ExecResult {
+	t.Helper()
 	if len(argv) == 0 {
 		t.Fatalf("harness: node %s: Exec needs a command", l.name)
 		return ExecResult{}
 	}
 
-	cmd := exec.Command(argv[0], argv[1:]...)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = l.home
 	cmd.Env = l.env.Build(env)
 	var stdout, stderr bytes.Buffer
@@ -228,6 +242,8 @@ func (l *localNode) exec(t testing.TB, argv []string, env map[string]string) Exe
 		result.ExitCode = 0
 	case errors.As(err, &exitErr):
 		result.ExitCode = exitErr.ExitCode()
+	case ctx.Err() != nil:
+		t.Fatalf("harness: node %s: %v did not finish within %s", l.name, argv, timeout)
 	default:
 		t.Fatalf("harness: node %s: running %v: %v", l.name, argv, err)
 	}
