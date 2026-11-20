@@ -290,6 +290,9 @@ func TestStartReportsDegraded(t *testing.T) {
 func TestStartReportsStatusProbeError(t *testing.T) {
 	opts := linuxControlOptions(t)
 	writeInstalledUnit(t, opts)
+	// Leave room for one retry, so the test also proves the probe is retried
+	// within the remaining readiness time.
+	opts.ReadyTimeout = 150 * time.Millisecond
 	started := false
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		if slices.Contains(args, "start") {
@@ -301,17 +304,71 @@ func TestStartReportsStatusProbeError(t *testing.T) {
 		return nil, nil
 	}
 	opts.Probe = func(string) (int, bool) { return 4242, started }
+	probes := 0
 	opts.StatusProbe = func(string) (DegradedState, bool, error) {
+		probes++
 		return DegradedState{}, false, errors.New("connection reset")
 	}
 
 	_, err := Start(opts)
-	if err == nil || !strings.Contains(err.Error(), "connection reset") {
-		t.Fatalf("Start error = %v, want the status probe error", err)
+	if err == nil {
+		t.Fatal("Start error = nil, want the status probe error")
+	}
+	for _, want := range []string{"connection reset", "could not be read", "agent-peer status"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Start error = %q, want it to contain %q", err, want)
+		}
+	}
+	if probes < 2 {
+		t.Errorf("StatusProbe calls = %d, want it retried until the readiness deadline", probes)
 	}
 	var degraded *DegradedError
 	if errors.As(err, &degraded) {
 		t.Fatalf("Start reported *DegradedError for a probe error: %v", err)
+	}
+}
+
+// TestStartAndRestartRetryTheStatusProbe checks that both commands retry a
+// Status call that fails once, as Install does, instead of failing the command.
+func TestStartAndRestartRetryTheStatusProbe(t *testing.T) {
+	for _, command := range []string{"start", "restart"} {
+		t.Run(command, func(t *testing.T) {
+			opts := linuxControlOptions(t)
+			writeInstalledUnit(t, opts)
+			opts.ReadyTimeout = 250 * time.Millisecond
+			started := false
+			opts.Run = func(name string, args ...string) ([]byte, error) {
+				if slices.Contains(args, command) {
+					started = true
+				}
+				if slices.Contains(args, "show") && started {
+					return []byte("4242\n"), nil
+				}
+				return nil, nil
+			}
+			opts.Probe = func(string) (int, bool) { return 4242, started }
+			probes := 0
+			opts.StatusProbe = func(string) (DegradedState, bool, error) {
+				probes++
+				if probes == 1 {
+					return DegradedState{}, false, errors.New("connection reset")
+				}
+				return DegradedState{}, false, nil
+			}
+
+			var err error
+			if command == "start" {
+				_, err = Start(opts)
+			} else {
+				_, err = Restart(opts)
+			}
+			if err != nil {
+				t.Fatalf("%s: %v", command, err)
+			}
+			if probes < 2 {
+				t.Errorf("StatusProbe calls = %d, want a retry", probes)
+			}
+		})
 	}
 }
 

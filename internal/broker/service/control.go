@@ -45,10 +45,11 @@ func Start(opts Options) (Result, error) {
 		}
 	}
 
-	if _, err := waitReady(opts, domain, started); err != nil {
+	deadline, err := waitReady(opts, domain, started)
+	if err != nil {
 		return res, err
 	}
-	return res, checkDegraded(opts)
+	return res, checkDegraded(opts, deadline)
 }
 
 // Stop stops opts' level service without disabling it. On macOS it waits until
@@ -129,10 +130,11 @@ func Restart(opts Options) (Result, error) {
 		}
 	}
 
-	if _, err := waitReady(opts, domain, started); err != nil {
+	deadline, err := waitReady(opts, domain, started)
+	if err != nil {
 		return res, err
 	}
-	return res, checkDegraded(opts)
+	return res, checkDegraded(opts, deadline)
 }
 
 // serviceTarget validates the platform and the installation and returns the
@@ -204,18 +206,15 @@ func enableAndBootstrap(opts Options, domain string, res *Result) error {
 	return nil
 }
 
-// checkDegraded asks the Broker that just became ready for its status. A
+// checkDegraded asks the Broker that just became ready for its status. The
+// status is retried until the readiness deadline, as Install does: the Broker
+// answered on the socket a moment earlier and may still be serving the call. A
 // degraded Broker turns into a *DegradedError that carries the state to print;
 // the service stays running.
-func checkDegraded(opts Options) error {
-	probe := opts.StatusProbe
-	if probe == nil {
-		probe = defaultStatusProbe
-	}
-	path := localSocketPath(opts)
-	state, degraded, err := probe(path)
+func checkDegraded(opts Options, deadline time.Time) error {
+	state, degraded, err := waitStatus(opts, deadline)
 	if err != nil {
-		return fmt.Errorf("service: read the Broker status on %s: %w", path, err)
+		return fmt.Errorf("service: the service is running but its status could not be read: %w; check it with `agent-peer status`", err)
 	}
 	if degraded {
 		return &DegradedError{State: state}
