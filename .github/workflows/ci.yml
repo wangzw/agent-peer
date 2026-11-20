@@ -46,6 +46,12 @@ jobs:
           cache: true
       - name: Run the tests
         run: make test JOBS=4
+      # These tests change file ownership or start a child as another account,
+      # so they need root and skip themselves otherwise. PATH keeps the
+      # setup-go toolchain visible and HOME keeps the Go caches in the same
+      # place the non-root step used.
+      - name: Run the tests that need root
+        run: sudo --preserve-env=PATH,HOME make test-root JOBS=2
 
   docs-check:
     name: documentation

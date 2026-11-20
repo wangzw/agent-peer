@@ -30,7 +30,7 @@ SITE_DIR ?= docs/site
 # extracts.
 RELEASE_NOTES_VERSION ?= v0.3.0
 
-.PHONY: gen gen-check lint release-notes-check archive-check proto-lint test e2e e2e-darwin docs-check check site site-check
+.PHONY: gen gen-check lint release-notes-check archive-check proto-lint test test-root e2e e2e-darwin docs-check check site site-check
 
 # Regenerate the protobuf code with buf. Generated Go code is committed next to
 # its .proto file, so this target is expected to leave the tree unchanged when
@@ -130,6 +130,34 @@ test:
 	else \
 		echo "skipping the kqueue backend tests: GOOS is not darwin"; \
 	fi
+
+# Tests that need root: they change file ownership or start a child as another
+# account. Each test skips itself without root, so `make check` still passes on
+# a developer account; CI runs this target under sudo. The test names are
+# asserted to pass, because a skip also makes `go test` succeed and would
+# otherwise hide the regression the step exists to catch.
+ROOT_TEST_PKGS ?= ./internal/broker/helper ./internal/pairing
+ROOT_TEST_RUN ?= ^(TestAccessCheckChildKeepsRootRealIdentity|TestRootHelperReportsTargetIdentity|TestRootAccessCheckUsesTargetCredentials|TestIdentityRejectsForeignOwner)$$
+ROOT_TEST_CASES ?= github.com/wangzw/agent-peer/internal/broker/helper:TestAccessCheckChildKeepsRootRealIdentity github.com/wangzw/agent-peer/internal/broker/helper:TestRootHelperReportsTargetIdentity github.com/wangzw/agent-peer/internal/broker/helper:TestRootAccessCheckUsesTargetCredentials github.com/wangzw/agent-peer/internal/pairing:TestIdentityRejectsForeignOwner
+
+test-root:
+	@tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT HUP INT TERM; \
+	go build -o "$$tmp/testreport" ./scripts/testreport || exit $$?; \
+	go test -race -count=1 -json -p $(JOBS) -parallel $(JOBS) -run '$(ROOT_TEST_RUN)' $(ROOT_TEST_PKGS) > "$$tmp/root.json"; \
+	status=$$?; \
+	"$$tmp/testreport" -label test-root "$$tmp/root.json" || status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		for entry in $(ROOT_TEST_CASES); do \
+			pkg="$${entry%%:*}"; name="$${entry#*:}"; \
+			if grep -F '"Action":"pass"' "$$tmp/root.json" | grep -F "\"Package\":\"$$pkg\"" | grep -qF "\"Test\":\"$$name\""; then \
+				echo "test-root: $$name passed"; \
+			else \
+				echo "test-root: $$name did not pass under root" >&2; \
+				status=1; \
+			fi; \
+		done; \
+	fi; \
+	exit $$status
 
 # The e2e run cleans up after itself even when go test is killed or times out.
 # The cleanup is TestMain's: a no-test run removes the projects, networks,
