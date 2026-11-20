@@ -72,6 +72,29 @@ func effectiveWaitBound(bound time.Duration) time.Duration {
 	return bound
 }
 
+// CallUntilOK invokes a tool that must succeed and may be retried, for a tool
+// that has a side effect. It retries only when the tool's own result reports an
+// error, which is a definite refusal. A transport error fails the test on the
+// first attempt through Session.Call: the server may already have applied the
+// call (a pairing key created, a message delivered), so a retry could apply it
+// twice.
+func (s *Session) CallUntilOK(t testing.TB, bound time.Duration, tool string, args map[string]any) Result {
+	t.Helper()
+	var result Result
+	Eventually(t, bound, "calling "+tool, func() (bool, string) {
+		// Call's sixty-second bound keeps a slow but successful side effect
+		// from being cut off, and Call fails the test on a transport error
+		// instead of retrying a call the server may already have applied.
+		// Only an IsError result is retried below.
+		result = s.Call(t, tool, args) // eventually-call-allow: transport errors must fail, not retry
+		if result.IsError {
+			return false, result.Text
+		}
+		return true, ""
+	})
+	return result
+}
+
 // WaitRegistered waits until the session's MCP server has registered it with
 // its Broker. list_agents needs the Agent identity and fails with
 // not_registered until registration completes, so its success is the

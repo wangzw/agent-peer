@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -122,6 +123,25 @@ func TestEventuallyPollLiftsBoundAndPassesDeadline(t *testing.T) {
 	}
 }
 
+// TestEventuallyPollKeepsLongerBound checks that the lift is a minimum: a
+// caller that asks for more than ToolCallWaitBound keeps its own bound.
+func TestEventuallyPollKeepsLongerBound(t *testing.T) {
+	tb := &recordTB{}
+	bound := ToolCallWaitBound + 2*time.Second
+	var deadline time.Time
+	EventuallyPoll(tb, bound, "example condition", func(d time.Time) (bool, string) {
+		deadline = d
+		return true, ""
+	})
+
+	if left := time.Until(deadline); left < bound-time.Second || left > bound {
+		t.Fatalf("the deadline leaves %s, want the caller's bound %s", left, bound)
+	}
+	if len(tb.fatals) != 0 {
+		t.Fatalf("EventuallyPoll failed: %v", tb.fatals)
+	}
+}
+
 func TestConsistentlyFailsOnFirstViolation(t *testing.T) {
 	tb := &recordTB{}
 	window := 2 * time.Second
@@ -202,10 +222,16 @@ func TestConfigYAMLMerge(t *testing.T) {
 type startupBackend struct {
 	startingCalls int
 	calls         []string
+	// transportErr, when set, is returned by every call as a transport or
+	// protocol error.
+	transportErr error
 }
 
 func (b *startupBackend) callErrWithin(_ time.Duration, tool string, args map[string]any) (Result, error) {
 	b.calls = append(b.calls, tool)
+	if b.transportErr != nil {
+		return Result{}, b.transportErr
+	}
 	if b.startingCalls > 0 {
 		b.startingCalls--
 		return Result{ToolResult: node.ToolResult{
@@ -304,5 +330,46 @@ func TestWaitConnectedAgainstStartingMCPServer(t *testing.T) {
 
 	if got := session.Call(t, "create_pairing_key", nil); got.IsError {
 		t.Fatalf("create_pairing_key still failed after WaitConnected: %s", got.Text)
+	}
+}
+
+// TestCallUntilOKDoesNotRetryTransportError checks the rule for a tool with a
+// side effect: a transport error leaves it unknown whether the server applied
+// the call, so a retry could duplicate it (a second pairing key, a second
+// message). The call must therefore be attempted exactly once and a transport
+// error must fail the test at once.
+func TestCallUntilOKDoesNotRetryTransportError(t *testing.T) {
+	backend := &startupBackend{transportErr: errors.New("connection reset")}
+	session := &Session{name: "side-effect", impl: backend}
+	tb := &recordTB{}
+
+	msg := captureFatal(t, tb, func() {
+		session.CallUntilOK(tb, 500*time.Millisecond, "send_message", nil)
+	})
+
+	if msg == "" {
+		t.Fatal("CallUntilOK returned without reporting the transport error")
+	}
+	if !strings.Contains(msg, "connection reset") {
+		t.Fatalf("failure %q does not name the transport error", msg)
+	}
+	if len(backend.calls) != 1 {
+		t.Fatalf("made %d calls, want exactly one; a transport error must not be retried", len(backend.calls))
+	}
+}
+
+// TestCallUntilOKRetriesToolError checks the other half of the rule: a result
+// with IsError is a definite refusal, so the call is retried until the tool
+// succeeds within the bound.
+func TestCallUntilOKRetriesToolError(t *testing.T) {
+	backend := &startupBackend{startingCalls: 2}
+	session := &Session{name: "side-effect", impl: backend}
+
+	result := session.CallUntilOK(t, 2*time.Second, "create_pairing_key", nil)
+	if result.IsError {
+		t.Fatalf("CallUntilOK gave up on a retryable tool error: %s", result.Text)
+	}
+	if len(backend.calls) != 3 {
+		t.Fatalf("made %d calls, want three (two tool errors then success)", len(backend.calls))
 	}
 }
