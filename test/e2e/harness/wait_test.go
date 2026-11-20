@@ -187,6 +187,8 @@ func (b *startupBackend) callErrWithin(_ time.Duration, tool string, args map[st
 	return Result{}, nil
 }
 
+func (b *startupBackend) mcpLogTail(int) (string, bool) { return "", false }
+
 func (b *startupBackend) tools(t testing.TB) []node.ToolInfo { return nil }
 
 func (b *startupBackend) stopMCP(t testing.TB, sig syscall.Signal) int { return 0 }

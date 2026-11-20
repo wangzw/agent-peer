@@ -358,6 +358,8 @@ func (s *localSession) callErrWithin(bound time.Duration, tool string, args map[
 	return Result{ToolResult: result}, nil
 }
 
+func (s *localSession) mcpLogTail(lines int) (string, bool) { return s.session.MCPLogTail(lines) }
+
 func (s *localSession) tools(t testing.TB) []node.ToolInfo {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)

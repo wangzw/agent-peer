@@ -312,6 +312,10 @@ func (s *remoteSession) callErrWithin(bound time.Duration, tool string, args map
 	return result, nil
 }
 
+// mcpLogTail reports no log: the MCP server process runs inside a container and
+// the harness does not carry the path of its standard error back here.
+func (s *remoteSession) mcpLogTail(int) (string, bool) { return "", false }
+
 func (s *remoteSession) tools(tb testing.TB) []node.ToolInfo {
 	tb.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)

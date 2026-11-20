@@ -320,6 +320,20 @@ func (s *Session) End() error {
 	return firstErr
 }
 
+// MCPLogTail returns the last lines the current MCP server process wrote to
+// standard error. The second value reports whether a log exists at all: false
+// means there is no running process. The main process's log is the one reported
+// when an extra process runs.
+func (s *Session) MCPLogTail(lines int) (string, bool) {
+	s.mu.Lock()
+	proc := s.proc
+	s.mu.Unlock()
+	if proc == nil {
+		return "", false
+	}
+	return proc.logTail(lines), true
+}
+
 // currentProc returns the running MCP server process.
 func (s *Session) currentProc() (*MCPProc, error) {
 	s.mu.Lock()
@@ -477,6 +491,30 @@ func (p *MCPProc) Stop(sig syscall.Signal) (int, error) {
 	}
 	_ = p.closeClient()
 	return p.exitCode(), nil
+}
+
+// logTail returns the last lines the process wrote to standard error. The file
+// is still open for writing by the child, so it is read through a separate
+// descriptor; os.File writes are not buffered in this process, and the child
+// writes directly to the descriptor.
+func (p *MCPProc) logTail(lines int) string {
+	if p.log == nil || lines <= 0 {
+		return ""
+	}
+	data, err := os.ReadFile(p.log.Name())
+	if err != nil {
+		return ""
+	}
+	return tailLines(string(data), lines)
+}
+
+// tailLines returns the last n lines of text.
+func tailLines(text string, n int) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // exited reports whether the process ended within bound.

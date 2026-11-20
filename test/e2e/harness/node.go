@@ -326,6 +326,7 @@ func (n *Node) Workspace(t testing.TB, kind, origin, projectYAML string) string 
 // error unchanged, so the message carries that prefix once.
 type sessionBackend interface {
 	callErrWithin(bound time.Duration, tool string, args map[string]any) (Result, error)
+	mcpLogTail(lines int) (string, bool)
 	tools(t testing.TB) []node.ToolInfo
 	stopMCP(t testing.TB, sig syscall.Signal) int
 	restartMCP(t testing.TB)
@@ -343,6 +344,10 @@ type Session struct {
 
 	mu    sync.Mutex
 	ended bool
+
+	// pollLogOnce makes the first failed poll call of this session also log the
+	// MCP server's standard error; later failures add only their own line.
+	pollLogOnce sync.Once
 }
 
 // Call invokes a tool on the session's current MCP server process. A call that
@@ -379,6 +384,12 @@ func (s *Session) CallErrWithin(bound time.Duration, tool string, args map[strin
 // deadline, so a stalled call never outlives the wait that made it. A transport
 // or protocol failure is returned as an error instead of failing the test, so
 // the wait can poll again.
+//
+// Every failure is logged with the session, the tool and how long the call
+// took. A wait that recovers on its next poll would otherwise pass silently;
+// the log keeps the stall visible. The first failure of the session also logs
+// the tail of the MCP server's standard error, where a Broker round trip that
+// stalled leaves what evidence it produces; later failures add only the line.
 func (s *Session) PollCall(t testing.TB, deadline time.Time, tool string, args map[string]any) (Result, error) {
 	t.Helper()
 	bound := ToolCallPollBound
@@ -388,7 +399,24 @@ func (s *Session) PollCall(t testing.TB, deadline time.Time, tool string, args m
 		}
 		bound = left
 	}
-	return s.impl.callErrWithin(bound, tool, args)
+	start := time.Now()
+	result, err := s.impl.callErrWithin(bound, tool, args)
+	if err == nil {
+		return result, nil
+	}
+	t.Logf("harness: session %s: %s failed after %s: %v", s.name, tool, time.Since(start), err)
+	s.pollLogOnce.Do(func() {
+		tail, ok := s.impl.mcpLogTail(20)
+		switch {
+		case !ok:
+			t.Logf("harness: session %s: no MCP server log is available", s.name)
+		case tail == "":
+			t.Logf("harness: session %s: the MCP server log is empty", s.name)
+		default:
+			t.Logf("harness: session %s: MCP server log tail:\n%s", s.name, tail)
+		}
+	})
+	return result, err
 }
 
 // Tools lists the tools of the session's current MCP server process, with the
