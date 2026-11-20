@@ -181,9 +181,14 @@ func TestServiceControl(t *testing.T) {
 		if want := "Broker service started (user-level)\n"; res.Stdout != want {
 			t.Errorf("stdout = %q, want %q", res.Stdout, want)
 		}
+		status := runWithEnv(t, "peer", userEnv, releaseBinary, "status")
+		if status.ExitCode != 0 {
+			t.Fatalf("agent-peer status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
+				status.ExitCode, strings.TrimSpace(status.Stdout), strings.TrimSpace(status.Stderr))
+		}
 		for _, want := range []string{"Broker: degraded (local only):", "Fix:"} {
-			if !strings.Contains(res.Stderr, want) {
-				t.Errorf("stderr = %q, want it to contain %q", strings.TrimSpace(res.Stderr), want)
+			if !strings.Contains(status.Stdout, want) {
+				t.Errorf("status stdout = %q, want it to contain %q", strings.TrimSpace(status.Stdout), want)
 			}
 		}
 
@@ -199,17 +204,6 @@ func TestServiceControl(t *testing.T) {
 			current := userServiceMainPID(t, userEnv)
 			return current == pid, fmt.Sprintf("MainPID = %d, want the unchanged %d", current, pid)
 		})
-
-		// The exit code and the two lines printed above come from the Broker's
-		// StatusResponse.degraded, read over the local socket by service start.
-		// The terminal status line is added by the degraded-state display unit,
-		// so this test only requires status to answer; assert the line here once
-		// that unit merges.
-		status := runWithEnv(t, "peer", userEnv, releaseBinary, "status")
-		if status.ExitCode != 0 {
-			t.Errorf("agent-peer status in local-only degradation: exit %d, want 0\nstdout: %s\nstderr: %s",
-				status.ExitCode, strings.TrimSpace(status.Stdout), strings.TrimSpace(status.Stderr))
-		}
 	})
 }
 
