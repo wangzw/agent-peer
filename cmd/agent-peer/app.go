@@ -18,6 +18,8 @@ Commands:
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker
   audit [--limit <n>]         read the audit log
+  offline                     refuse messages from other hosts, keeping links
+  online                      accept messages from other hosts again
   config get [<key>]          show all configuration items, or one
   config set <key> <value>    change a configuration item
   pairing-key create          create a one-time pairing key

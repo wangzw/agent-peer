@@ -68,6 +68,9 @@ func realDeps(version string) deps {
 		runConfigSet: func(ctx context.Context, key, value string, stdout io.Writer) error {
 			return termcmd.RunConfigSet(ctx, findBroker, key, value, stdout)
 		},
+		runSetOnline: func(ctx context.Context, online bool, stdout io.Writer) error {
+			return termcmd.RunSetOnline(ctx, findBroker, online, stdout)
+		},
 		runPairingKeyCreate: func(ctx context.Context, stdout io.Writer) error {
 			return termcmd.RunPairingKeyCreate(ctx, findBroker, stdout)
 		},

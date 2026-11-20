@@ -49,6 +49,8 @@ type termcmdStub struct {
 	configGetErr        error
 	configSetCalls      []configSetCall
 	configSetErr        error
+	setOnlineCalls      []setOnlineCall
+	setOnlineErr        error
 	pairingKeyCalls     []io.Writer
 	pairingKeyErr       error
 	peerListCalls       []io.Writer
@@ -81,6 +83,10 @@ func (s *termcmdStub) deps() deps {
 		runConfigSet: func(_ context.Context, key, value string, stdout io.Writer) error {
 			s.configSetCalls = append(s.configSetCalls, configSetCall{key: key, value: value, out: stdout})
 			return s.configSetErr
+		},
+		runSetOnline: func(_ context.Context, online bool, stdout io.Writer) error {
+			s.setOnlineCalls = append(s.setOnlineCalls, setOnlineCall{online: online, out: stdout})
+			return s.setOnlineErr
 		},
 		runPairingKeyCreate: func(_ context.Context, stdout io.Writer) error {
 			s.pairingKeyCalls = append(s.pairingKeyCalls, stdout)

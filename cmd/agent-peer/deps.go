@@ -96,6 +96,7 @@ type deps struct {
 	// successful peer connect.
 	runConfigGet        func(ctx context.Context, key string, stdout io.Writer) error
 	runConfigSet        func(ctx context.Context, key, value string, stdout io.Writer) error
+	runSetOnline        func(ctx context.Context, online bool, stdout io.Writer) error
 	runPairingKeyCreate func(ctx context.Context, stdout io.Writer) error
 	runPeerList         func(ctx context.Context, stdout io.Writer) error
 	runPeerConnect      func(ctx context.Context, address, key, alias string, stdout, warn io.Writer) error
