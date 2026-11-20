@@ -45,7 +45,7 @@ func Start(opts Options) (Result, error) {
 		}
 	}
 
-	if err := waitReady(opts, domain, started); err != nil {
+	if _, err := waitReady(opts, domain, started); err != nil {
 		return res, err
 	}
 	return res, checkDegraded(opts)
@@ -129,7 +129,7 @@ func Restart(opts Options) (Result, error) {
 		}
 	}
 
-	if err := waitReady(opts, domain, started); err != nil {
+	if _, err := waitReady(opts, domain, started); err != nil {
 		return res, err
 	}
 	return res, checkDegraded(opts)

@@ -60,7 +60,22 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 				func(opts service.Options) (service.Result, error) {
 					installCalls++
 					installed = opts
-					return service.Result{UnitPath: "/x/agent-peer.service"}, nil
+					if opts.System {
+						return service.Result{
+							Binary:     "/usr/local/bin/agent-peer",
+							ConfigPath: "/etc/agent-peer/config.yaml",
+							ConfigNew:  true,
+							RunLog:     "journalctl -u agent-peer.service",
+							AuditLog:   "/var/log/agent-peer/audit.log",
+						}, nil
+					}
+					return service.Result{
+						Binary:     "/usr/local/bin/agent-peer",
+						ConfigPath: "/home/alice/.agent-peer/config.yaml",
+						ConfigNew:  true,
+						RunLog:     "journalctl --user -u agent-peer.service",
+						AuditLog:   "/home/alice/.agent-peer/audit.log",
+					}, nil
 				},
 				nil,
 			)
@@ -75,8 +90,12 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 			if optionsSystem != tc.wantSystem || installed.System != tc.wantSystem {
 				t.Fatalf("system = %v (options) / %v (install), want %v", optionsSystem, installed.System, tc.wantSystem)
 			}
-			if want := "installed and started agent-peer.service\n"; stdout.String() != want {
-				t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+			level := "user-level, starts at login"
+			if tc.wantSystem {
+				level = "system-level, starts at boot"
+			}
+			if want := "agent-peer dev installed (" + level + ")\n"; !strings.HasPrefix(stdout.String(), want) {
+				t.Fatalf("stdout = %q, want it to start with %q", stdout.String(), want)
 			}
 			if stderr.Len() != 0 {
 				t.Fatalf("stderr = %q, want empty", stderr.String())
@@ -118,77 +137,189 @@ func TestServiceInstallMapsAdminGroup(t *testing.T) {
 	}
 }
 
-func TestServiceInstallPrintsTheLaunchdDomain(t *testing.T) {
-	setServiceSeams(t,
-		func(bool) (service.Options, error) { return service.Options{}, nil },
-		func(service.Options) (service.Result, error) {
-			return service.Result{Domain: "gui/501"}, nil
-		},
-		nil,
-	)
-
-	a, stdout, stderr, _ := newDispatchApp("dev")
-	if got := a.run(context.Background(), []string{"service", "install"}); got != exitOK {
-		t.Fatalf("run(service install) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
-	}
-	if want := "installed and started io.github.wangzw.agent-peer in gui/501\n"; stdout.String() != want {
-		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
-	}
-}
-
-func TestServiceInstallPrintsTheConfigurationFile(t *testing.T) {
+// TestServiceInstallPrintsTheSummary checks the summary printed after a
+// successful install: level and start time, then the paths, the commands and
+// the configuration state. The administration-group hint follows a kept
+// system-level configuration.
+func TestServiceInstallPrintsTheSummary(t *testing.T) {
 	cases := []struct {
 		name   string
+		system bool
 		result service.Result
 		want   string
 	}{
 		{
-			name:   "generated",
-			result: service.Result{ConfigPath: "/home/alice/.agent-peer/config.yaml", ConfigNew: true},
-			want: "installed and started agent-peer.service\n" +
-				"generated the configuration file /home/alice/.agent-peer/config.yaml\n",
-		},
-		{
-			name:   "kept",
-			result: service.Result{ConfigPath: "/home/alice/.agent-peer/config.yaml"},
-			want: "installed and started agent-peer.service\n" +
-				"kept the existing configuration file /home/alice/.agent-peer/config.yaml\n",
-		},
-		{
-			name: "kept system configuration with an administration hint",
+			name: "user-level generated configuration",
 			result: service.Result{
-				ConfigPath: "/etc/agent-peer/config.yaml",
-				AdminGroup: "agent-peer",
+				Binary:     "/usr/local/bin/agent-peer",
+				ConfigPath: "/home/alice/.agent-peer/config.yaml",
+				ConfigNew:  true,
+				RunLog:     "journalctl --user -u agent-peer.service",
+				AuditLog:   "/home/alice/.agent-peer/audit.log",
 			},
-			want: "installed and started agent-peer.service\n" +
-				"kept the existing configuration file /etc/agent-peer/config.yaml\n" +
-				"To delegate administration, run: chgrp agent-peer /etc/agent-peer/config.yaml && chmod 0660 /etc/agent-peer/config.yaml\n",
+			want: "agent-peer 0.1.2 installed (user-level, starts at login)\n" +
+				"  binary:     /usr/local/bin/agent-peer\n" +
+				"  config:     /home/alice/.agent-peer/config.yaml (generated)\n" +
+				"  run log:    journalctl --user -u agent-peer.service\n" +
+				"  audit log:  /home/alice/.agent-peer/audit.log\n" +
+				"  start:      agent-peer service start\n" +
+				"  stop:       agent-peer service stop\n" +
+				"  restart:    agent-peer service restart\n" +
+				"  uninstall:  agent-peer uninstall\n",
 		},
 		{
-			name: "generated system configuration has no hint",
+			name: "user-level kept configuration",
 			result: service.Result{
+				Binary:     "/usr/local/bin/agent-peer",
+				ConfigPath: "/home/alice/.agent-peer/config.yaml",
+				RunLog:     "journalctl --user -u agent-peer.service",
+				AuditLog:   "/home/alice/.agent-peer/audit.log",
+			},
+			want: "agent-peer 0.1.2 installed (user-level, starts at login)\n" +
+				"  binary:     /usr/local/bin/agent-peer\n" +
+				"  config:     /home/alice/.agent-peer/config.yaml (kept)\n" +
+				"  run log:    journalctl --user -u agent-peer.service\n" +
+				"  audit log:  /home/alice/.agent-peer/audit.log\n" +
+				"  start:      agent-peer service start\n" +
+				"  stop:       agent-peer service stop\n" +
+				"  restart:    agent-peer service restart\n" +
+				"  uninstall:  agent-peer uninstall\n",
+		},
+		{
+			name:   "system-level generated configuration",
+			system: true,
+			result: service.Result{
+				Binary:     "/usr/local/bin/agent-peer",
 				ConfigPath: "/etc/agent-peer/config.yaml",
 				ConfigNew:  true,
 				AdminGroup: "agent-peer",
+				RunLog:     "journalctl -u agent-peer.service",
+				AuditLog:   "/var/log/agent-peer/audit.log",
 			},
-			want: "installed and started agent-peer.service\n" +
-				"generated the configuration file /etc/agent-peer/config.yaml\n",
+			want: "agent-peer 0.1.2 installed (system-level, starts at boot)\n" +
+				"  binary:     /usr/local/bin/agent-peer\n" +
+				"  config:     /etc/agent-peer/config.yaml (generated)\n" +
+				"  run log:    journalctl -u agent-peer.service\n" +
+				"  audit log:  /var/log/agent-peer/audit.log\n" +
+				"  start:      sudo agent-peer service start\n" +
+				"  stop:       sudo agent-peer service stop\n" +
+				"  restart:    sudo agent-peer service restart\n" +
+				"  uninstall:  agent-peer uninstall\n",
+		},
+		{
+			name:   "system-level kept configuration",
+			system: true,
+			result: service.Result{
+				Binary:     "/usr/local/bin/agent-peer",
+				ConfigPath: "/etc/agent-peer/config.yaml",
+				AdminGroup: "agent-peer",
+				RunLog:     "journalctl -u agent-peer.service",
+				AuditLog:   "/var/log/agent-peer/audit.log",
+			},
+			want: "agent-peer 0.1.2 installed (system-level, starts at boot)\n" +
+				"  binary:     /usr/local/bin/agent-peer\n" +
+				"  config:     /etc/agent-peer/config.yaml (kept)\n" +
+				"  run log:    journalctl -u agent-peer.service\n" +
+				"  audit log:  /var/log/agent-peer/audit.log\n" +
+				"  start:      sudo agent-peer service start\n" +
+				"  stop:       sudo agent-peer service stop\n" +
+				"  restart:    sudo agent-peer service restart\n" +
+				"  uninstall:  agent-peer uninstall\n" +
+				"To delegate administration, run: chgrp agent-peer /etc/agent-peer/config.yaml && chmod 0660 /etc/agent-peer/config.yaml\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setServiceSeams(t,
+				func(bool) (service.Options, error) { return service.Options{System: tc.system}, nil },
+				func(service.Options) (service.Result, error) { return tc.result, nil },
+				nil,
+			)
+
+			args := []string{"service", "install"}
+			if tc.system {
+				args = append(args, "--system")
+			}
+			a, stdout, stderr, _ := newDispatchApp("0.1.2")
+			if got := a.run(context.Background(), args); got != exitOK {
+				t.Fatalf("run(%q) = %d, want %d (stderr %q)", args, got, exitOK, stderr.String())
+			}
+			if stdout.String() != tc.want {
+				t.Fatalf("stdout = %q, want %q", stdout.String(), tc.want)
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("stderr = %q, want empty", stderr.String())
+			}
+		})
+	}
+}
+
+// TestServiceInstallReportsDegraded checks that a service installed and running
+// with a degraded Broker still prints the summary, writes the two degraded
+// lines to standard error, and exits with exitServiceDegraded.
+func TestServiceInstallReportsDegraded(t *testing.T) {
+	result := service.Result{
+		Binary:     "/usr/local/bin/agent-peer",
+		ConfigPath: "/home/alice/.agent-peer/config.yaml",
+		ConfigNew:  true,
+		RunLog:     "journalctl --user -u agent-peer.service",
+		AuditLog:   "/home/alice/.agent-peer/audit.log",
+	}
+	summary := "agent-peer 0.1.2 installed (user-level, starts at login)\n" +
+		"  binary:     /usr/local/bin/agent-peer\n" +
+		"  config:     /home/alice/.agent-peer/config.yaml (generated)\n" +
+		"  run log:    journalctl --user -u agent-peer.service\n" +
+		"  audit log:  /home/alice/.agent-peer/audit.log\n" +
+		"  start:      agent-peer service start\n" +
+		"  stop:       agent-peer service stop\n" +
+		"  restart:    agent-peer service restart\n" +
+		"  uninstall:  agent-peer uninstall\n"
+
+	cases := []struct {
+		name  string
+		state service.DegradedState
+		want  string
+	}{
+		{
+			name: "local only",
+			state: service.DegradedState{
+				Level:  "local_only",
+				Reason: "listen tcp :17443: bind: address already in use",
+				Fix:    "change broker.listen to another port",
+			},
+			want: "Broker: degraded (local only): listen tcp :17443: bind: address already in use\n" +
+				"Fix: change broker.listen to another port\n",
+		},
+		{
+			name: "diagnostics only",
+			state: service.DegradedState{
+				Level:  "diagnostics_only",
+				Reason: "the data directory is not writable",
+				Fix:    "fix the permissions of ~/.agent-peer",
+			},
+			want: "Broker: degraded (diagnostics only): the data directory is not writable\n" +
+				"Fix: fix the permissions of ~/.agent-peer\n",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			setServiceSeams(t,
 				func(bool) (service.Options, error) { return service.Options{}, nil },
-				func(service.Options) (service.Result, error) { return tc.result, nil },
+				func(service.Options) (service.Result, error) {
+					return result, &service.DegradedError{State: tc.state}
+				},
 				nil,
 			)
 
-			a, stdout, stderr, _ := newDispatchApp("dev")
-			if got := a.run(context.Background(), []string{"service", "install"}); got != exitOK {
-				t.Fatalf("run(service install) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+			a, stdout, stderr, _ := newDispatchApp("0.1.2")
+			if got := a.run(context.Background(), []string{"service", "install"}); got != exitServiceDegraded {
+				t.Fatalf("run(service install) = %d, want %d", got, exitServiceDegraded)
 			}
-			if stdout.String() != tc.want {
-				t.Fatalf("stdout = %q, want %q", stdout.String(), tc.want)
+			if stdout.String() != summary {
+				t.Fatalf("stdout = %q, want the summary %q", stdout.String(), summary)
+			}
+			if stderr.String() != tc.want {
+				t.Fatalf("stderr = %q, want %q", stderr.String(), tc.want)
 			}
 		})
 	}

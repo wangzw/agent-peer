@@ -103,10 +103,19 @@ func (a *app) serviceInstallCmd(command string, args []string) int {
 		opts.AdminGroup = adminGroup
 		result, err := installFn(opts)
 		if err != nil {
+			var degraded *service.DegradedError
+			if errors.As(err, &degraded) {
+				// The service is installed and running. The summary still
+				// applies; the degraded lines explain what is wrong and the
+				// exit code tells the installer to keep going.
+				a.printInstalled(result, *system)
+				a.printServiceDegraded(degraded.State)
+				return exitServiceDegraded
+			}
 			_, _ = fmt.Fprintf(a.stderr, "agent-peer service install: %s\n", err)
 			return exitFailure
 		}
-		a.printInstalled(result)
+		a.printInstalled(result, *system)
 		return exitOK
 	}
 	result, err := uninstallFn(opts)
@@ -206,38 +215,45 @@ func (a *app) printServiceAction(command string, system bool) {
 	_, _ = fmt.Fprintf(a.stdout, "Broker service %s (%s)\n", past, level)
 }
 
-// printServiceDegraded prints the two status lines the service commands share
-// with the terminal's degraded display.
-func (a *app) printServiceDegraded(state service.DegradedState) {
-	line := "Broker: degraded"
-	if state.Level != "" {
-		line += " (" + strings.ReplaceAll(state.Level, "_", " ") + ")"
+// printInstalled reports a successful installation: the level, the files it
+// uses, the commands that control it and how to remove it. system selects the
+// level's wording and the sudo prefix. A kept system-level configuration adds
+// the command that hands it to the administration group.
+func (a *app) printInstalled(result service.Result, system bool) {
+	level, start, sudo := "user-level", "login", ""
+	if system {
+		level, start, sudo = "system-level", "boot", "sudo "
 	}
-	line += ": " + state.Reason
-	_, _ = fmt.Fprintln(a.stderr, line)
-	_, _ = fmt.Fprintf(a.stderr, "Fix: %s\n", state.Fix)
+	_, _ = fmt.Fprintf(a.stdout, "agent-peer %s installed (%s, starts at %s)\n", a.version, level, start)
+	_, _ = fmt.Fprintf(a.stdout, "  %-12s%s\n", "binary:", result.Binary)
+	configState := "kept"
+	if result.ConfigNew {
+		configState = "generated"
+	}
+	_, _ = fmt.Fprintf(a.stdout, "  %-12s%s (%s)\n", "config:", result.ConfigPath, configState)
+	_, _ = fmt.Fprintf(a.stdout, "  %-12s%s\n", "run log:", result.RunLog)
+	_, _ = fmt.Fprintf(a.stdout, "  %-12s%s\n", "audit log:", result.AuditLog)
+	_, _ = fmt.Fprintf(a.stdout, "  %-12s%sagent-peer service start\n", "start:", sudo)
+	_, _ = fmt.Fprintf(a.stdout, "  %-12s%sagent-peer service stop\n", "stop:", sudo)
+	_, _ = fmt.Fprintf(a.stdout, "  %-12s%sagent-peer service restart\n", "restart:", sudo)
+	_, _ = fmt.Fprintf(a.stdout, "  %-12sagent-peer uninstall\n", "uninstall:")
+	if !result.ConfigNew && result.AdminGroup != "" {
+		_, _ = fmt.Fprintf(a.stdout, "To delegate administration, run: chgrp %s %s && chmod 0660 %s\n",
+			result.AdminGroup, result.ConfigPath, result.ConfigPath)
+	}
 }
 
-// printInstalled reports that the service is installed and running and what
-// happened to the configuration file.
-func (a *app) printInstalled(result service.Result) {
-	if result.Domain != "" {
-		_, _ = fmt.Fprintf(a.stdout, "installed and started %s in %s\n", service.Label, result.Domain)
+// printServiceDegraded reports a Broker that is installed and running but
+// degraded. The first two lines match status and peer list: the level as words,
+// then the command or edit that repairs it.
+func (a *app) printServiceDegraded(state service.DegradedState) {
+	level := strings.ReplaceAll(state.Level, "_", " ")
+	if level != "" {
+		_, _ = fmt.Fprintf(a.stderr, "Broker: degraded (%s): %s\n", level, state.Reason)
 	} else {
-		_, _ = fmt.Fprintf(a.stdout, "installed and started %s\n", service.UnitName)
+		_, _ = fmt.Fprintf(a.stderr, "Broker: degraded: %s\n", state.Reason)
 	}
-	switch {
-	case result.ConfigPath == "":
-		return
-	case result.ConfigNew:
-		_, _ = fmt.Fprintf(a.stdout, "generated the configuration file %s\n", result.ConfigPath)
-	default:
-		_, _ = fmt.Fprintf(a.stdout, "kept the existing configuration file %s\n", result.ConfigPath)
-		if result.AdminGroup != "" {
-			_, _ = fmt.Fprintf(a.stdout, "To delegate administration, run: chgrp %s %s && chmod 0660 %s\n",
-				result.AdminGroup, result.ConfigPath, result.ConfigPath)
-		}
-	}
+	_, _ = fmt.Fprintf(a.stderr, "Fix: %s\n", state.Fix)
 }
 
 // printUninstalled reports what uninstall removed, or that nothing was
