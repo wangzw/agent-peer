@@ -31,7 +31,7 @@ func TestREQUpdate001_PeriodicCheck(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	exe := updateStagedOldBinary()
 
 	// The enabled Broker learns the release within the bound.
@@ -95,7 +95,7 @@ func TestREQUpdate002_StatusShowsAvailableVersion(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	exe := updateStagedOldBinary()
 
 	broker := updateStartPeerBroker(t, fake, true)
@@ -133,7 +133,7 @@ func TestREQUpdate003_SessionHintOncePerSession(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	exe := updateStagedOldBinary()
 
 	// Wait for the Broker to learn the release before starting a session, so
@@ -184,7 +184,7 @@ func TestREQUpdate004_ConfirmedUpdateRestartsUserService(t *testing.T) {
 	updateRequireFeature(t)
 
 	svc := updateSetupUserService(t)
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	// The Broker performs the update, so its own service environment must reach
 	// the fake API; the command's environment only covers a local fallback.
 	selfUpdateSetUserUnitEnv(t, "peer", svc.userEnv, fake.URL())
@@ -235,7 +235,7 @@ func TestREQUpdate004_RefusedUpdateChangesNothing(t *testing.T) {
 	updateRequireFeature(t)
 
 	svc := updateSetupUserService(t)
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	env := append(append([]string(nil), svc.userEnv...), "AGENT_PEER_TEST_UPDATE_API="+fake.URL())
 
 	beforeHash := updateFileHash(t, svc.target)
@@ -275,7 +275,7 @@ func TestREQUpdate004_YesSkipsPrompt(t *testing.T) {
 	updateRequireFeature(t)
 
 	svc := updateSetupUserService(t)
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	// The Broker performs the update, so its own service environment must reach
 	// the fake API; the command's environment only covers a local fallback.
 	selfUpdateSetUserUnitEnv(t, "peer", svc.userEnv, fake.URL())
@@ -321,7 +321,7 @@ func TestREQUpdate005_FailedUpdateKeepsBinaryAndService(t *testing.T) {
 	updateRequireFeature(t)
 
 	svc := updateSetupUserService(t)
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	// The Broker performs the update, so its service environment must reach the
 	// fake API; otherwise every case would fail at the lookup instead of at the
 	// artifact check under test.
@@ -375,7 +375,7 @@ func TestREQUpdate006_UpdateRequiresWritePermission(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 
 	rootDir := "/opt/root-owned"
 	target := filepath.Join(rootDir, "agent-peer")

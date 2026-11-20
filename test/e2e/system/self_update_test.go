@@ -73,7 +73,7 @@ func TestREQUpdate007_SystemUpdateByAdminGroup(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	selfUpdateInstallSystemService(t, fake)
 
 	beforeUID, beforeGID, beforeMode := fileOwnerAndMode(t, selfUpdateBinary)
@@ -122,7 +122,7 @@ func TestREQUpdate007_SystemUpdateRefusedOutsideAdminGroup(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	selfUpdateInstallSystemService(t, fake)
 	downloadsBefore := fake.Downloads()
 
@@ -154,7 +154,7 @@ func TestREQUpdate007_CLIWithoutUserBrokerUsesSystemBroker(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	selfUpdateInstallSystemService(t, fake)
 
 	if _, err := os.Stat(syscontainer.UserSocketPath(t, installAccount)); err == nil {
@@ -185,7 +185,7 @@ func TestREQUpdate007_CLIWithUserBrokerUsesUserBroker(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	selfUpdateInstallSystemService(t, fake)
 	userTarget, userEnv := selfUpdateSetupUserServiceFor(t, installAccount)
 	selfUpdateSetUserUnitEnv(t, installAccount, userEnv, fake.URL())
@@ -236,7 +236,7 @@ func TestREQUpdate007_RootUpdateUsesSystemBroker(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	selfUpdateInstallSystemService(t, fake)
 
 	beforeUID, beforeGID, beforeMode := fileOwnerAndMode(t, selfUpdateBinary)
@@ -271,7 +271,7 @@ func TestREQUpdate007_SudoWithUserBrokerUsesSystemBroker(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	selfUpdateInstallSystemService(t, fake)
 	userTarget, userEnv := selfUpdateSetupUserServiceFor(t, installAccount)
 	selfUpdateSetUserUnitEnv(t, installAccount, userEnv, fake.URL())
@@ -325,7 +325,7 @@ func TestREQUpdate007_TerminalSystemBrokerNeedsServiceManager(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 
 	// The manually started Broker runs this binary directly; no systemd unit
 	// sets INVOCATION_ID.
@@ -372,7 +372,7 @@ func TestREQUpdate007_TerminalBrokerWithInheritedServiceEnvironmentIsRefused(t *
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 
 	syscontainer.CopyReleaseArtifact(t, updateOldArtifact, selfUpdateBinary, 0o755)
 	selfUpdateRunRoot(t, "chown", "0:0", selfUpdateBinary)
@@ -435,7 +435,7 @@ func TestREQUpdate008_UpdateBrokerAlreadyLatest(t *testing.T) {
 	updateRequireFeature(t)
 
 	svc := updateSetupUserService(t)
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateOldVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateOldVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	selfUpdateSetUserUnitEnv(t, "peer", svc.userEnv, fake.URL())
 	selfUpdateWaitUserBrokerVersion(t, "peer", updateOldVersion)
 
@@ -507,7 +507,7 @@ func TestREQUpdate008_UpdateBrokerUnderUserService(t *testing.T) {
 	updateRequireFeature(t)
 
 	svc := updateSetupUserService(t)
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	selfUpdateSetUserUnitEnv(t, "peer", svc.userEnv, fake.URL())
 	selfUpdateWaitUserBrokerVersion(t, "peer", updateOldVersion)
 
@@ -538,7 +538,7 @@ func TestREQUpdate008_UpdateBrokerUnderSystemService(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	selfUpdateInstallSystemService(t, fake)
 
 	beforeUID, beforeGID, beforeMode := fileOwnerAndMode(t, selfUpdateBinary)
@@ -571,7 +571,7 @@ func TestREQUpdate008_UpdateBrokerRefusedOutsideAdminGroup(t *testing.T) {
 	}
 	updateRequireFeature(t)
 
-	fake := updateStartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
+	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 	selfUpdateInstallSystemService(t, fake)
 	downloadsBefore := fake.Downloads()
 
@@ -608,7 +608,7 @@ func selfUpdateStageHostAssets(t *testing.T, withInstallScript bool) {
 
 // selfUpdateAPIEnv returns the environment the old release reads the fake
 // GitHub API base from.
-func selfUpdateAPIEnv(fake *updateFakeGitHub) []string {
+func selfUpdateAPIEnv(fake *harness.FakeGitHub) []string {
 	return []string{"AGENT_PEER_TEST_UPDATE_API=" + fake.URL()}
 }
 
@@ -650,7 +650,7 @@ func selfUpdatePrepareArchive(t *testing.T) string {
 // When the install script knows --join-admin-group, the test lets the script do
 // the group grant. Until the admin-group unit is merged into main, the script
 // rejects the flag, so the test performs the same chgrp and chmod itself.
-func selfUpdateInstallSystemService(t *testing.T, fake *updateFakeGitHub) {
+func selfUpdateInstallSystemService(t *testing.T, fake *harness.FakeGitHub) {
 	t.Helper()
 
 	configureInstallSudo(t)

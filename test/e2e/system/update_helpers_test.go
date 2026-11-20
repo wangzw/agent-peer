@@ -3,17 +3,12 @@
 package e2e
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"os/user"
@@ -21,7 +16,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -50,9 +44,6 @@ const (
 	updateCorruptChecksumsFile   = "update-checksums-corrupt.txt"
 	updateWrongReleaseArtifact   = "update-release-wrong.tar.gz"
 	updateWrongChecksumsFile     = "update-checksums-wrong.txt"
-
-	updateChecksumsAsset = "checksums.txt"
-	updateLatestPath     = "/repos/wangzw/agent-peer/releases/latest"
 )
 
 const (
@@ -99,10 +90,10 @@ func updateStageAssets(t *testing.T) {
 
 	syscontainer.StageReleaseArtifact(t, updateOldArtifact, updateReadFile(t, old), 0o755)
 
-	assetName := updateAssetName(updateNewVersion)
-	goodArchive := updateTarGz(t, good)
+	assetName := harness.ReleaseAssetName(updateNewVersion, "linux", runtime.GOARCH)
+	goodArchive := harness.ReleaseTarGz(t, good)
 	syscontainer.StageReleaseArtifact(t, updateGoodReleaseArtifact, goodArchive, 0o644)
-	syscontainer.StageReleaseArtifact(t, updateGoodChecksumsArtifact, updateChecksumLine(assetName, goodArchive), 0o644)
+	syscontainer.StageReleaseArtifact(t, updateGoodChecksumsArtifact, harness.ChecksumLine(assetName, goodArchive), 0o644)
 
 	// The mismatch case serves the good package with a checksum line that
 	// cannot match it. The corrupt case serves a checksum that matches the
@@ -110,13 +101,13 @@ func updateStageAssets(t *testing.T) {
 	syscontainer.StageReleaseArtifact(t, updateMismatchChecksumsFile, []byte(strings.Repeat("0", 64)+"  "+assetName+"\n"), 0o644)
 	corrupt := []byte("this package is not a gzip stream\n")
 	syscontainer.StageReleaseArtifact(t, updateCorruptReleaseArtifact, corrupt, 0o644)
-	syscontainer.StageReleaseArtifact(t, updateCorruptChecksumsFile, updateChecksumLine(assetName, corrupt), 0o644)
+	syscontainer.StageReleaseArtifact(t, updateCorruptChecksumsFile, harness.ChecksumLine(assetName, corrupt), 0o644)
 
 	// The wrong-version case serves a well-formed package whose binary reports
 	// a different version than the release names.
-	wrongArchive := updateTarGz(t, other)
+	wrongArchive := harness.ReleaseTarGz(t, other)
 	syscontainer.StageReleaseArtifact(t, updateWrongReleaseArtifact, wrongArchive, 0o644)
-	syscontainer.StageReleaseArtifact(t, updateWrongChecksumsFile, updateChecksumLine(assetName, wrongArchive), 0o644)
+	syscontainer.StageReleaseArtifact(t, updateWrongChecksumsFile, harness.ChecksumLine(assetName, wrongArchive), 0o644)
 }
 
 // updateReadFile reads path and fails the test when it cannot.
@@ -139,189 +130,15 @@ func updateReadStaged(t *testing.T, name string) []byte {
 	return data
 }
 
-// updateAssetName is the release asset name the updater requires for GOOS
-// linux and the running architecture.
-func updateAssetName(version string) string {
-	return fmt.Sprintf("agent-peer_%s_linux_%s.tar.gz", version, runtime.GOARCH)
-}
-
-// updateTarGz packages binary as agent-peer in a gzip-compressed tar archive,
-// the shape the updater extracts.
-func updateTarGz(t *testing.T, binary string) []byte {
+// updateLoadRelease reads a staged package and checksum file into a release the
+// shared fake GitHub API serves.
+func updateLoadRelease(t *testing.T, version, archiveArtifact, checksumsArtifact string) harness.Release {
 	t.Helper()
-	data := updateReadFile(t, binary)
-
-	var buf bytes.Buffer
-	zw := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(zw)
-	if err := tw.WriteHeader(&tar.Header{
-		Name:     "agent-peer",
-		Mode:     0o755,
-		Size:     int64(len(data)),
-		Typeflag: tar.TypeReg,
-	}); err != nil {
-		t.Fatalf("writing the tar header: %v", err)
-	}
-	if _, err := tw.Write(data); err != nil {
-		t.Fatalf("writing the archive member: %v", err)
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatalf("closing the tar writer: %v", err)
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatalf("closing the gzip writer: %v", err)
-	}
-	return buf.Bytes()
-}
-
-// updateChecksumLine renders one sha256sum line for the asset.
-func updateChecksumLine(assetName string, data []byte) []byte {
-	sum := sha256.Sum256(data)
-	return []byte(hex.EncodeToString(sum[:]) + "  " + assetName + "\n")
-}
-
-// updateReleaseAsset is one asset entry of the GitHub release JSON.
-type updateReleaseAsset struct {
-	Name               string `json:"name"`
-	BrowserDownloadURL string `json:"browser_download_url"`
-}
-
-// updateLatestRelease is the subset of the GitHub latest-release answer the
-// updater reads.
-type updateLatestRelease struct {
-	TagName    string               `json:"tag_name"`
-	HTMLURL    string               `json:"html_url"`
-	Draft      bool                 `json:"draft"`
-	Prerelease bool                 `json:"prerelease"`
-	Assets     []updateReleaseAsset `json:"assets"`
-}
-
-// updateFakeRelease is the release the fake GitHub API answers with.
-type updateFakeRelease struct {
-	version     string // without the leading v
-	archiveName string
-	archive     []byte
-	checksums   []byte
-}
-
-// updateLoadRelease reads a staged package and checksum file into a release.
-func updateLoadRelease(t *testing.T, version, archiveArtifact, checksumsArtifact string) updateFakeRelease {
-	t.Helper()
-	return updateFakeRelease{
-		version:     version,
-		archiveName: updateAssetName(version),
-		archive:     updateReadStaged(t, archiveArtifact),
-		checksums:   updateReadStaged(t, checksumsArtifact),
-	}
-}
-
-// updateFakeGitHub serves the two endpoints the updater uses: the latest
-// release and its assets. It binds 127.0.0.1 through httptest and is built by
-// the test process itself, so no network or external service is involved.
-type updateFakeGitHub struct {
-	server *httptest.Server
-
-	mu        sync.Mutex
-	release   updateFakeRelease
-	fail      bool
-	requests  int
-	downloads int
-}
-
-// updateStartFakeGitHub starts the fake API on 127.0.0.1 and stops it when the
-// test ends.
-func updateStartFakeGitHub(t *testing.T, release updateFakeRelease) *updateFakeGitHub {
-	t.Helper()
-	f := &updateFakeGitHub{release: release}
-	f.server = httptest.NewServer(http.HandlerFunc(f.serve))
-	t.Cleanup(f.server.Close)
-	return f
-}
-
-// URL is the API base the update code receives through
-// AGENT_PEER_TEST_UPDATE_API.
-func (f *updateFakeGitHub) URL() string { return f.server.URL }
-
-// SetRelease replaces the release the next requests see.
-func (f *updateFakeGitHub) SetRelease(release updateFakeRelease) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.release = release
-}
-
-// SetFailure makes every request fail, so a Broker's check cannot succeed.
-func (f *updateFakeGitHub) SetFailure(fail bool) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.fail = fail
-}
-
-// ResetRequests forgets the counters.
-func (f *updateFakeGitHub) ResetRequests() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.requests, f.downloads = 0, 0
-}
-
-// Requests returns the number of requests any endpoint received.
-func (f *updateFakeGitHub) Requests() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.requests
-}
-
-// Downloads returns the number of asset downloads served.
-func (f *updateFakeGitHub) Downloads() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.downloads
-}
-
-func (f *updateFakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
-	f.mu.Lock()
-	f.requests++
-	fail := f.fail
-	release := f.release
-	f.mu.Unlock()
-
-	if fail {
-		http.Error(w, "injected update check failure", http.StatusInternalServerError)
-		return
-	}
-
-	switch {
-	case r.URL.Path == updateLatestPath ||
-		r.URL.Path == "/repos/wangzw/agent-peer/releases/tags/v"+release.version:
-		base := "http://" + r.Host
-		body := updateLatestRelease{
-			TagName: "v" + release.version,
-			HTMLURL: "https://github.com/wangzw/agent-peer/releases/tag/v" + release.version,
-			Assets: []updateReleaseAsset{
-				{Name: release.archiveName, BrowserDownloadURL: base + "/download/" + release.archiveName},
-				{Name: updateChecksumsAsset, BrowserDownloadURL: base + "/download/" + updateChecksumsAsset},
-			},
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(body); err != nil {
-			return
-		}
-	case strings.HasPrefix(r.URL.Path, "/download/"):
-		name := strings.TrimPrefix(r.URL.Path, "/download/")
-		f.mu.Lock()
-		f.downloads++
-		f.mu.Unlock()
-		switch name {
-		case release.archiveName:
-			w.Header().Set("Content-Type", "application/gzip")
-			_, _ = w.Write(release.archive)
-		case updateChecksumsAsset:
-			_, _ = w.Write(release.checksums)
-		default:
-			http.NotFound(w, r)
-		}
-	default:
-		http.NotFound(w, r)
+	return harness.Release{
+		Version:     version,
+		ArchiveName: harness.ReleaseAssetName(version, "linux", runtime.GOARCH),
+		Archive:     updateReadStaged(t, archiveArtifact),
+		Checksums:   updateReadStaged(t, checksumsArtifact),
 	}
 }
 
@@ -336,7 +153,7 @@ func updateBrokerConfig(check bool) string {
 // updateStartPeerBroker writes the configuration and starts the old release as
 // peer's user-level Broker. The fake API base is handed to it through the
 // test-build hook.
-func updateStartPeerBroker(t *testing.T, fake *updateFakeGitHub, check bool) *syscontainer.Proc {
+func updateStartPeerBroker(t *testing.T, fake *harness.FakeGitHub, check bool) *syscontainer.Proc {
 	t.Helper()
 	writeAccountFile(t, "peer", "/home/peer/.agent-peer/config.yaml", updateBrokerConfig(check))
 	env := []string{"AGENT_PEER_TEST_UPDATE_API=" + fake.URL()}
