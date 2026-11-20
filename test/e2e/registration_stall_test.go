@@ -18,21 +18,20 @@ import (
 	"github.com/wangzw/agent-peer/test/e2e/harness"
 )
 
-// TestRegistrationListAgentsAbandonsAStalledCall pins the timing condition of
-// the unusable-name list timeout without a busy machine: the Broker accepts the
-// session's registration and then never answers ListAgents. A list_agents call
-// made from a registration wait must give up at the wait's call bound and
-// report a retryable state. When the call used the harness's sixty-second call
-// bound instead, one stalled call outlived the wait and failed the test from
-// inside it with a transport error.
+// registrationStallSetupBound bounds the setup of the stall cases that is not a
+// tool call: waiting for the session's Register stream.
+const registrationStallSetupBound = 3 * time.Second
+
+// TestRegistrationListAgentsAbandonsAStalledCall constrains the harness's poll
+// bound: the fake Broker accepts the session's registration and then never
+// answers ListAgents. A list_agents call made through a wait must give up at
+// ToolCallPollBound and report a retryable state. When the call used the
+// harness's sixty-second call bound instead, one stalled call outlived the wait
+// and failed the test from inside it with a transport error.
 func TestRegistrationListAgentsAbandonsAStalledCall(t *testing.T) {
 	release := make(chan struct{})
 	defer close(release)
-	socket := fakelocal.SocketPath(t)
-	srv := fakelocal.Start(t, socket, fakelocal.Handlers{
-		Hello: func(context.Context, *localpb.HelloRequest) (*localpb.HelloResponse, error) {
-			return &localpb.HelloResponse{ProtocolVersion: localpb.ProtocolVersion}, nil
-		},
+	srv := fakelocal.Start(t, fakelocal.SocketPath(t), fakelocal.Handlers{
 		// The Broker accepts the request and never answers it until the call is
 		// cancelled or the test releases it.
 		ListAgents: func(ctx context.Context, _ *localpb.ListAgentsRequest) (*localpb.ListAgentsResponse, error) {
@@ -46,30 +45,16 @@ func TestRegistrationListAgentsAbandonsAStalledCall(t *testing.T) {
 			return &localpb.SendResponse{}, nil
 		},
 	})
-
-	host := harness.NewLocalHost(t, harness.LocalOptions{Name: "stalled-listing"})
-	s := host.StartSession(t, harness.SessionSpec{
-		Name:     "stalled",
-		StartMCP: true,
-		Env:      map[string]string{"AGENT_PEER_TEST_SOCKET": socket},
-	})
-	defer s.End(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	conn, err := srv.NextRegister(ctx)
-	if err != nil {
-		t.Fatalf("waiting for the session's Register stream: %v", err)
-	}
-	if err := conn.Complete("agent-under-test", "stalled@test", false); err != nil {
-		t.Fatalf("completing registration: %v", err)
-	}
+	s, _ := registrationStalledSession(t, srv, "stalled", "agent-under-test", "stalled@test")
 
 	// send_message needs the agent identity, so its success proves the MCP
 	// server applied registration_complete. list_agents would prove it too, but
 	// it is the call under test.
-	harness.Eventually(t, 3*time.Second, "the session is registered", func() (bool, string) {
-		r := s.Call(t, "send_message", map[string]any{"to": "someone@test", "message": "hi"})
+	registrationEventually(t, harness.ToolCallWaitBound, "the session is registered", func(deadline time.Time) (bool, string) {
+		r, err := s.PollCall(t, deadline, "send_message", map[string]any{"to": "someone@test", "message": "hi"})
+		if err != nil {
+			return false, err.Error()
+		}
 		if r.IsError {
 			return false, r.Text
 		}
@@ -213,7 +198,7 @@ func registrationStalledSession(t *testing.T, srv *fakelocal.Server, name, agent
 	})
 	t.Cleanup(func() { s.End(t) })
 
-	ctx, cancel := context.WithTimeout(context.Background(), harness.ToolCallPollBound)
+	ctx, cancel := context.WithTimeout(context.Background(), registrationStallSetupBound)
 	defer cancel()
 	conn, err := srv.NextRegister(ctx)
 	if err != nil {
