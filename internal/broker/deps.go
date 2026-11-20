@@ -124,6 +124,9 @@ type Deps struct {
 	ReadPeerCred         func(net.Conn) (Caller, error) // nil: ReadPeerCred
 	ServerOptions        []grpc.ServerOption            // appended to the gRPC server options (e.g. the access interceptor)
 	LocalProtocolVersion uint32                         // 0: localpb.ProtocolVersion; Run copies RunOptions.LocalProtocolVersion here
+	// System is true for the system-level Broker. ApplyUpdate uses it to query
+	// the service manager of the right level. Run fills it from RunOptions.
+	System bool
 
 	// Version is the version this process reports, without a leading v. It is
 	// empty in tests that do not care; UpdateStatus returns it and the

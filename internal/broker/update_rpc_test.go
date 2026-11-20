@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"runtime"
 	"strings"
@@ -339,27 +340,98 @@ func TestRunRequestShutdownExitsNormally(t *testing.T) {
 	}
 }
 
-// TestRunningUnderServiceManager checks the platform detection without a
-// service manager present.
+// TestRunningUnderServiceManager checks the pid comparison. The service
+// manager query and the current pid are injected. The environment is set to
+// the values a terminal can inherit from the process that opened it, to show
+// that no environment variable decides the answer.
 func TestRunningUnderServiceManager(t *testing.T) {
+	const selfPID = 4242
+	answer := func(pid int) func(bool) (int, bool) {
+		return func(bool) (int, bool) { return pid, true }
+	}
+	noAnswer := func(bool) (int, bool) { return 0, false }
+
 	cases := []struct {
-		name string
-		goos string
-		env  map[string]string
-		want bool
+		name    string
+		goos    string
+		system  bool
+		env     map[string]string
+		mainPID func(bool) (int, bool)
+		want    bool
 	}{
-		{"systemd system unit", "linux", map[string]string{"INVOCATION_ID": "abc123"}, true},
-		{"systemd user unit", "linux", map[string]string{"INVOCATION_ID": "def456"}, true},
-		{"terminal on linux", "linux", nil, false},
-		{"launchd agent or daemon", "darwin", map[string]string{"XPC_SERVICE_NAME": "io.github.wangzw.agent-peer"}, true},
-		{"terminal on macOS", "darwin", nil, false},
-		{"unknown platform", "freebsd", map[string]string{"INVOCATION_ID": "abc", "XPC_SERVICE_NAME": "x"}, false},
+		{
+			name: "systemd unit running this process", goos: "linux", system: true,
+			env:     map[string]string{"INVOCATION_ID": "abc123"},
+			mainPID: answer(selfPID), want: true,
+		},
+		{
+			name: "launchd job running this process", goos: "darwin", system: false,
+			env:     map[string]string{"XPC_SERVICE_NAME": "io.github.wangzw.agent-peer"},
+			mainPID: answer(selfPID), want: true,
+		},
+		{
+			name: "INVOCATION_ID set but another process is the service", goos: "linux", system: true,
+			env:     map[string]string{"INVOCATION_ID": "abc123"},
+			mainPID: answer(selfPID + 1), want: false,
+		},
+		{
+			name: "XPC_SERVICE_NAME=0 but another process is the service", goos: "darwin", system: false,
+			env:     map[string]string{"XPC_SERVICE_NAME": "0"},
+			mainPID: answer(selfPID + 1), want: false,
+		},
+		{
+			name: "no service reports a pid", goos: "linux", system: true,
+			env:     map[string]string{"INVOCATION_ID": "abc123"},
+			mainPID: noAnswer, want: false,
+		},
+		{
+			name: "launchd query fails", goos: "darwin", system: false,
+			env:     map[string]string{"XPC_SERVICE_NAME": "0"},
+			mainPID: noAnswer, want: false,
+		},
+		{
+			name: "terminal with no service environment", goos: "linux", system: false,
+			mainPID: noAnswer, want: false,
+		},
+		{
+			name: "terminal with an inherited launchd value", goos: "darwin", system: false,
+			env:     map[string]string{"XPC_SERVICE_NAME": "application.com.apple.Terminal.123"},
+			mainPID: answer(selfPID + 1), want: false,
+		},
+		{
+			name: "unknown platform", goos: "freebsd", system: false,
+			env:     map[string]string{"INVOCATION_ID": "abc", "XPC_SERVICE_NAME": "x"},
+			mainPID: answer(selfPID), want: false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			getenv := func(key string) string { return tc.env[key] }
-			if got := runningUnderServiceManager(tc.goos, getenv); got != tc.want {
-				t.Errorf("runningUnderServiceManager(%q) = %v, want %v", tc.goos, got, tc.want)
+			for key, value := range tc.env {
+				t.Setenv(key, value)
+			}
+			if got := runningUnderServiceManager(tc.goos, tc.system, selfPID, tc.mainPID); got != tc.want {
+				t.Errorf("runningUnderServiceManager(%q, system=%v) = %v, want %v", tc.goos, tc.system, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRunningUnderServiceManagerAsksTheBrokersLevel checks that the query goes
+// to the service manager of the Broker's own level: the user unit for a
+// user-level Broker and the system unit for a system-level one.
+func TestRunningUnderServiceManagerAsksTheBrokersLevel(t *testing.T) {
+	for _, system := range []bool{false, true} {
+		t.Run(fmt.Sprintf("system=%v", system), func(t *testing.T) {
+			var asked bool
+			mainPID := func(level bool) (int, bool) {
+				asked = level
+				return 4242, true
+			}
+			if !runningUnderServiceManager("linux", system, 4242, mainPID) {
+				t.Fatal("the service's own pid was not accepted")
+			}
+			if asked != system {
+				t.Errorf("queried system=%v, want %v", asked, system)
 			}
 		})
 	}

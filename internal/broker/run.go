@@ -98,6 +98,7 @@ func Run(ctx context.Context, opts RunOptions) error {
 	}
 	deps.LocalProtocolVersion = opts.LocalProtocolVersion
 	deps.Version = opts.Version
+	deps.System = opts.System
 	// RequestShutdown cancels runCtx rather than the caller's context: an
 	// ApplyUpdate success then takes the same shutdown path as a signal, and
 	// Run returns nil so the command exits with its normal code.

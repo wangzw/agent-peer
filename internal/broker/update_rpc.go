@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/broker/service"
 	"github.com/wangzw/agent-peer/internal/broker/update"
 	"github.com/wangzw/agent-peer/internal/config"
 )
@@ -38,7 +39,8 @@ func (b *Broker) ApplyUpdate(ctx context.Context, _ *localpb.ApplyUpdateRequest)
 
 	serviceManager := b.deps.ServiceManager
 	if serviceManager == nil {
-		serviceManager = detectServiceManager
+		system := b.deps.System
+		serviceManager = func() bool { return detectServiceManager(system) }
 	}
 	if !serviceManager() || b.deps.RequestShutdown == nil {
 		return nil, toStatus(Errorf(localpb.ErrorCode_ERROR_CODE_NOT_UNDER_SERVICE_MANAGER,
@@ -124,21 +126,25 @@ func installedExecutable() (string, error) {
 	return real, nil
 }
 
-// detectServiceManager reports whether the process runs under the service
-// manager of this platform. systemd sets INVOCATION_ID for both user and system
-// units; launchd sets XPC_SERVICE_NAME for agents and daemons.
-func detectServiceManager() bool {
-	return runningUnderServiceManager(runtime.GOOS, os.Getenv)
+// detectServiceManager reports whether this process is the one the service
+// manager of its platform and level started. The environment is not a
+// judgement: a terminal often inherits systemd's INVOCATION_ID or launchd's
+// XPC_SERVICE_NAME from the process that opened it, and replacing the binary of
+// a Broker nothing would restart is exactly the failure this check prevents.
+func detectServiceManager(system bool) bool {
+	return runningUnderServiceManager(runtime.GOOS, system, os.Getpid(), service.MainPID)
 }
 
-// runningUnderServiceManager implements detectServiceManager with the platform
-// and environment lookup injected for tests.
-func runningUnderServiceManager(goos string, getenv func(string) string) bool {
+// runningUnderServiceManager implements detectServiceManager with the platform,
+// the level, the current pid and the service-manager query injected for tests.
+// The process is service-managed only when the manager reports a running
+// service whose main pid is this process. A failed query, a missing or stopped
+// unit and a different pid all report false.
+func runningUnderServiceManager(goos string, system bool, pid int, mainPID func(bool) (int, bool)) bool {
 	switch goos {
-	case "linux":
-		return getenv("INVOCATION_ID") != ""
-	case "darwin":
-		return getenv("XPC_SERVICE_NAME") != ""
+	case "linux", "darwin":
+		servicePID, ok := mainPID(system)
+		return ok && servicePID == pid
 	default:
 		return false
 	}
