@@ -415,27 +415,24 @@ Update: <v> available (current <c>); run agent-peer update
 
 没有可用版本时不输出这一行（`REQ-update-002`）。
 
-`agent-peer update [--yes]` 先按终端命令的选择规则选出 Broker，对它调用 `ApplyUpdate`。返回 `failed_precondition` 且所选的是本账户的用户级 Broker 时，转到下面的本地替换路径；选不出正在运行的 Broker 时同样在本地替换。管理员账户没有运行自己的用户级 Broker 时，选中的是系统级 Broker，命令直接作用于系统级；同时运行着用户级 Broker 时，选择先落在用户级 Broker，管理系统级要加 `sudo`，使进程属于 root 并直接选中系统级 Broker。
+`agent-peer update [--yes]` 先检查当前版本是不是正式发布版本，不是时拒绝执行。没有 `--yes` 时，标准输入不是终端就拒绝，说明可以用 `--yes`；否则显示已安装版本并询问是否更新，用户不确认时以 0 退出，不做任何改动。确认之后才按终端命令的选择规则选出 Broker，对它调用 `ApplyUpdate`。返回 `failed_precondition` 且所选的是本账户的用户级 Broker 时，转到下面的本地替换路径；选不出正在运行的 Broker 时同样在本地替换。管理员账户没有运行自己的用户级 Broker 时，选中的是系统级 Broker，命令直接作用于系统级；同时运行着用户级 Broker 时，选择先落在用户级 Broker，管理系统级要加 `sudo`，使进程属于 root 并直接选中系统级 Broker。
 
-本地替换路径直接查询 GitHub，不在 Broker 中执行替换，按以下顺序执行：
+本地替换路径直接查询 GitHub，不在 Broker 中执行替换。前面已经通过了正式发布版本的检查，用户也已确认，以下步骤不再重复这两项检查：
 
 1. 取 `os.Executable()` 的结果并解析符号链接，得到要替换的二进制路径。
-2. 当前版本不是正式发布版本时拒绝执行，说明“非发布构建不能自动更新”。
-3. 在目标所在目录试建一个临时文件，检查写权限。没有写权限时，在任何下载请求之前失败，并提示用 `sudo`（`REQ-update-006`）。
-4. 查询最新正式发布版本。已经是最新版本时输出 `agent-peer <c> is up to date`，以 0 退出。
-5. 标准输入不是终端且没有 `--yes` 时拒绝执行，说明可以用 `--yes`。
-6. 下载本平台与架构的安装包和 `checksums.txt`，按 [ADR-self-update](../../adr/adr-self-update.md) 的规则校验、解压，并在临时位置运行新二进制的 `--version`。
-7. 在目标所在目录写临时文件，把模式和属主改成与原二进制相同，`fsync` 后 `rename` 到目标路径。不保留旧版本。
-8. 不启动、也不重启任何服务：服务可能被有意停掉。
-9. 输出 `The new binary takes effect the next time the Broker starts.`。
+2. 在目标所在目录试建一个临时文件，检查写权限。没有写权限时，在任何下载请求之前失败，并提示用 `sudo`（`REQ-update-006`）。
+3. 查询最新正式发布版本。已经是最新版本时输出 `agent-peer <c> is up to date`，以 0 退出。
+4. 下载本平台与架构的安装包和 `checksums.txt`，按 [ADR-self-update](../../adr/adr-self-update.md) 的规则校验、解压，并在临时位置运行新二进制的 `--version`。
+5. 在目标所在目录写临时文件，把模式和属主改成与原二进制相同，`fsync` 后 `rename` 到目标路径。不保留旧版本。
+6. 不启动、也不重启任何服务：服务可能被有意停掉。
+7. 输出 `The new binary takes effect the next time the Broker starts.`。
 
-委托路径不读写二进制，按以下顺序执行：
+委托路径不读写二进制。前面已经完成了正式发布版本的检查与用户确认，按以下顺序执行：
 
-1. 标准输入不是终端且没有 `--yes` 时拒绝执行；否则询问 y/N。
-2. 调用 `ApplyUpdate`。权限由 Broker 按调用方账户对配置文件的写权限判定，命令不预判；`permission_denied` 时把 Broker 的英文错误原样写到标准错误，以 1 退出，此时没有发出任何下载请求。
-3. 应答的 `to_version` 为空时输出已经是最新版本，以 0 退出。
-4. `restarting` 为真时，在 `updateRestartWait` 内轮询 `UpdateStatus`，直到 `current_version` 等于 `to_version` 才报告成功。上限取 60 秒，覆盖 `updateShutdownGrace`、服务管理器的重启间隔、launchd 默认 10 秒的节流与 Broker 的启动时间。超时报错，并给出该级别服务日志的位置。
-5. 输出更新结果。
+1. 调用 `ApplyUpdate`。权限由 Broker 按调用方账户对配置文件的写权限判定，命令不预判；`permission_denied` 时把 Broker 的英文错误原样写到标准错误，以 1 退出，此时没有发出任何下载请求。
+2. 应答的 `to_version` 为空时输出已经是最新版本，以 0 退出。
+3. `restarting` 为真时，在 `updateRestartWait` 内轮询 `UpdateStatus`，直到 `current_version` 等于 `to_version` 才报告成功。上限取 60 秒，覆盖 `updateShutdownGrace`、服务管理器的重启间隔、launchd 默认 10 秒的节流与 Broker 的启动时间。超时报错，并给出该级别服务日志的位置。
+4. 输出更新结果。
 
 以 root 执行时选择系统级 Broker，同样走这条路径；选不出 Broker 时在本地替换。`agent-peer update` 不再调用 `service.Restart`。
 

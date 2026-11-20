@@ -6,7 +6,7 @@ Claude Code's built-in cross-session messaging covers sessions on one host. agen
 
 ## Status
 
-0.1.0 is the first release. It implements the requirements of milestones M1 to M4 in the [roadmap](docs/roadmap.md). Each requirement's implementation status is recorded in the status line of the requirement document ([requirements](docs/prd/README.md)).
+The current release is 0.2.0. It implements the requirements of milestones M1 to M4 in the [roadmap](docs/roadmap.md). Each requirement's implementation status is recorded in the status line of the requirement document ([requirements](docs/prd/README.md)).
 
 ## Install
 
@@ -24,7 +24,7 @@ The script detects the platform and architecture, downloads the matching archive
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sudo sh -s -- --system
 ```
 
-To install a published version instead of the latest, pass `--version <version>` before any other option, using a published version number such as `0.1.1`. A version that does not exist makes the command fail with `version <version> not found` and leaves the host unchanged:
+To install a published version instead of the latest, pass `--version <version>` before any other option, using a published version number such as `0.2.0`. A version that does not exist makes the command fail with `version <version> not found` and leaves the host unchanged:
 
 ```sh
 curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version <version>
@@ -45,21 +45,21 @@ agent-peer is distributed as a `tar.gz` archive on [GitHub Releases](https://git
 
 | Platform | Architecture | Archive |
 |---|---|---|
-| macOS | amd64 | `agent-peer_0.1.0_darwin_amd64.tar.gz` |
-| macOS | arm64 | `agent-peer_0.1.0_darwin_arm64.tar.gz` |
-| Linux | amd64 | `agent-peer_0.1.0_linux_amd64.tar.gz` |
-| Linux | arm64 | `agent-peer_0.1.0_linux_arm64.tar.gz` |
+| macOS | amd64 | `agent-peer_0.2.0_darwin_amd64.tar.gz` |
+| macOS | arm64 | `agent-peer_0.2.0_darwin_arm64.tar.gz` |
+| Linux | amd64 | `agent-peer_0.2.0_linux_amd64.tar.gz` |
+| Linux | arm64 | `agent-peer_0.2.0_linux_arm64.tar.gz` |
 
 Download the archive together with `checksums.txt` from the same release and verify the archive before using it. On Linux:
 
 ```sh
-grep agent-peer_0.1.0_linux_arm64.tar.gz checksums.txt | sha256sum -c -
+grep agent-peer_0.2.0_linux_arm64.tar.gz checksums.txt | sha256sum -c -
 ```
 
 On macOS, use `shasum` instead:
 
 ```sh
-grep agent-peer_0.1.0_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
+grep agent-peer_0.2.0_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
 ```
 
 Create an empty directory and extract the archive into it. The archive has no top-level directory, so without one, LICENSE, README.md, third_party/ and THIRD_PARTY_LICENSES/ land directly in the current directory together with the binary.
@@ -67,16 +67,16 @@ Create an empty directory and extract the archive into it. The archive has no to
 The macOS binaries are not signed or notarized, so on macOS, if you downloaded it with a browser, clear the quarantine attribute from the extracted binary before running it; otherwise macOS blocks the binary:
 
 ```sh
-mkdir agent-peer-0.1.0
-tar -xzf agent-peer_0.1.0_darwin_arm64.tar.gz -C agent-peer-0.1.0
-xattr -d com.apple.quarantine agent-peer-0.1.0/agent-peer
+mkdir agent-peer-0.2.0
+tar -xzf agent-peer_0.2.0_darwin_arm64.tar.gz -C agent-peer-0.2.0
+xattr -d com.apple.quarantine agent-peer-0.2.0/agent-peer
 ```
 
 On Linux, extract the archive without the `xattr` step:
 
 ```sh
-mkdir agent-peer-0.1.0
-tar -xzf agent-peer_0.1.0_linux_arm64.tar.gz -C agent-peer-0.1.0
+mkdir agent-peer-0.2.0
+tar -xzf agent-peer_0.2.0_linux_arm64.tar.gz -C agent-peer-0.2.0
 ```
 
 #### Install script
@@ -111,25 +111,25 @@ If you only use the user-level Broker, a per-user directory such as `~/.local/bi
 
 ```sh
 mkdir -p ~/.local/bin
-mv agent-peer-0.1.0/agent-peer ~/.local/bin/
+mv agent-peer-0.2.0/agent-peer ~/.local/bin/
 agent-peer --version
 ```
 
 If you want to run `sudo agent-peer service install --system`, install the binary with `sudo install -o root -g 0 -m 0755` instead of `mv`. The binary and every directory above it must be owned by `root` and not writable by group or others, such as `/usr/local/bin`. On an Intel Mac with Homebrew, `/usr/local/bin` belongs to the ordinary user, so the installation is refused; choose a directory owned by `root` instead. The system-level service starts the binary as `root`, and an ordinary account that can modify the binary or one of its parent directories could take over the service:
 
 ```sh
-sudo install -o root -g 0 -m 0755 agent-peer-0.1.0/agent-peer /usr/local/bin/agent-peer
+sudo install -o root -g 0 -m 0755 agent-peer-0.2.0/agent-peer /usr/local/bin/agent-peer
 agent-peer --version
 ```
 
-In both cases, `agent-peer --version` prints `agent-peer 0.1.0`.
+In both cases, `agent-peer --version` prints `agent-peer 0.2.0`.
 
 To build from source you need Go 1.27. Clone the repository and build:
 
 ```sh
 git clone https://github.com/wangzw/agent-peer
 cd agent-peer
-go build -trimpath -ldflags "-X main.version=0.1.0" -o agent-peer ./cmd/agent-peer
+go build -trimpath -ldflags "-X main.version=0.2.0" -o agent-peer ./cmd/agent-peer
 ```
 
 Without `-ldflags`, `agent-peer --version` prints `agent-peer dev`. Installing with `go install …@version` is not supported, because `go.mod` uses a `replace` directive that points at a vendored dependency.
@@ -231,7 +231,7 @@ Run the update in a terminal:
 agent-peer update
 ```
 
-The command prints the current and available versions and asks for confirmation. It asks the Broker selected for the account to update itself. When the selected Broker is a user-level Broker that does not run as a service, or when no Broker is running, the command checks write permission on the binary's directory, then downloads the release archive for this platform, checks it against `checksums.txt`, verifies that the new binary reports the expected version, and replaces this binary. It does not start or restart any service, because the service may have been stopped on purpose, and prints that the new binary takes effect the next time the Broker starts. Without write permission it fails before downloading and suggests `sudo`. `--yes` skips the question and is required when standard input is not a terminal.
+The command shows the installed version and asks for confirmation. It asks the Broker selected for the account to update itself. When the selected Broker is a user-level Broker that does not run as a service, or when no Broker is running, the command checks write permission on the binary's directory, then downloads the release archive for this platform, checks it against `checksums.txt`, verifies that the new binary reports the expected version, and replaces this binary. It does not start or restart any service, because the service may have been stopped on purpose, and prints that the new binary takes effect the next time the Broker starts. Without write permission it fails before downloading and suggests `sudo`. `--yes` skips the question and is required when standard input is not a terminal.
 
 For a system-level installation, run the command as an account that administers the Broker, without `sudo`:
 
@@ -270,6 +270,8 @@ For an existing installation, give the file to the group with the command the in
 sudo chgrp agent-peer /etc/agent-peer/config.yaml
 sudo chmod 0660 /etc/agent-peer/config.yaml
 ```
+
+Skip giving the file to the group when `broker.listen` uses a port below 1024, because such a Broker refuses to start while another account can write the file.
 
 ### Files
 
