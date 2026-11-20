@@ -16,8 +16,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const wantHint = "agent-peer 0.1.1 is available (this host runs 0.1.0). " +
-	"Update it with `agent-peer update` in a terminal, using sudo for a system-level installation."
+const wantHint = "agent-peer 0.1.1 is available (this Broker runs 0.1.0). " +
+	"Ask the agent to call update_broker, or run `agent-peer update` in a terminal."
 
 // connectHintClient starts a server whose only extra behaviour is the update
 // hint over source, and returns a connected client session.

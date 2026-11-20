@@ -457,8 +457,8 @@ func updateRequireFeature(t *testing.T) {
 // updateHint is the sentence a session's first tool result carries when a
 // newer release is available.
 func updateHint(available, current string) string {
-	return fmt.Sprintf("agent-peer %s is available (this host runs %s). "+
-		"Update it with `agent-peer update` in a terminal, using sudo for a system-level installation.",
+	return fmt.Sprintf("agent-peer %s is available (this Broker runs %s). "+
+		"Ask the agent to call update_broker, or run `agent-peer update` in a terminal.",
 		available, current)
 }
 
