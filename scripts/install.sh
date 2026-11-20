@@ -8,6 +8,8 @@
 #
 # Usage:
 #   sh ./install.sh [--system] [--prefix <dir>] [--no-service] [--no-mcp]
+#                   [--admin-group <name>] [--join-admin-group]
+#                   [--no-admin-group]
 #
 #   --system        install for the whole host. Must run as root, usually
 #                   through sudo. The binary goes to /usr/local/bin unless
@@ -17,7 +19,23 @@
 #                   /usr/local/bin for a system-level install.
 #   --no-service    do not install the Broker service.
 #   --no-mcp        do not register the MCP server with Claude Code.
+#   --admin-group <name>
+#                   manage the system-level Broker through <name> instead of
+#                   the default agent-peer group; passed to
+#                   "service install --system".
+#   --join-admin-group
+#                   add the account that ran sudo to the admin group without
+#                   asking.
+#   --no-admin-group
+#                   do not ask to add the account that ran sudo to the admin
+#                   group.
 #   -h, --help      print this usage and exit.
+#
+# A system-level install asks, on the controlling terminal, whether to add the
+# account that ran sudo to the admin group, so that account can manage the
+# Broker without sudo after logging in again. The answer defaults to no. The
+# prompt is skipped when the answer cannot be read, and when the account is
+# already in the group.
 #
 # Uninstall with "agent-peer service uninstall [--system]", then
 # "claude mcp remove -s user peer", then remove the installed binary. This
@@ -30,6 +48,10 @@ prefix=
 prefix_set=0
 install_service=1
 install_mcp=1
+admin_group=agent-peer
+admin_group_set=0
+join_admin_group=0
+no_admin_group=0
 
 # fail reports the step that failed and exits. Every step that can fail calls
 # it explicitly, so the message names the part of the installation that stopped
@@ -42,6 +64,8 @@ fail() {
 usage() {
 	cat <<'EOF'
 usage: sh ./install.sh [--system] [--prefix <dir>] [--no-service] [--no-mcp]
+                       [--admin-group <name>] [--join-admin-group]
+                       [--no-admin-group]
 
 Install agent-peer from the extracted release archive.
 
@@ -52,6 +76,16 @@ Install agent-peer from the extracted release archive.
                   system-level install
   --no-service    do not install the Broker service
   --no-mcp        do not register the MCP server with Claude Code
+  --admin-group <name>
+                  manage the system-level Broker through <name> instead of
+                  the default agent-peer group; passed to
+                  "service install --system"
+  --join-admin-group
+                  add the account that ran sudo to the admin group without
+                  asking
+  --no-admin-group
+                  do not ask to add the account that ran sudo to the admin
+                  group
   -h, --help      print this usage and exit
 EOF
 }
@@ -103,6 +137,26 @@ while [ "$#" -gt 0 ]; do
 		--no-mcp)
 			install_mcp=0
 			;;
+		--admin-group)
+			if [ "$#" -lt 2 ]; then
+				printf 'install.sh: --admin-group needs a group name\n' >&2
+				usage >&2
+				exit 2
+			fi
+			admin_group=$2
+			admin_group_set=1
+			shift
+			;;
+		--admin-group=*)
+			admin_group=${1#--admin-group=}
+			admin_group_set=1
+			;;
+		--join-admin-group)
+			join_admin_group=1
+			;;
+		--no-admin-group)
+			no_admin_group=1
+			;;
 		-h|--help)
 			usage
 			exit 0
@@ -120,6 +174,42 @@ if [ "$prefix_set" -eq 1 ] && [ -z "$prefix" ]; then
 	printf 'install.sh: --prefix needs a non-empty directory\n' >&2
 	usage >&2
 	exit 2
+fi
+
+if [ "$admin_group_set" -eq 1 ] && [ -z "$admin_group" ]; then
+	printf 'install.sh: --admin-group needs a non-empty group name\n' >&2
+	usage >&2
+	exit 2
+fi
+
+# The service install applies the same rule. A leading hyphen is rejected here
+# so the name cannot be mistaken for an option, and the character set matches
+# what Linux and macOS accept.
+if ! printf '%s\n' "$admin_group" | LC_ALL=C grep -Eq '^[a-z_][a-z0-9_-]*$'; then
+	printf 'install.sh: invalid --admin-group name: %s\n' "$admin_group" >&2
+	usage >&2
+	exit 2
+fi
+
+if [ "$join_admin_group" -eq 1 ] && [ "$no_admin_group" -eq 1 ]; then
+	printf 'install.sh: --join-admin-group and --no-admin-group cannot be used together\n' >&2
+	usage >&2
+	exit 2
+fi
+
+# The admin group belongs to a system-level install. Reject the options on a
+# user-level install rather than silently doing nothing.
+if [ "$system" -eq 0 ]; then
+	if [ "$admin_group_set" -eq 1 ]; then
+		printf 'install.sh: --admin-group is only valid with --system\n' >&2
+		usage >&2
+		exit 2
+	fi
+	if [ "$join_admin_group" -eq 1 ] || [ "$no_admin_group" -eq 1 ]; then
+		printf 'install.sh: the admin group options are only valid with --system\n' >&2
+		usage >&2
+		exit 2
+	fi
 fi
 
 if [ ! -f "$archive_binary" ]; then
@@ -251,8 +341,14 @@ esac
 if [ "$install_service" -eq 0 ]; then
 	_service_state="skipped (--no-service)"
 elif [ "$system" -eq 1 ]; then
-	if ! "$prefix/agent-peer" service install --system; then
-		fail "installing the system-level service"
+	if [ "$admin_group_set" -eq 1 ]; then
+		if ! "$prefix/agent-peer" service install --system --admin-group "$admin_group"; then
+			fail "installing the system-level service"
+		fi
+	else
+		if ! "$prefix/agent-peer" service install --system; then
+			fail "installing the system-level service"
+		fi
 	fi
 	_service_state="installed (system-level, starts at boot)"
 else
@@ -262,7 +358,64 @@ else
 	_service_state="installed (user-level, starts at login)"
 fi
 
-# 4. Register the MCP server with Claude Code. A system-level install registers
+# 4. The system-level service creates the admin group. Put the account that ran
+# sudo into it, so that account can manage the Broker without sudo after
+# logging in again. The answer comes from the controlling terminal, never from
+# stdin: when the script is piped into sh, stdin is the script itself. A
+# missing terminal, an empty answer and any answer other than y or yes all
+# leave the group alone and print the command that would join it. The account
+# is added at most once.
+_admin_group_user=
+if [ "$system" -eq 1 ] && [ "$install_service" -eq 1 ] && [ "$no_admin_group" -eq 0 ]; then
+	_sudo_user=${SUDO_USER:-}
+	if [ -n "$_sudo_user" ] && [ "$_sudo_user" != "root" ]; then
+		if ! _user_groups=$(id -Gn "$_sudo_user" 2>/dev/null); then
+			fail "listing the groups of $_sudo_user"
+		fi
+		case " $_user_groups " in
+			*" $admin_group "*) _in_admin_group=1 ;;
+			*) _in_admin_group=0 ;;
+		esac
+		if [ "$_in_admin_group" -eq 0 ]; then
+			_join=0
+			if [ "$join_admin_group" -eq 1 ]; then
+				_join=1
+			# true, not the special builtin ":", so a missing terminal fails
+			# this test instead of exiting the whole shell.
+			elif true 2>/dev/null </dev/tty; then
+				if printf 'Add %s to the %s group so %s can manage the Broker without sudo? [y/N] ' \
+					"$_sudo_user" "$admin_group" "$_sudo_user" 2>/dev/null >/dev/tty; then
+					if _answer=$( { read -r _reply && printf '%s' "$_reply"; } 2>/dev/null </dev/tty ); then
+						case $_answer in
+							[yY]|[yY][eE][sS]) _join=1 ;;
+						esac
+					fi
+					printf '\n' 2>/dev/null >/dev/tty || true
+				fi
+			fi
+			if [ "$_join" -eq 1 ]; then
+				if [ "$_os" = "Darwin" ]; then
+					if ! dseditgroup -o edit -a "$_sudo_user" -t user "$admin_group"; then
+						fail "adding $_sudo_user to the $admin_group group"
+					fi
+				else
+					if ! usermod -aG "$admin_group" "$_sudo_user"; then
+						fail "adding $_sudo_user to the $admin_group group"
+					fi
+				fi
+				_admin_group_user=$_sudo_user
+			elif [ "$_os" = "Darwin" ]; then
+				printf 'install.sh: to add %s to the %s group, run: sudo dseditgroup -o edit -a %s -t user %s\n' \
+					"$_sudo_user" "$admin_group" "$_sudo_user" "$admin_group"
+			else
+				printf 'install.sh: to add %s to the %s group, run: sudo usermod -aG %s %s\n' \
+					"$_sudo_user" "$admin_group" "$admin_group" "$_sudo_user"
+			fi
+		fi
+	fi
+fi
+
+# 5. Register the MCP server with Claude Code. A system-level install registers
 # it for the account that ran sudo; running the script directly as root leaves
 # no account to register for, so it prints the command instead.
 _mcp_state="skipped (--no-mcp)"
@@ -342,7 +495,7 @@ if [ "$install_mcp" -eq 1 ]; then
 	fi
 fi
 
-# 5. A user-level prefix is often outside PATH. Say so instead of leaving the
+# 6. A user-level prefix is often outside PATH. Say so instead of leaving the
 # caller with "agent-peer: command not found" in the next terminal.
 if [ "$system" -eq 0 ]; then
 	case ":${PATH:-}:" in
@@ -351,7 +504,7 @@ if [ "$system" -eq 0 ]; then
 	esac
 fi
 
-# 6. Summarize. The status call contacts the Broker and is allowed to fail; a
+# 7. Summarize. The status call contacts the Broker and is allowed to fail; a
 # Broker that is still starting or a host without one must not fail the
 # installation after the binary and service are in place.
 printf '\nagent-peer installed\n'
@@ -365,5 +518,9 @@ if [ "$install_service" -eq 1 ]; then
 	else
 		printf '  status:  not available yet\n'
 	fi
+fi
+if [ -n "$_admin_group_user" ]; then
+	printf "\n%s was added to %s; log in again or run \`newgrp %s\` before managing the Broker without sudo.\n" \
+		"$_admin_group_user" "$admin_group" "$admin_group"
 fi
 printf '\nReopen any Claude Code session that is already open to load the peer MCP server.\n'

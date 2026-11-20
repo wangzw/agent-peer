@@ -1,13 +1,18 @@
 package installscript
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // installScriptPath is the script under test, relative to this package.
@@ -37,6 +42,7 @@ type fixture struct {
 	xattrLog     string
 	installLog   string
 	orderLog     string
+	groupLog     string
 }
 
 // newFixture builds an archive root with install.sh and a fake agent-peer, and
@@ -57,6 +63,7 @@ func newFixture(t *testing.T) *fixture {
 		xattrLog:     filepath.Join(base, "xattr.log"),
 		installLog:   filepath.Join(base, "install.log"),
 		orderLog:     filepath.Join(base, "order.log"),
+		groupLog:     filepath.Join(base, "group.log"),
 	}
 	for _, dir := range []string{f.home, f.fakes, f.archive} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -88,13 +95,14 @@ func newFixture(t *testing.T) *fixture {
 	writeExecutable(t, filepath.Join(f.fakes, "xattr"), fakeXattr)
 	writeExecutable(t, filepath.Join(f.fakes, "install"), strings.ReplaceAll(fakeInstall, "@REAL_INSTALL@", shellQuote(realInstall)))
 	writeExecutable(t, filepath.Join(f.fakes, "sudo"), fakeSudo)
+	writeExecutable(t, filepath.Join(f.fakes, "usermod"), fakeUsermod)
+	writeExecutable(t, filepath.Join(f.fakes, "dseditgroup"), fakeDseditgroup)
 	return f
 }
 
-// run executes the copied install.sh with the fixture environment. overrides
-// replace or add an environment variable; a nil map keeps the defaults.
-func (f *fixture) run(overrides map[string]string, args ...string) (stdout, stderr string, code int) {
-	f.t.Helper()
+// environ returns the environment the script runs with. overrides replace or
+// add an environment variable; a nil map keeps the defaults.
+func (f *fixture) environ(overrides map[string]string) []string {
 	env := map[string]string{
 		"HOME":                    f.home,
 		"PATH":                    f.fakes + string(os.PathListSeparator) + systemPath,
@@ -114,6 +122,8 @@ func (f *fixture) run(overrides map[string]string, args ...string) (stdout, stde
 		"FAKE_XATTR_LOG":          f.xattrLog,
 		"FAKE_XATTR_EXIT":         "0",
 		"FAKE_ORDER_LOG":          f.orderLog,
+		"FAKE_GROUP_LOG":          f.groupLog,
+		"FAKE_GROUP_EXIT":         "0",
 	}
 	for key, value := range overrides {
 		env[key] = value
@@ -128,10 +138,15 @@ func (f *fixture) run(overrides map[string]string, args ...string) (stdout, stde
 	for _, key := range keys {
 		environ = append(environ, key+"="+env[key])
 	}
+	return environ
+}
 
+// run executes the copied install.sh with the fixture environment.
+func (f *fixture) run(overrides map[string]string, args ...string) (stdout, stderr string, code int) {
+	f.t.Helper()
 	cmd := exec.Command("sh", append([]string{f.script}, args...)...)
 	cmd.Dir = f.archive
-	cmd.Env = environ
+	cmd.Env = f.environ(overrides)
 	var out, errOut strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut
@@ -144,6 +159,121 @@ func (f *fixture) run(overrides map[string]string, args ...string) (stdout, stde
 		code = exitErr.ExitCode()
 	}
 	return out.String(), errOut.String(), code
+}
+
+// runDetached runs install.sh in a new session without a controlling terminal,
+// so /dev/tty cannot be opened. stdin holds stdin for the script; a prompt that
+// reads stdin instead of /dev/tty would see it.
+func (f *fixture) runDetached(stdin string, overrides map[string]string, args ...string) (stdout, stderr string, code int) {
+	f.t.Helper()
+	cmd := exec.Command("sh", append([]string{f.script}, args...)...)
+	cmd.Dir = f.archive
+	cmd.Env = f.environ(overrides)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.Stdin = strings.NewReader(stdin)
+	var out, errOut strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+	err := cmd.Run()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			f.t.Fatalf("running install.sh: %v", err)
+		}
+		code = exitErr.ExitCode()
+	}
+	return out.String(), errOut.String(), code
+}
+
+// ttyTimeout bounds one pseudo-terminal run. The install waits for the service
+// to answer, and a loaded CI runner can take several seconds.
+const ttyTimeout = time.Minute
+
+// runWithTTY runs install.sh under a pseudo-terminal, so /dev/tty exists.
+// answer is typed on that terminal while the script's stdin is /dev/null, which
+// means the script can only learn the answer by reading /dev/tty. stdout and
+// stderr go to files so they stay separate from the terminal conversation,
+// which runWithTTY returns as tty.
+func (f *fixture) runWithTTY(t *testing.T, answer string, overrides map[string]string, args ...string) (stdout, stderr, tty string, code int) {
+	t.Helper()
+	scriptPath, err := exec.LookPath("script")
+	if err != nil {
+		t.Fatalf("script(1) is required to run the prompt tests: %v", err)
+	}
+
+	outPath := filepath.Join(f.base, "tty-stdout")
+	errPath := filepath.Join(f.base, "tty-stderr")
+	statusPath := filepath.Join(f.base, "tty-status")
+	inner := "sh " + shellQuote(f.script)
+	for _, arg := range args {
+		inner += " " + shellQuote(arg)
+	}
+	inner += " </dev/null >" + shellQuote(outPath) + " 2>" + shellQuote(errPath)
+	inner += "; printf '%s' \"$?\" >" + shellQuote(statusPath)
+
+	ctx, cancel := context.WithTimeout(t.Context(), ttyTimeout)
+	defer cancel()
+	var cmd *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		cmd = exec.CommandContext(ctx, scriptPath, "-q", "/dev/null", "sh", "-c", inner)
+	} else {
+		cmd = exec.CommandContext(ctx, scriptPath, "-q", "-c", inner, "/dev/null")
+	}
+	cmd.Dir = f.archive
+	cmd.Env = f.environ(overrides)
+	cmd.Stdin = strings.NewReader(answer)
+	var terminal strings.Builder
+	cmd.Stdout = &terminal
+	cmd.Stderr = &terminal
+	// The exit status travels through statusPath because script(1) does not
+	// report the command's status the same way on every platform.
+	_ = cmd.Run()
+
+	data, err := os.ReadFile(statusPath)
+	if err != nil {
+		t.Fatalf("install.sh recorded no exit status under the terminal: %v\nterminal output:\n%s", err, terminal.String())
+	}
+	code, err = strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatalf("parsing the recorded exit status %q: %v", data, err)
+	}
+	return readFile(t, outPath), readFile(t, errPath), terminal.String(), code
+}
+
+// systemPrefix creates the install directory a system-level test installs into.
+func (f *fixture) systemPrefix(t *testing.T) string {
+	t.Helper()
+	prefix := filepath.Join(f.base, "sysbin")
+	if err := os.MkdirAll(prefix, 0o755); err != nil {
+		t.Fatalf("creating %s: %v", prefix, err)
+	}
+	return prefix
+}
+
+// systemInstallEnv returns overrides for a system-level install that passes the
+// directory checks with the fake stat. sudoUser is set only when non-empty, and
+// the fake group listing then contains just that account, so the account is not
+// yet in the admin group.
+func (f *fixture) systemInstallEnv(sudoUser string) map[string]string {
+	env := map[string]string{
+		"FAKE_ID_UID":       "0",
+		"FAKE_STAT_OWNER":   "0",
+		"FAKE_STAT_MODE":    "755",
+		"FAKE_INSTALL_COPY": "1",
+		"FAKE_GROUP_LOG":    f.groupLog,
+	}
+	if sudoUser != "" {
+		env["SUDO_USER"] = sudoUser
+		env["FAKE_ID_GROUPS"] = sudoUser
+	}
+	return env
+}
+
+// systemInstallArgs returns the arguments for a system-level install that
+// installs the service and skips MCP registration.
+func systemInstallArgs(prefix string, extra ...string) []string {
+	args := []string{"--system", "--no-mcp", "--prefix", prefix}
+	return append(args, extra...)
 }
 
 // pathUnderHome returns an absolute path under the home directory as the
@@ -193,9 +323,39 @@ func TestInstallScriptHelpAndUsageErrors(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("--help exit = %d, want 0", code)
 		}
-		for _, want := range []string{"--system", "--prefix <dir>", "--no-service", "--no-mcp"} {
+		for _, want := range []string{
+			"--system", "--prefix <dir>", "--no-service", "--no-mcp",
+			"--admin-group <name>", "--join-admin-group", "--no-admin-group",
+		} {
 			mustContain(t, "help output", stdout, want)
 		}
+	})
+
+	t.Run("admin group without value", func(t *testing.T) {
+		f := newFixture(t)
+		_, stderr, code := f.run(nil, "--admin-group")
+		if code != 2 {
+			t.Fatalf("--admin-group without a value exit = %d, want 2", code)
+		}
+		mustContain(t, "stderr", stderr, "--admin-group needs a group name")
+	})
+
+	t.Run("empty admin group", func(t *testing.T) {
+		f := newFixture(t)
+		_, stderr, code := f.run(nil, "--admin-group=")
+		if code != 2 {
+			t.Fatalf("--admin-group= exit = %d, want 2", code)
+		}
+		mustContain(t, "stderr", stderr, "--admin-group needs a non-empty group name")
+	})
+
+	t.Run("admin group option without system", func(t *testing.T) {
+		f := newFixture(t)
+		_, stderr, code := f.run(nil, "--join-admin-group")
+		if code != 2 {
+			t.Fatalf("--join-admin-group without --system exit = %d, want 2", code)
+		}
+		mustContain(t, "stderr", stderr, "only valid with --system")
 	})
 
 	t.Run("unknown argument", func(t *testing.T) {
@@ -678,6 +838,324 @@ func TestInstallScriptSystemRegistersForSudoUser(t *testing.T) {
 	}
 }
 
+// adminGroupPrompt is the question the script asks on the controlling terminal.
+func adminGroupPrompt(user, group string) string {
+	return "Add " + user + " to the " + group + " group so " + user + " can manage the Broker without sudo? [y/N]"
+}
+
+// adminGroupHint is the closing notice after the account joined the group.
+func adminGroupHint(user, group string) string {
+	return user + " was added to " + group + "; log in again or run `newgrp " + group + "` before managing the Broker without sudo."
+}
+
+// adminGroupJoinCommand is the command the script prints when the account is
+// left out of the group on Linux.
+func adminGroupJoinCommand(user, group string) string {
+	return "install.sh: to add " + user + " to the " + group + " group, run: sudo usermod -aG " + group + " " + user
+}
+
+// darwinAdminGroupJoinCommand is the same command on macOS.
+func darwinAdminGroupJoinCommand(user, group string) string {
+	return "install.sh: to add " + user + " to the " + group + " group, run: sudo dseditgroup -o edit -a " + user + " -t user " + group
+}
+
+// hostAdminGroupJoinCommand is the join command the script prints on the host
+// platform. The fake uname reports the host OS unless a test forces Darwin.
+func hostAdminGroupJoinCommand(user, group string) string {
+	if runtime.GOOS == "darwin" {
+		return darwinAdminGroupJoinCommand(user, group)
+	}
+	return adminGroupJoinCommand(user, group)
+}
+
+// hostAdminGroupJoinCall is the group command the script runs on the host
+// platform.
+func hostAdminGroupJoinCall(user, group string) string {
+	if runtime.GOOS == "darwin" {
+		return "dseditgroup -o edit -a " + user + " -t user " + group
+	}
+	return "usermod -aG " + group + " " + user
+}
+
+func TestInstallScriptSystemPromptJoinsAdminGroup(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("the macOS script(1) does not forward a piped answer to /dev/tty; " +
+			"the join flag and no-terminal tests cover the Darwin branch")
+	}
+	for _, tc := range []struct {
+		name   string
+		answer string
+	}{
+		{"y", "y\n"},
+		{"Y", "Y\n"},
+		{"yes", "yes\n"},
+		{"mixed-case yes", "YeS\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			prefix := f.systemPrefix(t)
+			env := f.systemInstallEnv("alice")
+			stdout, stderr, tty, code := f.runWithTTY(t, tc.answer, env, systemInstallArgs(prefix)...)
+			if code != 0 {
+				t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s\nterminal:\n%s", code, stdout, stderr, tty)
+			}
+			if calls := readLines(t, f.groupLog); len(calls) != 1 || calls[0] != "usermod -aG agent-peer alice" {
+				t.Fatalf("group command calls = %q, want one usermod call", calls)
+			}
+			mustContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
+			mustContain(t, "terminal", tty, adminGroupPrompt("alice", "agent-peer"))
+			mustNotContain(t, "stdout", stdout, adminGroupJoinCommand("alice", "agent-peer"))
+		})
+	}
+}
+
+func TestInstallScriptSystemPromptDeclinesAdminGroup(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("the macOS script(1) does not forward a piped answer to /dev/tty; " +
+			"the no-terminal and Darwin decline tests cover the refusal")
+	}
+	for _, tc := range []struct {
+		name   string
+		answer string
+	}{
+		{"enter", "\n"},
+		{"n", "n\n"},
+		{"other answer", "maybe\n"},
+		{"a word starting with y", "yeah\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			prefix := f.systemPrefix(t)
+			env := f.systemInstallEnv("alice")
+			stdout, stderr, tty, code := f.runWithTTY(t, tc.answer, env, systemInstallArgs(prefix)...)
+			if code != 0 {
+				t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s\nterminal:\n%s", code, stdout, stderr, tty)
+			}
+			if calls := readLines(t, f.groupLog); len(calls) != 0 {
+				t.Fatalf("group command calls = %q, want none", calls)
+			}
+			mustContain(t, "stdout", stdout, adminGroupJoinCommand("alice", "agent-peer"))
+			mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
+			mustContain(t, "terminal", tty, adminGroupPrompt("alice", "agent-peer"))
+		})
+	}
+}
+
+func TestInstallScriptSystemPromptWithoutTerminal(t *testing.T) {
+	f := newFixture(t)
+	prefix := f.systemPrefix(t)
+	env := f.systemInstallEnv("alice")
+	// stdin says yes, but without a terminal the answer must not come from
+	// stdin, so the account stays out of the group.
+	stdout, stderr, code := f.runDetached("y\n", env, systemInstallArgs(prefix)...)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if calls := readLines(t, f.groupLog); len(calls) != 0 {
+		t.Fatalf("group command calls = %q, want none", calls)
+	}
+	mustContain(t, "stdout", stdout, hostAdminGroupJoinCommand("alice", "agent-peer"))
+	mustNotContain(t, "stdout", stdout, adminGroupPrompt("alice", "agent-peer"))
+	mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
+	mustNotContain(t, "stderr", stderr, "/dev/tty")
+}
+
+func TestInstallScriptSystemJoinAdminGroupWithoutPrompt(t *testing.T) {
+	f := newFixture(t)
+	prefix := f.systemPrefix(t)
+	env := f.systemInstallEnv("alice")
+	// stdin says no and there is no terminal: --join-admin-group must join
+	// without reading either.
+	stdout, stderr, code := f.runDetached("n\n", env, systemInstallArgs(prefix, "--join-admin-group")...)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if calls := readLines(t, f.groupLog); len(calls) != 1 || calls[0] != hostAdminGroupJoinCall("alice", "agent-peer") {
+		t.Fatalf("group command calls = %q, want %q", calls, hostAdminGroupJoinCall("alice", "agent-peer"))
+	}
+	mustContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
+	mustNotContain(t, "stdout", stdout, hostAdminGroupJoinCommand("alice", "agent-peer"))
+}
+
+func TestInstallScriptSystemNoAdminGroup(t *testing.T) {
+	f := newFixture(t)
+	prefix := f.systemPrefix(t)
+	env := f.systemInstallEnv("alice")
+	// A terminal answers yes, but --no-admin-group must suppress the prompt and
+	// the membership change.
+	stdout, stderr, tty, code := f.runWithTTY(t, "y\n", env, systemInstallArgs(prefix, "--no-admin-group")...)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s\nterminal:\n%s", code, stdout, stderr, tty)
+	}
+	if calls := readLines(t, f.groupLog); len(calls) != 0 {
+		t.Fatalf("group command calls = %q, want none", calls)
+	}
+	mustNotContain(t, "terminal", tty, adminGroupPrompt("alice", "agent-peer"))
+	mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
+	mustNotContain(t, "stdout", stdout, hostAdminGroupJoinCommand("alice", "agent-peer"))
+}
+
+func TestInstallScriptSystemAdminGroupFlagsConflict(t *testing.T) {
+	f := newFixture(t)
+	prefix := f.systemPrefix(t)
+	env := f.systemInstallEnv("alice")
+	_, stderr, code := f.run(env, systemInstallArgs(prefix, "--join-admin-group", "--no-admin-group")...)
+	if code != 2 {
+		t.Fatalf("exit = %d, want 2\nstderr:\n%s", code, stderr)
+	}
+	mustContain(t, "stderr", stderr, "--join-admin-group and --no-admin-group cannot be used together")
+	mustContain(t, "stderr", stderr, "usage:")
+	if got := readLines(t, f.installLog); len(got) != 0 {
+		t.Errorf("the conflict was rejected after installing the binary: %q", got)
+	}
+	if got := readLines(t, f.agentLog); len(got) != 0 {
+		t.Errorf("the conflict was rejected after running the binary: %q", got)
+	}
+}
+
+func TestInstallScriptSystemRejectsInvalidAdminGroupName(t *testing.T) {
+	for _, name := range []string{"-bad", "Agent", "1ops", "a b", "a.b"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			prefix := f.systemPrefix(t)
+			env := f.systemInstallEnv("alice")
+			_, stderr, code := f.run(env, systemInstallArgs(prefix, "--admin-group="+name)...)
+			if code != 2 {
+				t.Fatalf("invalid --admin-group %q: exit %d, want 2\nstderr:\n%s", name, code, stderr)
+			}
+			mustContain(t, "stderr", stderr, "invalid --admin-group name")
+			if got := readLines(t, f.installLog); len(got) != 0 {
+				t.Errorf("the invalid name was installed after validation: %q", got)
+			}
+		})
+	}
+}
+
+func TestInstallScriptSystemAcceptsValidAdminGroupName(t *testing.T) {
+	for _, name := range []string{"a", "_ops"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			prefix := f.systemPrefix(t)
+			env := f.systemInstallEnv("alice")
+			stdout, stderr, code := f.runDetached("", env,
+				systemInstallArgs(prefix, "--admin-group="+name, "--join-admin-group")...)
+			if code != 0 {
+				t.Fatalf("valid --admin-group %q: exit %d\nstdout:\n%s\nstderr:\n%s", name, code, stdout, stderr)
+			}
+			wantCall := "service install --system --admin-group " + name
+			if got := countLines(readLines(t, f.agentLog), wantCall); got != 1 {
+				t.Errorf("service install calls with %q = %d, want 1; calls: %q", wantCall, got, readLines(t, f.agentLog))
+			}
+		})
+	}
+}
+
+func TestInstallScriptSystemSkipsAdminGroupWhenAlreadyMember(t *testing.T) {
+	f := newFixture(t)
+	prefix := f.systemPrefix(t)
+	env := f.systemInstallEnv("alice")
+	env["FAKE_ID_GROUPS"] = "alice staff agent-peer"
+	stdout, stderr, tty, code := f.runWithTTY(t, "y\n", env, systemInstallArgs(prefix)...)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s\nterminal:\n%s", code, stdout, stderr, tty)
+	}
+	if calls := readLines(t, f.groupLog); len(calls) != 0 {
+		t.Fatalf("group command calls = %q, want none for an existing member", calls)
+	}
+	mustNotContain(t, "terminal", tty, adminGroupPrompt("alice", "agent-peer"))
+	mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
+}
+
+func TestInstallScriptSystemSkipsAdminGroupWithoutSudoUser(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		user string
+	}{
+		{"no sudo user", ""},
+		{"sudo user is root", "root"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			prefix := f.systemPrefix(t)
+			env := f.systemInstallEnv(tc.user)
+			stdout, stderr, code := f.runDetached("y\n", env, systemInstallArgs(prefix)...)
+			if code != 0 {
+				t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+			}
+			if calls := readLines(t, f.groupLog); len(calls) != 0 {
+				t.Fatalf("group command calls = %q, want none", calls)
+			}
+			mustNotContain(t, "stdout", stdout, "was added to")
+			mustNotContain(t, "stdout", stdout, "to add ")
+		})
+	}
+}
+
+func TestInstallScriptSystemAdminGroupOnDarwin(t *testing.T) {
+	t.Run("join", func(t *testing.T) {
+		f := newFixture(t)
+		prefix := f.systemPrefix(t)
+		env := f.systemInstallEnv("alice")
+		env["FAKE_UNAME"] = "Darwin"
+		// --join-admin-group picks the platform command without a terminal, so
+		// this checks the Darwin dseditgroup call without the pty harness.
+		stdout, stderr, code := f.runDetached("", env, systemInstallArgs(prefix, "--join-admin-group")...)
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+		}
+		if calls := readLines(t, f.groupLog); len(calls) != 1 || calls[0] != "dseditgroup -o edit -a alice -t user agent-peer" {
+			t.Fatalf("group command calls = %q, want one dseditgroup call", calls)
+		}
+		mustContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
+	})
+
+	t.Run("decline", func(t *testing.T) {
+		f := newFixture(t)
+		prefix := f.systemPrefix(t)
+		env := f.systemInstallEnv("alice")
+		env["FAKE_UNAME"] = "Darwin"
+		stdout, stderr, _, code := f.runWithTTY(t, "n\n", env, systemInstallArgs(prefix)...)
+		if code != 0 {
+			t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+		}
+		if calls := readLines(t, f.groupLog); len(calls) != 0 {
+			t.Fatalf("group command calls = %q, want none", calls)
+		}
+		mustContain(t, "stdout", stdout, darwinAdminGroupJoinCommand("alice", "agent-peer"))
+		mustNotContain(t, "stdout", stdout, "sudo usermod")
+	})
+}
+
+func TestInstallScriptSystemCustomAdminGroup(t *testing.T) {
+	f := newFixture(t)
+	prefix := f.systemPrefix(t)
+	env := f.systemInstallEnv("alice")
+	stdout, stderr, code := f.runDetached("n\n", env,
+		systemInstallArgs(prefix, "--admin-group", "operators", "--join-admin-group")...)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	if calls := readLines(t, f.groupLog); len(calls) != 1 || calls[0] != hostAdminGroupJoinCall("alice", "operators") {
+		t.Fatalf("group command calls = %q, want %q", calls, hostAdminGroupJoinCall("alice", "operators"))
+	}
+	if got := countLines(readLines(t, f.agentLog), "service install --system --admin-group operators"); got != 1 {
+		t.Errorf("service install calls with --admin-group = %d, want 1; calls: %q", got, readLines(t, f.agentLog))
+	}
+	mustContain(t, "stdout", stdout, adminGroupHint("alice", "operators"))
+}
+
+func TestInstallScriptSystemAdminGroupFailure(t *testing.T) {
+	f := newFixture(t)
+	prefix := f.systemPrefix(t)
+	env := f.systemInstallEnv("alice")
+	env["FAKE_GROUP_EXIT"] = "1"
+	_, stderr, code := f.runDetached("", env, systemInstallArgs(prefix, "--join-admin-group")...)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1\nstderr:\n%s", code, stderr)
+	}
+	mustContain(t, "stderr", stderr, "adding alice to the agent-peer group")
+}
+
 func TestInstallScriptRemovesQuarantineOnDarwin(t *testing.T) {
 	f := newFixture(t)
 	_, stderr, code := f.run(map[string]string{"FAKE_UNAME": "Darwin"})
@@ -821,6 +1299,13 @@ case $1 in
 		exec @REAL_ID@ -un
 	fi
 	;;
+-Gn|-nG)
+	if [ -n "${FAKE_ID_GROUPS+x}" ]; then
+		printf '%s\n' "$FAKE_ID_GROUPS"
+	else
+		exec @REAL_ID@ "$@"
+	fi
+	;;
 *)
 	exec @REAL_ID@ "$@"
 	;;
@@ -857,6 +1342,16 @@ if [ "$2" = "-lc" ]; then
 	exec sh -c "$@"
 fi
 exec "$@"
+`
+
+const fakeUsermod = `#!/bin/sh
+printf 'usermod %s\n' "$*" >> "$FAKE_GROUP_LOG"
+exit "${FAKE_GROUP_EXIT:-0}"
+`
+
+const fakeDseditgroup = `#!/bin/sh
+printf 'dseditgroup %s\n' "$*" >> "$FAKE_GROUP_LOG"
+exit "${FAKE_GROUP_EXIT:-0}"
 `
 
 const fakeInstall = `#!/bin/sh
@@ -934,6 +1429,16 @@ func readLines(t *testing.T, path string) []string {
 	return lines
 }
 
+// readFile returns the contents of a file the test expects the script to write.
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	return string(data)
+}
+
 // countLines counts the lines that start with prefix.
 func countLines(lines []string, prefix string) int {
 	count := 0
@@ -949,5 +1454,12 @@ func mustContain(t *testing.T, what, got, want string) {
 	t.Helper()
 	if !strings.Contains(got, want) {
 		t.Errorf("%s = %q, want it to contain %q", what, got, want)
+	}
+}
+
+func mustNotContain(t *testing.T, what, got, want string) {
+	t.Helper()
+	if strings.Contains(got, want) {
+		t.Errorf("%s = %q, want it not to contain %q", what, got, want)
 	}
 }
