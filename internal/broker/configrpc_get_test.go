@@ -17,10 +17,11 @@ import (
 func TestGetConfigAll(t *testing.T) {
 	tb := newTestBroker(t)
 	// The fake seeds log.level as well; drop it so the response holds exactly
-	// the four keys this test asserts on.
+	// the five keys this test asserts on.
 	delete(tb.cfg.values, "log.level")
 	tb.cfg.values["broker.alias"] = config.Value{Kind: config.KindString, String: "build-box"}
 	tb.cfg.values["broker.listen"] = config.Value{Kind: config.KindString, String: "127.0.0.1:7000"}
+	tb.cfg.values["broker.offline"] = config.Value{Kind: config.KindBool, Bool: false}
 	tb.cfg.values["broker.public"] = config.Value{Kind: config.KindBool, Bool: true}
 	tb.cfg.values["topics.auto_join"] = config.Value{Kind: config.KindBool, Bool: true}
 
@@ -32,6 +33,7 @@ func TestGetConfigAll(t *testing.T) {
 	want := []*localpb.ConfigEntry{
 		{Key: "broker.alias", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_StringValue{StringValue: "build-box"}}},
 		{Key: "broker.listen", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_StringValue{StringValue: "127.0.0.1:7000"}}},
+		{Key: "broker.offline", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: false}}},
 		{Key: "broker.public", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: true}}},
 		{Key: "topics.auto_join", Value: &localpb.ConfigValue{Value: &localpb.ConfigValue_BoolValue{BoolValue: true}}},
 	}

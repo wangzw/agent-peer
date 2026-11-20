@@ -22,6 +22,32 @@ func listBrokersPeers(brokers []*localpb.BrokerInfo) []*localpb.BrokerInfo {
 	return out
 }
 
+// TestListBrokersReportsLocalOffline checks that ListBrokers always sets local
+// and carries the current broker.offline value (REQ-broker-config-068).
+func TestListBrokersReportsLocalOffline(t *testing.T) {
+	tb := newTestBroker(t)
+
+	resp, err := tb.client.ListBrokers(context.Background(), &localpb.ListBrokersRequest{})
+	if err != nil {
+		t.Fatalf("ListBrokers: %v", err)
+	}
+	if resp.GetLocal() == nil {
+		t.Fatal("ListBrokers leaves local unset")
+	}
+	if resp.GetLocal().GetOffline() {
+		t.Fatal("ListBrokers reports offline while broker.offline is false")
+	}
+
+	tb.cfg.setValue("broker.offline", config.Value{Kind: config.KindBool, Bool: true})
+	resp, err = tb.client.ListBrokers(context.Background(), &localpb.ListBrokersRequest{})
+	if err != nil {
+		t.Fatalf("ListBrokers after going offline: %v", err)
+	}
+	if !resp.GetLocal().GetOffline() {
+		t.Fatal("ListBrokers does not report offline while broker.offline is true")
+	}
+}
+
 func TestListBrokersNeedsNoAgent(t *testing.T) {
 	// REQ-broker-config-023: listing brokers does not depend on an agent
 	// identity or on any configuration permission.

@@ -73,5 +73,20 @@ func (b *Broker) Status(ctx context.Context, req *localpb.StatusRequest) (*local
 		AvailableVersion: available,
 		CurrentVersion:   current,
 		Degraded:         b.degradedState(),
+		Offline:          b.offline(),
 	}, nil
+}
+
+// offline reports the current broker.offline value. A failed read, which can
+// happen once the configuration is closed during shutdown, reads as online:
+// the switch only informs the caller and never blocks a status answer. The
+// failure is logged through configSettings.readFailed, the same record
+// configSettings.Offline writes.
+func (b *Broker) offline() bool {
+	v, err := b.deps.Config.Get("broker.offline")
+	if err != nil {
+		configSettings{log: b.log}.readFailed("broker.offline", err)
+		return false
+	}
+	return v.Bool
 }

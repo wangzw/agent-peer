@@ -169,6 +169,7 @@ func newFakeConfig(runtimeDir string) *fakeConfig {
 		configFile:  "/fake/config.yaml",
 	}
 	f.values["broker.alias"] = config.Value{Kind: config.KindString, String: "hostA"}
+	f.values["broker.offline"] = config.Value{Kind: config.KindBool, Bool: false}
 	f.values["broker.listen"] = config.Value{Kind: config.KindString}
 	f.values["topics.auto_join"] = config.Value{Kind: config.KindBool, Bool: true}
 	f.values["log.level"] = config.Value{Kind: config.KindString, String: "info"}

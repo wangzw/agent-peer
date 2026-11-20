@@ -44,7 +44,10 @@ func (b *Broker) ListBrokers(_ context.Context, _ *localpb.ListBrokersRequest) (
 	sortBrokerInfos(out)
 	return &localpb.ListBrokersResponse{
 		Brokers: out,
-		Local:   &localpb.LocalBrokerState{Degraded: b.degradedState()},
+		Local: &localpb.LocalBrokerState{
+			Degraded: b.degradedState(),
+			Offline:  b.offline(),
+		},
 	}, nil
 }
 

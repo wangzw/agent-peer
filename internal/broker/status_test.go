@@ -1,15 +1,20 @@
 package broker
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"os"
 	"os/user"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/agent-peer/internal/config"
 	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
 )
 
@@ -137,6 +142,47 @@ func TestStatusDoesNotReread(t *testing.T) {
 	}
 	if got := calls.Load(); got != 0 {
 		t.Fatalf("Status reread %d session records, want 0", got)
+	}
+}
+
+// TestStatusReportsOffline checks that Status carries the current
+// broker.offline value (REQ-broker-config-068).
+func TestStatusReportsOffline(t *testing.T) {
+	tb := newTestBroker(t)
+
+	resp, err := tb.client.Status(context.Background(), &localpb.StatusRequest{})
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if resp.GetOffline() {
+		t.Fatal("Status reports offline while broker.offline is false")
+	}
+
+	tb.cfg.setValue("broker.offline", config.Value{Kind: config.KindBool, Bool: true})
+	resp, err = tb.client.Status(context.Background(), &localpb.StatusRequest{})
+	if err != nil {
+		t.Fatalf("Status after going offline: %v", err)
+	}
+	if !resp.GetOffline() {
+		t.Fatal("Status does not report offline while broker.offline is true")
+	}
+}
+
+// TestBrokerOfflineLogsFailedRead checks that a failed broker.offline read is
+// logged like configSettings.Offline and still answers online
+// (REQ-broker-config-068).
+func TestBrokerOfflineLogsFailedRead(t *testing.T) {
+	c := newWireConfig(t)
+	c.fail("broker.offline", errors.New("read failed"))
+	var buf bytes.Buffer
+	b := &Broker{deps: Deps{Config: c}, log: NewLogger(&buf, new(slog.LevelVar))}
+
+	if b.offline() {
+		t.Fatal("offline() reports true after a failed read")
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, evConfigRead) || !strings.Contains(logged, "broker.offline") {
+		t.Fatalf("log %q does not record the failed read of broker.offline", logged)
 	}
 }
 
