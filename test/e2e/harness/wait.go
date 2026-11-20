@@ -26,9 +26,27 @@ const RegistrationReportBound = ToolCallWaitBound
 // explain what it observed while waiting.
 func Eventually(t testing.TB, bound time.Duration, what string, cond func() (ok bool, state string)) {
 	t.Helper()
-	deadline := time.Now().Add(bound)
+	eventuallyUntil(t, time.Now().Add(bound), bound, what, func(time.Time) (bool, string) {
+		return cond()
+	})
+}
+
+// EventuallyPoll is Eventually for a condition that makes poll-bounded tool
+// calls. bound is lifted to ToolCallWaitBound; cond receives the wait's
+// deadline to pass to Session.PollCall (or PollCallWithin).
+func EventuallyPoll(t testing.TB, bound time.Duration, what string, cond func(deadline time.Time) (ok bool, state string)) {
+	t.Helper()
+	bound = effectiveWaitBound(bound)
+	eventuallyUntil(t, time.Now().Add(bound), bound, what, cond)
+}
+
+// eventuallyUntil is the loop Eventually and EventuallyPoll share. cond
+// receives the deadline the wait will enforce, so a poll call made from it can
+// be clamped to the time the wait has left.
+func eventuallyUntil(t testing.TB, deadline time.Time, bound time.Duration, what string, cond func(deadline time.Time) (ok bool, state string)) {
+	t.Helper()
 	for {
-		ok, state := cond()
+		ok, state := cond(deadline)
 		if ok {
 			return
 		}
@@ -61,13 +79,11 @@ func effectiveWaitBound(bound time.Duration) time.Duration {
 // identity and can succeed while the Broker is still registering, so they
 // cannot serve as this wait.
 //
-// bound is lifted to ToolCallWaitBound so one poll call gets its full poll
-// bound instead of being clamped to a short caller's bound.
+// bound is lifted to ToolCallWaitBound by EventuallyPoll so one poll call gets
+// its full poll bound instead of being clamped to a short caller's bound.
 func WaitRegistered(t testing.TB, s *Session, bound time.Duration) {
 	t.Helper()
-	bound = effectiveWaitBound(bound)
-	deadline := time.Now().Add(bound)
-	Eventually(t, bound, "the session is registered", func() (bool, string) {
+	EventuallyPoll(t, bound, "the session is registered", func(deadline time.Time) (bool, string) {
 		r, err := s.PollCall(t, deadline, "list_agents", nil)
 		if err != nil {
 			return false, err.Error()
@@ -94,12 +110,11 @@ func WaitRegistered(t testing.TB, s *Session, bound time.Duration) {
 // not_registered until registration finishes, so it cannot serve an operator
 // session. Among the identity-free tools, list_brokers is the cheapest read.
 //
-// bound is lifted to ToolCallWaitBound for the same reason as WaitRegistered.
+// bound is lifted to ToolCallWaitBound by EventuallyPoll for the same reason as
+// WaitRegistered.
 func WaitConnected(t testing.TB, s *Session, bound time.Duration) {
 	t.Helper()
-	bound = effectiveWaitBound(bound)
-	deadline := time.Now().Add(bound)
-	Eventually(t, bound, "the session is connected to its Broker", func() (bool, string) {
+	EventuallyPoll(t, bound, "the session is connected to its Broker", func(deadline time.Time) (bool, string) {
 		r, err := s.PollCall(t, deadline, "list_brokers", nil)
 		if err != nil {
 			return false, err.Error()

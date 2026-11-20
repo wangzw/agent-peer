@@ -93,6 +93,35 @@ func TestEventuallyReportsLastState(t *testing.T) {
 	}
 }
 
+// TestEventuallyPollLiftsBoundAndPassesDeadline checks the two things a poll
+// callback depends on: the wait is not shorter than ToolCallWaitBound even when
+// the caller asks for less, and every call receives the deadline the wait
+// enforces so PollCall can clamp to it.
+func TestEventuallyPollLiftsBoundAndPassesDeadline(t *testing.T) {
+	tb := &recordTB{}
+	var deadlines []time.Time
+	EventuallyPoll(tb, time.Second, "example condition", func(deadline time.Time) (bool, string) {
+		deadlines = append(deadlines, deadline)
+		if len(deadlines) < 2 {
+			return false, "state-1"
+		}
+		return true, ""
+	})
+
+	if len(deadlines) != 2 {
+		t.Fatalf("condition ran %d times, want two", len(deadlines))
+	}
+	if !deadlines[0].Equal(deadlines[1]) {
+		t.Fatalf("condition received deadlines %s then %s, want one deadline", deadlines[0], deadlines[1])
+	}
+	if left := time.Until(deadlines[0]); left < ToolCallWaitBound-time.Second || left > ToolCallWaitBound {
+		t.Fatalf("the deadline leaves %s, want the lifted bound %s", left, ToolCallWaitBound)
+	}
+	if len(tb.fatals) != 0 {
+		t.Fatalf("EventuallyPoll failed: %v", tb.fatals)
+	}
+}
+
 func TestConsistentlyFailsOnFirstViolation(t *testing.T) {
 	tb := &recordTB{}
 	window := 2 * time.Second
