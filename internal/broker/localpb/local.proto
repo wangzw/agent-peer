@@ -75,6 +75,10 @@ enum NotRegisteredReason {
   NOT_REGISTERED_REASON_NAME_UNUSABLE = 2;
   NOT_REGISTERED_REASON_SOCKET_NOT_OWNED = 3;
   NOT_REGISTERED_REASON_SOCKET_PATH_MISSING = 4;
+  // NOT_REGISTERED_REASON_BROKER_DEGRADED answers a registration while the
+  // Broker runs degraded with diagnostics only. detail carries the cause, the
+  // same text as StatusResponse.degraded.reason. The stream stays open.
+  NOT_REGISTERED_REASON_BROKER_DEGRADED = 5;
 }
 
 message ListAgentsRequest {
@@ -151,6 +155,20 @@ message ListBrokersRequest {}
 
 message ListBrokersResponse {
   repeated BrokerInfo brokers = 1;
+  // local is this Broker's own state. It is always set by a Broker that knows
+  // the field; an older Broker leaves it unset, which reads as online and not
+  // degraded.
+  LocalBrokerState local = 2;
+}
+
+// LocalBrokerState is what list_brokers and peer list show about the Broker
+// that answers, as opposed to its peers.
+message LocalBrokerState {
+  // offline is the value of broker.offline.
+  bool offline = 1;
+  // degraded is unset unless the Broker runs degraded; it then holds the same
+  // value as StatusResponse.degraded, so peer list can print the Fix line.
+  DegradedState degraded = 2;
 }
 
 message BrokerInfo {
@@ -278,6 +296,35 @@ message StatusResponse {
   // when there is none. current_version is the version this Broker runs.
   string available_version = 3;
   string current_version = 4;
+  // offline is the value of broker.offline. False while diagnostics only,
+  // because the configuration is not in effect then.
+  bool offline = 5;
+  // degraded is unset while the Broker runs normally. With diagnostics only,
+  // agents and peers are empty and only current_version is filled besides it.
+  DegradedState degraded = 6;
+}
+
+// DegradedState describes why a Broker started with --allow-degraded is not
+// fully running.
+message DegradedState {
+  DegradedLevel level = 1;
+  // step names the startup step that failed, for display only; callers must
+  // not branch on it.
+  string step = 2;
+  // reason is the failure, without configuration values or secrets.
+  string reason = 3;
+  // fix is the command or edit that repairs it, one line.
+  string fix = 4;
+}
+
+enum DegradedLevel {
+  DEGRADED_LEVEL_UNSPECIFIED = 0;
+  // DEGRADED_LEVEL_LOCAL_ONLY: only binding broker.listen failed; every local
+  // call works except CreatePairingKey.
+  DEGRADED_LEVEL_LOCAL_ONLY = 1;
+  // DEGRADED_LEVEL_DIAGNOSTICS_ONLY: a step after the account lock and before
+  // the listener failed; only Hello and Status answer normally.
+  DEGRADED_LEVEL_DIAGNOSTICS_ONLY = 2;
 }
 
 message UpdateStatusRequest {}
@@ -377,6 +424,13 @@ enum ErrorCode {
   ERROR_CODE_NOT_UNDER_SERVICE_MANAGER = 16;
   // ERROR_CODE_UPDATE_IN_PROGRESS answers a second update while one runs.
   ERROR_CODE_UPDATE_IN_PROGRESS = 17;
+  // ERROR_CODE_BROKER_OFFLINE answers a peer's delivery while broker.offline
+  // is true. It travels back to the sender in DeliverResult.error.
+  ERROR_CODE_BROKER_OFFLINE = 18;
+  // ERROR_CODE_BROKER_DEGRADED answers a call the degraded Broker cannot
+  // serve: any call but Hello, Status and Register with diagnostics only, and
+  // CreatePairingKey when local only.
+  ERROR_CODE_BROKER_DEGRADED = 19;
 }
 
 message ErrorDetail {
