@@ -78,27 +78,28 @@ var launchdPIDPattern = regexp.MustCompile(`(?m)^\s*pid = (\d+)$`)
 // process; tests fill it by hand and set Root to a temporary directory.
 type Options struct {
 	System           bool
-	GOOS             string                                                      // runtime.GOOS
-	EUID             int                                                         // os.Geteuid()
-	UID              int                                                         // os.Getuid(), used in the start hint
-	Exe              string                                                      // absolute path of os.Executable()
-	Home             string                                                      // account home directory
-	XDGConfigHome    string                                                      // XDG_CONFIG_HOME
-	TempDir          string                                                      // os.TempDir()
-	Root             string                                                      // filesystem prefix for tests; empty in production
-	AdminGroup       string                                                      // group that administers a system-level Broker; empty uses DefaultAdminGroup
-	LookPath         func(file string) (string, error)                           // exec.LookPath
-	Run              func(name string, args ...string) ([]byte, error)           // run a command, returning combined output
-	GroupGID         func(name string) (gid int, exists bool, err error)         // group id lookup; nil queries the platform through Run
-	Owner            func(path string) (uid uint32, mode fs.FileMode, err error) // owner and permission bits, not following symlinks
-	Chown            func(path string, uid, gid int) error                       // ownership setter for the configuration file; nil uses os.Chown in production
-	Chmod            func(path string, mode fs.FileMode) error                   // permission setter for the configuration file; nil uses os.Chmod
-	EvalSymlinks     func(path string) (string, error)                           // filepath.EvalSymlinks
-	Probe            func(socketPath string) (pid int, answering bool)           // peer pid of the Broker answering on the local socket
-	ListenProbe      func(addr string) error                                     // whether broker.listen can be bound; nil uses config.ProbeListen
-	ReadyTimeout     time.Duration                                               // wait for the local socket after start; zero uses readyBound
-	StopTimeout      time.Duration                                               // one stop-and-replace budget; zero uses serviceStopBound
-	BootstrapTimeout time.Duration                                               // wait for a bootstrap that keeps failing with exit 5; zero uses bootstrapRetryBound
+	GOOS             string                                                                  // runtime.GOOS
+	EUID             int                                                                     // os.Geteuid()
+	UID              int                                                                     // os.Getuid(), used in the start hint
+	Exe              string                                                                  // absolute path of os.Executable()
+	Home             string                                                                  // account home directory
+	XDGConfigHome    string                                                                  // XDG_CONFIG_HOME
+	TempDir          string                                                                  // os.TempDir()
+	Root             string                                                                  // filesystem prefix for tests; empty in production
+	AdminGroup       string                                                                  // group that administers a system-level Broker; empty uses DefaultAdminGroup
+	LookPath         func(file string) (string, error)                                       // exec.LookPath
+	Run              func(name string, args ...string) ([]byte, error)                       // run a command, returning combined output
+	GroupGID         func(name string) (gid int, exists bool, err error)                     // group id lookup; nil queries the platform through Run
+	Owner            func(path string) (uid uint32, mode fs.FileMode, err error)             // owner and permission bits, not following symlinks
+	Chown            func(path string, uid, gid int) error                                   // ownership setter for the configuration file; nil uses os.Chown in production
+	Chmod            func(path string, mode fs.FileMode) error                               // permission setter for the configuration file; nil uses os.Chmod
+	EvalSymlinks     func(path string) (string, error)                                       // filepath.EvalSymlinks
+	Probe            func(socketPath string) (pid int, answering bool)                       // peer pid of the Broker answering on the local socket
+	ListenProbe      func(addr string) error                                                 // whether broker.listen can be bound; nil uses config.ProbeListen
+	StatusProbe      func(socketPath string) (state DegradedState, degraded bool, err error) // Status over the local socket; nil uses the default set by DefaultOptions
+	ReadyTimeout     time.Duration                                                           // wait for the local socket after start; zero uses readyBound
+	StopTimeout      time.Duration                                                           // one stop-and-replace budget; zero uses serviceStopBound
+	BootstrapTimeout time.Duration                                                           // wait for a bootstrap that keeps failing with exit 5; zero uses bootstrapRetryBound
 }
 
 // Result describes what Install or Uninstall did. On error it lists the steps
@@ -153,6 +154,7 @@ func DefaultOptions(system bool) (Options, error) {
 			return st.Uid, fi.Mode(), nil
 		},
 		EvalSymlinks: filepath.EvalSymlinks,
+		StatusProbe:  defaultStatusProbe,
 		Probe: func(socketPath string) (int, bool) {
 			conn, err := net.DialTimeout("unix", socketPath, probeTimeout)
 			if err != nil {
