@@ -13,6 +13,10 @@ import (
 	"github.com/wangzw/agent-peer/internal/pairing"
 )
 
+// linkWaitLiveness bounds how long a test waits for an event that must happen.
+// It only limits how long a broken implementation takes to fail.
+const linkWaitLiveness = 2 * time.Second
+
 // waitLink is a minimal deliveryLink for the waiter tests. Subscribe and
 // Established have real behaviour; the other three methods are no-ops.
 type waitLink struct {
@@ -65,7 +69,7 @@ var _ deliveryLink = (*waitLink)(nil)
 func TestLinkWaiterAlreadyUp(t *testing.T) {
 	l := newWaitLink()
 	p := peerID{1}
-	w := newLinkWaiter(l)
+	w := newLinkWaiter(l, nil)
 	l.fireUp(p)
 
 	start := time.Now()
@@ -82,7 +86,7 @@ func TestLinkWaiterAlreadyUp(t *testing.T) {
 func TestLinkWaiterWakesOnUp(t *testing.T) {
 	l := newWaitLink()
 	p := peerID{2}
-	w := newLinkWaiter(l)
+	w := newLinkWaiter(l, nil)
 
 	done := make(chan bool, 1)
 	go func() { done <- w.wait(context.Background(), p, time.Second) }()
@@ -107,7 +111,7 @@ func TestLinkWaiterWakesOnUp(t *testing.T) {
 func TestLinkWaiterUpBetweenObserveAndWait(t *testing.T) {
 	l := newWaitLink()
 	p := peerID{3}
-	w := newLinkWaiter(l)
+	w := newLinkWaiter(l, nil)
 
 	since := w.generation(p)
 	l.fireUp(p)
@@ -127,7 +131,7 @@ func TestLinkWaiterUpBetweenObserveAndWait(t *testing.T) {
 func TestLinkWaiterIgnoresUpBeforeSince(t *testing.T) {
 	l := newWaitLink()
 	p := peerID{7}
-	w := newLinkWaiter(l)
+	w := newLinkWaiter(l, nil)
 	l.fireUp(p)
 	since := w.generation(p)
 
@@ -140,7 +144,7 @@ func TestLinkWaiterIgnoresUpBeforeSince(t *testing.T) {
 // the dialer's backoff still bounds the send.
 func TestLinkWaiterTimeout(t *testing.T) {
 	l := newWaitLink()
-	w := newLinkWaiter(l)
+	w := newLinkWaiter(l, nil)
 
 	start := time.Now()
 	if w.wait(context.Background(), peerID{4}, 20*time.Millisecond) {
@@ -155,7 +159,7 @@ func TestLinkWaiterTimeout(t *testing.T) {
 // instead of blocking the caller.
 func TestLinkWaiterContextCancel(t *testing.T) {
 	l := newWaitLink()
-	w := newLinkWaiter(l)
+	w := newLinkWaiter(l, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -266,11 +270,15 @@ func TestSendWaitsForUpWhenEstablishedIsStale(t *testing.T) {
 		LinkRetries:    3,
 		DedupeWindow:   time.Minute,
 	}, "hostA")
+	// The retry spacing is the behaviour under test, so the test advances it
+	// itself. A wall-clock timer would race a sleep-based check under load.
+	clock := newFakeClock(time.Now())
 	d := newDelivery(deliveryDeps{
-		Topics:   topics,
-		Peers:    peers,
-		Link:     l,
-		Settings: settings,
+		Topics:      topics,
+		Peers:       peers,
+		Link:        l,
+		Settings:    settings,
+		WaiterClock: clock,
 	})
 
 	addr, ok := parseTarget("frontend@hostB")
@@ -285,26 +293,37 @@ func TestSendWaitsForUpWhenEstablishedIsStale(t *testing.T) {
 			Addr:      addr,
 			MessageID: "3f2a1c4e-5b6d-4e8f-9a0b-1c2d3e4f5a6b",
 			Text:      "hello",
-			Deadline:  time.Now().Add(2 * time.Second),
+			Deadline:  time.Now().Add(time.Hour),
 		})
 	}()
 
 	select {
 	case <-l.firstFailure:
-	case <-time.After(time.Second):
+	case <-time.After(linkWaitLiveness):
 		t.Fatal("the send never reached the transport")
 	}
 
-	// A sender that reads the stale Established value spins through all three
-	// kicks within microseconds. One that waits spends 20ms per kick, so it is
-	// still on its first or second kick here.
+	// The sender must be blocked waiting for an up event now. One that reads
+	// the stale Established value never registers a wait and gives up after
+	// burning every retry, so the helper reports the send's own error.
+	waitForWaitOrDone(t, d.waiter, peer, done)
+	if got := l.kickCount(); got != 1 {
+		t.Fatalf("kicks after the first failed request = %d, want 1", got)
+	}
+
+	// One backoff later the sender may try once more. It must kick once more
+	// and wait again rather than spend the remaining retries at once.
+	clock.Advance(20 * time.Millisecond)
+	waitForKicks(t, l, 2)
+	waitForWaitOrDone(t, d.waiter, peer, done)
+	if got := l.kickCount(); got != 2 {
+		t.Fatalf("kicks after one backoff = %d, want 2", got)
+	}
+
 	select {
 	case err := <-done:
 		t.Fatalf("sendToPeer gave up before the link came up: %v (kicks %d)", err, l.kickCount())
-	case <-time.After(40 * time.Millisecond):
-	}
-	if got := l.kickCount(); got >= 3 {
-		t.Fatalf("kicks before release = %d, want < 3: the sender burned its retries instead of waiting for an up event", got)
+	default:
 	}
 
 	l.release(peer)
@@ -314,7 +333,7 @@ func TestSendWaitsForUpWhenEstablishedIsStale(t *testing.T) {
 		if err != nil {
 			t.Fatalf("sendToPeer = %v, want nil after the link came up", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(linkWaitLiveness):
 		t.Fatal("sendToPeer did not finish after the link came up")
 	}
 }
@@ -324,7 +343,7 @@ func TestSendWaitsForUpWhenEstablishedIsStale(t *testing.T) {
 func TestLinkWaiterManyWaiters(t *testing.T) {
 	l := newWaitLink()
 	p := peerID{6}
-	w := newLinkWaiter(l)
+	w := newLinkWaiter(l, nil)
 
 	const n = 32
 	results := make(chan bool, n)
@@ -345,6 +364,43 @@ func TestLinkWaiterManyWaiters(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("a waiter did not return within 1s")
 		}
+	}
+}
+
+// waitForWaitOrDone waits until one waiter is blocked on p. It fails with the
+// send's own error when the send gives up first, which is what a sender that
+// trusts the stale Established value does instead of waiting for an up event.
+func waitForWaitOrDone(t *testing.T, w *linkWaiter, p peerID, done <-chan error) {
+	t.Helper()
+	deadline := time.Now().Add(linkWaitLiveness)
+	for {
+		w.mu.Lock()
+		got := len(w.ch[p])
+		w.mu.Unlock()
+		if got > 0 {
+			return
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("sendToPeer gave up before the link came up: %v", err)
+		default:
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatal("sendToPeer never waited for the link to come up")
+		}
+		runtime.Gosched()
+	}
+}
+
+// waitForKicks waits until the link has been kicked n times.
+func waitForKicks(t *testing.T, l *staleLink, n int) {
+	t.Helper()
+	deadline := time.Now().Add(linkWaitLiveness)
+	for l.kickCount() < n {
+		if !time.Now().Before(deadline) {
+			t.Fatalf("kicks = %d, want %d", l.kickCount(), n)
+		}
+		runtime.Gosched()
 	}
 }
 

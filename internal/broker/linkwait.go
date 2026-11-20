@@ -15,20 +15,26 @@ import (
 // that reading would burn its retries inside a window where the transport
 // already refuses frames.
 type linkWaiter struct {
-	mu   sync.Mutex
-	gen  map[peerID]uint64
-	ch   map[peerID]map[chan struct{}]struct{}
-	link deliveryLink
+	mu    sync.Mutex
+	gen   map[peerID]uint64
+	ch    map[peerID]map[chan struct{}]struct{}
+	link  deliveryLink
+	clock Clock
 }
 
 // newLinkWaiter subscribes to link up/down events. It must be created before
 // the link starts so that no up event is missed. A nil link yields a waiter
-// that never reports the link as established.
-func newLinkWaiter(l deliveryLink) *linkWaiter {
+// that never reports the link as established; a nil clock uses the system
+// clock.
+func newLinkWaiter(l deliveryLink, clock Clock) *linkWaiter {
+	if clock == nil {
+		clock = SystemClock()
+	}
 	w := &linkWaiter{
-		gen:  make(map[peerID]uint64),
-		ch:   make(map[peerID]map[chan struct{}]struct{}),
-		link: l,
+		gen:   make(map[peerID]uint64),
+		ch:    make(map[peerID]map[chan struct{}]struct{}),
+		link:  l,
+		clock: clock,
 	}
 	if l != nil {
 		l.Subscribe(w.onUp, func(peerID) {})
@@ -70,14 +76,18 @@ func (w *linkWaiter) wait(ctx context.Context, p peerID, max time.Duration, sinc
 		return false
 	}
 
-	// The registration and the generation check share one lock: an up event is
-	// either counted before the check (and satisfies the wait) or sees the
-	// channel and closes it.
+	// The registration, the generation check and the timer share one lock: an
+	// up event is either counted before the check (and satisfies the wait) or
+	// sees the channel and closes it, and a caller that observes the
+	// registration also knows the timer exists. The clock is injected so a test
+	// advances time itself instead of racing a wall-clock timer.
 	w.mu.Lock()
 	if len(since) > 0 && w.gen[p] > since[0] {
 		w.mu.Unlock()
 		return true
 	}
+	timerCh := make(chan struct{})
+	timer := w.clock.AfterFunc(max, func() { close(timerCh) })
 	ch := make(chan struct{})
 	if w.ch[p] == nil {
 		w.ch[p] = make(map[chan struct{}]struct{})
@@ -85,6 +95,7 @@ func (w *linkWaiter) wait(ctx context.Context, p peerID, max time.Duration, sinc
 	w.ch[p][ch] = struct{}{}
 	w.mu.Unlock()
 
+	defer timer.Stop()
 	defer func() {
 		w.mu.Lock()
 		if set := w.ch[p]; set != nil {
@@ -96,12 +107,10 @@ func (w *linkWaiter) wait(ctx context.Context, p peerID, max time.Duration, sinc
 		w.mu.Unlock()
 	}()
 
-	timer := time.NewTimer(max)
-	defer timer.Stop()
 	select {
 	case <-ch:
 		return true
-	case <-timer.C:
+	case <-timerCh:
 		return false
 	case <-ctx.Done():
 		return false

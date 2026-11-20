@@ -87,14 +87,15 @@ type settingsSource interface {
 // deliveryDeps is everything a delivery uses. The fields are interfaces so the
 // unit tests can substitute fakes.
 type deliveryDeps struct {
-	Agents   localAgents
-	Topics   visibility
-	Peers    peerTable
-	Link     deliveryLink
-	Settings settingsSource
-	Clock    func() time.Time // dedupe expiry only
-	NewID    func() string    // nil means newMessageID
-	Log      *slog.Logger
+	Agents      localAgents
+	Topics      visibility
+	Peers       peerTable
+	Link        deliveryLink
+	Settings    settingsSource
+	Clock       func() time.Time // dedupe expiry only
+	WaiterClock Clock            // link waiter timing; nil uses SystemClock
+	NewID       func() string    // nil means newMessageID
+	Log         *slog.Logger
 }
 
 // peerSend is one outgoing message to a remote peer.
@@ -135,7 +136,7 @@ func newDelivery(deps deliveryDeps) *delivery {
 	d.dedupe = newDedupeTable(clock, func() time.Duration {
 		return d.deps.Settings.Send().DedupeWindow
 	})
-	d.waiter = newLinkWaiter(deps.Link)
+	d.waiter = newLinkWaiter(deps.Link, deps.WaiterClock)
 	d.toPeer = d.sendToPeer
 	return d
 }

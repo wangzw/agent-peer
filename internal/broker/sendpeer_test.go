@@ -382,7 +382,7 @@ func TestSendPeerUpRaceWithGeneration(t *testing.T) {
 
 			lnk := &upDuringEstablishedLink{fakeEnd: f.net.end(f.self)}
 			f.delivery.deps.Link = lnk
-			f.delivery.waiter = newLinkWaiter(lnk)
+			f.delivery.waiter = newLinkWaiter(lnk, nil)
 
 			start := time.Now()
 			err := f.send(caller, "frontend@hostB", "hello")
@@ -577,7 +577,7 @@ func TestSendPeerUnreadableReplyIsDeliveryUnknown(t *testing.T) {
 
 	lnk := &unreadableReplyLink{fakeEnd: f.net.end(f.self)}
 	f.delivery.deps.Link = lnk
-	f.delivery.waiter = newLinkWaiter(lnk)
+	f.delivery.waiter = newLinkWaiter(lnk, nil)
 
 	err := f.send(caller, "frontend@hostB", "hello")
 	e := requireSendPeerError(t, err)
