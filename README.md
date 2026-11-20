@@ -262,7 +262,7 @@ agent-peer config set broker.alias buildbox
 agent-peer peer connect <address> --key <key>
 ```
 
-The group is trusted as if its members could edit the configuration file by hand; it does not make them root. Installing, uninstalling and updating the system-level binary still need root.
+The group is trusted as if its members could edit the configuration file by hand; it does not make them root. Installing and uninstalling the system-level service still need root; updating it does not, because the Broker installs the release itself.
 
 For an existing installation, give the file to the group with the command the install output prints:
 
