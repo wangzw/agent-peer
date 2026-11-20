@@ -11,6 +11,9 @@ jobs:
   lint:
     name: lint and generate
     runs-on: ubuntu-24.04
+    # Median of the last five runs is 106 s; three times that rounded up to
+    # the next five minutes.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -38,6 +41,9 @@ jobs:
   test:
     name: test (linux)
     runs-on: ubuntu-24.04
+    # Median of the last five runs is 180 s; three times that rounded up to
+    # the next five minutes.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -56,6 +62,9 @@ jobs:
   docs-check:
     name: documentation
     runs-on: ubuntu-24.04
+    # Median of the last five runs is 43 s; three times that rounded up to
+    # the next five minutes.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       # scripts/docs-check.sh runs the document standards checker from this
@@ -94,6 +103,9 @@ jobs:
   macos:
     name: test (macOS)
     runs-on: macos-latest
+    # Median of the last five runs is 207 s; three times that rounded up to
+    # the next five minutes.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -182,6 +194,9 @@ jobs:
   third-party-licenses:
     name: third-party licenses are current
     runs-on: ubuntu-24.04
+    # Median of the last five runs is 18 s; three times that rounded up to
+    # the next five minutes.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -201,6 +216,9 @@ jobs:
   release-config:
     name: goreleaser config
     runs-on: ubuntu-24.04
+    # Median of the last five runs is 89 s; three times that rounded up to
+    # the next five minutes.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
