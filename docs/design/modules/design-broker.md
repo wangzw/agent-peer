@@ -168,6 +168,8 @@ service Local {
 
 服务定义以允许降级运行的方式启动 Broker：Linux 用户级为 `ExecStart=<二进制> broker --allow-degraded`，系统级为 `ExecStart=<二进制> broker --system --allow-degraded`；macOS 的 `ProgramArguments` 末尾加 `--allow-degraded`（`REQ-broker-config-063`）。本机 socket 应答之后调用一次 `Status`：处于降级运行时，服务保持已安装并在运行，输出 `Status` 的故障与修复提示，以退出码 3 结束（`REQ-broker-config-064`）。
 
+本机 socket 应答且服务管理器报告的 PID 与 socket 对端 PID 一致之后，服务即视为已安装并在运行。此后读不到 `Status` 时，安装先在就绪等待的剩余时间内重试；仍然失败则以退出码 1 结束，不清理也不禁用服务，报错说明服务在运行、状态读不到，并引导用户执行 `agent-peer status`。
+
 成功或降级时，`service install` 打印汇总（`REQ-broker-config-050`）：
 
 ```
@@ -741,4 +743,4 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | `offline` 与 `online` 命令 | 未实现 | — |
 | `service start`、`stop`、`restart` | 已实现 | `internal/broker/service/control.go`（`Start`、`Stop`、`Restart`、`ErrNotInstalled`）、`cmd/agent-peer/service_cmd.go` |
 | `uninstall` | 已实现 | `cmd/agent-peer/uninstall_cmd.go`、`internal/broker/service/remove.go`、`internal/broker/service/admin_group.go` |
-| 安装汇总与降级检查 | 未实现 | — |
+| 安装汇总与降级检查 | 已实现 | `internal/broker/service/install.go`（`Install` 的降级检查、`waitStatus`、`waitReady` 的 `serviceManagerState`、`Result` 的 `Binary`/`RunLog`/`AuditLog`、`auditLogPath`）、`cmd/agent-peer/service_cmd.go`（`printInstalled`、`printServiceDegraded`） |
