@@ -650,7 +650,13 @@ func TestPeerInfoObservedByRole(t *testing.T) {
 		dc.awaitUp(t)
 
 		dc.sendPeer(t, encodePeerInfo("b2", addrs))
-		h.peers.Wait(t, func() bool { return len(h.peers.Observed(peer).Aliases) == 1 })
+		// handlePeerInfo records the alias and the address list in two
+		// separate calls. Waiting on the alias alone can return in the window
+		// before the address list is recorded, so wait for both.
+		h.peers.Wait(t, func() bool {
+			obs := h.peers.Observed(peer)
+			return len(obs.Aliases) == 1 && len(obs.AcceptorAddresses) == 1
+		})
 
 		obs := h.peers.Observed(peer)
 		if len(obs.Aliases) != 1 || obs.Aliases[0] != "b2" {
