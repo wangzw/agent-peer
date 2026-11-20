@@ -308,11 +308,13 @@ func TestInstallLinuxStepFailures(t *testing.T) {
 	cases := []struct {
 		name    string
 		trigger string
+		failing string
 		want    []string
 	}{
 		{
 			name:    "daemon-reload",
 			trigger: "daemon-reload",
+			failing: "systemctl --user daemon-reload",
 			want: []string{
 				"systemctl --user daemon-reload",
 				"systemctl --user disable --now agent-peer.service",
@@ -321,6 +323,7 @@ func TestInstallLinuxStepFailures(t *testing.T) {
 		{
 			name:    "enable",
 			trigger: "enable",
+			failing: "systemctl --user enable agent-peer.service",
 			want: []string{
 				"systemctl --user daemon-reload",
 				"systemctl --user enable agent-peer.service",
@@ -330,6 +333,7 @@ func TestInstallLinuxStepFailures(t *testing.T) {
 		{
 			name:    "restart",
 			trigger: "restart",
+			failing: "systemctl --user restart agent-peer.service",
 			want: []string{
 				"systemctl --user daemon-reload",
 				"systemctl --user enable agent-peer.service",
@@ -351,8 +355,15 @@ func TestInstallLinuxStepFailures(t *testing.T) {
 			}
 
 			res, err := Install(opts)
-			if err == nil || !strings.Contains(err.Error(), "failed step") {
-				t.Fatalf("Install error = %v, want the %s failure", err, tc.trigger)
+			if err == nil {
+				t.Fatalf("Install error = nil, want the %s failure", tc.trigger)
+			}
+			// The error must name the reason, not only that a step failed: the
+			// command that ran, its exit status and the output it printed.
+			for _, want := range []string{tc.failing, "exit status 1", "failed step"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("Install error = %q, want it to contain %q", err, want)
+				}
 			}
 			if !slices.Equal(cmds, tc.want) {
 				t.Errorf("commands = %q, want %q", cmds, tc.want)
@@ -722,10 +733,17 @@ func TestCreateConfigRemovesPartialFileOnWriteFailure(t *testing.T) {
 		return os.Open(path) // read-only, so Write fails
 	}
 	err := createConfigWith(opts, &res, -1, 0o600, open)
-	if err == nil || !strings.Contains(err.Error(), "write configuration file") {
-		t.Fatalf("createConfigWith error = %v, want the write failure", err)
+	if err == nil {
+		t.Fatal("createConfigWith error = nil, want the write failure")
 	}
 	path := filepath.Join(opts.Root, "home/alice/.agent-peer/config.yaml")
+	// The error must name the reason, not only that the step failed: the path
+	// the write targeted and the write error the read-only handle produced.
+	for _, want := range []string{"write configuration file", path, "bad file descriptor"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("createConfigWith error = %q, want it to contain %q", err, want)
+		}
+	}
 	if _, statErr := os.Stat(path); !errors.Is(statErr, fs.ErrNotExist) {
 		t.Errorf("the partial configuration file survived the write failure: %v", statErr)
 	}

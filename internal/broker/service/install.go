@@ -1332,7 +1332,7 @@ func createConfigWith(opts Options, res *Result, adminGID int, fileMode fs.FileM
 	if _, err := f.Write(config.Template(mode)); err != nil {
 		_ = f.Close()
 		removePartial()
-		return fmt.Errorf("service: write configuration file: %w", err)
+		return fmt.Errorf("service: write configuration file %s: %w", path, err)
 	}
 	if opts.System {
 		if err := setConfigOwner(opts, fsPath, adminGID); err != nil {
