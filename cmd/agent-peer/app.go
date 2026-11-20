@@ -13,7 +13,7 @@ const usage = `usage: agent-peer <command> [arguments]
 
 Commands:
   --version                   print the version and exit
-  broker [--system] [--listen <address>]
+  broker [--system] [--listen <address>] [--allow-degraded]
                               run the Broker
   mcp                         run the MCP server for one Claude Code session
   status                      show the state of a running Broker

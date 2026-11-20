@@ -103,6 +103,18 @@ func TestHelpPrintsUsageToStdout(t *testing.T) {
 	}
 }
 
+func TestUsageNamesBrokerFlags(t *testing.T) {
+	a, stdout, _, _ := newDispatchApp("dev")
+
+	if got := a.run(context.Background(), []string{"--help"}); got != exitOK {
+		t.Fatalf("run(--help) = %d, want %d", got, exitOK)
+	}
+	const want = "broker [--system] [--listen <address>] [--allow-degraded]"
+	if !strings.Contains(stdout.String(), want) {
+		t.Errorf("usage does not contain %q:\n%s", want, stdout.String())
+	}
+}
+
 func TestUsageNamesServiceInstallFlags(t *testing.T) {
 	a, stdout, _, _ := newDispatchApp("dev")
 
