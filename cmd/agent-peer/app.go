@@ -34,6 +34,8 @@ Commands:
   service uninstall [--system]
                               stop and remove the installed service; configuration,
                               identity and audit logs are kept
+  service start|stop|restart  start, stop or restart the service of the executing
+                              account (root: system-level, other accounts: user-level)
   uninstall [--purge]         remove the installation of this account, or the
                               system-wide one when run as root; --purge also removes
                               configuration, identity and logs

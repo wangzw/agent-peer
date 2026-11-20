@@ -705,7 +705,7 @@ func runLaunchctl(opts Options, domain, plistPath string, plistExisted bool, che
 
 	budget := stopBound(opts)
 	deadline := time.Now().Add(budget)
-	if err := waitServiceUnloaded(opts, domain, deadline, budget); err != nil {
+	if err := waitServiceUnloaded(opts, domain, deadline, budget, unloadAdvice(opts, domain, "the install")); err != nil {
 		return replaced, abandonLaunchd(opts, domain, plistPath, res, plistExisted, replaced, false, err)
 	}
 	if check.occupied {
@@ -823,8 +823,10 @@ func bootstrapService(opts Options, domain, plistPath string) ([]byte, error) {
 // domain. Only exit status 113 or the "Could not find service" message report
 // an unloaded service; any other print failure is transient or unrelated and is
 // retried until the deadline, because treating it as unloaded would bootstrap
-// over a job launchd still holds.
-func waitServiceUnloaded(opts Options, domain string, deadline time.Time, budget time.Duration) error {
+// over a job launchd still holds. tail ends the timeout message: the caller
+// names the command to retry, which differs between installation, stop and
+// restart.
+func waitServiceUnloaded(opts Options, domain string, deadline time.Time, budget time.Duration, tail string) error {
 	target := domain + "/" + Label
 	var last string
 	for {
@@ -842,8 +844,15 @@ func waitServiceUnloaded(opts Options, domain string, deadline time.Time, budget
 	if last != "" {
 		detail = fmt.Sprintf(" (launchctl still reports %q)", last)
 	}
-	return fmt.Errorf("service: the old service in %s was not unloaded within %s%s; unload it with `%s` and run the install again",
-		domain, budget, detail, privileged(opts, "launchctl bootout "+target))
+	return fmt.Errorf("service: the old service in %s was not unloaded within %s%s%s",
+		domain, budget, detail, tail)
+}
+
+// unloadAdvice is the tail of waitServiceUnloaded's timeout message. It names
+// the bootout that unloads the job by hand and the command to run afterwards.
+func unloadAdvice(opts Options, domain, retry string) string {
+	target := domain + "/" + Label
+	return fmt.Sprintf("; unload it with `%s` and run %s again", privileged(opts, "launchctl bootout "+target), retry)
 }
 
 // launchdUnloaded reports whether launchctl print says the job is gone. launchd

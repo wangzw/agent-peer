@@ -2897,7 +2897,7 @@ func TestInstallDarwinSharesOneStopBudget(t *testing.T) {
 	}
 
 	deadline := time.Now()
-	if err := waitServiceUnloaded(opts, "gui/501", deadline, time.Millisecond); err == nil {
+	if err := waitServiceUnloaded(opts, "gui/501", deadline, time.Millisecond, unloadAdvice(opts, "gui/501", "the install")); err == nil {
 		t.Fatal("waitServiceUnloaded succeeded with a past deadline")
 	}
 
