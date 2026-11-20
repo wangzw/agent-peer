@@ -461,7 +461,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 - **验收**：在同时有系统级服务与账户甲的用户级服务的主机上，甲执行 `agent-peer service stop`，甲的用户级 Broker 停止，系统级 Broker 不受影响；甲执行 `sudo agent-peer service restart`，系统级 Broker 以新的进程号运行，甲的用户级 Broker 仍是停止状态；甲执行 `agent-peer service start`，用户级 Broker 重新运行。没有安装该级别的服务时，命令以非零退出并说明该级别没有安装服务；甲在只有系统级服务的主机上执行，命令以 1 退出并给出 `sudo agent-peer service <命令>`。先停止甲的用户级服务，让另一个进程占用配置中的监听端口，甲执行 `agent-peer service start`：输出降级原因与修复命令，退出码为 3，服务处于运行状态。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl`（`stop and start act on one level only`、`a user-level command with only the system service names sudo`、`no installed service names the level`、`start reports a degraded Broker and keeps the service running`）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControl`、`TestSystemServiceControl`、`TestServiceControlNotInstalled`
+- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl`（`stop and start act on one level only`、`a user-level command with only the system service names sudo`、`no installed service names the level`、`start reports a degraded Broker and keeps the service running`；最后一例保留 `service start` 的退出码 3，并断言 `agent-peer status` 的 stdout 含 `Broker: degraded (local only):` 与 `Fix:`）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControl`、`TestSystemServiceControl`、`TestServiceControlNotInstalled`、`TestUserServiceControlDegraded`（同样断言 `agent-peer status` 的 stdout 含状态行与 `Fix:`）
 
 ### REQ-broker-config-056
 
@@ -485,7 +485,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 - **验收**：另一个进程占用 17443 端口时以 `--allow-degraded` 和默认配置启动 Broker：两个会话登记成功、加入同一 topic 后互发消息成功；会话调用 `create_pairing_key` 返回 `broker_degraded`，说明含 `:17443` 与 `broker.listen`；本机不在任何端口上监听；`agent-peer status` 输出该故障；向本方作为接受方的对端发送时返回 `peer_unreachable`，说明末尾附降级原因。另把系统级 Broker 的监听端口设为 1024 以下并让配置文件可被组写入，启动后同样进入仅本机降级，`status` 的修复提示含 `chmod g-w` 或改用 1024 以上的端口。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-058 local only keeps local features`；peer_unreachable 附带降级原因由单元测试 `internal/broker/degradedrpc_test.go` 的 `TestPeerUnreachableReasonOnlyForAcceptor` 覆盖
+- **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-058 local only keeps local features`；peer_unreachable 附带降级原因由单元测试 `internal/broker/degradedrpc_test.go` 的 `TestPeerUnreachableReasonOnlyForAcceptor` 覆盖；低端口修复提示含 `chmod g-w` 由单元测试 `internal/broker/degradedstate_test.go` 的 `TestDegradedFixHints` 覆盖
 
 ### REQ-broker-config-059
 
@@ -525,7 +525,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 - **验收**：分别安装用户级与系统级服务，Linux 上单元文件的 `ExecStart` 与 macOS 上 plist 的 `ProgramArguments` 都含 `--allow-degraded`；在已完成安装的主机上停止服务，让另一个进程占用配置中的监听端口，再执行 `agent-peer service start`：Broker 进入降级运行，服务管理器报告服务处于运行状态，至少 30 秒（`RestartSec=5` 的 6 倍）内进程 pid 不变、服务管理器不重启它，`agent-peer status` 报告降级运行。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl/start reports a degraded Broker and keeps the service running`（并断言用户级与系统级单元文件含 `--allow-degraded`，经 `service start` 的退出码 3 与两行输出断言 Broker 报告的降级状态）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControlDegraded`（并断言 plist 含 `--allow-degraded`，同样的降级断言）；服务定义模板的两级内容另由 `internal/broker/service/units_test.go` 覆盖；终端状态行的逐字输出由“终端与会话显示降级与下线”单元覆盖
+- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl/start reports a degraded Broker and keeps the service running`（并断言用户级与系统级单元文件含 `--allow-degraded`，保留 `service start` 的退出码 3，并断言 `agent-peer status` 的 stdout 含 `Broker: degraded (local only):` 与 `Fix:`）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControlDegraded`（并断言 plist 含 `--allow-degraded`，同样的状态行断言）；服务定义模板的两级内容另由 `internal/broker/service/units_test.go` 覆盖；终端状态行的逐字输出由“终端与会话显示降级与下线”单元覆盖
 
 ### REQ-broker-config-064
 
