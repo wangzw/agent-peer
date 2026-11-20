@@ -72,7 +72,7 @@ func TestRegistrationListAgentsAbandonsAStalledCall(t *testing.T) {
 	})
 
 	start := time.Now()
-	_, state := registrationListAgents(t, s, nil)
+	_, state := registrationListAgentsInWait(t, s, nil)
 	elapsed := time.Since(start)
 
 	if state == "" {
