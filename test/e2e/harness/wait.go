@@ -45,17 +45,33 @@ func EventuallyPoll(t testing.TB, bound time.Duration, what string, cond func(de
 // be clamped to the time the wait has left.
 func eventuallyUntil(t testing.TB, deadline time.Time, bound time.Duration, what string, cond func(deadline time.Time) (ok bool, state string)) {
 	t.Helper()
+	// The loop keeps the call that follows the final poll interval, because for
+	// a plain wait that call is a real observation: a condition that becomes
+	// true a few milliseconds before the deadline must still be seen. That call
+	// can start after the deadline with no time left, and a poll call answers it
+	// at once with "no time left in the wait". Its state must not replace the
+	// last state observed by a call that still had time left.
+	var state string
+	haveState := false
 	for {
-		ok, state := cond(deadline)
+		startedWithTime := time.Now().Before(deadline)
+		ok, callState := cond(deadline)
 		if ok {
 			return
 		}
+		if startedWithTime {
+			state = callState
+			haveState = true
+		}
 		if !time.Now().Before(deadline) {
-			t.Fatalf("%s: not within %s (last state: %s)", what, bound, state)
-			return
+			if !haveState {
+				state = callState
+			}
+			break
 		}
 		time.Sleep(pollInterval)
 	}
+	t.Fatalf("%s: not within %s (last state: %s)", what, bound, state)
 }
 
 // effectiveWaitBound lifts a caller's bound to ToolCallWaitBound. These waits

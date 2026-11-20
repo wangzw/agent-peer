@@ -70,14 +70,19 @@ func captureFatal(t *testing.T, tb *recordTB, fn func()) string {
 
 func TestEventuallyReportsLastState(t *testing.T) {
 	tb := &recordTB{}
-	bound := 200 * time.Millisecond
+	bound := 120 * time.Millisecond
+	deadline := time.Now().Add(bound)
 
-	calls := 0
+	var realCalls, lateCalls int
 	start := time.Now()
 	msg := captureFatal(t, tb, func() {
 		Eventually(tb, bound, "example condition", func() (bool, string) {
-			calls++
-			return false, fmt.Sprintf("state-%d", calls)
+			if time.Now().Before(deadline) {
+				realCalls++
+				return false, fmt.Sprintf("state-%d", realCalls)
+			}
+			lateCalls++
+			return false, "no time left in the wait"
 		})
 	})
 	elapsed := time.Since(start)
@@ -85,12 +90,101 @@ func TestEventuallyReportsLastState(t *testing.T) {
 	if msg == "" {
 		t.Fatal("Eventually returned without reporting a failure")
 	}
-	last := fmt.Sprintf("state-%d", calls)
+	if lateCalls != 1 {
+		t.Errorf("the condition ran %d times after the deadline, want the final observation call", lateCalls)
+	}
+	last := fmt.Sprintf("state-%d", realCalls)
 	if !strings.Contains(msg, last) {
 		t.Fatalf("failure message %q does not contain the last state %q", msg, last)
 	}
+	if strings.Contains(msg, "no time left") {
+		t.Errorf("failure message %q reports the post-deadline state", msg)
+	}
 	if elapsed < bound {
 		t.Fatalf("Eventually returned after %s, want at least the bound %s", elapsed, bound)
+	}
+}
+
+// TestEventuallyObservesSuccessJustBeforeTheDeadline checks that the wait keeps
+// its final observation. A condition that first succeeds a few milliseconds
+// before the deadline must be seen; skipping the last call would turn a
+// success into a failure and introduce a new flake.
+func TestEventuallyObservesSuccessJustBeforeTheDeadline(t *testing.T) {
+	tb := &recordTB{}
+	bound := 120 * time.Millisecond
+	target := time.Now().Add(bound - 5*time.Millisecond)
+
+	msg := captureFatal(t, tb, func() {
+		Eventually(tb, bound, "example condition", func() (bool, string) {
+			if !time.Now().Before(target) {
+				return true, ""
+			}
+			return false, "not yet"
+		})
+	})
+
+	if msg != "" {
+		t.Fatalf("Eventually reported %q, want the final observation to succeed", msg)
+	}
+}
+
+// TestEventuallyPollObservesSuccessJustBeforeTheDeadline checks the same window
+// through the loop EventuallyPoll uses. EventuallyPoll lifts a short caller
+// bound to ToolCallWaitBound, so calling it directly would make every run of
+// this test wait fourteen seconds.
+func TestEventuallyPollObservesSuccessJustBeforeTheDeadline(t *testing.T) {
+	tb := &recordTB{}
+	bound := 120 * time.Millisecond
+	deadline := time.Now().Add(bound)
+	target := deadline.Add(-5 * time.Millisecond)
+
+	msg := captureFatal(t, tb, func() {
+		eventuallyUntil(tb, deadline, bound, "example condition", func(deadline time.Time) (bool, string) {
+			if !time.Now().Before(target) {
+				return true, ""
+			}
+			return false, "not yet"
+		})
+	})
+
+	if msg != "" {
+		t.Fatalf("EventuallyPoll reported %q, want the final observation to succeed", msg)
+	}
+}
+
+// TestEventuallyReportsStateFromLastCallWithTimeLeft checks that the final
+// observation call made after the deadline does not replace the last state the
+// wait observed while it had time. PollCallWithin answers the final call with
+// "no time left", so that state must not reach the failure message.
+func TestEventuallyReportsStateFromLastCallWithTimeLeft(t *testing.T) {
+	tb := &recordTB{}
+	bound := 120 * time.Millisecond
+	deadline := time.Now().Add(bound)
+
+	var realCalls, lateCalls int
+	msg := captureFatal(t, tb, func() {
+		eventuallyUntil(tb, deadline, bound, "example condition", func(deadline time.Time) (bool, string) {
+			if time.Now().Before(deadline) {
+				realCalls++
+				return false, fmt.Sprintf("observed-%d", realCalls)
+			}
+			lateCalls++
+			return false, "no time left in the wait"
+		})
+	})
+
+	if msg == "" {
+		t.Fatal("Eventually returned without reporting a failure")
+	}
+	if lateCalls != 1 {
+		t.Errorf("the condition ran %d times after the deadline, want the final observation call", lateCalls)
+	}
+	last := fmt.Sprintf("observed-%d", realCalls)
+	if !strings.Contains(msg, last) {
+		t.Errorf("failure message %q does not contain the last state %q", msg, last)
+	}
+	if strings.Contains(msg, "no time left") {
+		t.Errorf("failure message %q reports the post-deadline state", msg)
 	}
 }
 
