@@ -256,9 +256,8 @@ func (l *localNode) startSession(tb testing.TB, spec SessionSpec) *Session {
 	tb.Helper()
 
 	// StartSession completes the MCP initialize handshake before it returns;
-	// the deadline here is the project-wide test wait, not the thirty-second
-	// startup allowance Claude Code itself uses.
-	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	// the deadline is the startup allowance, not the project-wide test wait.
+	ctx, cancel := context.WithTimeout(context.Background(), sessionStartBound)
 	defer cancel()
 
 	session, err := node.StartSession(ctx, tb, l.env, node.MCPCommand{Path: l.bin, Args: []string{"mcp"}}, spec)
@@ -282,7 +281,7 @@ func (l *localNode) startSession(tb testing.TB, spec SessionSpec) *Session {
 // a test that drove the start from another goroutine reports those errors
 // after it has joined the goroutine.
 func (l *localNode) tryStartSession(spec SessionSpec) (*Session, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	ctx, cancel := context.WithTimeout(context.Background(), sessionStartBound)
 	defer cancel()
 
 	tb := &deferredTB{TB: l.t}
@@ -400,7 +399,7 @@ func (s *localSession) stopMCP(t testing.TB, sig syscall.Signal) int {
 
 func (s *localSession) restartMCP(t testing.TB) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	ctx, cancel := context.WithTimeout(context.Background(), sessionStartBound)
 	defer cancel()
 	if err := s.session.RestartMCP(ctx); err != nil {
 		t.Fatalf("harness: session %s: restarting the MCP server process: %v", s.name, err)
@@ -409,7 +408,7 @@ func (s *localSession) restartMCP(t testing.TB) {
 
 func (s *localSession) startExtraMCP(t testing.TB) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	ctx, cancel := context.WithTimeout(context.Background(), sessionStartBound)
 	defer cancel()
 	if _, err := s.session.StartExtraMCP(ctx); err != nil {
 		t.Fatalf("harness: session %s: starting an extra MCP server process: %v", s.name, err)

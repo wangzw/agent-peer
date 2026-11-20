@@ -276,6 +276,32 @@ func TestSessionEndIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestSessionStartAllowsSlowMCPLaunch checks that starting a session is bounded
+// by the startup allowance rather than by the three-second test wait. The
+// wrapper delays the real MCP server by four seconds, longer than the test wait
+// and shorter than the allowance: the start must succeed even though the
+// handshake has not begun when the test wait would have expired.
+func TestSessionStartAllowsSlowMCPLaunch(t *testing.T) {
+	host := NewLocalHost(t, LocalOptions{Name: "slow-launch"})
+	local := host.impl.(*localNode)
+	realBinary := local.bin
+
+	const delay = 4 * time.Second
+	wrapper := filepath.Join(t.TempDir(), "slow-mcp.sh")
+	body := fmt.Sprintf("#!/bin/sh\nsleep %d\nexec \"%s\" \"$@\"\n", int(delay/time.Second), realBinary)
+	if err := os.WriteFile(wrapper, []byte(body), 0o755); err != nil {
+		t.Fatalf("writing %s: %v", wrapper, err)
+	}
+	local.bin = wrapper
+
+	started := time.Now()
+	session := host.StartSession(t, SessionSpec{Name: "slow", StartMCP: true})
+	defer session.End(t)
+	if elapsed := time.Since(started); elapsed < delay {
+		t.Fatalf("the session started in %s, before the wrapper's %s delay", elapsed, delay)
+	}
+}
+
 // fakeBrokerScript writes a stand-in Broker binary that records its arguments
 // and fails with the given line on standard error.
 func fakeBrokerScript(t *testing.T, dir, failure string) (script, record string) {

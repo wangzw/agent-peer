@@ -18,6 +18,15 @@ import (
 // is a variable so a test can shorten it before starting a session.
 var testWaitBound = 3 * time.Second
 
+// sessionStartBound bounds starting a session: launching the MCP server process
+// and completing the initialize handshake. It is the thirty-second startup
+// allowance the roadmap records for Claude Code, the same bound node.StartSession
+// applies to the handshake, not the three-second bound for a test wait. The
+// launch is paid by the operating system under whatever load the runner carries:
+// on a loaded runner one local start has taken longer than three seconds while
+// the rest of the package ran about twenty percent slower.
+const sessionStartBound = 30 * time.Second
+
 // oracleBound bounds each OracleClient call. The local interface is a Unix
 // socket served in-process by the Broker, so it answers at once; no product
 // timer longer than the project-wide three-second bound governs it.

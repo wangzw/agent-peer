@@ -90,7 +90,7 @@ func (r *remoteNode) brokerLog(tb testing.TB) []byte {
 func (r *remoteNode) startSession(tb testing.TB, spec SessionSpec) *Session {
 	tb.Helper()
 
-	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	ctx, cancel := context.WithTimeout(context.Background(), sessionStartBound)
 	defer cancel()
 	info, err := r.client.StartSession(ctx, ctl.SessionStartRequest{
 		Name:            spec.Name,
@@ -117,7 +117,7 @@ func (r *remoteNode) startSession(tb testing.TB, spec SessionSpec) *Session {
 // tryStartSession starts a session without failing the test, for a caller in
 // another goroutine that reports the error itself.
 func (r *remoteNode) tryStartSession(spec SessionSpec) (*Session, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), testWaitBound)
+	ctx, cancel := context.WithTimeout(context.Background(), sessionStartBound)
 	defer cancel()
 	info, err := r.client.StartSession(ctx, ctl.SessionStartRequest{
 		Name:            spec.Name,
