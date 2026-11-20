@@ -23,8 +23,10 @@ func (r *logRecorder) logf(format string, args ...any) {
 }
 
 // TestPollCallWithinDeadlinePassedMakesNoCall checks that a wait whose deadline
-// has already passed returns an error without making a tool call. The call
-// function counts invocations, so a regression that calls anyway fails here.
+// has already passed returns an error without making a tool call, and logs the
+// skipped call so a wait that keeps polling an expired deadline stays visible.
+// The call function counts invocations, so a regression that calls anyway fails
+// here.
 func TestPollCallWithinDeadlinePassedMakesNoCall(t *testing.T) {
 	calls := 0
 	var logs logRecorder
@@ -46,8 +48,13 @@ func TestPollCallWithinDeadlinePassedMakesNoCall(t *testing.T) {
 	if !strings.Contains(err.Error(), "no time left in the wait") {
 		t.Errorf("error %q does not say the wait had no time left", err)
 	}
-	if len(logs.lines) != 0 {
-		t.Errorf("pollCallWithin logged %q for a call it never made", logs.lines)
+	if len(logs.lines) != 1 {
+		t.Fatalf("pollCallWithin logged %d lines, want one for the skipped call: %q", len(logs.lines), logs.lines)
+	}
+	for _, want := range []string{"alice", "list_agents", "no time left in the wait"} {
+		if !strings.Contains(logs.lines[0], want) {
+			t.Errorf("log line %q does not contain %q", logs.lines[0], want)
+		}
 	}
 }
 

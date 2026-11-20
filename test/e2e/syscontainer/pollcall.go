@@ -23,7 +23,9 @@ func pollCallWithin(session, tool string, deadline time.Time, pollBound time.Dur
 	bound := pollBound
 	if left := time.Until(deadline); left < bound {
 		if left <= 0 {
-			return "", false, fmt.Errorf("syscontainer: calling %s as %s: no time left in the wait", tool, session)
+			err := fmt.Errorf("syscontainer: calling %s as %s: no time left in the wait", tool, session)
+			logf("syscontainer: session %s: %s not called: no time left in the wait", session, tool)
+			return "", false, err
 		}
 		bound = left
 	}
