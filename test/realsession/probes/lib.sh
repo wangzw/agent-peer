@@ -708,11 +708,22 @@ rs_accept_trust_dialog() {
 # before its first iteration; checking first made it print "failed after 0"
 # without pressing a key. One attempt is always made, and the deadline bounds
 # only the resends that follow it.
+#
+# A capture that fails says nothing about the dialog, so its empty output is
+# not read as the dialog leaving. The capture is retried within the budget, and
+# success is reported only from a capture that succeeded and showed no dialog.
 rs_dismiss_trust_dialog() {
 	local window="$1" seconds="${2:-$RS_TRUST_DIALOG_RESEND_BUDGET}" deadline pane="" sends=0 rc=0
 	deadline=$((SECONDS + seconds))
 	while :; do
-		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
+		if ! pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null)"; then
+			if ((SECONDS >= deadline)); then
+				printf '%s\n' "$sends"
+				return 1
+			fi
+			sleep 0.5
+			continue
+		fi
 		if ! printf '%s\n' "$pane" | grep -qiE -- "$RS_TRUST_DIALOG_RE"; then
 			printf '%s\n' "$sends"
 			return 0

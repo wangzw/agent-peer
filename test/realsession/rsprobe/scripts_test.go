@@ -799,6 +799,117 @@ esac
 	}
 }
 
+// TestRsDismissTrustDialogRetriesWhenTheCaptureFails checks that a failed pane
+// capture is not mistaken for the dialog leaving. tmux can fail to capture,
+// and its empty output used to end the wait as a successful dismissal. The
+// helper must retry within the budget, report success only from a capture that
+// succeeded and showed no dialog, and fail at the deadline when the capture
+// keeps failing.
+func TestRsDismissTrustDialogRetriesWhenTheCaptureFails(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+
+	t.Run("retries and dismisses", func(t *testing.T) {
+		root := t.TempDir()
+		bin := filepath.Join(root, "bin")
+		if err := os.MkdirAll(bin, 0o755); err != nil {
+			t.Fatalf("creating the stub directory: %v", err)
+		}
+		captures := filepath.Join(root, "captures")
+		record := filepath.Join(root, "keys.txt")
+		// The first capture fails, the second shows the dialog, and the
+		// third shows the pane after the dismissal.
+		stub := `#!/bin/sh
+case "$3" in
+capture-pane)
+	n=$(cat '` + captures + `' 2>/dev/null || echo 0)
+	printf '%s' "$((n + 1))" > '` + captures + `'
+	if [ "$n" -eq 0 ]; then
+		exit 1
+	fi
+	if [ "$n" -eq 1 ]; then
+		printf 'Quick safety check\n ❯ No, exit\n   Yes, I trust this folder\n'
+	else
+		printf '❯ \n'
+	fi
+	;;
+send-keys)
+	printf '%s\n' "$*" >> '` + record + `'
+	;;
+esac
+`
+		if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(stub), 0o755); err != nil {
+			t.Fatalf("writing the tmux stub: %v", err)
+		}
+
+		cmd := exec.Command("bash", "-c", `source "$1"; rc=0; bursts="$(rs_dismiss_trust_dialog w 5)" || rc=$?; printf 'rc=%s sends=%s\n' "$rc" "$bursts"`, "bash", lib)
+		cmd.Dir = root
+		cmd.Env = []string{
+			"R=" + root,
+			"PROBE=selftest",
+			"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+		}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("calling rs_dismiss_trust_dialog: %v\n%s", err, out)
+		}
+		if got, want := strings.TrimSpace(string(out)), "rc=0 sends=1"; got != want {
+			t.Fatalf("rs_dismiss_trust_dialog = %q, want %q; a failed capture must not end the wait", got, want)
+		}
+
+		data, err := os.ReadFile(record)
+		if err != nil {
+			t.Fatalf("reading the recorded keys: %v", err)
+		}
+		want := "-L agent-peer-rs send-keys -t w Down Enter\n"
+		if got := string(data); got != want {
+			t.Errorf("keys sent = %q, want one Down Enter burst after the capture recovered", got)
+		}
+	})
+
+	t.Run("fails when the budget is spent", func(t *testing.T) {
+		root := t.TempDir()
+		bin := filepath.Join(root, "bin")
+		if err := os.MkdirAll(bin, 0o755); err != nil {
+			t.Fatalf("creating the stub directory: %v", err)
+		}
+		record := filepath.Join(root, "keys.txt")
+		stub := `#!/bin/sh
+case "$3" in
+capture-pane)
+	exit 1
+	;;
+send-keys)
+	printf '%s\n' "$*" >> '` + record + `'
+	;;
+esac
+`
+		if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(stub), 0o755); err != nil {
+			t.Fatalf("writing the tmux stub: %v", err)
+		}
+
+		cmd := exec.Command("bash", "-c", `source "$1"; rc=0; bursts="$(rs_dismiss_trust_dialog w 0)" || rc=$?; printf 'rc=%s sends=%s\n' "$rc" "$bursts"`, "bash", lib)
+		cmd.Dir = root
+		cmd.Env = []string{
+			"R=" + root,
+			"PROBE=selftest",
+			"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+		}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("calling rs_dismiss_trust_dialog: %v\n%s", err, out)
+		}
+		if got, want := strings.TrimSpace(string(out)), "rc=1 sends=0"; got != want {
+			t.Fatalf("rs_dismiss_trust_dialog = %q, want %q; a failed capture must not report success", got, want)
+		}
+		if data, err := os.ReadFile(record); err == nil && len(data) > 0 {
+			t.Errorf("the helper pressed keys without a successful capture: %q", data)
+		}
+	})
+}
+
 // TestRsDismissTrustDialogRefusesAnUnknownFocus checks that a recognized
 // dialog whose cursor is on neither known option fails immediately without
 // pressing a key, so a blind Enter cannot confirm another screen.
