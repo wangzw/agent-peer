@@ -59,16 +59,18 @@ type ListTopicsOut struct {
 	Public []PublicTopicOut `json:"public_topics"`
 }
 
-// JoinTopicIn is the input of join_topic.
+// JoinTopicIn is the input of join_topic. An empty Name selects this session's
+// default topics.
 type JoinTopicIn struct {
-	Name        string `json:"name"`
+	Name        string `json:"name,omitempty"        jsonschema:"the topic to join; omit to join this session's default topics"`
 	Public      bool   `json:"public,omitempty"      jsonschema:"declare the topic public; requires the Broker to be public"`
 	Description string `json:"description,omitempty" jsonschema:"short description shown with a public topic"`
 }
 
-// LeaveTopicIn is the input of leave_topic.
+// LeaveTopicIn is the input of leave_topic. An empty Name selects this
+// session's default topics.
 type LeaveTopicIn struct {
-	Name string `json:"name"`
+	Name string `json:"name,omitempty" jsonschema:"the topic to leave; omit to leave this session's default topics"`
 }
 
 // TopicsOut is the list of topics a session has joined.
@@ -206,10 +208,10 @@ func newMCPServer(version string, ts toolSet, log *slog.Logger) *mcp.Server {
 		"List the topics this session has joined and the public topics known to this Broker.",
 		true, ts.ListTopics)
 	addTool(s, log, "join_topic",
-		"Join a topic; declaring it public requires this Broker to be public too.",
+		"Join a topic; omit name to join this session's default topics. Declaring a topic public requires this Broker to be public too.",
 		false, ts.JoinTopic)
 	addTool(s, log, "leave_topic",
-		"Leave a topic this session has joined.",
+		"Leave a topic this session has joined; omit name to leave this session's default topics.",
 		false, ts.LeaveTopic)
 	addTool(s, log, "list_brokers",
 		"List the Brokers this Broker knows, including peer status, addresses, and fingerprints.",

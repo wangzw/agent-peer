@@ -88,9 +88,11 @@ func TestRestorerFirstRegistration(t *testing.T) {
 	})
 
 	r := &restorer{
-		mem:      &topicMemory{},
-		defaults: func(ctx context.Context, brokerAutoJoin bool) []string { return []string{"a", "b"} },
-		log:      topicsLogger(),
+		mem: &topicMemory{},
+		defaults: func(ctx context.Context, brokerAutoJoin bool) defaultLookup {
+			return defaultLookup{topics: []string{"a", "b"}, settled: true}
+		},
+		log: topicsLogger(),
 	}
 	r.onComplete(context.Background(), topicsTestClient(t, sock), "agent-1", true)
 
@@ -110,6 +112,51 @@ func TestRestorerFirstRegistration(t *testing.T) {
 	}
 }
 
+// The first registration and nameless topic calls read one computed result, so
+// a project configuration or origin that changes afterwards does not change
+// which topics a nameless call acts on.
+func TestRestorerAndNamelessCallsShareTheDefaultList(t *testing.T) {
+	sock := fakelocal.SocketPath(t)
+	srv := fakelocal.Start(t, sock, fakelocal.Handlers{
+		JoinTopic: func(ctx context.Context, req *localpb.JoinTopicRequest) (*localpb.JoinTopicResponse, error) {
+			return &localpb.JoinTopicResponse{Topics: []string{req.GetName()}}, nil
+		},
+	})
+
+	current := []string{"team"}
+	reads := 0
+	session := &sessionTopicList{compute: func(context.Context) defaultLookup {
+		reads++
+		return defaultLookup{topics: append([]string{}, current...), settled: true}
+	}}
+	r := &restorer{
+		mem: &topicMemory{},
+		defaults: func(ctx context.Context, autoJoin bool) defaultLookup {
+			res := session.lookup(ctx)
+			if !autoJoin || res.projectAutoJoinOff {
+				res.topics = nil
+			}
+			return res
+		},
+		log: topicsLogger(),
+	}
+	client := topicsTestClient(t, sock)
+	r.onComplete(context.Background(), client, "agent-1", true)
+	if reqs := topicsJoinRequests(srv); len(reqs) != 1 || reqs[0].GetName() != "team" {
+		t.Fatalf("first registration joined %v, want [team]", topicNames(reqs))
+	}
+
+	// The configuration changes, but the session keeps the list it registered
+	// with.
+	current = []string{"other"}
+	if got := session.get(context.Background()); !reflect.DeepEqual(got, []string{"team"}) {
+		t.Fatalf("nameless call list = %v, want the registration's [team]", got)
+	}
+	if reads != 1 {
+		t.Fatalf("the lookup ran %d times, want once", reads)
+	}
+}
+
 // REQ-topics-020: the default-topic callback sees the auto_join flag the Broker
 // reported in registration_complete.
 func TestRestorerDefaultsSeeAutoJoin(t *testing.T) {
@@ -118,9 +165,9 @@ func TestRestorerDefaultsSeeAutoJoin(t *testing.T) {
 			var got bool
 			r := &restorer{
 				mem: &topicMemory{},
-				defaults: func(ctx context.Context, brokerAutoJoin bool) []string {
+				defaults: func(ctx context.Context, brokerAutoJoin bool) defaultLookup {
 					got = brokerAutoJoin
-					return nil
+					return defaultLookup{settled: true}
 				},
 				log: topicsLogger(),
 			}
@@ -148,13 +195,13 @@ func TestRestorerInterruptedFirstRegistrationKeepsDefaults(t *testing.T) {
 	defaultCalls := 0
 	r := &restorer{
 		mem: mem,
-		defaults: func(ctx context.Context, autoJoin bool) []string {
+		defaults: func(ctx context.Context, autoJoin bool) defaultLookup {
 			defaultCalls++
 			if ctx.Err() != nil {
-				// What defaultTopics returns when the git lookup is cancelled.
-				return nil
+				// What the lookup returns when the git command is cancelled.
+				return defaultLookup{settled: false}
 			}
-			return []string{"a"}
+			return defaultLookup{topics: []string{"a"}, settled: true}
 		},
 		log: topicsLogger(),
 	}
@@ -201,9 +248,9 @@ func TestRestorerSecondRegistrationRestoresMemory(t *testing.T) {
 	defaultsCalls := 0
 	r := &restorer{
 		mem: mem,
-		defaults: func(ctx context.Context, brokerAutoJoin bool) []string {
+		defaults: func(ctx context.Context, brokerAutoJoin bool) defaultLookup {
 			defaultsCalls++
-			return []string{"a"}
+			return defaultLookup{topics: []string{"a"}, settled: true}
 		},
 		log: topicsLogger(),
 	}
@@ -249,7 +296,7 @@ func TestRestorerPublicFallback(t *testing.T) {
 	mem := &topicMemory{}
 	r := &restorer{
 		mem:      mem,
-		defaults: func(ctx context.Context, brokerAutoJoin bool) []string { return nil },
+		defaults: func(ctx context.Context, brokerAutoJoin bool) defaultLookup { return defaultLookup{settled: true} },
 		log:      topicsLogger(),
 	}
 	client := topicsTestClient(t, sock)
@@ -293,7 +340,7 @@ func TestRestorerForgetsTopicOnDetailError(t *testing.T) {
 	mem := &topicMemory{}
 	r := &restorer{
 		mem:      mem,
-		defaults: func(ctx context.Context, brokerAutoJoin bool) []string { return nil },
+		defaults: func(ctx context.Context, brokerAutoJoin bool) defaultLookup { return defaultLookup{settled: true} },
 		log:      topicsLogger(),
 	}
 	client := topicsTestClient(t, sock)
@@ -326,7 +373,7 @@ func TestRestorerKeepsTopicOnConnectionError(t *testing.T) {
 	mem := &topicMemory{}
 	r := &restorer{
 		mem:      mem,
-		defaults: func(ctx context.Context, brokerAutoJoin bool) []string { return nil },
+		defaults: func(ctx context.Context, brokerAutoJoin bool) defaultLookup { return defaultLookup{settled: true} },
 		log:      topicsLogger(),
 	}
 	client := topicsTestClient(t, sock)
@@ -444,7 +491,7 @@ func TestRestorerLeaveRace(t *testing.T) {
 	mem := &topicMemory{}
 	r := &restorer{
 		mem:      mem,
-		defaults: func(context.Context, bool) []string { return nil },
+		defaults: func(context.Context, bool) defaultLookup { return defaultLookup{settled: true} },
 		log:      topicsLogger(),
 	}
 	// The first registration joins nothing; the second restores a and b in
@@ -516,7 +563,7 @@ func TestRestorerJoinRace(t *testing.T) {
 	mem := &topicMemory{}
 	r := &restorer{
 		mem:      mem,
-		defaults: func(context.Context, bool) []string { return nil },
+		defaults: func(context.Context, bool) defaultLookup { return defaultLookup{settled: true} },
 		log:      topicsLogger(),
 	}
 	r.onComplete(context.Background(), client, "agent-1", true)
@@ -583,7 +630,7 @@ func TestRestoreReleasesTheTopicLockAfterItsBound(t *testing.T) {
 	mem := &topicMemory{}
 	r := &restorer{
 		mem:        mem,
-		defaults:   func(context.Context, bool) []string { return nil },
+		defaults:   func(context.Context, bool) defaultLookup { return defaultLookup{settled: true} },
 		log:        topicsLogger(),
 		rpcTimeout: 100 * time.Millisecond,
 	}
@@ -622,9 +669,11 @@ func TestTopicMemoryConcurrentAccess(t *testing.T) {
 	})
 	client := topicsTestClient(t, sock)
 	r := &restorer{
-		mem:      mem,
-		defaults: func(ctx context.Context, brokerAutoJoin bool) []string { return []string{"a", "b"} },
-		log:      topicsLogger(),
+		mem: mem,
+		defaults: func(ctx context.Context, brokerAutoJoin bool) defaultLookup {
+			return defaultLookup{topics: []string{"a", "b"}, settled: true}
+		},
+		log: topicsLogger(),
 	}
 
 	var wg sync.WaitGroup

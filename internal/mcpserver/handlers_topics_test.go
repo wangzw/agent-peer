@@ -261,7 +261,7 @@ func TestLeaveTopicStopsWaitingForTheTopicLock(t *testing.T) {
 	mem := &topicMemory{}
 	r := &restorer{
 		mem:      mem,
-		defaults: func(context.Context, bool) []string { return nil },
+		defaults: func(context.Context, bool) defaultLookup { return defaultLookup{settled: true} },
 		log:      topicsLogger(),
 	}
 	r.onComplete(context.Background(), client, "agent-1", true) // the first registration joins nothing
@@ -317,6 +317,312 @@ func TestLeaveTopicStopsWaitingForTheTopicLock(t *testing.T) {
 		r.onComplete(context.Background(), client, "agent-1", true)
 	}()
 	waitClosed(t, reconnectDone, "the restore after the Broker recovered")
+}
+
+// defaultTopicSession returns a sessionTopics function that reports names.
+func defaultTopicSession(names ...string) func(context.Context) []string {
+	return func(context.Context) []string { return names }
+}
+
+func TestJoinDefaultTopics(t *testing.T) {
+	t.Run("joins every default topic with the declaration and remembers each", func(t *testing.T) {
+		// REQ-topics-026: a nameless join_topic joins each default topic and
+		// applies public and description to every one of them.
+		h, srv, rec := newTopicsHandlers(t, fakelocal.Handlers{
+			JoinTopic: func(_ context.Context, req *localpb.JoinTopicRequest) (*localpb.JoinTopicResponse, error) {
+				return &localpb.JoinTopicResponse{Topics: []string{req.GetName()}}, nil
+			},
+		}, "agent-1")
+		h.sessionTopics = defaultTopicSession("a", "b")
+
+		out, err := h.JoinTopic(context.Background(), JoinTopicIn{Public: true, Description: "d"})
+		if err != nil {
+			t.Fatalf("JoinTopic: %v", err)
+		}
+		// The reply is the one from the last join.
+		if want := []string{"b"}; !reflect.DeepEqual(out.Topics, want) {
+			t.Errorf("Topics = %v, want %v", out.Topics, want)
+		}
+
+		calls := srv.Calls()
+		if len(calls) != 2 {
+			t.Fatalf("fake server received %d calls, want 2: %v", len(calls), calls)
+		}
+		for i, name := range []string{"a", "b"} {
+			req, ok := calls[i].Request.(*localpb.JoinTopicRequest)
+			if !ok {
+				t.Fatalf("call %d request type %T, want *localpb.JoinTopicRequest", i, calls[i].Request)
+			}
+			if req.GetName() != name {
+				t.Errorf("call %d name = %q, want %q", i, req.GetName(), name)
+			}
+			if !req.GetIsPublic() || req.GetDescription() != "d" {
+				t.Errorf("call %d is_public = %v, description = %q; want true, d",
+					i, req.GetIsPublic(), req.GetDescription())
+			}
+			if req.GetAgentId() != "agent-1" {
+				t.Errorf("call %d agent_id = %q, want agent-1", i, req.GetAgentId())
+			}
+		}
+		want := []rememberedTopic{
+			{Name: "a", Public: true, Description: "d"},
+			{Name: "b", Public: true, Description: "d"},
+		}
+		if !reflect.DeepEqual(rec.remembered, want) {
+			t.Errorf("remembered = %+v, want %+v", rec.remembered, want)
+		}
+	})
+
+	t.Run("stops at the first failure and keeps what was joined", func(t *testing.T) {
+		h, srv, rec := newTopicsHandlers(t, fakelocal.Handlers{
+			JoinTopic: func(_ context.Context, req *localpb.JoinTopicRequest) (*localpb.JoinTopicResponse, error) {
+				if req.GetName() == "b" {
+					return nil, fakelocal.ErrorStatus(codes.InvalidArgument, &localpb.ErrorDetail{
+						Code:    localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT,
+						Message: "bad topic",
+					})
+				}
+				return &localpb.JoinTopicResponse{Topics: []string{req.GetName()}}, nil
+			},
+		}, "agent-1")
+		h.sessionTopics = defaultTopicSession("a", "b", "c")
+
+		_, err := h.JoinTopic(context.Background(), JoinTopicIn{})
+		if err == nil {
+			t.Fatal("JoinTopic returned no error, want one")
+		}
+		if !strings.Contains(err.Error(), "bad topic") {
+			t.Errorf("error = %q, want the Broker's message", err)
+		}
+		// The error names the topic that failed and the topics already joined.
+		if !strings.Contains(err.Error(), `joined "a"`) {
+			t.Errorf("error = %q, want the topics already joined", err)
+		}
+		if !strings.Contains(err.Error(), `joining "b" failed`) {
+			t.Errorf("error = %q, want the failing topic b", err)
+		}
+		if calls := srv.Calls(); len(calls) != 2 {
+			t.Errorf("fake server received %d calls, want 2 (stop at b)", len(calls))
+		}
+		if want := []rememberedTopic{{Name: "a"}}; !reflect.DeepEqual(rec.remembered, want) {
+			t.Errorf("remembered = %+v, want %+v", rec.remembered, want)
+		}
+	})
+
+	t.Run("no default topic", func(t *testing.T) {
+		// REQ-topics-026: a session without a default topic fails the call.
+		h, srv, rec := newTopicsHandlers(t, fakelocal.Handlers{}, "agent-1")
+		h.sessionTopics = defaultTopicSession()
+
+		_, err := h.JoinTopic(context.Background(), JoinTopicIn{})
+		if err == nil {
+			t.Fatal("JoinTopic returned no error, want invalid_argument")
+		}
+		if !strings.Contains(err.Error(), "(code: invalid_argument)") {
+			t.Errorf("error = %q, want code invalid_argument", err)
+		}
+		if !strings.Contains(err.Error(), "default topic") {
+			t.Errorf("error = %q, want the default-topic explanation", err)
+		}
+		if calls := srv.Calls(); len(calls) != 0 {
+			t.Errorf("fake server received %d calls, want none: %v", len(calls), calls)
+		}
+		if len(rec.remembered) != 0 {
+			t.Errorf("remembered = %+v, want nothing", rec.remembered)
+		}
+	})
+
+	t.Run("preflight runs before the default-topic check", func(t *testing.T) {
+		h, srv, _ := newTopicsHandlers(t, fakelocal.Handlers{}, "")
+		h.sessionTopics = defaultTopicSession()
+
+		_, err := h.JoinTopic(context.Background(), JoinTopicIn{})
+		if err == nil {
+			t.Fatal("JoinTopic returned no error, want not_registered")
+		}
+		if !strings.Contains(err.Error(), "(code: not_registered)") {
+			t.Errorf("error = %q, want code not_registered", err)
+		}
+		if calls := srv.Calls(); len(calls) != 0 {
+			t.Errorf("fake server received %d calls, want none: %v", len(calls), calls)
+		}
+	})
+
+	t.Run("a whitespace-only name is passed to the Broker", func(t *testing.T) {
+		h, srv, _ := newTopicsHandlers(t, fakelocal.Handlers{
+			JoinTopic: func(context.Context, *localpb.JoinTopicRequest) (*localpb.JoinTopicResponse, error) {
+				return &localpb.JoinTopicResponse{Topics: []string{"x"}}, nil
+			},
+		}, "agent-1")
+		h.sessionTopics = defaultTopicSession("a")
+
+		if _, err := h.JoinTopic(context.Background(), JoinTopicIn{Name: " "}); err != nil {
+			t.Fatalf("JoinTopic: %v", err)
+		}
+		calls := srv.Calls()
+		if len(calls) != 1 {
+			t.Fatalf("fake server received %d calls, want 1", len(calls))
+		}
+		req := calls[0].Request.(*localpb.JoinTopicRequest)
+		if req.GetName() != " " {
+			t.Errorf("name = %q, want a single space", req.GetName())
+		}
+	})
+}
+
+func TestLeaveDefaultTopics(t *testing.T) {
+	t.Run("leaves the joined defaults and forgets every default", func(t *testing.T) {
+		// REQ-topics-027: every default topic leaves the memory, joined or not,
+		// so a later registration does not restore it.
+		h, srv, rec := newTopicsHandlers(t, fakelocal.Handlers{
+			ListTopics: func(context.Context, *localpb.ListTopicsRequest) (*localpb.ListTopicsResponse, error) {
+				return &localpb.ListTopicsResponse{JoinedTopics: []string{"a", "x"}}, nil
+			},
+			LeaveTopic: func(_ context.Context, req *localpb.LeaveTopicRequest) (*localpb.LeaveTopicResponse, error) {
+				return &localpb.LeaveTopicResponse{Topics: []string{"x"}}, nil
+			},
+		}, "agent-1")
+		h.sessionTopics = defaultTopicSession("a", "b")
+
+		out, err := h.LeaveTopic(context.Background(), LeaveTopicIn{})
+		if err != nil {
+			t.Fatalf("LeaveTopic: %v", err)
+		}
+		if want := []string{"x"}; !reflect.DeepEqual(out.Topics, want) {
+			t.Errorf("Topics = %v, want %v", out.Topics, want)
+		}
+
+		calls := srv.Calls()
+		if len(calls) != 2 {
+			t.Fatalf("fake server received %d calls, want ListTopics then LeaveTopic: %v", len(calls), calls)
+		}
+		if calls[0].Method != "ListTopics" || calls[1].Method != "LeaveTopic" {
+			t.Fatalf("call methods = %q, %q; want ListTopics, LeaveTopic", calls[0].Method, calls[1].Method)
+		}
+		req := calls[1].Request.(*localpb.LeaveTopicRequest)
+		if req.GetName() != "a" {
+			t.Errorf("left name = %q, want a", req.GetName())
+		}
+		if want := []string{"a", "b"}; !reflect.DeepEqual(rec.forgotten, want) {
+			t.Errorf("forgotten = %v, want %v", rec.forgotten, want)
+		}
+	})
+
+	t.Run("a default topic the session has not joined is only forgotten", func(t *testing.T) {
+		h, srv, rec := newTopicsHandlers(t, fakelocal.Handlers{
+			ListTopics: func(context.Context, *localpb.ListTopicsRequest) (*localpb.ListTopicsResponse, error) {
+				return &localpb.ListTopicsResponse{JoinedTopics: []string{"x"}}, nil
+			},
+		}, "agent-1")
+		h.sessionTopics = defaultTopicSession("a", "b")
+
+		out, err := h.LeaveTopic(context.Background(), LeaveTopicIn{})
+		if err != nil {
+			t.Fatalf("LeaveTopic: %v", err)
+		}
+		// Nothing had to be left, so the listing is returned.
+		if want := []string{"x"}; !reflect.DeepEqual(out.Topics, want) {
+			t.Errorf("Topics = %v, want %v", out.Topics, want)
+		}
+		if calls := srv.Calls(); len(calls) != 1 || calls[0].Method != "ListTopics" {
+			t.Errorf("calls = %v, want only ListTopics", calls)
+		}
+		if want := []string{"a", "b"}; !reflect.DeepEqual(rec.forgotten, want) {
+			t.Errorf("forgotten = %v, want %v", rec.forgotten, want)
+		}
+	})
+
+	t.Run("a failed leave stops and forgets only what was left", func(t *testing.T) {
+		h, _, rec := newTopicsHandlers(t, fakelocal.Handlers{
+			ListTopics: func(context.Context, *localpb.ListTopicsRequest) (*localpb.ListTopicsResponse, error) {
+				return &localpb.ListTopicsResponse{JoinedTopics: []string{"a", "b"}}, nil
+			},
+			LeaveTopic: func(_ context.Context, req *localpb.LeaveTopicRequest) (*localpb.LeaveTopicResponse, error) {
+				if req.GetName() == "b" {
+					return nil, fakelocal.ErrorStatus(codes.NotFound, &localpb.ErrorDetail{
+						Code:    localpb.ErrorCode_ERROR_CODE_NOT_FOUND,
+						Message: "no such topic",
+					})
+				}
+				return &localpb.LeaveTopicResponse{Topics: []string{"b"}}, nil
+			},
+		}, "agent-1")
+		h.sessionTopics = defaultTopicSession("a", "b")
+
+		_, err := h.LeaveTopic(context.Background(), LeaveTopicIn{})
+		if err == nil {
+			t.Fatal("LeaveTopic returned no error, want one")
+		}
+		if !strings.Contains(err.Error(), "no such topic") {
+			t.Errorf("error = %q, want the Broker's message", err)
+		}
+		// The error names the topic that failed and the topics already left.
+		if !strings.Contains(err.Error(), `left "a"`) {
+			t.Errorf("error = %q, want the topics already left", err)
+		}
+		if !strings.Contains(err.Error(), `leaving "b" failed`) {
+			t.Errorf("error = %q, want the failing topic b", err)
+		}
+		if want := []string{"a"}; !reflect.DeepEqual(rec.forgotten, want) {
+			t.Errorf("forgotten = %v, want %v", rec.forgotten, want)
+		}
+	})
+
+	t.Run("no default topic", func(t *testing.T) {
+		h, srv, rec := newTopicsHandlers(t, fakelocal.Handlers{}, "agent-1")
+		h.sessionTopics = defaultTopicSession()
+
+		_, err := h.LeaveTopic(context.Background(), LeaveTopicIn{})
+		if err == nil {
+			t.Fatal("LeaveTopic returned no error, want invalid_argument")
+		}
+		if !strings.Contains(err.Error(), "(code: invalid_argument)") {
+			t.Errorf("error = %q, want code invalid_argument", err)
+		}
+		if calls := srv.Calls(); len(calls) != 0 {
+			t.Errorf("fake server received %d calls, want none: %v", len(calls), calls)
+		}
+		if len(rec.forgotten) != 0 {
+			t.Errorf("forgotten = %v, want nothing", rec.forgotten)
+		}
+	})
+}
+
+// A nameless leave only affects the current membership and memory; a later
+// nameless join joins the default topics again.
+func TestNamelessLeaveThenJoin(t *testing.T) {
+	sock := fakelocal.SocketPath(t)
+	srv := fakelocal.Start(t, sock, fakelocal.Handlers{
+		JoinTopic: func(_ context.Context, req *localpb.JoinTopicRequest) (*localpb.JoinTopicResponse, error) {
+			return &localpb.JoinTopicResponse{Topics: []string{req.GetName()}}, nil
+		},
+		LeaveTopic: func(context.Context, *localpb.LeaveTopicRequest) (*localpb.LeaveTopicResponse, error) {
+			return &localpb.LeaveTopicResponse{}, nil
+		},
+		ListTopics: func(context.Context, *localpb.ListTopicsRequest) (*localpb.ListTopicsResponse, error) {
+			return &localpb.ListTopicsResponse{JoinedTopics: []string{"a"}}, nil
+		},
+	})
+	mem := &topicMemory{}
+	h := topicsRaceHandlers(topicsTestClient(t, sock), mem)
+	h.sessionTopics = defaultTopicSession("a")
+
+	if _, err := h.LeaveTopic(context.Background(), LeaveTopicIn{}); err != nil {
+		t.Fatalf("LeaveTopic: %v", err)
+	}
+	if got := mem.List(); len(got) != 0 {
+		t.Fatalf("memory after the nameless leave = %+v, want empty", got)
+	}
+
+	if _, err := h.JoinTopic(context.Background(), JoinTopicIn{}); err != nil {
+		t.Fatalf("JoinTopic after the leave: %v", err)
+	}
+	if got := mem.List(); len(got) != 1 || got[0].Name != "a" {
+		t.Fatalf("memory after the nameless join = %+v, want [a]", got)
+	}
+	if names := topicNames(topicsJoinRequests(srv)); len(names) != 1 || names[0] != "a" {
+		t.Fatalf("JoinTopic requests = %v, want [a]", names)
+	}
 }
 
 func TestListTopics(t *testing.T) {

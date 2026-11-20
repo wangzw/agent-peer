@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	// topicRPCTimeout bounds one topic RPC made by a tool call, so a call
+	// topicRPCTimeout bounds the whole of one topic tool call, including every
+	// Broker call a nameless call makes for its default topics, so the call
 	// returns instead of holding the topic lock while the Broker does not
 	// answer.
 	topicRPCTimeout = 10 * time.Second
@@ -104,7 +105,7 @@ func (m *topicMemory) List() []rememberedTopic {
 // completeFunc signature; holding mu keeps two completions from interleaving.
 type restorer struct {
 	mem      *topicMemory
-	defaults func(ctx context.Context, brokerAutoJoin bool) []string
+	defaults func(ctx context.Context, brokerAutoJoin bool) defaultLookup
 	log      *slog.Logger
 	// rpcTimeout bounds the restore of one topic. Zero means
 	// topicRestoreTimeout; tests set a short value.
@@ -123,17 +124,25 @@ func (r *restorer) onComplete(ctx context.Context, c localpb.LocalClient, agentI
 	// The first registration computes the defaults once; a later one restores
 	// what the memory holds, which already includes them.
 	if !r.initialized {
-		for _, name := range r.defaults(ctx, autoJoin) {
-			r.mem.Remember(rememberedTopic{Name: name})
-		}
+		res := r.defaults(ctx, autoJoin)
 		// An interrupted registration may have computed the defaults with a
 		// cancelled context, in which case the lookup failed and the memory is
-		// incomplete. Leave initialized false so the next registration computes
-		// them again instead of losing them for the life of the process.
+		// incomplete; there is nothing to restore on this connection either.
 		if ctx.Err() != nil {
 			return
 		}
-		r.initialized = true
+		// Record the topics before joining them, so an interrupted join is
+		// restored by the next registration.
+		for _, name := range res.topics {
+			r.mem.Remember(rememberedTopic{Name: name})
+		}
+		// A lookup that did not settle, such as a git command that timed out,
+		// leaves the defaults unknown. Leave initialized false so the next
+		// registration computes them again instead of losing them for the life
+		// of the process.
+		if res.settled {
+			r.initialized = true
+		}
 	}
 
 	for _, t := range r.mem.List() {

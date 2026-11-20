@@ -95,15 +95,25 @@ func Run(ctx context.Context, opts Options) error {
 	if readOrigin == nil {
 		readOrigin = gitOrigin
 	}
-	defaults := func(ctx context.Context, autoJoin bool) []string {
+	// The session's default topics are read once, on the first registration,
+	// and the same result serves both the automatic join and nameless topic
+	// calls. A later edit to the project configuration or the origin therefore
+	// cannot make a nameless leave miss a topic this process joined
+	// automatically. Leaving some of them does not remove them from the list.
+	session := &sessionTopicList{compute: func(ctx context.Context) defaultLookup {
 		if !haveDir {
-			return nil
+			return defaultLookup{settled: true}
 		}
-		return defaultTopics(ctx, dir, autoJoin, readOrigin, log)
+		return lookupDefaultTopics(ctx, dir, readOrigin, log)
+	}}
+	defaults := func(ctx context.Context, autoJoin bool) defaultLookup {
+		res := session.lookup(ctx)
+		res.topics = automaticTopics(res, autoJoin)
+		return res
 	}
 	restore := &restorer{mem: mem, defaults: defaults, log: log}
 
-	h := &handlers{st: st, topics: mem, log: log}
+	h := &handlers{st: st, topics: mem, log: log, sessionTopics: session.get}
 	server := newMCPServer(version, h, log)
 
 	// The update hint decorates a tool result with the version the Broker

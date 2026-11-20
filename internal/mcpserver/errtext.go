@@ -46,6 +46,8 @@ const (
 
 	textNeedRead  = "The calling account needs read permission on the Broker's config file"
 	textNeedWrite = "The calling account needs write permission on the Broker's config file"
+
+	textNoDefaultTopic = "this session has no default topic; pass name to choose one"
 )
 
 // errNoBroker is the selection result when no Broker socket answers. Its text

@@ -250,13 +250,29 @@ func TestToolsList(t *testing.T) {
 		t.Errorf("send_message required = %v", required)
 	}
 
-	// join_topic: only name is required.
+	// join_topic: name is optional and selects the session's default topics.
 	props, required = schemaProps(t, tools["join_topic"])
 	if !equalStrings(keys(props), []string{"name", "public", "description"}) {
 		t.Errorf("join_topic properties = %v", keys(props))
 	}
-	if !equalStrings(required, []string{"name"}) {
-		t.Errorf("join_topic required = %v", required)
+	if len(required) != 0 {
+		t.Errorf("join_topic required = %v, want none", required)
+	}
+
+	// leave_topic: name is optional too.
+	props, required = schemaProps(t, tools["leave_topic"])
+	if !equalStrings(keys(props), []string{"name"}) {
+		t.Errorf("leave_topic properties = %v", keys(props))
+	}
+	if len(required) != 0 {
+		t.Errorf("leave_topic required = %v, want none", required)
+	}
+	name, ok := props["name"].(map[string]any)
+	if !ok {
+		t.Fatalf("leave_topic name schema is %T", props["name"])
+	}
+	if got := name["description"]; got != "the topic to leave; omit to leave this session's default topics" {
+		t.Errorf("leave_topic name description = %v", got)
 	}
 
 	// connect_broker: address and key are required.

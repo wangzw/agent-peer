@@ -342,6 +342,63 @@ func TestRunJoinsDefaultTopicFromProjectConfig(t *testing.T) {
 	}
 }
 
+// REQ-topics-027: a nameless leave acts on the topics this process joined
+// automatically at its first registration, not on a list computed again from a
+// project configuration that changed since.
+func TestRunNamelessLeaveUsesTheTopicsJoinedAtRegistration(t *testing.T) {
+	clock := newLoopClock()
+	sock := fakelocal.SocketPath(t)
+	dir := t.TempDir()
+	writeProjectFile(t, dir, "topics: [team]\n")
+
+	opts := runTestOptions(t, clock, map[string]string{
+		"CLAUDE_CODE_MESSAGING_SOCKET": "/s",
+	})
+	opts.userSocket = sock
+	opts.getwd = func() (string, error) { return dir, nil }
+
+	srv := fakelocal.Start(t, sock, fakelocal.Handlers{
+		ListAgents: func(context.Context, *localpb.ListAgentsRequest) (*localpb.ListAgentsResponse, error) {
+			return &localpb.ListAgentsResponse{SelfAddress: "me@b"}, nil
+		},
+		JoinTopic: func(context.Context, *localpb.JoinTopicRequest) (*localpb.JoinTopicResponse, error) {
+			return &localpb.JoinTopicResponse{}, nil
+		},
+		ListTopics: func(context.Context, *localpb.ListTopicsRequest) (*localpb.ListTopicsResponse, error) {
+			return &localpb.ListTopicsResponse{JoinedTopics: []string{"team"}}, nil
+		},
+		LeaveTopic: func(context.Context, *localpb.LeaveTopicRequest) (*localpb.LeaveTopicResponse, error) {
+			return &localpb.LeaveTopicResponse{}, nil
+		},
+	})
+	h := startRunClient(t, opts)
+
+	conn := runNextRegister(t, srv, clock)
+	if err := conn.Complete("agent-1", "me@b", true); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	runWaitJoinTopic(t, srv, "team")
+	runWaitRegistered(t, h.cs)
+
+	// The project configuration changes after the first registration. The
+	// nameless call must still leave the topic that was joined then.
+	writeProjectFile(t, dir, "topics: [other]\n")
+	res := callTool(t, h.cs, "leave_topic", nil)
+	if res.IsError {
+		t.Fatalf("leave_topic without a name failed: %s", textContent(t, res))
+	}
+
+	var left []string
+	for _, call := range srv.Calls() {
+		if call.Method == "LeaveTopic" {
+			left = append(left, call.Request.(*localpb.LeaveTopicRequest).GetName())
+		}
+	}
+	if len(left) != 1 || left[0] != "team" {
+		t.Fatalf("nameless leave_topic left %v, want [team]", left)
+	}
+}
+
 // REQ-topics-020
 func TestRunDoesNotJoinWhenAutoJoinIsOff(t *testing.T) {
 	clock := newLoopClock()

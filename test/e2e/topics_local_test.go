@@ -233,6 +233,104 @@ func TestLocalTopics(t *testing.T) {
 		defer inSub.End(t)
 		topicsWaitJoinedSet(t, inSub, "github.com/org/repo")
 	})
+
+	t.Run("REQ-topics-026 join default without name", func(t *testing.T) {
+		// The origin names the default topic. Leaving it by name empties the
+		// membership; a nameless join brings it back.
+		origin := topicsSession(t, host, "nameless-origin", topicsOrigin(t, "https://github.com/org/repo"))
+		defer origin.End(t)
+		topicsWaitJoinedSet(t, origin, "github.com/org/repo")
+		topicsLeave(t, origin, "github.com/org/repo")
+		topicsWaitJoinedSet(t, origin)
+		topicsJoinDefault(t, origin)
+		topicsWaitJoinedSet(t, origin, "github.com/org/repo")
+
+		// A project configuration that declares two topics: a nameless join
+		// joins both.
+		project := topicsSession(t, host, "nameless-project",
+			topicsProject(t, "topics: [t1, t2]\n", "https://github.com/org/repo"))
+		defer project.End(t)
+		topicsWaitJoinedSet(t, project, "t1", "t2")
+		topicsLeave(t, project, "t1")
+		topicsLeave(t, project, "t2")
+		topicsWaitJoinedSet(t, project)
+		topicsJoinDefault(t, project)
+		topicsWaitJoinedSet(t, project, "t1", "t2")
+
+		// A workspace without a default topic: the call fails and names the
+		// missing default topic.
+		none := topicsSession(t, host, "nameless-none", topicsPlain(t))
+		defer none.End(t)
+		topicsWaitRegistered(t, none)
+		r := none.Call(t, "join_topic", nil)
+		if !r.IsError {
+			t.Fatalf("join_topic without a name succeeded in a workspace with no default topic: %s", string(r.Structured))
+		}
+		if !strings.Contains(r.Text, "default topic") || !strings.Contains(r.Text, "invalid_argument") {
+			t.Fatalf("join_topic error = %q, want a default-topic invalid_argument error", r.Text)
+		}
+	})
+
+	t.Run("REQ-topics-026 join default with broker auto_join off", func(t *testing.T) {
+		listen = topicsRestartBroker(t, host, topicsConfig(listen, false), listen)
+		// The session ends before the Broker is restored, so the restore does
+		// not reach a session that is still running.
+		defer func() {
+			listen = topicsRestartBroker(t, host, defaultConfig, listen)
+		}()
+
+		s := topicsSession(t, host, "nameless-no-autojoin", topicsOrigin(t, "https://github.com/org/repo"))
+		defer s.End(t)
+		topicsWaitRegistered(t, s)
+		harness.Consistently(t, 1*time.Second, "automatic joining stays off before the nameless call", func() (bool, string) {
+			out, state := topicsList(t, s)
+			if state != "" {
+				return false, state
+			}
+			return len(out.Joined) == 0, fmt.Sprintf("joined topics are %v", out.Joined)
+		})
+		// The nameless call is an explicit request, so it ignores the switch.
+		topicsJoinDefault(t, s)
+		topicsWaitJoinedSet(t, s, "github.com/org/repo")
+	})
+
+	t.Run("REQ-topics-027 leave default without name", func(t *testing.T) {
+		ws := topicsOrigin(t, "https://github.com/org/repo")
+		s := topicsSession(t, host, "nameless-leave", ws)
+		defer s.End(t)
+		topicsWaitJoinedSet(t, s, "github.com/org/repo")
+
+		// A named topic survives the restart and is restored by the session's
+		// re-registration. Waiting for exactly it after the restart proves the
+		// restore ran; an empty set could otherwise be read before it started.
+		topicsJoin(t, s, "sentinel")
+		topicsWaitJoinedSet(t, s, "github.com/org/repo", "sentinel")
+
+		topicsLeaveDefault(t, s)
+		topicsWaitJoinedSet(t, s, "sentinel")
+
+		// A Broker restart makes the MCP server register again; the default
+		// topic must not come back in this session, while the sentinel must.
+		listen = topicsRestartBroker(t, host, defaultConfig, listen)
+		topicsWaitJoinedSetWithin(t, s, lifecycleRestoreBound, "sentinel")
+
+		// The restore joins topics one at a time, so it can reach the sentinel
+		// before it decides about the default topic. Holding the exact set for
+		// a second keeps a default topic joined late in the restore from
+		// passing unseen between two samples of the wait above.
+		harness.Consistently(t, 1*time.Second, "the default topic stays out once the sentinel is restored", func() (bool, string) {
+			out, state := topicsList(t, s)
+			if state != "" {
+				return false, state
+			}
+			return topicsSameSet(out.Joined, []string{"sentinel"}), fmt.Sprintf("joined topics are %v", out.Joined)
+		})
+
+		// A new session in the same workspace still joins the default topic.
+		fresh := topicsSession(t, host, "nameless-leave-fresh", ws)
+		defer fresh.End(t)
+		topicsWaitJoinedSet(t, fresh, "github.com/org/repo")
+	})
 }
 
 // topicsConfig builds the Broker configuration with the given listener and
@@ -439,10 +537,58 @@ func topicsLeave(t *testing.T, s *harness.Session, name string) {
 	})
 }
 
+// topicsJoinDefault joins the session's default topics, retrying while the
+// session is still registering. It is for a workspace that has a default
+// topic; a session without one fails the call instead.
+func topicsJoinDefault(t *testing.T, s *harness.Session) mcpserver.TopicsOut {
+	t.Helper()
+	var out mcpserver.TopicsOut
+	harness.EventuallyPoll(t, harness.TopicCallWaitBound, "join_topic without a name succeeds", func(deadline time.Time) (bool, string) {
+		r, err := s.PollCallWithin(t, deadline, harness.TopicCallPollBound, "join_topic", nil)
+		if err != nil {
+			return false, err.Error()
+		}
+		if r.IsError {
+			return false, r.Text
+		}
+		var decErr error
+		out, decErr = harness.Decode[mcpserver.TopicsOut](string(r.Structured))
+		if decErr != nil {
+			return false, "decoding join_topic: " + decErr.Error()
+		}
+		return true, ""
+	})
+	return out
+}
+
+// topicsLeaveDefault leaves the session's default topics, retrying while the
+// session is still registering.
+func topicsLeaveDefault(t *testing.T, s *harness.Session) {
+	t.Helper()
+	harness.EventuallyPoll(t, harness.TopicCallWaitBound, "leave_topic without a name succeeds", func(deadline time.Time) (bool, string) {
+		r, err := s.PollCallWithin(t, deadline, harness.TopicCallPollBound, "leave_topic", nil)
+		if err != nil {
+			return false, err.Error()
+		}
+		if r.IsError {
+			return false, r.Text
+		}
+		return true, ""
+	})
+}
+
 // topicsWaitJoinedSet waits until the joined topics are exactly want.
 func topicsWaitJoinedSet(t *testing.T, s *harness.Session, want ...string) {
 	t.Helper()
-	harness.EventuallyPoll(t, 3*time.Second, "the joined topics are exactly "+strings.Join(want, ", "), func(deadline time.Time) (bool, string) {
+	topicsWaitJoinedSetWithin(t, s, 3*time.Second, want...)
+}
+
+// topicsWaitJoinedSetWithin waits until the joined topics are exactly want,
+// within bound. A bound that has to cover a reconnect and the restore that
+// follows is lifecycleRestoreBound.
+func topicsWaitJoinedSetWithin(t *testing.T, s *harness.Session, bound time.Duration, want ...string) {
+	t.Helper()
+	harness.EventuallyPoll(t, bound, "the joined topics are exactly "+strings.Join(want, ", "), func(deadline time.Time) (bool, string) {
 		out, state := topicsListPoll(t, deadline, s)
 		if state != "" {
 			return false, state

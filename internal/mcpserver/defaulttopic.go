@@ -3,10 +3,12 @@ package mcpserver
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -50,35 +52,49 @@ func gitOrigin(ctx context.Context, dir string) (string, error) {
 	return url, nil
 }
 
-// defaultTopics returns the topics to join after the first registration, in
-// the order they should be joined. It applies the sequence in the design: the
-// Broker may switch automatic joining off, the project configuration may switch
-// it off or name the topics, and otherwise the normalized git origin names one
-// topic. An error along the way yields no topic, never a partial list.
-//
-// readOrigin is called only when the project configuration does not name the
-// topics, so a test or a caller can tell whether the git command was needed.
-func defaultTopics(ctx context.Context, dir string, brokerAutoJoin bool, readOrigin originReader, log *slog.Logger) []string {
+// defaultLookup is one read of the project configuration and the git origin.
+// topics holds the result of steps 3 to 5 of the design's "默认 topic 的确定";
+// projectAutoJoinOff records step 2. settled is false when the lookup failed
+// for a reason that does not decide the answer, such as a git command that
+// timed out; a result that is not settled must not be cached.
+type defaultLookup struct {
+	topics             []string
+	projectAutoJoinOff bool
+	settled            bool
+}
+
+// automaticTopics applies the two automatic-joining switches to a lookup: the
+// Broker's setting is step 1 of the design's "默认 topic 的确定" and the project
+// file's setting is step 2. A nameless topic call skips this function, because
+// an explicit request ignores both switches.
+func automaticTopics(res defaultLookup, brokerAutoJoin bool) []string {
+	if !brokerAutoJoin || res.projectAutoJoinOff {
+		return nil
+	}
+	return res.topics
+}
+
+// lookupDefaultTopics reads the project configuration and, when it names no
+// topics, the git origin. It records step 2 of the design's "默认 topic 的
+// 确定" separately from the topics of steps 3 to 5, because automatic joining
+// honors the switch while a nameless topic call ignores it.
+func lookupDefaultTopics(ctx context.Context, dir string, readOrigin originReader, log *slog.Logger) defaultLookup {
 	if log == nil {
 		log = slog.Default()
 	}
-	if !brokerAutoJoin {
-		return nil
-	}
-
 	cfg, found, err := findProjectConfigLogged(dir, log)
 	if err != nil {
 		log.Error("cannot read the project configuration; not joining any default topic",
 			"path", cfg.Path, "error", err)
-		return nil
+		// A file that exists but cannot be read or parsed decides the answer:
+		// the design makes such a project join nothing.
+		return defaultLookup{settled: true}
 	}
-	if found {
-		if !cfg.AutoJoin {
-			return nil
-		}
-		if len(cfg.Topics) > 0 {
-			return cfg.Topics
-		}
+	out := defaultLookup{projectAutoJoinOff: found && !cfg.AutoJoin}
+	if found && len(cfg.Topics) > 0 {
+		out.topics = cfg.Topics
+		out.settled = true
+		return out
 	}
 
 	raw, err := readOrigin(ctx, dir)
@@ -86,13 +102,57 @@ func defaultTopics(ctx context.Context, dir string, brokerAutoJoin bool, readOri
 		// Being outside a git repository or having no origin is ordinary, so
 		// this is a debug message rather than an error.
 		log.Debug("no usable git origin; not joining a default topic", "dir", dir, "error", err)
-		return nil
+		// A timed-out or cancelled git command leaves the question open: it may
+		// have an origin that the command did not get to report. Any other
+		// error means there is no origin to find.
+		out.settled = !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled)
+		return out
 	}
 	topic, ok := normalizeRemote(raw)
 	if !ok {
 		log.Debug("the git origin does not name a remote repository; not joining a default topic",
 			"dir", dir, "origin", raw)
-		return nil
+		out.settled = true
+		return out
 	}
-	return []string{topic}
+	out.topics = []string{topic}
+	out.settled = true
+	return out
+}
+
+// sessionTopicList computes the session's default topics at most once and keeps
+// the result for the life of the process. The first registration and every
+// nameless join_topic or leave_topic read the same result, so a topic that was
+// joined automatically can always be left by name later; leaving a topic does
+// not remove it from the list.
+type sessionTopicList struct {
+	mu       sync.Mutex
+	computed bool
+	result   defaultLookup
+	compute  func(context.Context) defaultLookup
+}
+
+// lookup returns the session's default topics and the switches that apply to
+// automatic joining, computing them on the first call. A computation whose
+// context ended, or one that did not settle the answer, is returned but not
+// kept: the git lookup may have failed because the call was cancelled or timed
+// out, and a later call should be able to determine the list again.
+func (s *sessionTopicList) lookup(ctx context.Context) defaultLookup {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.computed {
+		return s.result
+	}
+	got := s.compute(ctx)
+	if ctx.Err() != nil || !got.settled {
+		return got
+	}
+	s.result = got
+	s.computed = true
+	return got
+}
+
+// get returns the session's default topics.
+func (s *sessionTopicList) get(ctx context.Context) []string {
+	return s.lookup(ctx).topics
 }

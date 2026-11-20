@@ -4,6 +4,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `join_topic` and `leave_topic` accept an omitted `name` and then act on the session's default topics: the topics named by the project configuration file, or the one named by the workspace's git origin. These calls ignore the automatic-joining switches, so a session whose Broker or project file turns automatic joining off can still join its default topics on request. A session with no default topic gets an `invalid_argument` error that says to pass a name. Leaving the default topics only affects the current session; a new session joins them again when automatic joining is on.
+
 ### Fixed
 
 - Runtime log records no longer carry the `event` key twice. A caller-supplied event name replaces the message, which moves to the `message` field, and audit failures name their kind under `audit_event` instead of a second `event`.

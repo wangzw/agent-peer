@@ -91,6 +91,9 @@ type handlers struct {
 	st     *statusStore
 	topics topicRecorder
 	log    *slog.Logger
+	// sessionTopics returns this session's default topics for a nameless
+	// join_topic or leave_topic. nil means the session has none.
+	sessionTopics func(context.Context) []string
 }
 
 // preflight returns the Status a tool call may use, or an error whose text is

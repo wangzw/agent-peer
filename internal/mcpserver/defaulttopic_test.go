@@ -28,6 +28,17 @@ func defaultTopicsFailReader(t *testing.T) originReader {
 	}
 }
 
+// automaticForTest computes the automatic-joining topics from a fresh lookup,
+// as the first registration does.
+func automaticForTest(ctx context.Context, dir string, brokerAutoJoin bool, readOrigin originReader, log *slog.Logger) []string {
+	return automaticTopics(lookupDefaultTopics(ctx, dir, readOrigin, log), brokerAutoJoin)
+}
+
+// sessionForTest computes the topics a nameless call uses from a fresh lookup.
+func sessionForTest(ctx context.Context, dir string, readOrigin originReader, log *slog.Logger) []string {
+	return lookupDefaultTopics(ctx, dir, readOrigin, log).topics
+}
+
 // defaultTopicsEqual reports whether two topic lists contain the same names in
 // the same order. A nil list equals an empty one.
 func defaultTopicsEqual(got, want []string) bool {
@@ -42,7 +53,7 @@ func defaultTopicsEqual(got, want []string) bool {
 	return true
 }
 
-func TestDefaultTopics(t *testing.T) {
+func TestAutomaticTopics(t *testing.T) {
 	// Covers REQ-topics-015, REQ-topics-016, REQ-topics-018, REQ-topics-020
 	// and REQ-topics-021.
 	ctx := context.Background()
@@ -51,7 +62,7 @@ func TestDefaultTopics(t *testing.T) {
 		// REQ-topics-020: the Broker's settings win before the project file.
 		dir := t.TempDir()
 		writeProjectFile(t, dir, "topics: [a]\n")
-		got := defaultTopics(ctx, dir, false, defaultTopicsFailReader(t), defaultTopicsLogger())
+		got := automaticForTest(ctx, dir, false, defaultTopicsFailReader(t), defaultTopicsLogger())
 		if !defaultTopicsEqual(got, nil) {
 			t.Fatalf("defaultTopics = %v, want none", got)
 		}
@@ -61,7 +72,7 @@ func TestDefaultTopics(t *testing.T) {
 		// REQ-topics-021.
 		dir := t.TempDir()
 		writeProjectFile(t, dir, "auto_join: false\ntopics: [a]\n")
-		got := defaultTopics(ctx, dir, true, defaultTopicsFailReader(t), defaultTopicsLogger())
+		got := automaticForTest(ctx, dir, true, defaultTopicsFailReader(t), defaultTopicsLogger())
 		if !defaultTopicsEqual(got, nil) {
 			t.Fatalf("defaultTopics = %v, want none", got)
 		}
@@ -72,7 +83,7 @@ func TestDefaultTopics(t *testing.T) {
 		// merged with it.
 		dir := t.TempDir()
 		writeProjectFile(t, dir, "topics: [a, b]\n")
-		got := defaultTopics(ctx, dir, true, defaultTopicsFailReader(t), defaultTopicsLogger())
+		got := automaticForTest(ctx, dir, true, defaultTopicsFailReader(t), defaultTopicsLogger())
 		if !defaultTopicsEqual(got, []string{"a", "b"}) {
 			t.Fatalf("defaultTopics = %v, want [a b]", got)
 		}
@@ -84,7 +95,7 @@ func TestDefaultTopics(t *testing.T) {
 		readOrigin := func(context.Context, string) (string, error) {
 			return "https://github.com/o/r", nil
 		}
-		got := defaultTopics(ctx, dir, true, readOrigin, defaultTopicsLogger())
+		got := automaticForTest(ctx, dir, true, readOrigin, defaultTopicsLogger())
 		if !defaultTopicsEqual(got, []string{"github.com/o/r"}) {
 			t.Fatalf("defaultTopics = %v, want [github.com/o/r]", got)
 		}
@@ -96,7 +107,7 @@ func TestDefaultTopics(t *testing.T) {
 		readOrigin := func(context.Context, string) (string, error) {
 			return "git@github.com:o/r.git", nil
 		}
-		got := defaultTopics(ctx, dir, true, readOrigin, defaultTopicsLogger())
+		got := automaticForTest(ctx, dir, true, readOrigin, defaultTopicsLogger())
 		if !defaultTopicsEqual(got, []string{"github.com/o/r"}) {
 			t.Fatalf("defaultTopics = %v, want [github.com/o/r]", got)
 		}
@@ -108,7 +119,7 @@ func TestDefaultTopics(t *testing.T) {
 		readOrigin := func(context.Context, string) (string, error) {
 			return "", errors.New("not a git repository")
 		}
-		got := defaultTopics(ctx, dir, true, readOrigin, defaultTopicsLogger())
+		got := automaticForTest(ctx, dir, true, readOrigin, defaultTopicsLogger())
 		if !defaultTopicsEqual(got, nil) {
 			t.Fatalf("defaultTopics = %v, want none", got)
 		}
@@ -120,7 +131,7 @@ func TestDefaultTopics(t *testing.T) {
 		readOrigin := func(context.Context, string) (string, error) {
 			return "/srv/repo.git", nil
 		}
-		got := defaultTopics(ctx, dir, true, readOrigin, defaultTopicsLogger())
+		got := automaticForTest(ctx, dir, true, readOrigin, defaultTopicsLogger())
 		if !defaultTopicsEqual(got, nil) {
 			t.Fatalf("defaultTopics = %v, want none", got)
 		}
@@ -131,7 +142,7 @@ func TestDefaultTopics(t *testing.T) {
 		path := writeProjectFile(t, dir, "topics: x\n")
 		var buf bytes.Buffer
 		log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-		got := defaultTopics(ctx, dir, true, defaultTopicsFailReader(t), log)
+		got := automaticForTest(ctx, dir, true, defaultTopicsFailReader(t), log)
 		if !defaultTopicsEqual(got, nil) {
 			t.Fatalf("defaultTopics = %v, want none", got)
 		}
@@ -141,6 +152,153 @@ func TestDefaultTopics(t *testing.T) {
 		}
 		if !strings.Contains(text, path) {
 			t.Fatalf("log = %q, want the project file path %q", text, path)
+		}
+	})
+}
+
+func TestNamelessDefaultTopics(t *testing.T) {
+	// REQ-topics-026, REQ-topics-027: the nameless topic tools use steps 3 to
+	// 5 of the design and ignore both automatic-joining switches.
+	ctx := context.Background()
+
+	t.Run("project auto_join off still names its topics", func(t *testing.T) {
+		dir := t.TempDir()
+		writeProjectFile(t, dir, "auto_join: false\ntopics: [a, b]\n")
+		got := sessionForTest(ctx, dir, defaultTopicsFailReader(t), defaultTopicsLogger())
+		if !defaultTopicsEqual(got, []string{"a", "b"}) {
+			t.Fatalf("a nameless call got %v, want [a b]", got)
+		}
+	})
+
+	t.Run("project auto_join off falls through to the origin", func(t *testing.T) {
+		dir := t.TempDir()
+		writeProjectFile(t, dir, "auto_join: false\n")
+		readOrigin := func(context.Context, string) (string, error) {
+			return "https://github.com/o/r", nil
+		}
+		got := sessionForTest(ctx, dir, readOrigin, defaultTopicsLogger())
+		if !defaultTopicsEqual(got, []string{"github.com/o/r"}) {
+			t.Fatalf("a nameless call got %v, want [github.com/o/r]", got)
+		}
+	})
+
+	t.Run("project topics are used before the origin", func(t *testing.T) {
+		dir := t.TempDir()
+		writeProjectFile(t, dir, "topics: [a]\n")
+		got := sessionForTest(ctx, dir, defaultTopicsFailReader(t), defaultTopicsLogger())
+		if !defaultTopicsEqual(got, []string{"a"}) {
+			t.Fatalf("a nameless call got %v, want [a]", got)
+		}
+	})
+
+	t.Run("invalid project file yields no topic", func(t *testing.T) {
+		dir := t.TempDir()
+		writeProjectFile(t, dir, "topics: x\n")
+		got := sessionForTest(ctx, dir, defaultTopicsFailReader(t), defaultTopicsLogger())
+		if !defaultTopicsEqual(got, nil) {
+			t.Fatalf("a nameless call got %v, want none", got)
+		}
+	})
+
+	t.Run("matches automatic joining when both switches are on", func(t *testing.T) {
+		dir := t.TempDir()
+		writeProjectFile(t, dir, "topics: [a, b]\n")
+		auto := automaticForTest(ctx, dir, true, defaultTopicsFailReader(t), defaultTopicsLogger())
+		session := sessionForTest(ctx, dir, defaultTopicsFailReader(t), defaultTopicsLogger())
+		if !defaultTopicsEqual(auto, session) {
+			t.Fatalf("automatic joining got %v, a nameless call got %v, want the same list", auto, session)
+		}
+	})
+}
+
+func TestLookupDefaultTopicsSettled(t *testing.T) {
+	// A git command that timed out or was cancelled does not decide whether an
+	// origin exists, so its empty result must not be cached. Any other failure
+	// means there is no origin, which is a settled answer.
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name    string
+		err     error
+		settled bool
+	}{
+		{"timeout", context.DeadlineExceeded, false},
+		{"cancelled", context.Canceled, false},
+		{"no origin", errors.New("not a git repository"), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			readOrigin := func(context.Context, string) (string, error) { return "", tc.err }
+			got := lookupDefaultTopics(ctx, dir, readOrigin, defaultTopicsLogger())
+			if got.settled != tc.settled {
+				t.Fatalf("settled = %v, want %v", got.settled, tc.settled)
+			}
+			if len(got.topics) != 0 {
+				t.Fatalf("topics = %v, want none", got.topics)
+			}
+		})
+	}
+}
+
+func TestSessionTopicList(t *testing.T) {
+	t.Run("computes once and keeps the result", func(t *testing.T) {
+		calls := 0
+		list := &sessionTopicList{compute: func(context.Context) defaultLookup {
+			calls++
+			return defaultLookup{topics: []string{"a"}, settled: true}
+		}}
+		for i := 0; i < 3; i++ {
+			if got := list.get(context.Background()); !defaultTopicsEqual(got, []string{"a"}) {
+				t.Fatalf("call %d = %v, want [a]", i, got)
+			}
+		}
+		if calls != 1 {
+			t.Fatalf("compute ran %d times, want 1", calls)
+		}
+	})
+
+	t.Run("does not keep a computation whose context ended", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		calls := 0
+		list := &sessionTopicList{compute: func(context.Context) defaultLookup {
+			calls++
+			return defaultLookup{settled: false}
+		}}
+		list.get(ctx)
+		if calls != 1 {
+			t.Fatalf("compute ran %d times, want 1", calls)
+		}
+		list.get(context.Background())
+		if calls != 2 {
+			t.Fatalf("compute ran %d times after an interrupted call, want 2", calls)
+		}
+	})
+
+	t.Run("does not keep a result that did not settle", func(t *testing.T) {
+		// A git command that timed out leaves the answer unknown; a later call
+		// must be allowed to look again.
+		calls := 0
+		list := &sessionTopicList{compute: func(context.Context) defaultLookup {
+			calls++
+			if calls == 1 {
+				return defaultLookup{settled: false}
+			}
+			return defaultLookup{topics: []string{"a"}, settled: true}
+		}}
+		if got := list.get(context.Background()); len(got) != 0 {
+			t.Fatalf("first get = %v, want none", got)
+		}
+		if got := list.get(context.Background()); !defaultTopicsEqual(got, []string{"a"}) {
+			t.Fatalf("second get = %v, want [a]", got)
+		}
+		if calls != 2 {
+			t.Fatalf("compute ran %d times, want 2", calls)
+		}
+		if got := list.get(context.Background()); !defaultTopicsEqual(got, []string{"a"}) {
+			t.Fatalf("third get = %v, want the settled [a]", got)
+		}
+		if calls != 2 {
+			t.Fatalf("compute ran %d times after a settled result, want 2", calls)
 		}
 	})
 }
