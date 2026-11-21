@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -237,5 +239,77 @@ func TestReportReadsAnOutputLineLargerThanFourMegabytes(t *testing.T) {
 	out := run(t, input)
 	if !strings.Contains(out, "test: 1 passed, 0 failed, 0 skipped, 0 packages failed") {
 		t.Errorf("report did not survive a long line:\n%s", out)
+	}
+}
+
+// slowestLines returns the slow-test lines of a report, in the order printed.
+func slowestLines(out string) []string {
+	var lines []string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "test: slowest ") {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+func TestReportListsOnlyTopLevelTestsAsSlowest(t *testing.T) {
+	input := stream(t,
+		event{Action: "pass", Package: "p", Test: "TestSlow", Elapsed: 2.5},
+		event{Action: "pass", Package: "p", Test: "TestSlow/child", Elapsed: 9},
+		event{Action: "skip", Package: "p", Test: "TestSkip", Elapsed: 7},
+	)
+
+	want := []string{"test: slowest p TestSlow (2.50s)"}
+	if got := slowestLines(run(t, input)); !slices.Equal(got, want) {
+		t.Errorf("slowest tests = %q, want %q", got, want)
+	}
+}
+
+func TestReportSortsSlowestTestsByElapsed(t *testing.T) {
+	input := stream(t,
+		event{Action: "pass", Package: "p", Test: "TestMedium", Elapsed: 2},
+		event{Action: "pass", Package: "p", Test: "TestFast", Elapsed: 0.5},
+		event{Action: "pass", Package: "p", Test: "TestSlow", Elapsed: 4},
+	)
+
+	want := []string{
+		"test: slowest p TestSlow (4.00s)",
+		"test: slowest p TestMedium (2.00s)",
+		"test: slowest p TestFast (0.50s)",
+	}
+	if got := slowestLines(run(t, input)); !slices.Equal(got, want) {
+		t.Errorf("slowest tests = %q, want %q", got, want)
+	}
+}
+
+func TestReportCapsSlowestTestsPerPackage(t *testing.T) {
+	total := slowestTestsPerPackage + 3
+	events := make([]event, 0, total+1)
+	for i := 0; i < total; i++ {
+		events = append(events, event{
+			Action:  "pass",
+			Package: "p",
+			Test:    fmt.Sprintf("TestSlow%02d", i),
+			Elapsed: float64(i + 1),
+		})
+	}
+	events = append(events, event{Action: "pass", Package: "q", Test: "TestOnly", Elapsed: 1})
+
+	got := slowestLines(run(t, stream(t, events...)))
+	if want := slowestTestsPerPackage + 1; len(got) != want {
+		t.Fatalf("reported %d slowest tests, want %d:\n%s", len(got), want, strings.Join(got, "\n"))
+	}
+	if want := fmt.Sprintf("test: slowest p TestSlow%02d (%.2fs)", total-1, float64(total)); got[0] != want {
+		t.Errorf("first slowest test = %q, want %q", got[0], want)
+	}
+	for _, i := range []int{0, 1, 2} {
+		excluded := fmt.Sprintf("TestSlow%02d", i)
+		if slices.ContainsFunc(got, func(line string) bool { return strings.Contains(line, excluded) }) {
+			t.Errorf("test %s is beyond the per-package limit but was reported:\n%s", excluded, strings.Join(got, "\n"))
+		}
+	}
+	if want := "test: slowest q TestOnly (1.00s)"; got[len(got)-1] != want {
+		t.Errorf("last slowest test = %q, want %q", got[len(got)-1], want)
 	}
 }

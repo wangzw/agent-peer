@@ -16,9 +16,14 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 )
+
+// slowestTestsPerPackage bounds how many top-level tests the report lists for
+// one package after the summary.
+const slowestTestsPerPackage = 15
 
 // event is one line of the go test -json stream. A build event names
 // ImportPath; a test event names Package, and FailedBuild on the fail event
@@ -54,6 +59,7 @@ type reporter struct {
 	testOutput     map[testKey][]string
 	pkgOutput      map[string][]string
 	buildOutput    map[string][]string
+	testElapsed    map[testKey]float64
 }
 
 func newReporter(out io.Writer, label string, progress bool) *reporter {
@@ -66,6 +72,7 @@ func newReporter(out io.Writer, label string, progress bool) *reporter {
 		testOutput:     make(map[testKey][]string),
 		pkgOutput:      make(map[string][]string),
 		buildOutput:    make(map[string][]string),
+		testElapsed:    make(map[testKey]float64),
 	}
 }
 
@@ -170,6 +177,7 @@ func (r *reporter) handle(e event) {
 	case "pass":
 		if e.Test != "" {
 			r.passed++
+			r.recordElapsed(e)
 		} else if e.Package != "" {
 			r.printf("%s passed (%.2fs)\n", e.Package, e.Elapsed)
 		}
@@ -191,6 +199,7 @@ func (r *reporter) handle(e event) {
 func (r *reporter) failEvent(e event) {
 	if e.Test != "" {
 		r.failed++
+		r.recordElapsed(e)
 		r.printf("failed %s %s\n", e.Package, e.Test)
 		r.printTestOutput(testKey{e.Package, e.Test})
 		return
@@ -250,6 +259,51 @@ func (r *reporter) summary() {
 		summary += fmt.Sprintf(", %d packages without test files", r.noTestPackages)
 	}
 	r.printf("%s\n", summary)
+	r.printSlowestTests()
+}
+
+// recordElapsed remembers a test's duration so the report can rank it.
+// Subtests are recorded too and filtered out when the list is built, because a
+// parent's elapsed time already includes its children.
+func (r *reporter) recordElapsed(e event) {
+	r.testElapsed[testKey{e.Package, e.Test}] = e.Elapsed
+}
+
+// printSlowestTests lists, for each package, the top-level tests that took the
+// longest. Only pass and fail events record a duration, so a skipped test never
+// appears. Packages are printed in name order and tests from slowest to
+// fastest, which keeps the report comparable between runs.
+func (r *reporter) printSlowestTests() {
+	byPackage := make(map[string][]testKey)
+	for k := range r.testElapsed {
+		if strings.Contains(k.test, "/") {
+			continue
+		}
+		byPackage[k.pkg] = append(byPackage[k.pkg], k)
+	}
+	pkgs := make([]string, 0, len(byPackage))
+	for pkg := range byPackage {
+		pkgs = append(pkgs, pkg)
+	}
+	slices.Sort(pkgs)
+	for _, pkg := range pkgs {
+		tests := byPackage[pkg]
+		slices.SortFunc(tests, func(a, b testKey) int {
+			if r.testElapsed[a] != r.testElapsed[b] {
+				if r.testElapsed[a] > r.testElapsed[b] {
+					return -1
+				}
+				return 1
+			}
+			return strings.Compare(a.test, b.test)
+		})
+		if len(tests) > slowestTestsPerPackage {
+			tests = tests[:slowestTestsPerPackage]
+		}
+		for _, k := range tests {
+			r.printf("slowest %s %s (%.2fs)\n", k.pkg, k.test, r.testElapsed[k])
+		}
+	}
 }
 
 // reason returns the last line a skipped test logged before Go reported the
