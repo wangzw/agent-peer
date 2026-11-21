@@ -620,7 +620,7 @@ func TestREQBrokerConfig050_InstallScriptSystemSummary(t *testing.T) {
 // service-install tests.
 func assertInstallScriptSummary(t *testing.T, output, level, start string, wants map[string]string) {
 	t.Helper()
-	assertInstallSummary(t, output, level, start, wants)
+	assertInstallSummary(t, output, level, start, false, wants)
 	for _, label := range []string{"binary:", "config:", "audit log:"} {
 		path := strings.Fields(summaryValue(t, output, label))[0]
 		if _, err := os.Stat(path); err != nil {

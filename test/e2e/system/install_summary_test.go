@@ -39,7 +39,7 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 		t.Fatalf("service install --system: exit %d\nstdout: %s\nstderr: %s",
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
-	assertInstallSummary(t, res.Stdout, "system-level", "boot", map[string]string{
+	assertInstallSummary(t, res.Stdout, "system-level", "boot", true, map[string]string{
 		"binary:":    releaseBinary,
 		"config:":    systemConfigPath + " (generated)",
 		"run log:":   "journalctl -u peers.service",
@@ -66,7 +66,7 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 		t.Fatalf("reinstalling service --system: exit %d\nstdout: %s\nstderr: %s",
 			again.ExitCode, strings.TrimSpace(again.Stdout), strings.TrimSpace(again.Stderr))
 	}
-	assertInstallSummary(t, again.Stdout, "system-level", "boot", map[string]string{
+	assertInstallSummary(t, again.Stdout, "system-level", "boot", true, map[string]string{
 		"config:": systemConfigPath + " (kept)",
 	})
 
@@ -78,6 +78,11 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 	t.Run("the printed commands run as printed", func(t *testing.T) {
 		for _, label := range []string{"start:", "stop:", "restart:", "uninstall:"} {
 			args := printedCommandArgs(t, summaryValue(t, again.Stdout, label))
+			// The summary prints "peers uninstall" for a person at a terminal.
+			// The test runs without one, so it passes --yes to skip the question.
+			if label == "uninstall:" {
+				args = append(args, "--yes")
+			}
 			res := syscontainer.RunAs(t, "root", nil, args...)
 			if res.ExitCode != 0 {
 				t.Fatalf("%s command from the summary: exit %d\nstdout: %s\nstderr: %s",
@@ -118,7 +123,7 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 		t.Fatalf("service install as peer: exit %d\nstdout: %s\nstderr: %s",
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
-	assertInstallSummary(t, res.Stdout, "user-level", "login", map[string]string{
+	assertInstallSummary(t, res.Stdout, "user-level", "login", true, map[string]string{
 		"binary:":    releaseBinary,
 		"config:":    configPath + " (generated)",
 		"run log:":   "journalctl --user -u peers.service",
@@ -144,7 +149,7 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 		t.Fatalf("reinstalling the user service: exit %d\nstdout: %s\nstderr: %s",
 			again.ExitCode, strings.TrimSpace(again.Stdout), strings.TrimSpace(again.Stderr))
 	}
-	assertInstallSummary(t, again.Stdout, "user-level", "login", map[string]string{
+	assertInstallSummary(t, again.Stdout, "user-level", "login", true, map[string]string{
 		"config:": configPath + " (kept)",
 	})
 
@@ -154,6 +159,11 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 	t.Run("the printed commands run as printed", func(t *testing.T) {
 		for _, label := range []string{"start:", "stop:", "restart:", "uninstall:"} {
 			args := printedCommandArgs(t, summaryValue(t, again.Stdout, label))
+			// The summary prints "peers uninstall" for a person at a terminal.
+			// The test runs without one, so it passes --yes to skip the question.
+			if label == "uninstall:" {
+				args = append(args, "--yes")
+			}
 			res := runWithEnv(t, "peer", userEnv, "peers", args...)
 			if res.ExitCode != 0 {
 				t.Fatalf("%s command from the summary: exit %d\nstdout: %s\nstderr: %s",
@@ -205,7 +215,7 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 	}
 
 	// The summary is printed as usual, and the service is still installed.
-	assertInstallSummary(t, res.Stdout, "system-level", "boot", map[string]string{
+	assertInstallSummary(t, res.Stdout, "system-level", "boot", true, map[string]string{
 		"binary:":    releaseBinary,
 		"config:":    systemConfigPath + " (kept)",
 		"audit log:": systemAuditPath,
@@ -249,30 +259,39 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 	}
 }
 
-// assertInstallSummary checks the first line of an install summary and every
-// value the caller names. level and start are the words the summary uses for
-// the install level and when the service starts.
-func assertInstallSummary(t *testing.T, stdout, level, start string, wants map[string]string) {
+// assertInstallSummary checks the install summary and every value the caller
+// names. level and start are the words the summary uses for the install level
+// and when the service starts. requireFirst makes the summary the first line:
+// a direct service install prints it first, while the install script prints its
+// notices before it and only requires the line to be present.
+func assertInstallSummary(t *testing.T, stdout, level, start string, requireFirst bool, wants map[string]string) {
 	t.Helper()
 
-	// The install script prints notices, such as the zsh completion hint,
-	// before it runs service install, whose summary is the line with this
-	// suffix. Find that line rather than assuming it is first: the direct
-	// service-install tests print it first and reach the same assertion.
 	suffix := " installed (" + level + ", starts at " + start + ")"
+	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	matches := 0
 	var first string
-	for _, line := range strings.Split(strings.TrimRight(stdout, "\n"), "\n") {
+	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "peers ") || !strings.HasSuffix(trimmed, suffix) {
-			continue
+		if strings.HasPrefix(trimmed, "peers ") && strings.HasSuffix(trimmed, suffix) {
+			matches++
+			if first == "" {
+				first = trimmed
+			}
 		}
-		if first != "" {
-			t.Errorf("install output has more than one summary line:\n%s", stdout)
-			break
-		}
-		first = trimmed
 	}
-	if first == "" {
+	if matches > 1 {
+		t.Errorf("install output has more than one summary line:\n%s", stdout)
+	}
+	if requireFirst {
+		if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+			t.Fatalf("the install printed no summary:\n%s", stdout)
+		}
+		first = strings.TrimSpace(lines[0])
+		if !strings.HasPrefix(first, "peers ") || !strings.HasSuffix(first, suffix) {
+			t.Errorf("summary first line = %q, want %q", first, "peers <version>"+suffix)
+		}
+	} else if first == "" {
 		t.Fatalf("the install printed no line ending in %q:\n%s", suffix, stdout)
 	}
 	if version := strings.TrimSuffix(strings.TrimPrefix(first, "peers "), suffix); strings.TrimSpace(version) == "" || strings.Contains(version, " ") {
