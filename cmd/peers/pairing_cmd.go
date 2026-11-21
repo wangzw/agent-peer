@@ -22,7 +22,7 @@ func (a *app) newBrokerCommand() *cobra.Command {
 		&cobra.Command{
 			Use:   "list",
 			Short: "list the Brokers this host knows",
-			Args:  noPositionalArguments,
+			Args:  noPositionalArgs,
 			RunE: func(cmd *cobra.Command, _ []string) error {
 				if err := a.deps.runPeerList(cmd.Context(), a.stdout); err != nil {
 					return err
@@ -98,7 +98,7 @@ func (a *app) newKeyCommand() *cobra.Command {
 	key.AddCommand(&cobra.Command{
 		Use:   "create",
 		Short: "create a one-time pairing key",
-		Args:  noPositionalArguments,
+		Args:  noPositionalArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := a.deps.runPairingKeyCreate(cmd.Context(), a.stdout); err != nil {
 				return err
@@ -107,15 +107,6 @@ func (a *app) newKeyCommand() *cobra.Command {
 		},
 	})
 	return key
-}
-
-// noPositionalArguments rejects any positional argument. The message names the
-// first one, which is the one the caller did not expect.
-func noPositionalArguments(_ *cobra.Command, args []string) error {
-	if len(args) > 0 {
-		return usageErrorf("unexpected argument %q", args[0])
-	}
-	return nil
 }
 
 // oneArgument requires exactly one positional argument. The second positional
