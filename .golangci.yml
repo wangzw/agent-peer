@@ -2,6 +2,13 @@ version: "2"
 
 run:
   tests: true
+  # Without this, each instance takes a global lock at
+  # $TMPDIR/golangci-lint.lock and the second concurrent gate fails with
+  # "parallel golangci-lint is running". The analysis cache is a fork of Go's
+  # build cache, whose Open documents that processes on one machine may share a
+  # cache directory: they coordinate with file locks, may duplicate work, and
+  # cannot corrupt it.
+  allow-parallel-runners: true
 
 linters:
   default: none

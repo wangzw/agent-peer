@@ -5,14 +5,15 @@
 
 JOBS ?= 4
 
-# Directory for golangci-lint's cache. The linter also takes a global run lock
-# at $TMPDIR/golangci-lint.lock and refuses to run while another instance holds
-# it, so gates that run in parallel must each pass a different directory here.
-# The linter then gets a private cache and a private TMPDIR under this
-# directory. When empty, the linter's own defaults are used.
+# Optional directory for golangci-lint's cache. The global run lock is disabled
+# in .golangci.yml (allow-parallel-runners), so concurrent gates share the
+# default cache safely and need no separate directory here. A caller may still
+# point this at a private cache to keep one experiment out of the others; the
+# linter then also gets a private TMPDIR under this directory. When empty, the
+# linter's own defaults are used.
 GOLANGCI_LINT_CACHE ?=
 
-# golangci-lint with the caller's private cache and lock directory.
+# golangci-lint with the caller's private cache and TMPDIR.
 GOLANGCI_LINT = $(if $(GOLANGCI_LINT_CACHE),env GOLANGCI_LINT_CACHE="$(GOLANGCI_LINT_CACHE)" TMPDIR="$(GOLANGCI_LINT_CACHE)/tmp" )golangci-lint
 
 GIT ?= git
@@ -48,6 +49,22 @@ gen-check:
 # Format, static analysis, shell script lint, module tidiness and the module
 # dependency-direction check.
 lint:
+	@awk 'BEGIN { inrun = 0; found = 0 } \
+		/^[^[:space:]#]/ { inrun = ($$0 ~ /^run:[[:space:]]*(#|$$)/) } \
+		inrun && $$1 ~ /^allow-parallel-runners:/ { \
+			v = $$0; \
+			sub(/^[[:space:]]*allow-parallel-runners:[[:space:]]*/, "", v); \
+			sub(/[[:space:]]+#.*$$/, "", v); \
+			gsub(/"/, "", v); \
+			sub(/[[:space:]]+$$/, "", v); \
+			if (tolower(v) == "true") found = 1 \
+		} \
+		END { \
+			if (!found) { \
+				print "run.allow-parallel-runners must be true so concurrent make lint runs do not fail" > "/dev/stderr"; \
+				exit 1 \
+			} \
+		}' .golangci.yml
 	@if [ -n "$(GOLANGCI_LINT_CACHE)" ]; then mkdir -p "$(GOLANGCI_LINT_CACHE)/tmp"; fi
 	@files="$$(find . -type f -name '*.go' \
 		-not -path './third_party/*' \
