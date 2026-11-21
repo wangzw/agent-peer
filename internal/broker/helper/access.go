@@ -127,22 +127,12 @@ func isAccessDenial(err error) bool {
 // extended, and only the effective ids change, so the real and saved uid stay
 // root and the account cannot signal or inspect the process.
 func enterAccountFromEnv() error {
-	uidValue, ok := os.LookupEnv(accessCheckUIDEnv)
-	if !ok {
+	uid, gid, present, err := lookupIdentityEnv(accessCheckUIDEnv, accessCheckGIDEnv)
+	if err != nil {
+		return err
+	}
+	if !present {
 		return nil
-	}
-	uid, err := parseID(uidValue)
-	if err != nil {
-		return fmt.Errorf("account uid %q: %w", uidValue, err)
-	}
-
-	gidValue, ok := os.LookupEnv(accessCheckGIDEnv)
-	if !ok {
-		return errors.New("account gid is missing")
-	}
-	gid, err := parseID(gidValue)
-	if err != nil {
-		return fmt.Errorf("account gid %q: %w", gidValue, err)
 	}
 
 	groups, err := parseIDList(os.Getenv(accessCheckGroupsEnv))

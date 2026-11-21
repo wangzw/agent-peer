@@ -67,18 +67,44 @@ func parseID(s string) (uint32, error) {
 	return uint32(v), nil
 }
 
+// lookupIdentityEnv reads the account uid and gid from the variables named by
+// uidEnv and gidEnv. present reports whether uidEnv is set at all: when it is
+// absent the child already runs as the account (the Linux child started through
+// the credential, or an in-process caller) and nothing has to be read.
+//
+// Both hidden subcommands use this function, each with its own pair of
+// variables: access-check and the account-helper receive different privileges
+// and must not accept an identity meant for the other.
+func lookupIdentityEnv(uidEnv, gidEnv string) (uid, gid uint32, present bool, err error) {
+	uidValue, ok := os.LookupEnv(uidEnv)
+	if !ok {
+		return 0, 0, false, nil
+	}
+	uid, err = parseID(uidValue)
+	if err != nil {
+		return 0, 0, true, fmt.Errorf("account uid %q: %w", uidValue, err)
+	}
+
+	gidValue, ok := os.LookupEnv(gidEnv)
+	if !ok {
+		return 0, 0, true, errors.New("account gid is missing")
+	}
+	gid, err = parseID(gidValue)
+	if err != nil {
+		return 0, 0, true, fmt.Errorf("account gid %q: %w", gidValue, err)
+	}
+	return uid, gid, true, nil
+}
+
 // accountCommand returns a command that runs exe with args as acct. The
-// account-helper needs the account's full identity, including its saved uid, so
-// the credential is changed before exec.
+// account-helper needs the account's full identity, including its saved uid.
+// How the child receives that identity is platform-specific: see
+// accountChildIdentity.
 func accountCommand(exe string, args []string, acct Account) *exec.Cmd {
 	cmd := commandFor(exe, args, acct)
 	cmd.Stderr = os.Stderr
 	if acct.UID != uint32(os.Geteuid()) {
-		cmd.SysProcAttr.Credential = &syscall.Credential{
-			Uid:    acct.UID,
-			Gid:    acct.GID,
-			Groups: acct.Groups,
-		}
+		accountChildIdentity(cmd, acct)
 	}
 	return cmd
 }

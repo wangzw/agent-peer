@@ -108,7 +108,7 @@ func TestAccountCommandEnvironmentIsMinimal(t *testing.T) {
 	}
 }
 
-func TestAccountCommandCredentialOnlyForOtherAccount(t *testing.T) {
+func TestAccountCommandSelfHasNoCredential(t *testing.T) {
 	euid := uint32(os.Geteuid())
 
 	self := Account{
@@ -124,31 +124,5 @@ func TestAccountCommandCredentialOnlyForOtherAccount(t *testing.T) {
 	}
 	if cmd.SysProcAttr.Credential != nil {
 		t.Errorf("Credential = %+v, want nil for the current account", cmd.SysProcAttr.Credential)
-	}
-
-	otherUID := euid + 1
-	other := Account{
-		Name:   "other",
-		UID:    otherUID,
-		GID:    11,
-		Groups: []uint32{11, 12},
-		Home:   "/home/other",
-	}
-	cmd = accountCommand("/bin/x", nil, other)
-	if cmd.SysProcAttr == nil {
-		t.Fatal("SysProcAttr is nil")
-	}
-	cred := cmd.SysProcAttr.Credential
-	if cred == nil {
-		t.Fatal("Credential is nil, want the other account")
-	}
-	if cred.Uid != otherUID {
-		t.Errorf("Credential.Uid = %d, want %d", cred.Uid, otherUID)
-	}
-	if cred.Gid != other.GID {
-		t.Errorf("Credential.Gid = %d, want %d", cred.Gid, other.GID)
-	}
-	if !slices.Equal(cred.Groups, other.Groups) {
-		t.Errorf("Credential.Groups = %v, want %v", cred.Groups, other.Groups)
 	}
 }

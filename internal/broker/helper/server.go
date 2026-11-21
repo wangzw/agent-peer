@@ -536,5 +536,11 @@ func toProtoSession(s inbox.Session) *helperpb.Session {
 
 // RunAccountHelper is the body of `peers internal account-helper`.
 func RunAccountHelper(ctx context.Context, stdin io.Reader, stdout io.Writer) error {
+	// Switch identity before serving and before CurrentIdentity reads it. A
+	// failed switch returns an error, and the command exits nonzero without
+	// serving as root.
+	if err := enterHelperAccount(); err != nil {
+		return err
+	}
 	return Serve(ctx, stdin, stdout, InboxOps{}, CurrentIdentity())
 }
