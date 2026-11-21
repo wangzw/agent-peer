@@ -408,11 +408,12 @@ func TestInstructions(t *testing.T) {
 		"deliver it twice",
 		"once per agent",
 		"drops the duplicate",
+		"even though the send still reports success",
 		"broker_offline",
 		"denied or would be blocked",
 		// Broadcast rules: local sessions by default, peers only on request.
 		"built-in session tools",
-		"explicitly asks to broadcast with peers",
+		"explicitly asks to broadcast through peers",
 		"do not fall back to peers",
 	} {
 		if !strings.Contains(info.Instructions, want) {

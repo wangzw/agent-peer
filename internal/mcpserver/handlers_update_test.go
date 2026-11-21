@@ -54,7 +54,7 @@ func TestUpdateBroker(t *testing.T) {
 			t.Errorf("result = %+v, want v0.1.0 -> v0.1.1 restarting", out)
 		}
 		// The sentence is the wording of design-mcpserver.
-		want := "Upgrading the Broker from v0.1.0 to v0.1.1; the Broker restarts and the connection recovers automatically. " +
+		want := "Upgrading the Broker from v0.1.0 to v0.1.1; the Broker will restart and the connection will recover automatically. " +
 			"Reopen this session to use the new MCP server."
 		if out.Result != want {
 			t.Errorf("Result = %q, want %q", out.Result, want)

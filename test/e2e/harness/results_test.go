@@ -62,7 +62,7 @@ func TestToolError(t *testing.T) {
 		},
 		{
 			name:       "code and origin",
-			text:       "Delivery unknown: link lost (code: delivery_unknown) (reported by Broker " + fingerprint + ")",
+			text:       "Delivery unknown: link lost (code: delivery_unknown; reported by Broker " + fingerprint + ")",
 			wantCode:   "delivery_unknown",
 			wantOrigin: fingerprint,
 			wantOK:     true,
@@ -110,7 +110,7 @@ func TestResultCodeAndOrigin(t *testing.T) {
 
 	failed := Result{ToolResult: node.ToolResult{
 		IsError: true,
-		Text:    "Delivery unknown: link lost (code: delivery_unknown) (reported by Broker " + strings.Repeat("b", 64) + ")",
+		Text:    "Delivery unknown: link lost (code: delivery_unknown; reported by Broker " + strings.Repeat("b", 64) + ")",
 	}}
 	if got := failed.Code(); got != "delivery_unknown" {
 		t.Errorf("Code = %q, want delivery_unknown", got)

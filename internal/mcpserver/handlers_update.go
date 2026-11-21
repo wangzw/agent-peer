@@ -14,7 +14,7 @@ import (
 // Texts of update_broker results and errors. The result sentences and the
 // "Upgrade failed" opening phrase are the wording of design-mcpserver.
 const (
-	textUpdateRestarting = "Upgrading the Broker from %s to %s; the Broker restarts and the connection recovers automatically. " +
+	textUpdateRestarting = "Upgrading the Broker from %s to %s; the Broker will restart and the connection will recover automatically. " +
 		"Reopen this session to use the new MCP server."
 	textUpdateCurrent  = "The Broker is already up to date (%s)."
 	textUpdateFailed   = "Upgrade failed"

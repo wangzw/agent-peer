@@ -676,7 +676,7 @@ func TestRunSendsInjectedProtocolVersion(t *testing.T) {
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
-	if !strings.Contains(text, "this MCP server speaks 7") {
+	if !strings.Contains(text, "this MCP server speaks version 7") {
 		t.Fatalf("list_agents error = %q, want both protocol versions", text)
 	}
 	if !strings.Contains(text, "(code: version_mismatch)") {

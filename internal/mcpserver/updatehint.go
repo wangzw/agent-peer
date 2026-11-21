@@ -156,6 +156,6 @@ func (u *updateHint) query(ctx context.Context) (st updateStatus, err error) {
 // hintText is the sentence the design fixes word for word.
 func hintText(available, current string) string {
 	return fmt.Sprintf("peers %s is available (this Broker runs %s). "+
-		"Ask the agent to call update_broker, or run `peers update` in a terminal.",
+		"To upgrade, the user can ask you to call update_broker or run `peers update` in a terminal.",
 		available, current)
 }

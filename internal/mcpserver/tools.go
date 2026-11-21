@@ -33,7 +33,7 @@ type ListAgentsOut struct {
 
 // SendMessageIn is the input of send_message.
 type SendMessageIn struct {
-	To      string `json:"to"      jsonschema:"the agent address, e.g. name@alias, copied verbatim from the sender of a message"`
+	To      string `json:"to"      jsonschema:"the agent address (name@alias), copied verbatim from list_agents or from a message's sender"`
 	Message string `json:"message" jsonschema:"plain text"`
 }
 
@@ -123,7 +123,7 @@ type DegradedStateOut struct {
 
 // ConnectBrokerIn is the input of connect_broker.
 type ConnectBrokerIn struct {
-	Address    string `json:"address"     jsonschema:"the other Broker's address, written host:port or hostname(host:port)"`
+	Address    string `json:"address"     jsonschema:"the other Broker's address, written as host:port or hostname(host:port)"`
 	Key        string `json:"key"         jsonschema:"the pairing key the other side created"`
 	LocalAlias string `json:"local_alias,omitempty" jsonschema:"alias to use for the other Broker when its own alias is taken"`
 }
@@ -173,8 +173,8 @@ type GetConfigOut struct {
 
 // SetConfigIn is the input of set_config. Value is the new value as text.
 type SetConfigIn struct {
-	Key   string `json:"key"`
-	Value string `json:"value" jsonschema:"new value as text, e.g. 10m, true, [a, b]"`
+	Key   string `json:"key"   jsonschema:"the configuration key to change, such as broker.alias"`
+	Value string `json:"value" jsonschema:"the new value as text, for example 10m, true or [a, b]"`
 }
 
 // SetConfigOut is the result of set_config, with the old and the new value.
@@ -234,7 +234,7 @@ func newMCPServer(version string, ts toolSet, log *slog.Logger) *mcp.Server {
 		&mcp.ServerOptions{Instructions: instructions},
 	)
 	addTool(s, log, "list_agents",
-		"List the agents visible to this session, optionally filtered by topic, Broker alias, or agent name.",
+		"List the agents visible to this session, optionally filtered by topic, Broker alias or agent name.",
 		true, ts.ListAgents)
 	addTool(s, log, "send_message",
 		"Send plain text to another agent; success only means the message reached the other session, not that the other agent read it.",
@@ -243,13 +243,13 @@ func newMCPServer(version string, ts toolSet, log *slog.Logger) *mcp.Server {
 		"List the topics this session has joined and the public topics known to this Broker.",
 		true, ts.ListTopics)
 	addTool(s, log, "join_topic",
-		"Join a topic; omit name to join this session's default topics. Declaring a topic public requires this Broker to be public too.",
+		"Join a topic; omit `name` to join this session's default topics. Declaring a topic public requires this Broker to be public too.",
 		false, ts.JoinTopic)
 	addTool(s, log, "leave_topic",
-		"Leave a topic this session has joined; omit name to leave this session's default topics.",
+		"Leave a topic this session has joined; omit `name` to leave this session's default topics.",
 		false, ts.LeaveTopic)
 	addTool(s, log, "list_brokers",
-		"List the Brokers this Broker knows, including peer status, addresses, and fingerprints.",
+		"List the Brokers this Broker knows about, including peer status, addresses and fingerprints.",
 		true, ts.ListBrokers)
 	addTool(s, log, "connect_broker",
 		"Pair with another Broker using its address and a pairing key; requires write permission on this Broker's config file.",

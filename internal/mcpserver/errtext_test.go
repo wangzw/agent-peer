@@ -31,8 +31,8 @@ func newHandlers(st Status) *handlers {
 // answer a tool call.
 func TestPreflight(t *testing.T) {
 	const detail = "dial unix /run/peers/broker.sock: no such file or directory"
-	const mismatchDetail = "the running Broker speaks local protocol version 2, this MCP server speaks 1"
-	const remedy = "restart the Broker of this account with the same peers version; this session reconnects by itself"
+	const mismatchDetail = "the running Broker speaks local protocol version 2; this MCP server speaks version 1"
+	const remedy = "restart the Broker of this account with the same peers version as this MCP server; this session reconnects by itself"
 
 	tests := []struct {
 		name      string
@@ -238,10 +238,10 @@ func TestNoSystemBrokerTextNamesTheRightActor(t *testing.T) {
 
 func TestPreflightVersionRemedies(t *testing.T) {
 	const (
-		detail = "the running Broker speaks local protocol version 2, this MCP server speaks 1"
-		user   = "restart the Broker of this account with the same peers version; this session reconnects by itself"
-		system = "ask the administrator to restart the Broker system service with the same peers version; this session reconnects by itself"
-		env    = "restart the Broker at /tmp/x/broker.sock with the same peers version; this session reconnects by itself"
+		detail = "the running Broker speaks local protocol version 2; this MCP server speaks version 1"
+		user   = "restart the Broker of this account with the same peers version as this MCP server; this session reconnects by itself"
+		system = "ask the administrator to restart the Broker system service with the same peers version as this MCP server; this session reconnects by itself"
+		env    = "restart the Broker at /tmp/x/broker.sock with the same peers version as this MCP server; this session reconnects by itself"
 	)
 	for _, remedy := range []string{user, system, env} {
 		h := newHandlers(Status{Phase: PhaseVersionMismatch, Detail: detail, Remedy: remedy})
@@ -320,7 +320,7 @@ func TestPreflightBrokerDegradedWithoutDetail(t *testing.T) {
 	if err == nil {
 		t.Fatal("preflight returned no error")
 	}
-	want := "list_agents failed: the Broker runs degraded with diagnostics only; it cannot serve this call until the startup failure is fixed (code: broker_degraded)"
+	want := "list_agents failed: the Broker is running in a degraded, diagnostics-only mode; it cannot serve this call until the startup failure is fixed (code: broker_degraded)"
 	if got := err.Error(); got != want {
 		t.Errorf("preflight error = %q, want %q", got, want)
 	}
@@ -412,7 +412,7 @@ func TestRPCError(t *testing.T) {
 			kind:         callGeneric,
 			perm:         permRead,
 			err:          detailStatus(codes.PermissionDenied, &localpb.ErrorDetail{Code: localpb.ErrorCode_ERROR_CODE_PERMISSION_DENIED, Message: "denied"}),
-			wantExact:    "get_config failed: denied (code: permission_denied). The calling account needs read permission on the Broker's config file",
+			wantExact:    "get_config failed: denied (code: permission_denied). The calling account needs read permission on the Broker's config file.",
 			wantContains: []string{"read permission"},
 		},
 		{
@@ -421,7 +421,7 @@ func TestRPCError(t *testing.T) {
 			kind:         callGeneric,
 			perm:         permWrite,
 			err:          detailStatus(codes.PermissionDenied, &localpb.ErrorDetail{Code: localpb.ErrorCode_ERROR_CODE_PERMISSION_DENIED, Message: "denied"}),
-			wantExact:    "set_config failed: denied (code: permission_denied). The calling account needs write permission on the Broker's config file",
+			wantExact:    "set_config failed: denied (code: permission_denied). The calling account needs write permission on the Broker's config file.",
 			wantContains: []string{"write permission"},
 		},
 		{
@@ -429,7 +429,7 @@ func TestRPCError(t *testing.T) {
 			tool:       "list_agents",
 			kind:       callGeneric,
 			err:        detailStatus(codes.FailedPrecondition, &localpb.ErrorDetail{Code: localpb.ErrorCode_ERROR_CODE_NOT_VISIBLE, Message: "m", OriginatingBrokerFingerprint: fp}),
-			wantExact:  "list_agents failed: m (code: not_visible) (reported by Broker " + fpHex + ")",
+			wantExact:  "list_agents failed: m (code: not_visible; reported by Broker " + fpHex + ")",
 			wantPrefix: "list_agents failed:",
 		},
 		{
@@ -476,7 +476,7 @@ func TestRPCError(t *testing.T) {
 				Message:                      "Broker hostB is offline and refuses messages from other hosts",
 				OriginatingBrokerFingerprint: fp,
 			}),
-			wantExact: "Not sent: Broker hostB is offline and refuses messages from other hosts (code: broker_offline) (reported by Broker " + fpHex + "). " + textPeerOffline,
+			wantExact: "Not sent: Broker hostB is offline and refuses messages from other hosts (code: broker_offline; reported by Broker " + fpHex + "). " + textPeerOffline,
 		},
 		{
 			name:      "create a pairing key on a local-only Broker",
@@ -516,8 +516,8 @@ func TestRPCError(t *testing.T) {
 	}
 }
 
-// TestErrorSuffixFormat pins the two suffixes that end-to-end tests parse:
-// " (code: <name>)" and " (reported by Broker <64 lowercase hex>)".
+// TestErrorSuffixFormat pins the suffix that end-to-end tests parse:
+// " (code: <name>; reported by Broker <64 lowercase hex>)".
 func TestErrorSuffixFormat(t *testing.T) {
 	fp := bytes.Repeat([]byte{0x0f}, 32)
 	fpHex := hex.EncodeToString(fp)
@@ -531,7 +531,7 @@ func TestErrorSuffixFormat(t *testing.T) {
 			Message:                      "m",
 			OriginatingBrokerFingerprint: fp,
 		}))
-		want := "list_agents failed: m (code: not_visible) (reported by Broker " + fpHex + ")"
+		want := "list_agents failed: m (code: not_visible; reported by Broker " + fpHex + ")"
 		if got := err.Error(); got != want {
 			t.Errorf("error = %q, want %q", got, want)
 		}
@@ -553,7 +553,7 @@ func TestErrorSuffixFormat(t *testing.T) {
 			Message:                      "denied",
 			OriginatingBrokerFingerprint: fp,
 		}))
-		want := "get_config failed: denied (code: permission_denied) (reported by Broker " + fpHex + "). " + textNeedRead
+		want := "get_config failed: denied (code: permission_denied; reported by Broker " + fpHex + "). " + textNeedRead
 		if got := err.Error(); got != want {
 			t.Errorf("error = %q, want %q", got, want)
 		}
@@ -636,7 +636,7 @@ func TestRPCErrorVersionMismatchHasNoRestartHint(t *testing.T) {
 				Message:                      "link protocol version mismatch",
 				OriginatingBrokerFingerprint: fp,
 			}),
-			want: "list_agents failed: link protocol version mismatch (code: version_mismatch) (reported by Broker " + fpHex + ")",
+			want: "list_agents failed: link protocol version mismatch (code: version_mismatch; reported by Broker " + fpHex + ")",
 		},
 	}
 	for _, tt := range tests {

@@ -19,7 +19,7 @@ import (
 )
 
 const wantHint = "peers 0.1.1 is available (this Broker runs 0.1.0). " +
-	"Ask the agent to call update_broker, or run `peers update` in a terminal."
+	"To upgrade, the user can ask you to call update_broker or run `peers update` in a terminal."
 
 // connectHintClient starts a server whose only extra behaviour is the update
 // hint over source, and returns a connected client session.

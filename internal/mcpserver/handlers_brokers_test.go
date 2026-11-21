@@ -396,7 +396,7 @@ func TestDisconnectBroker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DisconnectBroker: %v", err)
 	}
-	if out.Result != "unpaired peer1; the link is closed" {
+	if out.Result != "Unpaired peer1; the link is closed." {
 		t.Errorf("result = %q", out.Result)
 	}
 	if got.GetBroker() != "peer1" {

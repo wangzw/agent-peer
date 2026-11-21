@@ -28,11 +28,12 @@ func Decode[T any](text string) (T, error) {
 	return value, nil
 }
 
-// toolCodeMarker and toolOriginMarker frame the suffixes mcpserver appends to
-// an error result's text.
+// toolCodeMarker and toolOriginMarker frame the suffix mcpserver appends to
+// an error result's text: " (code: <name>; reported by Broker <fingerprint>)",
+// where the origin part is present only for an error from another Broker.
 const (
 	toolCodeMarker   = " (code: "
-	toolOriginMarker = " (reported by Broker "
+	toolOriginMarker = "; reported by Broker "
 )
 
 // ToolError extracts the error code name and the originating Broker
@@ -50,17 +51,15 @@ func ToolError(text string) (code, originFingerprint string, ok bool) {
 		return "", "", false
 	}
 	code = rest[:end]
+	if split := strings.Index(code, toolOriginMarker); split >= 0 {
+		origin := code[split+len(toolOriginMarker):]
+		code = code[:split]
+		if isFingerprint(origin) {
+			originFingerprint = origin
+		}
+	}
 	if !validToolCode(code) {
 		return "", "", false
-	}
-
-	after := rest[end+1:]
-	if strings.HasPrefix(after, toolOriginMarker) {
-		rest := after[len(toolOriginMarker):]
-		close := strings.IndexByte(rest, ')')
-		if close >= 0 && isFingerprint(rest[:close]) {
-			originFingerprint = rest[:close]
-		}
 	}
 	return code, originFingerprint, true
 }

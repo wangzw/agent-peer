@@ -37,9 +37,9 @@ type loopDeps struct {
 const (
 	loopLostText = "the connection to the Broker was lost; reconnecting"
 
-	loopRemedyUser   = "restart the Broker of this account with the same peers version, starting it with `peers service install` or with `peers service run` in a terminal outside the session; this session reconnects by itself"
-	loopRemedySystem = "ask the administrator to restart the Broker system service with the same peers version; this session reconnects by itself"
-	loopRemedyTest   = "restart the Broker at %s with the same peers version; this session reconnects by itself"
+	loopRemedyUser   = "restart the Broker of this account with the same peers version as this MCP server, either with `peers service install` or by running `peers service run` in a terminal outside the session; this session reconnects by itself"
+	loopRemedySystem = "ask the administrator to restart the Broker system service with the same peers version as this MCP server; this session reconnects by itself"
+	loopRemedyTest   = "restart the Broker at %s with the same peers version as this MCP server; this session reconnects by itself"
 )
 
 // loopRemedy returns the "To fix it, ..." clause for a target.
@@ -172,10 +172,10 @@ func loopOnce(ctx context.Context, d loopDeps, conn *loopConnBackoff) (stop bool
 			// handshake with a version_mismatch error, whose detail carries no
 			// version field. Naming version 0 would claim something the Broker
 			// never said, so that path describes the mismatch without it.
-			detail := fmt.Sprintf("the running Broker speaks a different local protocol version, this MCP server speaks %d",
+			detail := fmt.Sprintf("the running Broker speaks a different local protocol version; this MCP server speaks version %d",
 				d.version)
 			if res.BrokerVersion != 0 {
-				detail = fmt.Sprintf("the running Broker speaks local protocol version %d, this MCP server speaks %d",
+				detail = fmt.Sprintf("the running Broker speaks local protocol version %d; this MCP server speaks version %d",
 					res.BrokerVersion, d.version)
 			}
 			loopSetStatus(d.st, PhaseVersionMismatch, detail, loopRemedy(t), nil)

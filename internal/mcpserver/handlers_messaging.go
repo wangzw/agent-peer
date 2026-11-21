@@ -59,7 +59,7 @@ func (h *handlers) ListAgents(ctx context.Context, in ListAgentsIn) (ListAgentsO
 
 // sendMessageResult is the result text of a successful send_message. It only
 // means the message reached the recipient's session, not that it was read.
-const sendMessageResult = "delivered to the recipient's session (not necessarily read)"
+const sendMessageResult = "Delivered to the recipient's session (not necessarily read)."
 
 // SendMessage forwards send_message to the Broker. To and Message are not
 // trimmed or rewritten.

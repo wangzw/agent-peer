@@ -69,9 +69,9 @@ MCP 服务的名字是 `peer`，模型看到的工具全名是 `mcp__peer__<工�
 - `set_broker_online`：`online`、`changed`。
 - `update_broker`：`from_version`、`to_version`、`restarting`。
 
-`update_broker` 作用于本会话已登记的 Broker。它在收到 Broker 的应答后立即返回，不在工具调用中等待重启。成功时的文字为 `Upgrading the Broker from <from> to <to>; the Broker restarts and the connection recovers automatically. Reopen this session to use the new MCP server.`；已经是最新版本时为 `The Broker is already up to date (<from>).`
+`update_broker` 作用于本会话已登记的 Broker。它在收到 Broker 的应答后立即返回，不在工具调用中等待重启。成功时的文字为 `Upgrading the Broker from <from> to <to>; the Broker will restart and the connection will recover automatically. Reopen this session to use the new MCP server.`；已经是最新版本时为 `The Broker is already up to date (<from>).`
 
-状态写成 `idle`、`busy`、`waiting`、`shell`，未知状态省略；指纹写成小写十六进制；时间写成 UTC 的 RFC 3339。出错的结果只有文字，不带结构化内容；错误码与来源 Broker 以 ` (code: <错误码名>)`、` (reported by Broker <指纹>)` 后缀给出。
+状态写成 `idle`、`busy`、`waiting`、`shell`，未知状态省略；指纹写成小写十六进制；时间写成 UTC 的 RFC 3339。出错的结果只有文字，不带结构化内容；错误码与来源 Broker 以 ` (code: <错误码名>; reported by Broker <指纹>)` 后缀给出，没有来源 Broker 时只写 ` (code: <错误码名>)`。
 
 MCP 服务的使用说明随工具一起进入会话上下文。下列要点是必须包含的内容，说明可以有其他文字：
 
@@ -174,7 +174,7 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 追加的文本为：
 
 ```
-peers <v> is available (this Broker runs <c>). Ask the agent to call update_broker, or run `peers update` in a terminal.
+peers <v> is available (this Broker runs <c>). To upgrade, the user can ask you to call update_broker or run `peers update` in a terminal.
 ```
 
 其中 `<v>` 是可用版本，`<c>` 是当前版本。
@@ -183,7 +183,7 @@ peers <v> is available (this Broker runs <c>). Ask the agent to call update_brok
 
 Broker 返回的错误码转成一句以结果开头的文字，随后附上错误码和可采取的做法，例如名字有歧义时列出候选地址，附上消歧标识，目标是曾用名时给出现在的地址，权限不足时指出所缺的权限。Broker 不可达或登记未完成时，工具调用立即返回说明原因的错误，不在 MCP 服务进程内排队。
 
-错误文字的固定格式是 `开头短语: 说明 (code: <错误码名>)`，开头短语与说明之间是 `: `；涉及远端 Broker 时再接 ` (reported by Broker <64 位小写十六进制指纹>)`，有附加提示时提示接在最后。开头短语由错误码与调用它的工具确定，不取自 Broker 给出的说明：错误码为 `delivery_unknown` 时一律为 `Delivery unknown`，其余按工具取默认值，`send_message` 为 `Not sent`，`connect_broker` 为 `Not connected`，其他工具为 `<工具名> failed`。Broker 的说明若已以 `Not sent: `、`Delivery unknown: ` 或 `Not connected: ` 之一开头，先去掉这个开头短语，再按上述规则加上正确的短语。未连接、正在连接与没有可用 Broker 这些本机状态产生的错误用 `internal` 码，登记未完成用 `not_registered`，版本不兼容用 `version_mismatch`。登记未完成的说明优先取 Broker 事件里的 `detail`，它点名具体原因；`detail` 为空时按原因枚举使用固定句子，因此本进程连接不发送 `detail` 的旧 Broker 时，文字与之前一致。`send_message` 的请求发出后连接中断，按结果未知处理，开头为 `Delivery unknown`，说明消息可能已送达、重发可能使对方收到两份；`connect_broker` 的同情形以 `Not connected` 开头，说明配对可能已完成，可查看 `list_brokers`。
+错误文字的固定格式是 `开头短语: 说明 (code: <错误码名>)`，开头短语与说明之间是 `: `；涉及远端 Broker 时写成 `开头短语: 说明 (code: <错误码名>; reported by Broker <64 位小写十六进制指纹>)`，有附加提示时提示接在最后。开头短语由错误码与调用它的工具确定，不取自 Broker 给出的说明：错误码为 `delivery_unknown` 时一律为 `Delivery unknown`，其余按工具取默认值，`send_message` 为 `Not sent`，`connect_broker` 为 `Not connected`，其他工具为 `<工具名> failed`。Broker 的说明若已以 `Not sent: `、`Delivery unknown: ` 或 `Not connected: ` 之一开头，先去掉这个开头短语，再按上述规则加上正确的短语。未连接、正在连接与没有可用 Broker 这些本机状态产生的错误用 `internal` 码，登记未完成用 `not_registered`，版本不兼容用 `version_mismatch`。登记未完成的说明优先取 Broker 事件里的 `detail`，它点名具体原因；`detail` 为空时按原因枚举使用固定句子，因此本进程连接不发送 `detail` 的旧 Broker 时，文字与之前一致。`send_message` 的请求发出后连接中断，按结果未知处理，开头为 `Delivery unknown`，说明消息可能已送达、重发可能使对方收到两份；`connect_broker` 的同情形以 `Not connected` 开头，说明配对可能已完成，可查看 `list_brokers`。
 
 `codeName` 加两个名字 `broker_offline` 与 `broker_degraded`。更新提示的中间件把 `broker_degraded` 与查询失败同样处理，跳过提示。
 
@@ -200,7 +200,7 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 | `connect_broker` 的请求发出后连接中断 | 以 `Not connected` 开头，说明配对可能已完成，可查看 `list_brokers` |
 | 登记未完成或失败：找不到会话记录，会话名不可用，或 socket 不属于本账户 | 需要 Agent 身份的工具返回 `not_registered` 并说明原因；`list_brokers`、`get_config`、`set_config`、`connect_broker`、`disconnect_broker`、`create_pairing_key` 不需要 Agent 身份，仍按权限执行 |
 | 登记流收到 `not_registered` 且原因为 `broker_degraded` | 需要 Agent 身份的工具返回 `broker_degraded`，说明取事件的 `detail`；不需要身份的工具照常调用 Broker，同样得到 `broker_degraded` |
-| `send_message` 得到对端的 `broker_offline` | 以 `Not sent` 开头，附 `(code: broker_offline)` 与 `(reported by Broker <指纹>)`，提示对方 Broker 已下线、重发无用，可以经其他途径告知对方用户 |
+| `send_message` 得到对端的 `broker_offline` | 以 `Not sent` 开头，附 `(code: broker_offline; reported by Broker <指纹>)`，提示对方 Broker 已下线、重发无用，可以经其他途径告知对方用户 |
 | `create_pairing_key` 在仅本机降级时 | `broker_degraded`，说明含地址、`broker.listen` 与修复命令 |
 | 调用方账户缺少所需的权限 | `permission_denied` |
 | Broker 以启动参数给定监听地址运行时，`set_config` 修改 `broker.listen` | `invalid_argument`，说明本次运行的监听地址由启动参数给定，配置文件未改动 |

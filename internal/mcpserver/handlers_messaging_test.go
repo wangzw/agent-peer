@@ -206,7 +206,7 @@ func TestSendMessageForwards(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendMessage: %v", err)
 	}
-	if want := "delivered to the recipient's session (not necessarily read)"; out.Result != want {
+	if want := "Delivered to the recipient's session (not necessarily read)."; out.Result != want {
 		t.Errorf("result = %q, want %q", out.Result, want)
 	}
 	if out.To != "other@host" {

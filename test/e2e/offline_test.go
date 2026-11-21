@@ -74,7 +74,7 @@ func TestBrokerOffline(t *testing.T) {
 		if !strings.HasPrefix(r.Text, "Not sent") {
 			t.Errorf("error = %q, want it to start with Not sent", r.Text)
 		}
-		if !strings.Contains(r.Text, "(code: broker_offline)") {
+		if !strings.Contains(r.Text, "(code: broker_offline;") {
 			t.Errorf("error = %q, want code broker_offline", r.Text)
 		}
 		if !strings.Contains(r.Text, "is offline and refuses messages from other hosts") {
@@ -144,7 +144,7 @@ func TestBrokerOffline(t *testing.T) {
 
 		// The rebuilt link still refuses deliveries.
 		r := offSend(t, a1, "b2@hostB.peer", "after relink")
-		if !r.IsError || !strings.Contains(r.Text, "(code: broker_offline)") {
+		if !r.IsError || !strings.Contains(r.Text, "(code: broker_offline;") {
 			t.Fatalf("delivery after relink = %q, want broker_offline", r.Text)
 		}
 		online(t)
@@ -173,7 +173,7 @@ func TestBrokerOffline(t *testing.T) {
 
 		// The reply into the offline Broker is refused.
 		r := offSend(t, a1, "b1@hostB.peer", "reply into the offline Broker")
-		if !r.IsError || !strings.Contains(r.Text, "(code: broker_offline)") {
+		if !r.IsError || !strings.Contains(r.Text, "(code: broker_offline;") {
 			t.Fatalf("the reply = %q, want broker_offline", r.Text)
 		}
 		online(t)
@@ -200,7 +200,7 @@ func TestBrokerOffline(t *testing.T) {
 			t.Fatalf("Status after restart = %v (detail %v), want offline", status, detail)
 		}
 		r := offSend(t, a1, "b1@hostB.peer", "after restart")
-		if !r.IsError || !strings.Contains(r.Text, "(code: broker_offline)") {
+		if !r.IsError || !strings.Contains(r.Text, "(code: broker_offline;") {
 			t.Fatalf("delivery after restart = %q, want broker_offline", r.Text)
 		}
 

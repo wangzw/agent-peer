@@ -42,14 +42,14 @@ const (
 	textNotRegistered             = "this session is not registered as an agent: %s"
 
 	textSendLost    = "lost contact with the Broker before it answered; the message may have been delivered, and sending it again may deliver it twice"
-	textConnectLost = "lost contact with the Broker before it answered; the pairing may still have completed, check list_brokers"
+	textConnectLost = "lost contact with the Broker before it answered. The pairing may still have completed; call list_brokers to check."
 	textGenericLost = "the Broker did not answer: %s"
 	textPeerOffline = "the other Broker is offline and refuses messages from other hosts; sending the same message again will not deliver it. Tell the other user by another means if you can."
 
-	textNeedRead  = "The calling account needs read permission on the Broker's config file"
-	textNeedWrite = "The calling account needs write permission on the Broker's config file"
+	textNeedRead  = "The calling account needs read permission on the Broker's config file."
+	textNeedWrite = "The calling account needs write permission on the Broker's config file."
 
-	textNoDefaultTopic = "this session has no default topic; pass name to choose one"
+	textNoDefaultTopic = "this session has no default topic; pass a topic in `name` to choose one"
 )
 
 // The text for an empty system selection depends on the account: root is
@@ -131,7 +131,7 @@ func notRegisteredReason(r localpb.NotRegisteredReason, detail string) string {
 	case localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SOCKET_PATH_MISSING:
 		return "the session had no inbox socket when this MCP server started; reconnect the MCP server with /mcp"
 	case localpb.NotRegisteredReason_NOT_REGISTERED_REASON_BROKER_DEGRADED:
-		return "the Broker runs degraded with diagnostics only; it cannot serve this call until the startup failure is fixed"
+		return "the Broker is running in a degraded, diagnostics-only mode; it cannot serve this call until the startup failure is fixed"
 	default:
 		return "registration is still in progress"
 	}
@@ -153,10 +153,11 @@ func rpcError(tool string, kind callKind, perm permNeed, err error) error {
 
 	phrase := openingPhraseForCode(tool, kind, d.GetCode())
 	body := phrase + ": " + stripResultPrefix(d.GetMessage())
-	out := body + " (code: " + codeName(d.GetCode()) + ")"
+	out := body + " (code: " + codeName(d.GetCode())
 	if fp := d.GetOriginatingBrokerFingerprint(); len(fp) > 0 {
-		out += " (reported by Broker " + hex.EncodeToString(fp) + ")"
+		out += "; reported by Broker " + hex.EncodeToString(fp)
 	}
+	out += ")"
 	switch {
 	case d.GetCode() == localpb.ErrorCode_ERROR_CODE_PERMISSION_DENIED && perm == permRead:
 		out += ". " + textNeedRead

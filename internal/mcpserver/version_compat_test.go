@@ -227,7 +227,7 @@ func TestMismatchRejectionNamesNoBrokerVersion(t *testing.T) {
 	if strings.Contains(text, "version 0") {
 		t.Errorf("list_agents error = %q, must not report a broker version the Broker never sent", text)
 	}
-	want := fmt.Sprintf("the running Broker speaks a different local protocol version, this MCP server speaks %d",
+	want := fmt.Sprintf("the running Broker speaks a different local protocol version; this MCP server speaks version %d",
 		localpb.ProtocolVersion)
 	if !strings.Contains(text, want) {
 		t.Errorf("list_agents error = %q, want %q", text, want)
