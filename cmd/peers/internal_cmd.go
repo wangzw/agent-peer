@@ -38,6 +38,7 @@ var addTestInternalCommands func(internal *cobra.Command, a *app)
 func (a *app) addInternalCommands(root *cobra.Command) {
 	internal := &cobra.Command{
 		Use:    "internal",
+		Short:  "Run the helper commands the Broker launches",
 		Hidden: true,
 		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -49,6 +50,7 @@ func (a *app) addInternalCommands(root *cobra.Command) {
 	internal.AddCommand(
 		&cobra.Command{
 			Use:                "account-helper",
+			Short:              "Serve the account helper protocol over standard streams",
 			Hidden:             true,
 			DisableFlagParsing: true,
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -57,6 +59,7 @@ func (a *app) addInternalCommands(root *cobra.Command) {
 		},
 		&cobra.Command{
 			Use:                "access-check",
+			Short:              "Answer one access check from standard input",
 			Hidden:             true,
 			DisableFlagParsing: true,
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -65,6 +68,7 @@ func (a *app) addInternalCommands(root *cobra.Command) {
 		},
 		&cobra.Command{
 			Use:                "post-update",
+			Short:              "Rewrite the service definition after an update",
 			Hidden:             true,
 			DisableFlagParsing: true,
 			RunE: func(cmd *cobra.Command, args []string) error {
@@ -73,6 +77,7 @@ func (a *app) addInternalCommands(root *cobra.Command) {
 		},
 		&cobra.Command{
 			Use:                "launchd-reload",
+			Short:              "Reload the launchd service after an update",
 			Hidden:             true,
 			DisableFlagParsing: true,
 			RunE: func(cmd *cobra.Command, args []string) error {

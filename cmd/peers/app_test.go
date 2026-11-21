@@ -8,6 +8,10 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/spf13/cobra"
 )
 
 // The release contract: the version variable keeps its package path, name and
@@ -139,6 +143,27 @@ func TestHelpListsTheThreeCommandGroups(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())
 	}
+}
+
+// TestCommandShortDescriptionsStartWithCapitalLetter keeps the help listing
+// consistent. Every command in the tree, hidden ones included, says what it
+// does in one line that starts with a capital letter; a command without a
+// Short is caught by the same walk.
+func TestCommandShortDescriptionsStartWithCapitalLetter(t *testing.T) {
+	a, _, _, _ := newDispatchApp("dev")
+
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		if cmd.Short == "" {
+			t.Errorf("%s: Short is empty", cmd.CommandPath())
+		} else if first, _ := utf8.DecodeRuneInString(cmd.Short); !unicode.IsUpper(first) {
+			t.Errorf("%s: Short = %q, want it to start with a capital letter", cmd.CommandPath(), cmd.Short)
+		}
+		for _, child := range cmd.Commands() {
+			walk(child)
+		}
+	}
+	walk(a.newRootCommand())
 }
 
 func TestCompletionBashWritesAScript(t *testing.T) {

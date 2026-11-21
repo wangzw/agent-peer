@@ -19,7 +19,7 @@ const mcpUsage = "usage: peers mcp"
 func (a *app) addMCPCommand(root *cobra.Command) {
 	root.AddCommand(&cobra.Command{
 		Use:                "mcp",
-		Short:              "run the MCP server for one Claude Code session",
+		Short:              "Run the MCP server for one Claude Code session",
 		Hidden:             true,
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

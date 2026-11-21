@@ -29,6 +29,7 @@ var manPageDate = time.Date(2026, time.November, 21, 0, 0, 0, 0, time.UTC)
 func addGenManCommandImpl(root *cobra.Command, _ *app) {
 	root.AddCommand(&cobra.Command{
 		Use:    "gen-man <dir>",
+		Short:  "Generate the man pages for the command tree",
 		Hidden: true,
 		Args:   cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {

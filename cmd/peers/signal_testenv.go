@@ -31,6 +31,7 @@ func init() {
 	addTestInternalCommands = func(internal *cobra.Command, a *app) {
 		internal.AddCommand(&cobra.Command{
 			Use:    "signal-block",
+			Short:  "Block until a signal cancels the context",
 			Hidden: true,
 			RunE: func(cmd *cobra.Command, _ []string) error {
 				_, _ = fmt.Fprintln(a.stderr, "ready")

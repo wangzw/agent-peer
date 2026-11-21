@@ -15,13 +15,13 @@ func (a *app) addBrokerAndKeyCommands(root *cobra.Command) {
 func (a *app) newBrokerCommand() *cobra.Command {
 	broker := &cobra.Command{
 		Use:     "broker",
-		Short:   "manage the Brokers this host is paired with",
+		Short:   "Manage the Brokers this host is paired with",
 		GroupID: groupPairing,
 	}
 	broker.AddCommand(
 		&cobra.Command{
 			Use:   "list",
-			Short: "list the Brokers this host knows",
+			Short: "List the Brokers this host knows",
 			Args:  noPositionalArgs,
 			RunE: func(cmd *cobra.Command, _ []string) error {
 				if err := a.deps.runPeerList(cmd.Context(), a.stdout); err != nil {
@@ -41,7 +41,7 @@ func (a *app) newBrokerCommand() *cobra.Command {
 func (a *app) newBrokerConnectCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "connect <address>",
-		Short: "pair with another Broker",
+		Short: "Pair with another Broker",
 		Args:  oneArgument("<address>"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key, _ := cmd.Flags().GetString("key")
@@ -66,7 +66,7 @@ func (a *app) newBrokerConnectCommand() *cobra.Command {
 func (a *app) newBrokerDisconnectCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "disconnect <broker>",
-		Short: "unpair from a Broker by alias or fingerprint",
+		Short: "Unpair from a Broker by alias or fingerprint",
 		Args:  oneArgument("<broker>"),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 			if len(args) > 0 {
@@ -92,12 +92,12 @@ func (a *app) newBrokerDisconnectCommand() *cobra.Command {
 func (a *app) newKeyCommand() *cobra.Command {
 	key := &cobra.Command{
 		Use:     "key",
-		Short:   "manage the one-time pairing keys",
+		Short:   "Manage the one-time pairing keys",
 		GroupID: groupPairing,
 	}
 	key.AddCommand(&cobra.Command{
 		Use:   "create",
-		Short: "create a one-time pairing key",
+		Short: "Create a one-time pairing key",
 		Args:  noPositionalArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := a.deps.runPairingKeyCreate(cmd.Context(), a.stdout); err != nil {

@@ -133,6 +133,7 @@ func TestREQUpdate009_UpdateRewritesServiceUnitInNewFormat(t *testing.T) {
 // the value the update contract reserves for "no post-update step".
 const postUpdateNoStepInternalCmd = "\t\t&cobra.Command{\n" +
 	"\t\t\tUse:                \"post-update\",\n" +
+	"\t\t\tShort:              \"Rewrite the service definition after an update\",\n" +
 	"\t\t\tHidden:             true,\n" +
 	"\t\t\tDisableFlagParsing: true,\n" +
 	"\t\t\tRunE: func(cmd *cobra.Command, args []string) error {\n" +
