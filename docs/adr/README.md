@@ -69,7 +69,8 @@
 | 决策 |
 |---|
 | [自我更新从本项目 GitHub 正式发布安装](adr-self-update.md) |
-| [更新后由新二进制重写服务定义](adr-post-update-service-rewrite.md) |
+| [旧二进制调用新二进制的更新后契约](adr-post-update-contract.md) |
+| [macOS 的重新加载由脱离任务的辅助进程分两段完成](adr-launchd-detached-reload.md) |
 
 ## 外部依赖
 

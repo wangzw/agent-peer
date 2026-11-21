@@ -31,18 +31,23 @@ const (
 	// postUpdateDropInPath is the drop-in selfUpdateSetSystemUnitEnv writes. The
 	// update must leave it alone.
 	postUpdateDropInPath = "/etc/systemd/system/peers.service.d/e2e-update-api.conf"
-	// postUpdateNextUnitMarker appears only in the unit template of the
-	// next-version build. Finding it in the installed unit proves the new
-	// binary, not the old one, rewrote the service definition.
-	postUpdateNextUnitMarker = "e2e-post-update-next-unit-format"
+	// postUpdateNextUnitMarker is the name of an environment assignment only the
+	// next-version unit template carries. `systemctl show -p Environment` reads
+	// it from the unit systemd has loaded, so finding it there proves both that
+	// the new binary rewrote the unit and that daemon-reload ran.
+	postUpdateNextUnitMarker = "PEERS_E2E_POST_UPDATE"
+	// postUpdateNextUnitEnv is the assignment itself, as systemctl prints it.
+	postUpdateNextUnitEnv = postUpdateNextUnitMarker + "=next-format"
 )
 
 // TestREQUpdate009_UpdateRewritesServiceUnitInNewFormat covers the core of
 // REQ-update-009: the running candidate release replaces its binary with a
 // next release whose systemd unit template differs, and the next binary
 // rewrites the installed unit in its own format before the service manager
-// restarts it. The drop-in survives unchanged and the Broker runs the new
-// version.
+// restarts it. The next template sets an environment variable the old template
+// does not, and `systemctl show -p Environment` must report it as loaded, so
+// the test fails when the rewrite or the daemon-reload did not take effect.
+// The drop-in survives unchanged and the Broker runs the new version.
 func TestREQUpdate009_UpdateRewritesServiceUnitInNewFormat(t *testing.T) {
 	if !syscontainer.InContainer() {
 		postUpdateStageHostAssets(t)
@@ -93,6 +98,15 @@ func TestREQUpdate009_UpdateRewritesServiceUnitInNewFormat(t *testing.T) {
 	if got := postUpdateReadFile(t, postUpdateDropInPath); got != beforeDropIn {
 		t.Fatalf("the drop-in changed across the update\nbefore:\n%s\nafter:\n%s", beforeDropIn, got)
 	}
+	env := runWithEnv(t, "root", nil, "systemctl", "show", "-p", "Environment", "peers.service")
+	if env.ExitCode != 0 {
+		t.Fatalf("systemctl show -p Environment peers.service: exit %d\nstdout:\n%s\nstderr:\n%s",
+			env.ExitCode, env.Stdout, env.Stderr)
+	}
+	if !strings.Contains(env.Stdout, postUpdateNextUnitEnv) {
+		t.Fatalf("systemd did not load the next version's unit environment %q; the daemon-reload did not take effect:\n%s",
+			postUpdateNextUnitEnv, env.Stdout)
+	}
 	if state := selfUpdateUnitState(t, "root", nil, "peers.service"); state != "active" {
 		t.Fatalf("peers.service is %q after the update, want active", state)
 	}
@@ -132,7 +146,7 @@ func postUpdateBuildNextVersion(t *testing.T) string {
 	}
 
 	const original = "[Service]\nType=simple\nExecStart=%s broker --system"
-	replacement := "[Service]\n# " + postUpdateNextUnitMarker + "\nType=simple\nExecStart=%s broker --system"
+	replacement := "[Service]\nEnvironment=\"" + postUpdateNextUnitEnv + "\"\nType=simple\nExecStart=%s broker --system"
 	if got := strings.Count(string(data), original); got != 1 {
 		t.Fatalf("%s has %d matches of the system unit header, want exactly 1; the next-version build cannot change the unit format", unitsPath, got)
 	}

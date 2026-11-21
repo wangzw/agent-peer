@@ -401,6 +401,43 @@ func TestPostUpdateLaunchdPreservesEnvironmentVariables(t *testing.T) {
 	}
 }
 
+// TestWithPlistEnvironmentMergesGeneratedAndKeptEntries checks the rewrite
+// writes one dictionary when the template itself sets EnvironmentVariables: a
+// generated entry wins over a kept entry of the same name, the kept entries it
+// does not override survive, and the plist keeps its other keys.
+func TestWithPlistEnvironmentMergesGeneratedAndKeptEntries(t *testing.T) {
+	rendered, err := LaunchDaemonPlist("/usr/local/bin/peers")
+	if err != nil {
+		t.Fatalf("render the plist: %v", err)
+	}
+	const generated = "\t<key>EnvironmentVariables</key>\n\t<dict>\n" +
+		"\t\t<key>BOTH</key>\n\t\t<string>new</string>\n" +
+		"\t\t<key>GENERATED</key>\n\t\t<string>only-new</string>\n" +
+		"\t</dict>\n"
+	content := strings.Replace(rendered, "</dict>\n</plist>", generated+"</dict>\n</plist>", 1)
+
+	got := withPlistEnvironment(content, []plistEnvironmentEntry{
+		{Name: "BOTH", Value: "old"},
+		{Name: "KEPT", Value: "only-old"},
+	})
+	if n := strings.Count(got, "<key>EnvironmentVariables</key>"); n != 1 {
+		t.Fatalf("the merged plist has %d EnvironmentVariables keys, want 1:\n%s", n, got)
+	}
+	for _, want := range []string{
+		"<key>BOTH</key>\n\t\t<string>new</string>",
+		"<key>GENERATED</key>\n\t\t<string>only-new</string>",
+		"<key>KEPT</key>\n\t\t<string>only-old</string>",
+		"<key>ProgramArguments</key>",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the merged plist lost %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "<string>old</string>") {
+		t.Errorf("a generated entry did not win over the kept entry of the same name:\n%s", got)
+	}
+}
+
 // TestPostUpdateLaunchdRefusesASymlinkedPostUpdateLog checks the log file is
 // opened without following a symbolic link at its path.
 func TestPostUpdateLaunchdRefusesASymlinkedPostUpdateLog(t *testing.T) {

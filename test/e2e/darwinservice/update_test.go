@@ -5,10 +5,12 @@ package darwinservice
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"slices"
@@ -42,6 +44,13 @@ const (
 	// Broker to report the new version; this bound adds the restart margin so a
 	// stuck relaunch fails with output instead of hanging the job.
 	updateCommandBound = 90 * time.Second
+
+	// daemonNextEnvName is an EnvironmentVariables entry only the next-version
+	// plist template carries. launchctl print shows the loaded job's
+	// environment, so reading it back proves the rewritten plist is the one
+	// launchd loaded.
+	daemonNextEnvName  = "PEERS_E2E_POST_UPDATE"
+	daemonNextEnvValue = "next-format"
 )
 
 // TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate covers REQ-update-007 on
@@ -68,7 +77,7 @@ func TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate(t *testing.T) {
 	old := harness.BuildBinaryVersion(t, updateOldVersion, "darwin", runtime.GOARCH, "peers_testenv")
 	installRootBinary(t, old, installedBinary)
 
-	newBinary := harness.BuildBinaryVersion(t, updateNewVersion, "darwin", runtime.GOARCH)
+	newBinary := buildBinaryWithDaemonEnvironment(t, updateNewVersion)
 	fake := harness.StartFakeGitHub(t, harness.NewRelease(t, updateNewVersion, "darwin", runtime.GOARCH, newBinary))
 
 	res := run(t, "sudo", "-n", installedBinary, "service", "install", "--system")
@@ -143,6 +152,12 @@ func TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate(t *testing.T) {
 	// Broker exits. The loaded job must therefore hold the ProgramArguments this
 	// binary writes, which is how launchd proves it read the rewritten plist.
 	waitForLaunchdArguments(t, "system", []string{installedBinary, "broker", "--system", "--allow-degraded"})
+	// The next version's template adds an environment entry of its own, and the
+	// variable the test put in the old plist must survive the rewrite. The old
+	// ProgramArguments are identical to the new ones, so only the environment
+	// proves which plist launchd loaded.
+	waitForLaunchdEnvironment(t, "system", daemonNextEnvName, daemonNextEnvValue)
+	waitForLaunchdEnvironment(t, "system", updateAPIEnv, fake.URL())
 	if status := run(t, "sudo", "-n", installedBinary, "status"); status.exitCode != 0 {
 		t.Fatalf("peers status after the update: exit %d\nstdout: %s\nstderr: %s",
 			status.exitCode, status.stdout, status.stderr)
@@ -300,8 +315,60 @@ func runWithin(t *testing.T, bound time.Duration, name string, args ...string) r
 	return res
 }
 
+// buildBinaryWithDaemonEnvironment builds version with a Go build overlay that
+// adds a test-only EnvironmentVariables entry to the system daemon's plist
+// template. Nothing in the tree changes; the entry exists only in this build,
+// so it cannot be present in the plist the old release installed unless the
+// next binary rewrote it.
+func buildBinaryWithDaemonEnvironment(t *testing.T, version string) string {
+	t.Helper()
+
+	root := harness.ModuleRoot(t)
+	unitsPath := filepath.Join(root, "internal", "broker", "service", "units.go")
+	data, err := os.ReadFile(unitsPath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", unitsPath, err)
+	}
+
+	// The daemon template is the only one with Umask 18; the agent template
+	// uses 63.
+	const original = "\t<key>Umask</key>\n\t<integer>18</integer>\n"
+	replacement := original +
+		"\t<key>EnvironmentVariables</key>\n\t<dict>\n" +
+		"\t\t<key>" + daemonNextEnvName + "</key>\n" +
+		"\t\t<string>" + daemonNextEnvValue + "</string>\n" +
+		"\t</dict>\n"
+	if got := strings.Count(string(data), original); got != 1 {
+		t.Fatalf("%s has %d matches of the daemon Umask entry, want exactly 1; the next-version build cannot change the plist format", unitsPath, got)
+	}
+	modified := strings.Replace(string(data), original, replacement, 1)
+
+	dir := t.TempDir()
+	modifiedPath := filepath.Join(dir, "units.go")
+	if err := os.WriteFile(modifiedPath, []byte(modified), 0o644); err != nil {
+		t.Fatalf("writing the overlaid units.go: %v", err)
+	}
+	overlayPath := filepath.Join(dir, "overlay.json")
+	overlay, err := json.Marshal(struct {
+		Replace map[string]string `json:"Replace"`
+	}{Replace: map[string]string{unitsPath: modifiedPath}})
+	if err != nil {
+		t.Fatalf("encoding the build overlay: %v", err)
+	}
+	if err := os.WriteFile(overlayPath, overlay, 0o644); err != nil {
+		t.Fatalf("writing the build overlay: %v", err)
+	}
+
+	return harness.BuildBinaryVersionOverlay(t, version, "darwin", runtime.GOARCH, overlayPath)
+}
+
 // launchdArgumentsPattern captures the arguments block of launchctl print.
 var launchdArgumentsPattern = regexp.MustCompile(`(?ms)^\s*arguments = \{\n(.*?)^\s*\}`)
+
+// launchdEnvironmentPattern captures the environment block of launchctl print.
+// The line must start with "environment", so the "inherited environment" and
+// "default environment" blocks above it do not match.
+var launchdEnvironmentPattern = regexp.MustCompile(`(?ms)^\s*environment = \{\n(.*?)^\s*\}`)
 
 // waitForLaunchdArguments waits until launchctl print reports want as the
 // loaded job's ProgramArguments. The reload is asynchronous: the detached
@@ -333,4 +400,36 @@ func launchdArguments(out string) []string {
 		}
 	}
 	return args
+}
+
+// launchdEnvironment extracts the environment launchctl print shows for the
+// loaded job.
+func launchdEnvironment(out string) map[string]string {
+	match := launchdEnvironmentPattern.FindStringSubmatch(out)
+	if match == nil {
+		return nil
+	}
+	env := map[string]string{}
+	for _, line := range strings.Split(match[1], "\n") {
+		name, value, ok := strings.Cut(strings.TrimSpace(line), " => ")
+		if ok {
+			env[name] = value
+		}
+	}
+	return env
+}
+
+// waitForLaunchdEnvironment waits until launchctl print shows name=want in the
+// loaded job's environment. The reload is asynchronous, so the check polls
+// within the restart bound.
+func waitForLaunchdEnvironment(t *testing.T, domain, name, want string) {
+	t.Helper()
+	waitFor(t, updateRestartBound, "launchd to load "+name+"="+want, func() (bool, string) {
+		out, loaded := launchctlPrint(domain)
+		if !loaded {
+			return false, "the job is not loaded"
+		}
+		env := launchdEnvironment(out)
+		return env[name] == want, fmt.Sprintf("%s = %q", name, env[name])
+	})
 }

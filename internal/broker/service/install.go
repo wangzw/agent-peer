@@ -1266,7 +1266,8 @@ func writeUnit(opts Options) (string, error) {
 	}
 	// launchd has no drop-in mechanism, so a variable an operator added to the
 	// plist is the only place a proxy setting can live. Keep that dictionary
-	// across a rewrite; this package generates none of its entries.
+	// across a rewrite; an entry this binary's template generates wins over a
+	// kept entry of the same name.
 	if opts.GOOS == "darwin" {
 		env, err := plistEnvironment(rooted(opts, path))
 		if err != nil {

@@ -594,11 +594,24 @@ func parsePlistStringDict(dec *xml.Decoder) ([]plistEnvironmentEntry, error) {
 	}
 }
 
-// withPlistEnvironment inserts the kept EnvironmentVariables dictionary into a
-// rendered plist, before its final closing dictionary.
-func withPlistEnvironment(content string, env []plistEnvironmentEntry) string {
-	if len(env) == 0 {
+// withPlistEnvironment writes one EnvironmentVariables dictionary into a
+// rendered plist: the entries this binary generated, plus the entries kept from
+// the plist it replaces. A generated entry wins over a kept entry of the same
+// name, so a variable this version sets cannot be shadowed by an older value,
+// and the two are never written as separate dictionaries with the same key.
+func withPlistEnvironment(content string, kept []plistEnvironmentEntry) string {
+	generated, err := parsePlistEnvironment([]byte(content))
+	if err != nil {
+		// The content is rendered by this package; a parse failure leaves only
+		// the kept entries to write.
+		generated = nil
+	}
+	merged := mergePlistEnvironment(generated, kept)
+	if len(merged) == 0 {
 		return content
+	}
+	if len(generated) > 0 {
+		content = removePlistEnvironment(content)
 	}
 	const documentEnd = "</dict>\n</plist>"
 	if !strings.Contains(content, documentEnd) {
@@ -606,11 +619,65 @@ func withPlistEnvironment(content string, env []plistEnvironmentEntry) string {
 	}
 	var block strings.Builder
 	block.WriteString("\t<key>EnvironmentVariables</key>\n\t<dict>\n")
-	for _, entry := range env {
+	for _, entry := range merged {
 		fmt.Fprintf(&block, "\t\t<key>%s</key>\n\t\t<string>%s</string>\n", escapeXML(entry.Name), escapeXML(entry.Value))
 	}
 	block.WriteString("\t</dict>\n")
 	return strings.Replace(content, documentEnd, block.String()+documentEnd, 1)
+}
+
+// mergePlistEnvironment combines generated entries with kept ones, generated
+// taking precedence, sorted by name so a rewrite is deterministic.
+func mergePlistEnvironment(generated, kept []plistEnvironmentEntry) []plistEnvironmentEntry {
+	seen := make(map[string]bool, len(generated)+len(kept))
+	merged := make([]plistEnvironmentEntry, 0, len(generated)+len(kept))
+	for _, list := range [][]plistEnvironmentEntry{generated, kept} {
+		for _, entry := range list {
+			if seen[entry.Name] {
+				continue
+			}
+			seen[entry.Name] = true
+			merged = append(merged, entry)
+		}
+	}
+	sort.Slice(merged, func(i, j int) bool { return merged[i].Name < merged[j].Name })
+	return merged
+}
+
+// removePlistEnvironment removes the top-level EnvironmentVariables key and its
+// dictionary from content, keeping the rest of the document unchanged. Only the
+// package's own rendered plist reaches this function, so the dictionary is the
+// one the template wrote.
+func removePlistEnvironment(content string) string {
+	dec := xml.NewDecoder(strings.NewReader(content))
+	for {
+		start := dec.InputOffset()
+		tok, err := dec.Token()
+		if err != nil {
+			return content
+		}
+		element, ok := tok.(xml.StartElement)
+		if !ok || element.Name.Local != "key" {
+			continue
+		}
+		var key string
+		if err := dec.DecodeElement(&key, &element); err != nil {
+			return content
+		}
+		if key != "EnvironmentVariables" {
+			continue
+		}
+		dict, err := nextStartElement(dec)
+		if err != nil || dict.Name.Local != "dict" {
+			return content
+		}
+		if err := dec.Skip(); err != nil {
+			return content
+		}
+		end := dec.InputOffset()
+		prefix := strings.TrimRight(content[:start], " \t")
+		return prefix + content[end:]
+	}
 }
 
 // reloadLaunchd replaces the loaded job with the rewritten plist. A bootout
