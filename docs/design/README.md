@@ -1,6 +1,6 @@
-# agent-peer 设计文档
+# peers 设计文档
 
-agent-peer 让不同主机上的 Claude Code 会话互相发现并发送文本消息。
+peers 让不同主机上的 Claude Code 会话互相发现并发送文本消息。
 
 ## 索引
 

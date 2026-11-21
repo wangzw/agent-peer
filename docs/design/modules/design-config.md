@@ -24,7 +24,7 @@
 - 不判定调用方有没有权限读写配置。配置文件的文件权限就是管理权限的依据（[ADR-management-by-config-file-permission](../../adr/adr-management-by-config-file-permission.md)），判定由 [broker](design-broker.md) 在调用本包之前完成；本包只给出配置文件的路径。
 - 不绑定监听地址，由 [link](design-link.md) 负责；绑定失败时的处理由 `broker` 负责。
 - 不保存对端表与身份密钥，由 [pairing](design-pairing.md) 负责；不保存名录，由 [directory](design-directory.md) 负责。
-- 不读取项目配置文件 `.agent-peer.yaml`，由 `mcpserver` 负责。
+- 不读取项目配置文件 `.peers.yaml`，由 `mcpserver` 负责。
 - 不了解某个键的取值在别的包看来是否可行。这类检查由 [broker](design-broker.md) 以校验函数的形式注册进来。
 - 不输出运行日志。运行日志由各包经标准日志接口写出，本包只提供其级别设置。
 
@@ -210,13 +210,13 @@ type PathSet struct {
 
 | 内容 | 用户级 | 系统级 |
 |---|---|---|
-| 配置文件 | `~/.agent-peer/config.yaml` | `/etc/agent-peer/config.yaml` |
-| 数据目录：身份、对端表、名录 | `~/.agent-peer/` | `/var/lib/agent-peer/` |
-| 审计日志 | `~/.agent-peer/audit.log` | `/var/log/agent-peer/audit.log` |
+| 配置文件 | `~/.peers/config.yaml` | `/etc/peers/config.yaml` |
+| 数据目录：身份、对端表、名录 | `~/.peers/` | `/var/lib/peers/` |
+| 审计日志 | `~/.peers/audit.log` | `/var/log/peers/audit.log` |
 
-运行时目录内有本机 socket `broker.sock` 和账户锁 `broker.lock`。运行时目录只取决于进程的账户，与形态、环境变量、配置内容和监听地址无关：root 的是 Linux 上的 `/run/agent-peer/`、macOS 上的 `/var/run/agent-peer/`，系统级 Broker 与 root 的用户级 Broker 因此争用同一把锁；其他账户的是 `/tmp/agent-peer-<uid>/`，`<uid>` 是进程的账户。同一账户的两个进程因此总是争用同一把锁，也总在同一个位置找本机 socket（`REQ-broker-config-013`）。root 的运行时目录权限 `0755`；系统级 Broker 的本机 socket 在绑定后按 `broker.local_socket_group` 与 `broker.local_socket_mode` 设置属组与权限，哪些账户能连接由它决定；用户级的 socket 固定为 `0600`；其他账户的运行时目录权限 `0700`。运行时目录的属主必须是本账户，不符时拒绝启动。以上位置规则对发布构建成立。带 `agentpeer_testenv` 构建标签的测试构建例外：`AGENT_PEER_TEST_RUNTIME_ROOT` 非空时运行时目录的根取它的值，`AGENT_PEER_TEST_HOME` 非空时账户家目录取它的值；两者为空时不生效，发布构建不含这段代码。
+运行时目录内有本机 socket `broker.sock` 和账户锁 `broker.lock`。运行时目录只取决于进程的账户，与形态、环境变量、配置内容和监听地址无关：root 的是 Linux 上的 `/run/peers/`、macOS 上的 `/var/run/peers/`，系统级 Broker 与 root 的用户级 Broker 因此争用同一把锁；其他账户的是 `/tmp/peers-<uid>/`，`<uid>` 是进程的账户。同一账户的两个进程因此总是争用同一把锁，也总在同一个位置找本机 socket（`REQ-broker-config-013`）。root 的运行时目录权限 `0755`；系统级 Broker 的本机 socket 在绑定后按 `broker.local_socket_group` 与 `broker.local_socket_mode` 设置属组与权限，哪些账户能连接由它决定；用户级的 socket 固定为 `0600`；其他账户的运行时目录权限 `0700`。运行时目录的属主必须是本账户，不符时拒绝启动。以上位置规则对发布构建成立。带 `peers_testenv` 构建标签的测试构建例外：`PEERS_TEST_RUNTIME_ROOT` 非空时运行时目录的根取它的值，`PEERS_TEST_HOME` 非空时账户家目录取它的值；两者为空时不生效，发布构建不含这段代码。
 
-用户级的数据目录权限 `0700`，其中的文件权限 `0600`。系统级的配置文件由 `service install --system` 在不存在时以 root 为属主、管理组为属组、`0660` 为权限创建，内容为 `Template(ModeSystem)`，已存在时安装不改动；管理组默认为 `agent-peer`，可由 `--admin-group` 指定（[ADR-admin-group](../../adr/adr-admin-group.md)，`REQ-broker-config-040`、`REQ-broker-config-043`）。用户级的配置文件由 `service install` 在不存在时以本账户为属主、`0600` 为权限创建，内容为 `Template(ModeUser)`，已存在时安装不改动。管理员把它的读或写权限授予某个组，即把读取配置或管理操作委托给该组的账户。
+用户级的数据目录权限 `0700`，其中的文件权限 `0600`。系统级的配置文件由 `service install --system` 在不存在时以 root 为属主、管理组为属组、`0660` 为权限创建，内容为 `Template(ModeSystem)`，已存在时安装不改动；管理组默认为 `peers`，可由 `--admin-group` 指定（[ADR-admin-group](../../adr/adr-admin-group.md)，`REQ-broker-config-040`、`REQ-broker-config-043`）。用户级的配置文件由 `service install` 在不存在时以本账户为属主、`0600` 为权限创建，内容为 `Template(ModeUser)`，已存在时安装不改动。管理员把它的读或写权限授予某个组，即把读取配置或管理操作委托给该组的账户。
 
 配置文件的结构与键名一一对应，例如 `broker.alias` 对应顶层 `broker` 下的 `alias`。文件中没有出现的键取默认值，文件不存在等同于空文件。`Set` 只改动文件中它所修改的那个键，文件里的其他内容原样保留；文件不存在时，以运行 Broker 的账户创建它，属主与权限按形态设置。
 
@@ -311,7 +311,7 @@ type PathSet struct {
 
 - 先按“配置文件的监视”中的同一套规则采用磁盘上尚未采纳的外部改动，并为每个采用了新值的键写 `config_file_changed` 审计记录。校验因此从磁盘上的当前值出发，去抖期内保存的外部改动不会被这次写入吞掉。
 - 检查键存在且不是密钥类配置项，值的类型与取值范围合法，与其他键的组合合法，再调用为该键注册的校验函数。修改 `broker.listen`、`broker.advertise` 或 `broker.advertise_extra` 时，以新值与另外两项的当前值核对“对外地址”中的组合规则与项数上限。
-- 读取配置文件的当前内容，只替换这个键，在原文件上就地改写：截断后写入完整内容并同步到磁盘。写回要重写整个文件，文件中的其他内容原样保留，原文件的属主、组、权限位与访问控制列表因此保持不变。文件不存在时以本账户的身份创建它。键在文件中不存在时，按下一段的占位行规则写入。写路径以 `O_NOFOLLOW` 打开配置文件，它是符号链接时写入失败、原文件不变；这条规则依赖配置目录 `/etc/agent-peer` 以 root 为属主、组不可写（[ADR-admin-group](../../adr/adr-admin-group.md)，`REQ-broker-config-043`）。
+- 读取配置文件的当前内容，只替换这个键，在原文件上就地改写：截断后写入完整内容并同步到磁盘。写回要重写整个文件，文件中的其他内容原样保留，原文件的属主、组、权限位与访问控制列表因此保持不变。文件不存在时以本账户的身份创建它。键在文件中不存在时，按下一段的占位行规则写入。写路径以 `O_NOFOLLOW` 打开配置文件，它是符号链接时写入失败、原文件不变；这条规则依赖配置目录 `/etc/peers` 以 root 为属主、组不可写（[ADR-admin-group](../../adr/adr-admin-group.md)，`REQ-broker-config-043`）。
 - 更新内存中的值。
 - 追加 `config_set` 审计记录。
 - 把这次变更放入通知队列。

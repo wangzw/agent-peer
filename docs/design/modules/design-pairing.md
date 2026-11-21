@@ -179,9 +179,9 @@ sequenceDiagram
 认证码与查找标记的计算，`‖` 表示拼接：
 
 ```
-标记 = HMAC-SHA256(密钥, "agent-peer pair hint" ‖ ni) 的前 8 个字节
-mr   = HMAC-SHA256(密钥, "agent-peer pair responder" ‖ ni ‖ nr ‖ 接受方指纹 ‖ 接受方看到的发起方指纹)
-mi   = HMAC-SHA256(密钥, "agent-peer pair initiator" ‖ ni ‖ nr ‖ 发起方指纹 ‖ 发起方看到的接受方指纹)
+标记 = HMAC-SHA256(密钥, "peers pair hint" ‖ ni) 的前 8 个字节
+mr   = HMAC-SHA256(密钥, "peers pair responder" ‖ ni ‖ nr ‖ 接受方指纹 ‖ 接受方看到的发起方指纹)
+mi   = HMAC-SHA256(密钥, "peers pair initiator" ‖ ni ‖ nr ‖ 发起方指纹 ‖ 发起方看到的接受方指纹)
 ```
 
 `ni`、`nr` 与链路 `Hello` 中的随机数各是 32 字节。

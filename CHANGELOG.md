@@ -2,6 +2,12 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The project is renamed to `peers`, a breaking change. The binary, the release archives and the entry inside them, the Go module path, the installation paths, the configuration, data, log and runtime directories, the service unit names, the launchd label, the administration group, the project configuration file name, the environment variables and the pairing protocol labels all use the new name. See [ADR-rename-peers](docs/adr/adr-rename-peers.md). The MCP server name `peer` and the tool names are unchanged. peers is incompatible with agent-peer 0.3.0, and no migration is provided.
+
 ## [0.3.0] - 2026-11-20
 
 ### Added

@@ -2,7 +2,7 @@
 
 ## 背景
 
-用户要求 agent-peer 能发现并安装自己的新版本：Broker 周期检查是否有新的正式发布版本，用户在终端看到提示后执行更新命令完成安装（`REQ-update-001` 至 `REQ-update-006`）。更新还可以从会话中发起：MCP 工具 `update_broker` 经本机接口让 Broker 执行升级，Claude Code 对该工具调用的确认是这次升级的人工确认（`REQ-update-008`）。
+用户要求 peers 能发现并安装自己的新版本：Broker 周期检查是否有新的正式发布版本，用户在终端看到提示后执行更新命令完成安装（`REQ-update-001` 至 `REQ-update-006`）。更新还可以从会话中发起：MCP 工具 `update_broker` 经本机接口让 Broker 执行升级，Claude Code 对该工具调用的确认是这次升级的人工确认（`REQ-update-008`）。
 
 系统级安装以服务方式运行，日常管理由管理组的普通账户承担，不取得 root（`REQ-broker-config-043`）。更新程序要下载并执行一段新代码，是系统里权限最高的一次外部输入。项目在 GitHub 上发布，发布产物是各平台的 `tar.gz` 安装包与一份 `checksums.txt`，当前没有发布签名。
 
@@ -24,7 +24,7 @@ Broker 与终端命令只显示新版本号，安装仍按 README 的步骤手�
 
 ### 经系统包管理器分发与升级
 
-由 Homebrew、apt 等包管理器安装和升级，agent-peer 不自己下载。
+由 Homebrew、apt 等包管理器安装和升级，peers 不自己下载。
 
 **未采纳**：它与本决策兼容，但要求为每个包管理器维护打包与发布流程，当前范围不需要。它可以在不取代本决策的情况下加入。
 
@@ -42,17 +42,17 @@ Broker 与终端命令只显示新版本号，安装仍按 README 的步骤手�
 
 ### 从本项目 GitHub 正式发布下载并校验 SHA-256
 
-只访问写死的仓库 `wangzw/agent-peer`，从最新正式发布的 assets 取安装包和 `checksums.txt`，用 SHA-256 比对后替换二进制。
+只访问写死的仓库 `wangzw/peers`，从最新正式发布的 assets 取安装包和 `checksums.txt`，用 SHA-256 比对后替换二进制。
 
 **采纳**，见决策。
 
 ## 决策
 
-自我更新的唯一来源是本项目仓库 `wangzw/agent-peer` 的 GitHub 正式发布，访问一律走 HTTPS。
+自我更新的唯一来源是本项目仓库 `wangzw/peers` 的 GitHub 正式发布，访问一律走 HTTPS。
 
-版本信息取自 GitHub REST API 的 `GET /repos/wangzw/agent-peer/releases/latest`（[REF-github-rest-api](../references.md)），该接口只返回最新的正式发布版本，不含预发布和草稿。查询是否有新版本用 `releases/latest`，安装时按用户确认过的 tag 经 `GET /repos/wangzw/agent-peer/releases/tags/<tag>` 拉取该版本，避免用户确认之后 latest 变化而安装成另一个版本。安装包与 `checksums.txt` 取自该 release 的 assets，经 `browser_download_url` 下载。安装包的名字必须恰好是 `agent-peer_<版本>_<GOOS>_<GOARCH>.tar.gz`。
+版本信息取自 GitHub REST API 的 `GET /repos/wangzw/peers/releases/latest`（[REF-github-rest-api](../references.md)），该接口只返回最新的正式发布版本，不含预发布和草稿。查询是否有新版本用 `releases/latest`，安装时按用户确认过的 tag 经 `GET /repos/wangzw/peers/releases/tags/<tag>` 拉取该版本，避免用户确认之后 latest 变化而安装成另一个版本。安装包与 `checksums.txt` 取自该 release 的 assets，经 `browser_download_url` 下载。安装包的名字必须恰好是 `peers_<版本>_<GOOS>_<GOARCH>.tar.gz`。
 
-下载内容用 SHA-256 与 `checksums.txt` 中对应的一行比对，不一致即失败。下载大小上限为 100 MiB，写成具名常量。解压时只取名为 `agent-peer` 的普通文件，拒绝路径穿越与符号链接。新二进制先在临时位置运行 `--version`，输出必须恰好是 `agent-peer <版本>`，然后才替换目标。替换在目标所在目录内写临时文件，保持原二进制的模式与属主，`fsync` 后 `rename`，不保留旧版本。
+下载内容用 SHA-256 与 `checksums.txt` 中对应的一行比对，不一致即失败。下载大小上限为 100 MiB，写成具名常量。解压时只取名为 `peers` 的普通文件，拒绝路径穿越与符号链接。新二进制先在临时位置运行 `--version`，输出必须恰好是 `peers <版本>`，然后才替换目标。替换在目标所在目录内写临时文件，保持原二进制的模式与属主，`fsync` 后 `rename`，不保留旧版本。
 
 发布暂无签名，更新程序提供的信任程度与用户手工下载相同。发布签名与校验不在本决策的范围内。
 
@@ -60,7 +60,7 @@ Broker 与终端命令只显示新版本号，安装仍按 README 的步骤手�
 
 以服务方式运行的系统级与用户级 Broker 自己执行升级：Broker 取本项目最新的正式发布版本，下载、校验并替换自己的二进制，回复调用方后正常退出，由服务管理器以新二进制重新启动。终端命令在系统级安装上请求 Broker 执行，不再在本地替换二进制。
 
-发起升级需要对 Broker 的配置文件有写权限，与修改配置同档。管理组的成员因此可以不取得 root 就让以 root 运行的 Broker 替换自己的二进制，信任程度与 root 自己执行 `agent-peer update` 相同；这条路径不给他们超出编辑配置文件的权限。升级只取本项目最新的正式发布版本：调用方不能指定来源、版本，也不能要求降级。
+发起升级需要对 Broker 的配置文件有写权限，与修改配置同档。管理组的成员因此可以不取得 root 就让以 root 运行的 Broker 替换自己的二进制，信任程度与 root 自己执行 `peers update` 相同；这条路径不给他们超出编辑配置文件的权限。升级只取本项目最新的正式发布版本：调用方不能指定来源、版本，也不能要求降级。
 
 发布暂未签名，这条路径的信任依赖 GitHub 的 HTTPS 与 `checksums.txt` 的校验和。
 
@@ -83,4 +83,4 @@ Broker 与终端命令只显示新版本号，安装仍按 README 的步骤手�
 
 ## 失效条件
 
-发布开始携带签名时，本决策改为要求先验证签名再安装。项目的发布迁移到 GitHub Releases 以外的渠道，或不再按 `agent-peer_<版本>_<GOOS>_<GOARCH>.tar.gz` 命名产物时，写死的仓库、接口与命名前提不再成立，本决策需要重新评估。Claude Code 不再对带 `destructiveHint` 的工具默认要求确认时，会话中的升级失去最后一道人工确认，委托升级需要重新评估。
+发布开始携带签名时，本决策改为要求先验证签名再安装。项目的发布迁移到 GitHub Releases 以外的渠道，或不再按 `peers_<版本>_<GOOS>_<GOARCH>.tar.gz` 命名产物时，写死的仓库、接口与命名前提不再成立，本决策需要重新评估。Claude Code 不再对带 `destructiveHint` 的工具默认要求确认时，会话中的升级失去最后一道人工确认，委托升级需要重新评估。

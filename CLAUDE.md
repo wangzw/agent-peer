@@ -1,6 +1,6 @@
-# agent-peer
+# peers
 
-A cross-host communication system for agents. A host runs a Broker either as a system-wide service that serves every account or as a user-level process that serves one account. Claude Code sessions join their Broker through MCP tools, and once two Brokers are paired, agents on different hosts can discover each other and exchange messages.
+A cross-host communication system for agents. A host runs a Broker either as a system service that serves every account or as a user-level process that serves one account. Claude Code sessions join their Broker through MCP tools, and once two Brokers are paired, agents on different hosts can discover each other and exchange messages.
 
 ## Language
 
@@ -33,7 +33,7 @@ Supplements the `commit-convention` skill.
 ### Scopes
 
 - a module name, such as `broker` or `link`: the module's Go package under `internal/` and its design document `docs/design/modules/design-<module>.md`. The module table in `docs/design/README.md` defines which modules exist.
-- `cmd`: `cmd/agent-peer`, the entry point and the command wiring that belongs to no module
+- `cmd`: `cmd/peers`, the entry point and the command wiring that belongs to no module
 - `e2e`: `test/e2e/`, the end-to-end tests and their container topologies
 - `realsession`: `test/realsession/`, the probes that run real Claude Code sessions, and their workflow `.github/workflows/real-session.yml`
 - `site`: `docs/site/`, the project website, and its workflow `.github/workflows/site.yml`

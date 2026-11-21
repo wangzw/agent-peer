@@ -84,7 +84,7 @@ MCP 服务的使用说明随工具一起进入会话上下文。下列要点是�
 - 本会话中遭到拒绝或会遭到拦截的操作，不得请其他 Agent 代做。
 - 结果带 `broker_offline` 时对方 Broker 已下线，不要重发同一条消息。
 
-项目配置文件是工作区内的 `.agent-peer.yaml`，从会话工作目录向上逐级查找，以先找到的为准。查找时跟随符号链接：链接指向普通文件时按普通文件采用；链接悬空、或它指向的不是普通文件时，视作没有这个文件，继续向上查找。
+项目配置文件是工作区内的 `.peers.yaml`，从会话工作目录向上逐级查找，以先找到的为准。查找时跟随符号链接：链接指向普通文件时按普通文件采用；链接悬空、或它指向的不是普通文件时，视作没有这个文件，继续向上查找。
 
 ```yaml
 topics: [team-backend, github.com/org/repo]   # 声明后不再使用 origin
@@ -93,7 +93,7 @@ auto_join: true                               # 设为 false 时不自动加入�
 
 ## 依赖
 
-`mcpserver` 只引用本机接口的 proto 包 `internal/broker/localpb`，不引用 `broker` 包本身，符合模块依赖图的方向。它用系统的 `git` 命令读取 `origin` 地址。两种形态下运行时目录的位置规则与 [config](design-config.md) 所列的一致，`mcpserver` 按这些规则自行算出本机 socket 的路径，不需要引用 `broker` 包。终端命令 `status` 与 `audit` 的客户端在 `internal/mcpserver/termcmd`，它们复用本模块选定 Broker 的函数 `FindBrokerWithDial`，选定时只查找正在运行的 Broker，不启动 Broker；进程级信号由 `cmd/agent-peer` 处理。
+`mcpserver` 只引用本机接口的 proto 包 `internal/broker/localpb`，不引用 `broker` 包本身，符合模块依赖图的方向。它用系统的 `git` 命令读取 `origin` 地址。两种形态下运行时目录的位置规则与 [config](design-config.md) 所列的一致，`mcpserver` 按这些规则自行算出本机 socket 的路径，不需要引用 `broker` 包。终端命令 `status` 与 `audit` 的客户端在 `internal/mcpserver/termcmd`，它们复用本模块选定 Broker 的函数 `FindBrokerWithDial`，选定时只查找正在运行的 Broker，不启动 Broker；进程级信号由 `cmd/peers` 处理。
 
 ## 核心算法与流程
 
@@ -113,12 +113,12 @@ auto_join: true                               # 设为 false 时不自动加入�
 
 ### 没有可用的 Broker
 
-前两步都不成立时，MCP 服务进程不启动 Broker，进入 `PhaseNoBroker`，工具调用返回 `internal` 码的错误。错误文字先说明本机若有系统级 Broker，应请管理员启动它，再给出用户级的两种启动方法：以 `agent-peer service install` 安装并启用用户级服务，或者在 Claude Code 会话之外的终端里运行 `agent-peer broker`；在会话里启动的 Broker 在检查到自己在会话的进程树内时以退出码 6 失败。后台按连接退避重新执行完整的“选定 Broker”，不设单独的退避。用户改用其他监听地址并重新启动 Broker 后，下一次选定即可成功（`REQ-broker-config-024`、`REQ-broker-config-038`）。
+前两步都不成立时，MCP 服务进程不启动 Broker，进入 `PhaseNoBroker`，工具调用返回 `internal` 码的错误。错误文字先说明本机若有系统级 Broker，应请管理员启动它，再给出用户级的两种启动方法：以 `peers service install` 安装并启用用户级服务，或者在 Claude Code 会话之外的终端里运行 `peers broker`；在会话里启动的 Broker 在检查到自己在会话的进程树内时以退出码 6 失败。后台按连接退避重新执行完整的“选定 Broker”，不设单独的退避。用户改用其他监听地址并重新启动 Broker 后，下一次选定即可成功（`REQ-broker-config-024`、`REQ-broker-config-038`）。
 
 ### 启动与登记
 
 1. 启动后立即响应 Claude Code 的 MCP 握手，声明全部工具。握手不等待 Broker：Claude Code 在握手超过 30 秒未完成时把 MCP 服务标为失败，要用户手动重新连接（`REQ-agent-messaging-038`）。
-2. 在后台按“选定 Broker”连接 Broker，调用 `Hello` 比较本机协议版本。不兼容时不再登记，之后的每次工具调用都返回提示重启 Broker 的 `version_mismatch` 错误（`REQ-broker-config-016`）。连接不设空闲超时，不兼容后也不轮询 Broker，而是等这条连接离开 READY，即 Broker 退出或重启，再按重连规则连回并重新调用 `Hello`，兼容后开始登记。给模型的文字按选定的种类给出做法：用户级 Broker 提示以同一个 agent-peer 版本重启本账户的 Broker，并给出启动方法，即用 `agent-peer service install` 安装为用户级服务，或在会话之外的终端运行 `agent-peer broker`；系统级 Broker 提示请管理员以同一个版本重启系统服务；这些情形都说明本会话会自行重连。
+2. 在后台按“选定 Broker”连接 Broker，调用 `Hello` 比较本机协议版本。不兼容时不再登记，之后的每次工具调用都返回提示重启 Broker 的 `version_mismatch` 错误（`REQ-broker-config-016`）。连接不设空闲超时，不兼容后也不轮询 Broker，而是等这条连接离开 READY，即 Broker 退出或重启，再按重连规则连回并重新调用 `Hello`，兼容后开始登记。给模型的文字按选定的种类给出做法：用户级 Broker 提示以同一个 peers 版本重启本账户的 Broker，并给出启动方法，即用 `peers service install` 安装为用户级服务，或在会话之外的终端运行 `peers broker`；系统级 Broker 提示请管理员以同一个版本重启系统服务；这些情形都说明本会话会自行重连。
 3. 打开 `Register` 流，上行首帧带两项：环境变量 `CLAUDE_CODE_MESSAGING_SOCKET` 的值，可以为空；环境变量 `CLAUDE_CONFIG_DIR` 的值，可以为空。本进程不读会话注册表，记录的查找、等待与核对由 Broker 完成，见 [broker](design-broker.md)。
 4. 收到下行流发出的登记完成后，计算默认 topic 并逐个调用加入。下行流发出 `not_registered` 时记下原因，流保持打开，等待 Broker 此后发出登记完成。
 
@@ -126,7 +126,7 @@ Claude Code 在会话启动时就启动本进程，本进程是会话进程的�
 
 Broker 不可用、登记未完成或登记失败期间，本进程不退出，工具调用立即返回说明原因的错误，不排队也不等待；与 Broker 的连接在后台按退避持续重试。任何 Broker 一侧的故障都不使本进程退出，会话因此不需要用户重新连接 MCP 服务（`REQ-agent-messaging-038`）。
 
-收到 SIGINT 或 SIGTERM 时，本进程主动关闭 `Register` 流后退出。信号由 `cmd/agent-peer` 以 `signal.NotifyContext` 处理并取消上下文，`mcpserver.Run` 在上下文取消时先关闭登记流再返回，MCP 服务进程本身不安装信号处理器。用户在 `/mcp` 界面停用 MCP 服务或会话退出时，Claude Code 向本进程依次发送 SIGINT、SIGTERM 与 SIGKILL，登记连接因此随即断开（`REQ-agent-messaging-034`）。
+收到 SIGINT 或 SIGTERM 时，本进程主动关闭 `Register` 流后退出。信号由 `cmd/peers` 以 `signal.NotifyContext` 处理并取消上下文，`mcpserver.Run` 在上下文取消时先关闭登记流再返回，MCP 服务进程本身不安装信号处理器。用户在 `/mcp` 界面停用 MCP 服务或会话退出时，Claude Code 向本进程依次发送 SIGINT、SIGTERM 与 SIGKILL，登记连接因此随即断开（`REQ-agent-messaging-034`）。
 
 ### 重新登记
 
@@ -171,7 +171,7 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 追加的文本为：
 
 ```
-agent-peer <v> is available (this Broker runs <c>). Ask the agent to call update_broker, or run `agent-peer update` in a terminal.
+peers <v> is available (this Broker runs <c>). Ask the agent to call update_broker, or run `peers update` in a terminal.
 ```
 
 其中 `<v>` 是可用版本，`<c>` 是当前版本。
@@ -184,9 +184,9 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 
 `codeName` 加两个名字 `broker_offline` 与 `broker_degraded`。更新提示的中间件把 `broker_degraded` 与查询失败同样处理，跳过提示。
 
-“没有可用的 Broker”的错误文字中，用户级启动方法 `agent-peer broker` 不变；服务定义带 `--allow-degraded`，安装为服务的 Broker 遇到可降级的启动失败后会进入降级运行，会话看到的是 `broker_degraded` 而不是没有可用的 Broker。
+“没有可用的 Broker”的错误文字中，用户级启动方法 `peers broker` 不变；服务定义带 `--allow-degraded`，安装为服务的 Broker 遇到可降级的启动失败后会进入降级运行，会话看到的是 `broker_degraded` 而不是没有可用的 Broker。
 
-`update_broker` 的错误开头短语为 `Upgrade failed`。`permission_denied` 的说明原样保留，包括配置文件路径；`failed_precondition` 的说明之后追加 ``Run `agent-peer update` in a terminal instead.``；`aborted` 的说明写明已有一次升级在进行。
+`update_broker` 的错误开头短语为 `Upgrade failed`。`permission_denied` 的说明原样保留，包括配置文件路径；`failed_precondition` 的说明之后追加 ``Run `peers update` in a terminal instead.``；`aborted` 的说明写明已有一次升级在进行。
 
 | 情形 | 工具调用得到 |
 |---|---|
@@ -211,7 +211,7 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 | 工具声明与使用说明 | 已实现 | `internal/mcpserver/tools.go`（`newMCPServer`、`toolSet`）、`internal/mcpserver/instructions.go`（`instructions`） |
 | Broker 的选定 | 已实现 | `internal/mcpserver/select.go`（`selector.Find`、`FindBroker`） |
 | 握手、版本握手与会话登记 | 已实现 | `internal/mcpserver/run.go`（`Run`、`Options`）、`internal/mcpserver/conn.go`（`dialLocal`、`hello`）、`internal/mcpserver/register.go`（`runRegistration`） |
-| 信号处理 | 已实现 | `internal/mcpserver/run.go`（`Run`：上下文取消时先关闭登记流）、`cmd/agent-peer/app.go`（`newSignalContext`：`signal.NotifyContext` 处理 SIGINT 与 SIGTERM） |
+| 信号处理 | 已实现 | `internal/mcpserver/run.go`（`Run`：上下文取消时先关闭登记流）、`cmd/peers/app.go`（`newSignalContext`：`signal.NotifyContext` 处理 SIGINT 与 SIGTERM） |
 | 重新登记与成员关系恢复 | 已实现 | `internal/mcpserver/loop.go`（`runLoop`）、`internal/mcpserver/topics.go`（`topicMemory`、`restorer.onComplete`） |
 | 默认 topic 的确定 | 已实现 | `internal/mcpserver/defaulttopic.go`（`defaultTopics`、`gitOrigin`）、`internal/mcpserver/project.go`（`findProjectConfig`） |
 | 仓库地址的规范化 | 已实现 | `internal/mcpserver/remote.go`（`normalizeRemote`） |

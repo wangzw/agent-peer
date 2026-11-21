@@ -2,7 +2,7 @@
 
 ## 概览
 
-agent-peer 是一个 Go 程序，编译为单一二进制 `agent-peer`，按子命令分别作为常驻的 [Broker](../glossary.md) 进程、每个会话一个的 MCP 服务进程和用户在终端执行的命令运行。MCP 服务进程把模型的调用转给本机的一个 Broker，Broker 负责其余全部工作：登记 Agent、维护 topic 成员关系、与对端保持链路、交换名录记录与成员名单、把消息写入会话的 inbox socket。Broker 有系统级与用户级两种部署形态（[ADR-broker-deployment-modes](../adr/adr-broker-deployment-modes.md)），两者运行同一份代码，区别在于启动的身份、所服务的账户范围和各类文件的位置。
+peers 是一个 Go 程序，编译为单一二进制 `peers`，按子命令分别作为常驻的 [Broker](../glossary.md) 进程、每个会话一个的 MCP 服务进程和用户在终端执行的命令运行。MCP 服务进程把模型的调用转给本机的一个 Broker，Broker 负责其余全部工作：登记 Agent、维护 topic 成员关系、与对端保持链路、交换名录记录与成员名单、把消息写入会话的 inbox socket。Broker 有系统级与用户级两种部署形态（[ADR-broker-deployment-modes](../adr/adr-broker-deployment-modes.md)），两者运行同一份代码，区别在于启动的身份、所服务的账户范围和各类文件的位置。
 
 ### 核心概念
 
@@ -62,7 +62,7 @@ Agent 地址是相对于看到它的 Broker 而言的。同一个 Agent 在两�
 
 ```mermaid
 graph TD
-    cmd[cmd/agent-peer] --> broker
+    cmd[cmd/peers] --> broker
     cmd --> mcpserver
     mcpserver --> localpb
     broker --> localpb
@@ -91,7 +91,7 @@ graph TD
 
 图中没有箭头而运行时需要的协作，由 `broker` 以接口注入或转调完成。接口注入用于 `pairing`：它发起握手要拨号，解除配对要关闭链路，拨号与关闭链路由 `link` 实现，`broker` 在装配时以接口的形式交给 `pairing`。其余的协作是转调：配置变更由 `broker` 订阅后分别通知 `link`、`directory`；名片带来的对外地址列表由 `broker` 交给 `pairing` 记入候选地址，本机对外地址列表的变化由 `broker` 通知 `link` 与 `directory`；配对结果与名录的比对、公开 topic 的声明都由 `broker` 依次调用相关的包。
 
-`mcpserver` 只引用 `internal/broker/localpb`，即本机接口的客户端与消息定义所在的 proto 包，从不引用 `broker` 包本身；两者运行在不同进程里。`cmd/agent-peer` 是装配入口，没有自己的设计文档，终端命令的行为记在 [broker](modules/design-broker.md) 的外部接口契约一节。`cmd/agent-peer` 不引用 `localpb`；`status` 与 `audit` 的客户端放在 `mcpserver` 的子包 `termcmd` 中，依赖图不变。
+`mcpserver` 只引用 `internal/broker/localpb`，即本机接口的客户端与消息定义所在的 proto 包，从不引用 `broker` 包本身；两者运行在不同进程里。`cmd/peers` 是装配入口，没有自己的设计文档，终端命令的行为记在 [broker](modules/design-broker.md) 的外部接口契约一节。`cmd/peers` 不引用 `localpb`；`status` 与 `audit` 的客户端放在 `mcpserver` 的子包 `termcmd` 中，依赖图不变。
 
 ## 逻辑部署架构
 
@@ -134,16 +134,16 @@ MCP 服务进程由 Claude Code 作为会话的子进程启动，生命周期与
 
 | 进程 | 启动方式 | 数量 | 监听 |
 |---|---|---|---|
-| 系统级 Broker，`agent-peer broker --system` | 由管理员安装的系统服务启动，以 root 运行 | 每台主机至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
-| 用户级 Broker，`agent-peer broker` | 由用户安装为服务启动（安装后立即启动 Broker，此后随登录启动），或由用户在会话之外的终端启动 | 每个账户至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
-| 辅助进程 | 系统级 Broker 按需派生（`agent-peer internal account-helper`），切换到被服务的账户后运行 | 每个被服务的账户一个 | 无 |
-| 权限检查进程 | 系统级 Broker 每次判定调用方对配置文件的权限时派生（`agent-peer internal access-check`），以 root 执行后只把有效身份切换到调用方账户，检查后即退出 | 按需 | 无 |
-| MCP 服务进程，`agent-peer mcp` | Claude Code 按会话的工具配置启动 | 每会话一个 | 无 |
-| 终端命令，例如 `agent-peer status` | 用户执行 | 按需 | 无 |
+| 系统级 Broker，`peers broker --system` | 由管理员安装的系统服务启动，以 root 运行 | 每台主机至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
+| 用户级 Broker，`peers broker` | 由用户安装为服务启动（安装后立即启动 Broker，此后随登录启动），或由用户在会话之外的终端启动 | 每个账户至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
+| 辅助进程 | 系统级 Broker 按需派生（`peers internal account-helper`），切换到被服务的账户后运行 | 每个被服务的账户一个 | 无 |
+| 权限检查进程 | 系统级 Broker 每次判定调用方对配置文件的权限时派生（`peers internal access-check`），以 root 执行后只把有效身份切换到调用方账户，检查后即退出 | 按需 | 无 |
+| MCP 服务进程，`peers mcp` | Claude Code 按会话的工具配置启动 | 每会话一个 | 无 |
+| 终端命令，例如 `peers status` | 用户执行 | 按需 | 无 |
 
 默认配置下 `broker.listen` 是 `:17443`，Broker 在本机全部地址的 17443 端口上监听，启用了 IPv6 时包括 IPv6 地址（[ADR-listen-by-default](../adr/adr-listen-by-default.md)，`REQ-broker-config-028`）；这个端口只是默认配置中的取值，代码不为任何端口设特例。同一主机上第二个账户的 Broker 按默认配置启动时，监听地址已被占用：新装或重装时，预检发现地址被其他进程占用，安装失败且不注册服务（`REQ-broker-config-064`）；已经装好的服务之后再启动，服务进入仅本机降级，在前台启动则启动失败并报告该地址不可用，由用户在启动参数 `--listen` 或配置中改用其他地址或端口（`REQ-broker-config-024`、`REQ-broker-config-025`、`REQ-broker-config-058`）。`--listen` 只作用于本次运行，不读写配置文件，其间经工具修改监听地址的调用失败（`REQ-broker-config-029`）。其他 Broker 连接它时使用它的对外地址，默认是默认路由所在接口的地址，每个地址都配上监听端口（[ADR-advertised-address](../adr/adr-advertised-address.md)，`REQ-broker-config-030`）。
 
-各类文件的位置随形态而定，完整的路径表见 [config](modules/design-config.md)：用户级的配置、数据与审计日志在账户的 `~/.agent-peer/` 下，系统级的分别在 `/etc/agent-peer/`、`/var/lib/agent-peer/` 与 `/var/log/agent-peer/` 下；运行时目录内有本机 socket 和账户锁，账户锁是保证同一账户至多运行一个 Broker 实例的锁文件；运行时目录只取决于账户，与形态、配置内容、监听地址和环境变量无关。系统级服务在 macOS 上是 launchd 的守护进程，在 Linux 上是 systemd 的系统单元；用户级服务在 macOS 上是 launchd 的用户代理，在 Linux 上是 systemd 的用户单元。两种服务都在安装时立即启动 Broker 并等待本机 socket 应答；卸载先停止服务再删除服务定义，配置、身份与审计日志保留。
+各类文件的位置随形态而定，完整的路径表见 [config](modules/design-config.md)：用户级的配置、数据与审计日志在账户的 `~/.peers/` 下，系统级的分别在 `/etc/peers/`、`/var/lib/peers/` 与 `/var/log/peers/` 下；运行时目录内有本机 socket 和账户锁，账户锁是保证同一账户至多运行一个 Broker 实例的锁文件；运行时目录只取决于账户，与形态、配置内容、监听地址和环境变量无关。系统级服务在 macOS 上是 launchd 的守护进程，在 Linux 上是 systemd 的系统单元；用户级服务在 macOS 上是 launchd 的用户代理，在 Linux 上是 systemd 的用户单元。两种服务都在安装时立即启动 Broker 并等待本机 socket 应答；卸载先停止服务再删除服务定义，配置、身份与审计日志保留。
 
 MCP 服务进程连接哪个 Broker 按固定的顺序确定：本账户正在运行的用户级 Broker、本账户有权连接的系统级 Broker，都没有时不启动 Broker，工具调用返回说明没有可用 Broker 及如何启动的错误，后台按连接退避重新选定（`REQ-broker-config-026`、`REQ-broker-config-038`）。MCP 服务进程不启动任何 Broker。
 
@@ -258,7 +258,7 @@ Broker 内每条链路有一个读协程、一个写协程和一个按序处理�
 
 ### 可观测性
 
-Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间、级别、事件名，以及随事件而定的其他字段（`REQ-broker-config-011`）。每次发送记录消息标识、发送方、目标、结果和耗时，不记录正文。审计日志与运行日志分开，见 [config](modules/design-config.md)。终端命令 `agent-peer status` 展示 Agent、成员关系、对端与链路状态；调用方账户对配置文件没有读权限时，只展示该账户自己的 Agent。审计记录带有发起的系统账户。
+Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间、级别、事件名，以及随事件而定的其他字段（`REQ-broker-config-011`）。每次发送记录消息标识、发送方、目标、结果和耗时，不记录正文。审计日志与运行日志分开，见 [config](modules/design-config.md)。终端命令 `peers status` 展示 Agent、成员关系、对端与链路状态；调用方账户对配置文件没有读权限时，只展示该账户自己的 Agent。审计记录带有发起的系统账户。
 
 ### 安全边界
 
@@ -291,7 +291,7 @@ Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间�
 - 不公开的 Broker 不签发名片；Broker 只传播自己持有其签名记录的 Broker 的信息（[ADR-brokers-private-by-default](../adr/adr-brokers-private-by-default.md)）。
 - 向 inbox socket 写入的连接上不发送认证行。
 - Broker 进程与它派生的进程都不是任何 Claude Code 会话进程的后代。
-- 同一账户下同一时刻至多有一个 Broker 进程持有账户锁；账户锁的路径不随形态、配置内容、监听地址和环境变量变化。带 `agentpeer_testenv` 构建标签的测试构建例外：`AGENT_PEER_TEST_RUNTIME_ROOT` 与 `AGENT_PEER_TEST_HOME` 可以改变运行时目录与账户家目录，发布构建不含这段代码。
+- 同一账户下同一时刻至多有一个 Broker 进程持有账户锁；账户锁的路径不随形态、配置内容、监听地址和环境变量变化。带 `peers_testenv` 构建标签的测试构建例外：`PEERS_TEST_RUNTIME_ROOT` 与 `PEERS_TEST_HOME` 可以改变运行时目录与账户家目录，发布构建不含这段代码。
 - 配置的监听地址无法绑定时，Broker 不在任何其他地址或端口上监听：前台运行时在启动阶段退出，带 `--allow-degraded` 的服务进入仅本机降级并重试绑定，运行期间的修改不提交。
 - 修改配置、生成配对密钥、发起配对、解除配对，只在调用方账户对该 Broker 的配置文件有写权限时执行；读取配置与审计只在有读权限时返回。
 - 密钥类配置项的取值不经本机接口返回，也不写入运行日志与审计日志。

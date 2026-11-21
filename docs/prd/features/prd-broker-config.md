@@ -147,9 +147,9 @@ MCP 服务进程不得启动任何 Broker。会话按 `REQ-broker-config-026` �
 
 发布包必须附带安装脚本，用户解压后执行一条命令即可完成安装：把二进制装到合适的位置，把 Broker 安装为服务并启动，为执行安装的用户在 Claude Code 中注册本系统的 MCP 服务。系统级安装由脚本自行经 sudo 取得管理员身份。重复执行安装脚本不得出错，也不得重复注册。
 
-- **验收**：在没有安装过本系统的 Linux 主机上，解压发布包，以普通账户执行安装脚本。之后在新的终端中，`agent-peer --version` 输出发布版本，该账户的用户级 Broker 正在运行，`claude mcp get peer` 显示已注册。以普通账户执行安装脚本并对级别询问回答 y，输入 sudo 密码后，系统级 Broker 正在运行，二进制位于 root 所有、组与其他人不可写的目录，执行 sudo 的账户在 Claude Code 中已注册 MCP 服务。每种方式各再执行一次，都成功，MCP 服务只注册一次。
+- **验收**：在没有安装过本系统的 Linux 主机上，解压发布包，以普通账户执行安装脚本。之后在新的终端中，`peers --version` 输出发布版本，该账户的用户级 Broker 正在运行，`claude mcp get peer` 显示已注册。以普通账户执行安装脚本并对级别询问回答 y，输入 sudo 密码后，系统级 Broker 正在运行，二进制位于 root 所有、组与其他人不可写的目录，执行 sudo 的账户在 Claude Code 中已注册 MCP 服务。每种方式各再执行一次，都成功，MCP 服务只注册一次。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig041_UserInstallScript`、`TestREQBrokerConfig041_SystemInstallScript`、`TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemWide`（对级别询问回答 y 的系统级安装）
+- **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig041_UserInstallScript`、`TestREQBrokerConfig041_SystemInstallScript`、`TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemLevel`（对级别询问回答 y 的系统级安装）
 
 ### REQ-broker-config-042
 
@@ -251,7 +251,7 @@ MCP 服务进程不得启动任何 Broker。会话按 `REQ-broker-config-026` �
 
 未允许降级运行而启动的 Broker，在配置或启动参数给出的监听地址无法绑定时必须启动失败并报告该地址不可用，不得改用其他地址或端口。
 
-- **验收**：先让另一个进程在本机全部地址的 17443 端口上监听，再以默认配置在终端执行 `agent-peer broker`：启动失败，退出码非零，错误指出地址 `:17443` 不可用，主机上没有留下这个 Broker 的进程，也没有它在其他端口上的监听。
+- **验收**：先让另一个进程在本机全部地址的 17443 端口上监听，再以默认配置在终端执行 `peers broker`：启动失败，退出码非零，错误指出地址 `:17443` 不可用，主机上没有留下这个 Broker 的进程，也没有它在其他端口上的监听。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/broker_process_test.go` 的 `TestBrokerProcessInContainer/REQ-broker-config-024 default address taken`
 
@@ -261,13 +261,13 @@ MCP 服务进程不得启动任何 Broker。会话按 `REQ-broker-config-026` �
 
 - **验收**：配置保持默认，启动时指定监听 `:17444`：Broker 在本机全部地址的 17444 端口上监听，不在 17443 端口上监听，配置文件的内容没有变化。
 - **状态**：已实现
-- **端到端测试**：`cmd/agent-peer/broker_process_test.go`: `TestBrokerListenFlagOverridesConfig`
+- **端到端测试**：`cmd/peers/broker_process_test.go`: `TestBrokerListenFlagOverridesConfig`
 
 ### REQ-broker-config-026
 
 会话尚未选定 Broker 时，存在多个可用的 Broker，MCP 服务进程必须按以下顺序选择第一个可用的：本账户下正在运行的用户级 Broker；本账户有权使用的系统级 Broker。
 
-- **验收**：主机上同时运行着系统级 Broker 和账户甲的用户级 Broker，系统级 Broker 监听 `:17443`，甲的用户级 Broker 监听 `:17444`。甲的会话登记在甲的用户级 Broker 上；甲的用户级 Broker 停止后新开的会话登记在系统级 Broker 上；没有用户级 Broker 的账户乙的会话登记在系统级 Broker 上。会话的环境中设置 `AGENT_PEER_SOCKET` 不影响选择。
+- **验收**：主机上同时运行着系统级 Broker 和账户甲的用户级 Broker，系统级 Broker 监听 `:17443`，甲的用户级 Broker 监听 `:17444`。甲的会话登记在甲的用户级 Broker 上；甲的用户级 Broker 停止后新开的会话登记在系统级 Broker 上；没有用户级 Broker 的账户乙的会话登记在系统级 Broker 上。会话的环境中设置已被移除的旧版 socket 选择变量，不影响选择。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/select_reregister_test.go` 的 `TestSelectOrderReq026`
 
@@ -369,11 +369,11 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 ### REQ-broker-config-044
 
-不带 `--system` 与 `--user`、能在终端询问的非 root 安装，必须询问 `Install system-wide (all accounts)? [y/N]`，回答 y 时经 sudo 完成系统级安装，其他回答完成用户级安装。
+不带 `--system` 与 `--user`、能在终端询问的非 root 安装，必须询问 `Install for every account on this host? [y/N]`，回答 y 时经 sudo 完成系统级安装，其他回答完成用户级安装。
 
-- **验收**：在没有安装过本系统的主机上，以普通账户执行 `curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh`：出现这句询问；回答 y 并输入 sudo 密码后，系统级 Broker 正在运行，二进制位于 root 所有的目录，执行安装的账户在 Claude Code 中已注册 MCP 服务；在另一台主机上直接回车，该账户的用户级 Broker 正在运行，主机上没有系统级服务。解压发布包后执行 `sh ./install.sh`，结果相同。
+- **验收**：在没有安装过本系统的主机上，以普通账户执行 `curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh`：出现这句询问；回答 y 并输入 sudo 密码后，系统级 Broker 正在运行，二进制位于 root 所有的目录，执行安装的账户在 Claude Code 中已注册 MCP 服务；在另一台主机上直接回车，该账户的用户级 Broker 正在运行，主机上没有系统级服务。解压发布包后执行 `sh ./install.sh`，结果相同。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemWide`、`TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser`；`test/e2e/system/remote_install_test.go` 的 `TestREQBrokerConfig042_RemoteInstallSystem`
+- **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemLevel`、`TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser`；`test/e2e/system/remote_install_test.go` 的 `TestREQBrokerConfig042_RemoteInstallSystem`
 
 ### REQ-broker-config-045
 
@@ -393,7 +393,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 ### REQ-broker-config-047
 
-主机上已安装系统级服务时，`REQ-broker-config-044` 的询问必须改为 `Upgrade the system-wide installation? [Y/n]`，直接回车或回答 y 时经 sudo 升级系统级安装；回答 n 时不得改动主机，命令以 0 退出，并提示另装用户级时带 `--user`。
+主机上已安装系统级服务时，`REQ-broker-config-044` 的询问必须改为 `Upgrade the system-level installation? [Y/n]`，直接回车或回答 y 时经 sudo 升级系统级安装；回答 n 时不得改动主机，命令以 0 退出，并提示另装用户级时带 `--user`。
 
 - **验收**：在已安装旧版本系统级服务的主机上，以普通账户执行一条在线安装命令：询问为这一句；直接回车并输入 sudo 密码后，系统级 Broker 以新版本运行，配置文件内容不变。在另一台同样的主机上回答 n：命令以 0 退出，二进制、服务与配置都没有变化，输出提示另装用户级时带 `--user`。
 - **状态**：已实现
@@ -413,7 +413,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 - **验收**：分别制造下列失败，每种情况命令都以非零退出，输出含括号中的内容：监听地址被另一个进程占用（地址、配置文件路径与配置项 `broker.listen`）；`systemctl` 或 `launchctl` 返回失败（执行的命令与它的错误输出）；对安装目录或配置文件没有权限（路径与所缺的权限）；Broker 在启动阶段退出（运行日志中 `startup_failed` 记录的原因）。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/install_port_conflict_test.go` 的 `TestSystemServiceInstallListenPortConflict`、`test/e2e/darwinservice/install_port_test.go` 的 `TestUserServiceInstallRefusesAnOccupiedListenPort`（地址被占时错误含地址、配置文件路径与 `broker.listen`）；其余失败路径由单元测试覆盖：`internal/broker/service/install_test.go` 的 `TestInstallLinuxStepFailures`、`TestInstallDarwinBootstrapFailureReportsTheOutput`、`TestCreateConfigRemovesPartialFileOnWriteFailure`、`TestInstallReportsTheStartupFailureOnTimeout`、`TestInstallReportsTheServiceManagerStateOnTimeout`（命令失败、权限不足、启动阶段退出与服务管理器状态），`cmd/agent-peer/uninstall_cmd_test.go` 的 `TestUninstallStopsAfterAFailedStep`、`TestUninstallReportsPathsRemovedBeforeAPurgeFailure`（卸载失败的步骤、路径与原因），`internal/broker/update/apply_test.go` 的 `TestApplyFailureLeavesTargetUnchanged` 与 `api_test.go` 的 `TestLatestRejectsAPIError`、`TestLatestRejectsInvalidContent`（升级失败的原因）
+- **端到端测试**：`test/e2e/system/install_port_conflict_test.go` 的 `TestSystemServiceInstallListenPortConflict`、`test/e2e/darwinservice/install_port_test.go` 的 `TestUserServiceInstallRefusesAnOccupiedListenPort`（地址被占时错误含地址、配置文件路径与 `broker.listen`）；其余失败路径由单元测试覆盖：`internal/broker/service/install_test.go` 的 `TestInstallLinuxStepFailures`、`TestInstallDarwinBootstrapFailureReportsTheOutput`、`TestCreateConfigRemovesPartialFileOnWriteFailure`、`TestInstallReportsTheStartupFailureOnTimeout`、`TestInstallReportsTheServiceManagerStateOnTimeout`（命令失败、权限不足、启动阶段退出与服务管理器状态），`cmd/peers/uninstall_cmd_test.go` 的 `TestUninstallStopsAfterAFailedStep`、`TestUninstallReportsPathsRemovedBeforeAPurgeFailure`（卸载失败的步骤、路径与原因），`internal/broker/update/apply_test.go` 的 `TestApplyFailureLeavesTargetUnchanged` 与 `api_test.go` 的 `TestLatestRejectsAPIError`、`TestLatestRejectsInvalidContent`（升级失败的原因）
 
 ### REQ-broker-config-050
 
@@ -425,17 +425,17 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 ### REQ-broker-config-051
 
-`agent-peer uninstall` 必须判别已安装的级别，并删除该级别的服务定义、服务定义所启动的二进制、执行卸载的账户在 Claude Code 中的 MCP 注册，以及该级别的运行时目录。
+`peers uninstall` 必须判别已安装的级别，并删除该级别的服务定义、服务定义所启动的二进制、执行卸载的账户在 Claude Code 中的 MCP 注册，以及该级别的运行时目录。
 
-- **验收**：在完成用户级安装的主机上执行 `agent-peer uninstall` 并对数据询问直接回车：之后该账户的 Broker 进程不存在，服务定义文件、二进制、运行时目录都不存在，`claude mcp get peer` 报告未注册；配置文件、身份、审计日志与服务日志仍在。对系统级安装执行，结果相同。主机上同时有系统级与用户级安装时，非 root 账户只卸载用户级，结束后输出说明主机上仍有系统级安装及 `sudo agent-peer uninstall`。再执行一次，命令成功并报告没有安装。
+- **验收**：在完成用户级安装的主机上执行 `peers uninstall` 并对数据询问直接回车：之后该账户的 Broker 进程不存在，服务定义文件、二进制、运行时目录都不存在，`claude mcp get peer` 报告未注册；配置文件、身份、审计日志与服务日志仍在。对系统级安装执行，结果相同。主机上同时有系统级与用户级安装时，非 root 账户只卸载用户级，结束后输出说明主机上仍有系统级安装及 `sudo peers uninstall`。再执行一次，命令成功并报告没有安装。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/uninstall_test.go` 的 `TestUninstallREQBrokerConfig051UserLevel`、`TestUninstallREQBrokerConfig051SystemLevel`、`TestUninstallREQBrokerConfig051NoService`、`TestUninstallREQBrokerConfig051UnrecordedGroup`；`test/e2e/darwinservice/uninstall_test.go` 的 `TestUninstallREQBrokerConfig051UserLevel`
 
 ### REQ-broker-config-052
 
-非 root 账户卸载系统级安装时，`agent-peer uninstall` 必须先询问，回答 y 时经 sudo 完成卸载。
+非 root 账户卸载系统级安装时，`peers uninstall` 必须先询问，回答 y 时经 sudo 完成卸载。
 
-- **验收**：主机上只有系统级安装，以普通账户执行 `agent-peer uninstall`：出现询问；回答 y 并输入 sudo 密码后系统级安装按 `REQ-broker-config-051` 删除；回答 n 时主机上没有改动，命令以 0 退出。
+- **验收**：主机上只有系统级安装，以普通账户执行 `peers uninstall`：出现询问；回答 y 并输入 sudo 密码后系统级安装按 `REQ-broker-config-051` 删除；回答 n 时主机上没有改动，命令以 0 退出。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/uninstall_test.go` 的 `TestUninstallREQBrokerConfig052NonRootSystemOnly`、`TestUninstallREQBrokerConfig052TwoLevels`
 
@@ -449,25 +449,25 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 ### REQ-broker-config-054
 
-`agent-peer uninstall --purge` 必须不经数据询问删除 `REQ-broker-config-051` 与 `REQ-broker-config-053` 所列的全部内容；删除后这些路径下都没有本系统的文件或目录，服务定义、二进制、MCP 注册与管理组都不存在。
+`peers uninstall --purge` 必须不经数据询问删除 `REQ-broker-config-051` 与 `REQ-broker-config-053` 所列的全部内容；删除后这些路径下都没有本系统的文件或目录，服务定义、二进制、MCP 注册与管理组都不存在。
 
-- **验收**：在分别完成用户级与系统级安装、配对过一个对端、产生过审计记录的主机上执行 `agent-peer uninstall --purge`：命令不询问数据去留；之后配置文件与配置目录、数据目录、审计日志、运行时目录都不存在，`getent group agent-peer`（macOS 上 `dscl . -read /Groups/agent-peer`）报告不存在，服务管理器中查不到 agent-peer 服务，`claude mcp get peer` 报告未注册。
+- **验收**：在分别完成用户级与系统级安装、配对过一个对端、产生过审计记录的主机上执行 `peers uninstall --purge`：命令不询问数据去留；之后配置文件与配置目录、数据目录、审计日志、运行时目录都不存在，`getent group peers`（macOS 上 `dscl . -read /Groups/peers`）报告不存在，服务管理器中查不到 peers 服务，`claude mcp get peer` 报告未注册。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/uninstall_test.go` 的 `TestUninstallREQBrokerConfig051UserLevel`、`TestUninstallREQBrokerConfig051SystemLevel`、`TestUninstallREQBrokerConfig051UnrecordedGroup`、`TestUninstallREQBrokerConfig054OtherAccountBroker`
 
 ### REQ-broker-config-055
 
-用户必须能用 `agent-peer service start`、`stop` 与 `restart` 启动、停止与重启 Broker 服务，作用的级别按执行命令的账户确定：root 作用于系统级服务，其他账户作用于本账户的用户级服务。没有安装该级别的服务时，命令必须失败并说明该级别没有安装服务；非 root 账户只有系统级安装时，命令必须失败并给出 `sudo agent-peer service <命令>`。`start` 与 `restart` 之后服务在运行而 Broker 处于降级运行时，命令必须输出故障与修复命令，并以退出码 3 结束。
+用户必须能用 `peers service start`、`stop` 与 `restart` 启动、停止与重启 Broker 服务，作用的级别按执行命令的账户确定：root 作用于系统级服务，其他账户作用于本账户的用户级服务。没有安装该级别的服务时，命令必须失败并说明该级别没有安装服务；非 root 账户只有系统级安装时，命令必须失败并给出 `sudo peers service <命令>`。`start` 与 `restart` 之后服务在运行而 Broker 处于降级运行时，命令必须输出故障与修复命令，并以退出码 3 结束。
 
-- **验收**：在同时有系统级服务与账户甲的用户级服务的主机上，甲执行 `agent-peer service stop`，甲的用户级 Broker 停止，系统级 Broker 不受影响；甲执行 `sudo agent-peer service restart`，系统级 Broker 以新的进程号运行，甲的用户级 Broker 仍是停止状态；甲执行 `agent-peer service start`，用户级 Broker 重新运行。没有安装该级别的服务时，命令以非零退出并说明该级别没有安装服务；甲在只有系统级服务的主机上执行，命令以 1 退出并给出 `sudo agent-peer service <命令>`。先停止甲的用户级服务，让另一个进程占用配置中的监听端口，甲执行 `agent-peer service start`：输出降级原因与修复命令，退出码为 3，服务处于运行状态。
+- **验收**：在同时有系统级服务与账户甲的用户级服务的主机上，甲执行 `peers service stop`，甲的用户级 Broker 停止，系统级 Broker 不受影响；甲执行 `sudo peers service restart`，系统级 Broker 以新的进程号运行，甲的用户级 Broker 仍是停止状态；甲执行 `peers service start`，用户级 Broker 重新运行。没有安装该级别的服务时，命令以非零退出并说明该级别没有安装服务；甲在只有系统级服务的主机上执行，命令以 1 退出并给出 `sudo peers service <命令>`。先停止甲的用户级服务，让另一个进程占用配置中的监听端口，甲执行 `peers service start`：输出降级原因与修复命令，退出码为 3，服务处于运行状态。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl`（`stop and start act on one level only`、`a user-level command with only the system service names sudo`、`no installed service names the level`、`start reports a degraded Broker and keeps the service running`；最后一例保留 `service start` 的退出码 3，并断言 `agent-peer status` 的 stdout 含 `Broker: degraded (local only):` 与 `Fix:`）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControl`、`TestSystemServiceControl`、`TestServiceControlNotInstalled`、`TestUserServiceControlDegraded`（同样断言 `agent-peer status` 的 stdout 含状态行与 `Fix:`）
+- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl`（`stop and start act on one level only`、`a user-level command with only the system service names sudo`、`no installed service names the level`、`start reports a degraded Broker and keeps the service running`；最后一例保留 `service start` 的退出码 3，并断言 `peers status` 的 stdout 含 `Broker: degraded (local only):` 与 `Fix:`）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControl`、`TestSystemServiceControl`、`TestServiceControlNotInstalled`、`TestUserServiceControlDegraded`（同样断言 `peers status` 的 stdout 含状态行与 `Fix:`）
 
 ### REQ-broker-config-056
 
 不带 `--allow-degraded` 启动的 Broker，在启动的任何一步失败时必须在标准错误输出原因并以非零退出码结束。
 
-- **验收**：在终端以 `agent-peer broker` 分别制造配置文件无法解析、监听地址被占用、身份文件不可读三种失败，每次进程都退出，退出码非零，标准错误的最后一行写明原因，运行时目录中没有留下本机 socket。
+- **验收**：在终端以 `peers broker` 分别制造配置文件无法解析、监听地址被占用、身份文件不可读三种失败，每次进程都退出，退出码非零，标准错误的最后一行写明原因，运行时目录中没有留下本机 socket。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-056 foreground failures exit`
 
@@ -475,7 +475,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 带 `--allow-degraded` 启动的 Broker 取得账户锁之后，监听地址无法绑定，或数据目录、审计日志不可用时，必须不退出，并在本机 socket 上应答；配置文件读取或解析失败、取值不合法，以及其他与数据目录无关的启动失败，仍必须像不带该参数时一样退出。
 
-- **验收**：以 `agent-peer broker --allow-degraded` 启动，把数据目录中的身份文件改成当前账户不可读，或让审计日志所在目录不可写：进程持续运行，`agent-peer status` 能连上它并输出故障；监听地址被占用时同样如此。把配置文件写成无法解析的内容再以同一个参数启动，进程以非零退出码结束，与不带该参数时相同。
+- **验收**：以 `peers broker --allow-degraded` 启动，把数据目录中的身份文件改成当前账户不可读，或让审计日志所在目录不可写：进程持续运行，`peers status` 能连上它并输出故障；监听地址被占用时同样如此。把配置文件写成无法解析的内容再以同一个参数启动，进程以非零退出码结束，与不带该参数时相同。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-057 diagnostics entry and recovery`
 
@@ -483,15 +483,15 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 降级运行中只有监听地址无法绑定时，Broker 必须照常提供本机的登记、列出、topic 与本机消息功能，生成配对密钥必须失败，错误写明无法绑定的地址与配置项 `broker.listen`。系统级 Broker 的监听端口小于 1024 而配置文件可被其他账户写入时，按本条处理。
 
-- **验收**：另一个进程占用 17443 端口时以 `--allow-degraded` 和默认配置启动 Broker：两个会话登记成功、加入同一 topic 后互发消息成功；会话调用 `create_pairing_key` 返回 `broker_degraded`，说明含 `:17443` 与 `broker.listen`；本机不在任何端口上监听；`agent-peer status` 输出该故障；向本方作为接受方的对端发送时返回 `peer_unreachable`，说明末尾附降级原因。另把系统级 Broker 的监听端口设为 1024 以下并让配置文件可被组写入，启动后同样进入仅本机降级，`status` 的修复提示含 `chmod g-w` 或改用 1024 以上的端口。
+- **验收**：另一个进程占用 17443 端口时以 `--allow-degraded` 和默认配置启动 Broker：两个会话登记成功、加入同一 topic 后互发消息成功；会话调用 `create_pairing_key` 返回 `broker_degraded`，说明含 `:17443` 与 `broker.listen`；本机不在任何端口上监听；`peers status` 输出该故障；向本方作为接受方的对端发送时返回 `peer_unreachable`，说明末尾附降级原因。另把系统级 Broker 的监听端口设为 1024 以下并让配置文件可被组写入，启动后同样进入仅本机降级，`status` 的修复提示含 `chmod g-w` 或改用 1024 以上的端口。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-058 local only keeps local features`；peer_unreachable 附带降级原因由单元测试 `internal/broker/degradedrpc_test.go` 的 `TestPeerUnreachableReasonOnlyForAcceptor` 覆盖；低端口修复提示含 `chmod g-w` 由单元测试 `internal/broker/degradedstate_test.go` 的 `TestDegradedFixHints` 覆盖
 
 ### REQ-broker-config-059
 
-降级运行中数据目录或审计日志不可用时，`agent-peer status` 必须输出故障与修复提示，会话中每个工具调用都必须返回 `broker_degraded` 及原因。
+降级运行中数据目录或审计日志不可用时，`peers status` 必须输出故障与修复提示，会话中每个工具调用都必须返回 `broker_degraded` 及原因。
 
-- **验收**：以 `--allow-degraded` 启动、审计日志所在目录不可写时，`agent-peer status` 输出审计日志的路径、原因与修复方法，退出码非零；会话中调用 `list_agents`、`send_message`、`get_config` 都返回 `broker_degraded`，说明与 `status` 输出的原因一致；会话不需要重新连接 MCP 服务。
+- **验收**：以 `--allow-degraded` 启动、审计日志所在目录不可写时，`peers status` 输出审计日志的路径、原因与修复方法，退出码非零；会话中调用 `list_agents`、`send_message`、`get_config` 都返回 `broker_degraded`，说明与 `status` 输出的原因一致；会话不需要重新连接 MCP 服务。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-059 diagnostics from the audit log`
 
@@ -507,7 +507,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 降级运行中，Broker 必须在配置文件发生变化时立即重试失败的那一步，并每分钟重试一次；重试成功后不重启进程即退出降级运行。重试失败时只在原因发生变化时写运行日志。
 
-- **验收**：以 `--allow-degraded` 启动、审计日志所在目录不可写；恢复该目录的权限后不重启 Broker，60 秒内 `agent-peer status` 不再报告故障。另以默认配置启动、17443 端口被占用；把 `broker.listen` 改为空闲端口后，不重启 Broker，60 秒内 `agent-peer status` 不再报告故障，Broker 在新端口上监听，进程号不变。
+- **验收**：以 `--allow-degraded` 启动、审计日志所在目录不可写；恢复该目录的权限后不重启 Broker，60 秒内 `peers status` 不再报告故障。另以默认配置启动、17443 端口被占用；把 `broker.listen` 改为空闲端口后，不重启 Broker，60 秒内 `peers status` 不再报告故障，Broker 在新端口上监听，进程号不变。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-059 diagnostics from the audit log`、`TestDegradedRun/REQ-broker-config-061 recovery listens on the new port`
 
@@ -515,23 +515,23 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 降级运行中监听地址无法绑定时，Broker 必须以不超过 1 分钟的间隔重试绑定，地址可用后不重启进程即开始监听。
 
-- **验收**：以 `--allow-degraded` 启动时 17443 端口被占用；结束占用该端口的进程，不改配置，2 分钟内另一台主机能连上该 Broker 的 17443 端口，`agent-peer status` 不再报告故障，Broker 的进程号不变。
+- **验收**：以 `--allow-degraded` 启动时 17443 端口被占用；结束占用该端口的进程，不改配置，2 分钟内另一台主机能连上该 Broker 的 17443 端口，`peers status` 不再报告故障，Broker 的进程号不变。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/degraded_run_test.go` 的 `TestDegradedRun/REQ-broker-config-062 listen retry reaches the address`
 
 ### REQ-broker-config-063
 
-`agent-peer service install` 生成的服务定义必须以允许降级运行的方式启动 Broker。
+`peers service install` 生成的服务定义必须以允许降级运行的方式启动 Broker。
 
-- **验收**：分别安装用户级与系统级服务，Linux 上单元文件的 `ExecStart` 与 macOS 上 plist 的 `ProgramArguments` 都含 `--allow-degraded`；在已完成安装的主机上停止服务，让另一个进程占用配置中的监听端口，再执行 `agent-peer service start`：Broker 进入降级运行，服务管理器报告服务处于运行状态，至少 30 秒（`RestartSec=5` 的 6 倍）内进程 pid 不变、服务管理器不重启它，`agent-peer status` 报告降级运行。
+- **验收**：分别安装用户级与系统级服务，Linux 上单元文件的 `ExecStart` 与 macOS 上 plist 的 `ProgramArguments` 都含 `--allow-degraded`；在已完成安装的主机上停止服务，让另一个进程占用配置中的监听端口，再执行 `peers service start`：Broker 进入降级运行，服务管理器报告服务处于运行状态，至少 30 秒（`RestartSec=5` 的 6 倍）内进程 pid 不变、服务管理器不重启它，`peers status` 报告降级运行。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl/start reports a degraded Broker and keeps the service running`（并断言用户级与系统级单元文件含 `--allow-degraded`，保留 `service start` 的退出码 3，并断言 `agent-peer status` 的 stdout 含 `Broker: degraded (local only):` 与 `Fix:`）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControlDegraded`（并断言 plist 含 `--allow-degraded`，同样的状态行断言）；服务定义模板的两级内容另由 `internal/broker/service/units_test.go` 覆盖；终端状态行的逐字输出由“终端与会话显示降级与下线”单元覆盖
+- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl/start reports a degraded Broker and keeps the service running`（并断言用户级与系统级单元文件含 `--allow-degraded`，保留 `service start` 的退出码 3，并断言 `peers status` 的 stdout 含 `Broker: degraded (local only):` 与 `Fix:`）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControlDegraded`（并断言 plist 含 `--allow-degraded`，同样的状态行断言）；服务定义模板的两级内容另由 `internal/broker/service/units_test.go` 覆盖；终端状态行的逐字输出由“终端与会话显示降级与下线”单元覆盖
 
 ### REQ-broker-config-064
 
-服务注册之后 Broker 进入降级运行时，`agent-peer service install` 必须保留已安装并在运行的服务，输出故障与修复命令，并以退出码 3 结束。注册之前预检发现监听地址被占用时，安装必须拒绝并不注册服务。
+服务注册之后 Broker 进入降级运行时，`peers service install` 必须保留已安装并在运行的服务，输出故障与修复命令，并以退出码 3 结束。注册之前预检发现监听地址被占用时，安装必须拒绝并不注册服务。
 
-- **验收**：在已完成安装的主机上让审计日志所在目录不可写，再执行 `agent-peer service install`：命令以 3 退出，输出写明原因、路径与修复命令；服务定义与二进制都在，服务管理器报告服务处于运行状态，`agent-peer status` 报告降级运行。另在安装前让 17443 端口被另一个进程占用：安装失败并说明地址不可用，服务定义没有写入，主机上没有本服务。
+- **验收**：在已完成安装的主机上让审计日志所在目录不可写，再执行 `peers service install`：命令以 3 退出，输出写明原因、路径与修复命令；服务定义与二进制都在，服务管理器报告服务处于运行状态，`peers status` 报告降级运行。另在安装前让 17443 端口被另一个进程占用：安装失败并说明地址不可用，服务定义没有写入，主机上没有本服务。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/install_summary_test.go` 的 `TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog`、`test/e2e/system/install_port_conflict_test.go` 的 `TestSystemServiceInstallListenPortConflict/an occupied port fails the install and registers nothing`（Linux：审计日志不可用后的降级重装与预检端口占用）；`test/e2e/darwinservice/install_summary_test.go` 的 `TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog`、`test/e2e/darwinservice/install_port_test.go` 的 `TestUserServiceInstallRefusesAnOccupiedListenPort`（macOS：同一验收）
 
@@ -539,15 +539,15 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 Broker 的下线状态必须保存在配置中，Broker 重启后保持重启前的状态。
 
-- **验收**：把 Broker 设为下线后重启它，`agent-peer status` 仍报告下线，对端向它的 Agent 发送仍被拒绝；在配置文件中把 `broker.offline` 改为 `false`，不重启，对端的发送成功，审计日志新增一条该配置项的变更记录。
+- **验收**：把 Broker 设为下线后重启它，`peers status` 仍报告下线，对端向它的 Agent 发送仍被拒绝；在配置文件中把 `broker.offline` 改为 `false`，不重启，对端的发送成功，审计日志新增一条该配置项的变更记录。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-broker-config-065 state survives restart and a file edit`
 
 ### REQ-broker-config-066
 
-用户必须能在终端执行 `agent-peer offline` 与 `agent-peer online` 使 Broker 下线与上线，权限与修改配置相同。
+用户必须能在终端执行 `peers offline` 与 `peers online` 使 Broker 下线与上线，权限与修改配置相同。
 
-- **验收**：以对配置文件有写权限的账户执行 `agent-peer offline`，命令成功，`agent-peer status` 报告下线；执行 `agent-peer online` 后报告上线；以没有写权限的账户执行，返回权限不足并给出配置文件路径，状态不变；审计日志记录每次变化与执行的账户。
+- **验收**：以对配置文件有写权限的账户执行 `peers offline`，命令成功，`peers status` 报告下线；执行 `peers online` 后报告上线；以没有写权限的账户执行，返回权限不足并给出配置文件路径，状态不变；审计日志记录每次变化与执行的账户。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-broker-config-066 terminal commands`；`test/e2e/system/permission_test.go` 的 `TestREQBrokerConfig021_WriteNeedsConfigWritePermission`（没有写权限时 `offline` 与 `online` 返回 `permission_denied` 并给出配置文件路径，配置文件不变）
 
@@ -563,9 +563,9 @@ Agent 必须能用工具 `set_broker_online` 使所连 Broker 下线或上线，
 
 本机终端查看状态与列出 Broker 时，必须显示本 Broker 是否下线。
 
-- **验收**：Broker 下线后，`agent-peer status` 与 `agent-peer peer list` 的输出各有一行说明本 Broker 已下线及上线的命令，会话中 `list_brokers` 的结果带本 Broker 的下线状态；上线后这些说明消失。
+- **验收**：Broker 下线后，`peers status` 与 `peers peer list` 的输出各有一行说明本 Broker 已下线及上线的命令，会话中 `list_brokers` 的结果带本 Broker 的下线状态；上线后这些说明消失。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-broker-config-068 status shows the state`（`Status.offline`、`ListBrokers.local.offline`，以及 `agent-peer status` 与 `peer list` 的下线状态行；上线后状态行消失）
+- **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-broker-config-068 status shows the state`（`Status.offline`、`ListBrokers.local.offline`，以及 `peers status` 与 `peer list` 的下线状态行；上线后状态行消失）
 
 ## 数据需求
 
