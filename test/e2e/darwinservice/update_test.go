@@ -36,7 +36,7 @@ const (
 	updateRestartBound = 30 * time.Second
 
 	// updateCommandBound bounds the update command. The command waits up to 60
-	// seconds itself (updateRestartWait in cmd/agent-peer) for the restarted
+	// seconds itself (updateRestartWait in cmd/peers) for the restarted
 	// Broker to report the new version; this bound adds the restart margin so a
 	// stuck relaunch fails with output instead of hanging the job.
 	updateCommandBound = 90 * time.Second

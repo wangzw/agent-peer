@@ -537,13 +537,13 @@ func remoteInstallModuleRoot(t *testing.T) string {
 	return filepath.Dir(gomod)
 }
 
-// remoteInstallBuildAgentPeer builds ./cmd/agent-peer for linux with the
+// remoteInstallBuildAgentPeer builds ./cmd/peers for linux with the
 // release version in it.
 func remoteInstallBuildAgentPeer(t *testing.T, root, version string) []byte {
 	t.Helper()
 	out := filepath.Join(t.TempDir(), "agent-peer")
 	cmd := exec.Command("go", "build", "-trimpath",
-		"-ldflags", "-X main.version="+version, "-o", out, "./cmd/agent-peer")
+		"-ldflags", "-X main.version="+version, "-o", out, "./cmd/peers")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(),
 		"CGO_ENABLED=0",

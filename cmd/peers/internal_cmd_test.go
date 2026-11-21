@@ -105,7 +105,7 @@ func TestInternalHelpersReportErrors(t *testing.T) {
 					return errors.New("boom")
 				})
 			},
-			want: "agent-peer internal account-helper: boom\n",
+			want: "peers internal account-helper: boom\n",
 		},
 		{
 			args: []string{"internal", "access-check"},
@@ -114,7 +114,7 @@ func TestInternalHelpersReportErrors(t *testing.T) {
 					return errors.New("boom")
 				})
 			},
-			want: "agent-peer internal access-check: boom\n",
+			want: "peers internal access-check: boom\n",
 		},
 	}
 	for _, tc := range cases {
@@ -149,7 +149,7 @@ func TestInternalHelpersRejectArguments(t *testing.T) {
 					return nil
 				})
 			},
-			want: "agent-peer internal account-helper: unexpected argument \"x\"\n",
+			want: "peers internal account-helper: unexpected argument \"x\"\n",
 		},
 		{
 			args: []string{"internal", "access-check", "x"},
@@ -159,7 +159,7 @@ func TestInternalHelpersRejectArguments(t *testing.T) {
 					return nil
 				})
 			},
-			want: "agent-peer internal access-check: unexpected argument \"x\"\n",
+			want: "peers internal access-check: unexpected argument \"x\"\n",
 		},
 	}
 	for _, tc := range cases {
@@ -180,7 +180,7 @@ func TestInternalHelpersRejectArguments(t *testing.T) {
 			if got := stderr.String(); got != tc.want {
 				t.Fatalf("stderr = %q, want %q", got, tc.want)
 			}
-			if strings.Contains(stderr.String(), "usage: agent-peer") {
+			if strings.Contains(stderr.String(), "usage: peers") {
 				t.Fatalf("stderr = %q, want the hidden command to print no usage", stderr.String())
 			}
 		})

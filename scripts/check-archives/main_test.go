@@ -13,7 +13,7 @@ import (
 )
 
 // testReadme stands in for scripts/archive-README.md.
-var testReadme = []byte("agent-peer release archive README\n")
+var testReadme = []byte("peers release archive README\n")
 
 // testInventory builds a repository skeleton and returns the inventory and
 // archive README that expectedFiles derives from it. The tests use the
@@ -63,7 +63,7 @@ type testEntry struct {
 // exactly matching testReadme.
 func goodEntries() []testEntry {
 	return []testEntry{
-		{name: "agent-peer", mode: 0o755, data: []byte("binary")},
+		{name: "peers", mode: 0o755, data: []byte("binary")},
 		{name: "install.sh", mode: 0o755, data: []byte("script")},
 		{name: "README.md", mode: 0o644, data: testReadme},
 		{name: "LICENSE", mode: 0o644, data: []byte("license")},
@@ -131,7 +131,7 @@ func mustReport(t *testing.T, failures []string, want string) {
 // TestVerifyArchiveAcceptsCompleteArchive keeps the test fixture honest: the
 // inventory used by the failure cases must pass when nothing is altered.
 func TestVerifyArchiveAcceptsCompleteArchive(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "agent-peer_test.tar.gz")
+	path := filepath.Join(t.TempDir(), "peers_test.tar.gz")
 	writeTestArchive(t, path, goodEntries())
 
 	failures := verifyTestArchive(t, path)
@@ -142,7 +142,7 @@ func TestVerifyArchiveAcceptsCompleteArchive(t *testing.T) {
 
 func TestVerifyArchiveRejectsUnexpectedFile(t *testing.T) {
 	entries := append(goodEntries(), testEntry{name: "extra.txt", mode: 0o644, data: []byte("extra")})
-	path := filepath.Join(t.TempDir(), "agent-peer_test.tar.gz")
+	path := filepath.Join(t.TempDir(), "peers_test.tar.gz")
 	writeTestArchive(t, path, entries)
 
 	failures := verifyTestArchive(t, path)
@@ -156,7 +156,7 @@ func TestVerifyArchiveRejectsMissingFile(t *testing.T) {
 			entries = append(entries, entry)
 		}
 	}
-	path := filepath.Join(t.TempDir(), "agent-peer_test.tar.gz")
+	path := filepath.Join(t.TempDir(), "peers_test.tar.gz")
 	writeTestArchive(t, path, entries)
 
 	failures := verifyTestArchive(t, path)
@@ -170,7 +170,7 @@ func TestVerifyArchiveRejectsWrongMode(t *testing.T) {
 			entries[i].mode = 0o644
 		}
 	}
-	path := filepath.Join(t.TempDir(), "agent-peer_test.tar.gz")
+	path := filepath.Join(t.TempDir(), "peers_test.tar.gz")
 	writeTestArchive(t, path, entries)
 
 	failures := verifyTestArchive(t, path)
@@ -186,7 +186,7 @@ func TestVerifyArchiveRejectsChangedReadme(t *testing.T) {
 			entries[i].data = changed
 		}
 	}
-	path := filepath.Join(t.TempDir(), "agent-peer_test.tar.gz")
+	path := filepath.Join(t.TempDir(), "peers_test.tar.gz")
 	writeTestArchive(t, path, entries)
 
 	failures := verifyTestArchive(t, path)
@@ -195,7 +195,7 @@ func TestVerifyArchiveRejectsChangedReadme(t *testing.T) {
 
 func TestVerifyChecksumsRejectsWrongDigest(t *testing.T) {
 	dir := t.TempDir()
-	archive := "agent-peer_test.tar.gz"
+	archive := "peers_test.tar.gz"
 	path := filepath.Join(dir, archive)
 	if err := os.WriteFile(path, []byte("archive bytes"), 0o644); err != nil {
 		t.Fatalf("writing %s: %v", path, err)
@@ -211,7 +211,7 @@ func TestVerifyChecksumsRejectsWrongDigest(t *testing.T) {
 
 func TestVerifyChecksumsAcceptsMatchingDigest(t *testing.T) {
 	dir := t.TempDir()
-	archive := "agent-peer_test.tar.gz"
+	archive := "peers_test.tar.gz"
 	data := []byte("archive bytes")
 	path := filepath.Join(dir, archive)
 	if err := os.WriteFile(path, data, 0o644); err != nil {

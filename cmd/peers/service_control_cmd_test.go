@@ -213,7 +213,7 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		if stdout.Len() != 0 {
 			t.Errorf("stdout = %q, want empty", stdout.String())
 		}
-		want := "agent-peer service start: no user-level service is installed; install it with `agent-peer service install`\n"
+		want := "peers service start: no user-level service is installed; install it with `peers service install`\n"
 		if stderr.String() != want {
 			t.Errorf("stderr = %q, want %q", stderr.String(), want)
 		}
@@ -238,7 +238,7 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		if got := a.run(context.Background(), []string{"service", "start"}); got != exitFailure {
 			t.Fatalf("run(service start) = %d, want %d", got, exitFailure)
 		}
-		for _, want := range []string{"no user-level service is installed", "sudo agent-peer service start"} {
+		for _, want := range []string{"no user-level service is installed", "sudo peers service start"} {
 			if !strings.Contains(stderr.String(), want) {
 				t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
 			}
@@ -269,7 +269,7 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		if len(systems) != 1 || systems[0] != true {
 			t.Errorf("options systems = %v, want [true]", systems)
 		}
-		for _, want := range []string{"no system-level service is installed", "sudo agent-peer service install --system"} {
+		for _, want := range []string{"no system-level service is installed", "sudo peers service install --system"} {
 			if !strings.Contains(stderr.String(), want) {
 				t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
 			}
@@ -333,7 +333,7 @@ func TestServiceControlFailure(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Errorf("stdout = %q, want empty after a failure", stdout.String())
 	}
-	if want := "agent-peer service stop: systemctl failed\n"; stderr.String() != want {
+	if want := "peers service stop: systemctl failed\n"; stderr.String() != want {
 		t.Errorf("stderr = %q, want %q", stderr.String(), want)
 	}
 }
@@ -359,7 +359,7 @@ func TestServiceControlDefaultOptionsError(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Errorf("stdout = %q, want empty", stdout.String())
 	}
-	if want := "agent-peer service restart: no executable\n"; stderr.String() != want {
+	if want := "peers service restart: no executable\n"; stderr.String() != want {
 		t.Errorf("stderr = %q, want %q", stderr.String(), want)
 	}
 }

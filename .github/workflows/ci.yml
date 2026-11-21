@@ -213,7 +213,7 @@ jobs:
       - name: Regenerate the licenses and compare them with the committed copy
         run: |
           d="$RUNNER_TEMP/licenses"
-          go tool go-licenses save ./cmd/agent-peer --save_path="$d" --force --ignore github.com/wangzw/peers
+          go tool go-licenses save ./cmd/peers --save_path="$d" --force --ignore github.com/wangzw/peers
           if [ ! -d "$d" ]; then
             echo "::error::go-licenses did not create $d; no license inventory was generated to compare" >&2
             exit 1

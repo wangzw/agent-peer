@@ -18,7 +18,7 @@ import (
 	"github.com/wangzw/peers/internal/broker/update"
 )
 
-const updateUsage = "usage: agent-peer update [--yes]\n"
+const updateUsage = "usage: peers update [--yes]\n"
 
 // updateLocalTakesEffectHint follows a local replacement. The command does not
 // restart anything, because the service may have been stopped on purpose.
@@ -57,7 +57,7 @@ func init() {
 	subcommands["update"] = (*app).updateCmd
 }
 
-// updateCmd implements "agent-peer update [--yes]". It asks the selected
+// updateCmd implements "peers update [--yes]". It asks the selected
 // Broker to install the newest release and restart itself. A user-level Broker
 // that declines (it cannot replace and restart itself) leaves the command to
 // replace that account's binary in place.
@@ -71,30 +71,30 @@ func (a *app) updateCmd(ctx context.Context, args []string) int {
 			return exitOK
 		}
 		_, _ = fmt.Fprint(a.stderr, updateUsage)
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
 		return exitUsage
 	}
 	if fs.NArg() > 0 {
 		_, _ = fmt.Fprint(a.stderr, updateUsage)
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: unexpected argument %q\n", fs.Arg(0))
+		_, _ = fmt.Fprintf(a.stderr, "peers update: unexpected argument %q\n", fs.Arg(0))
 		return exitUsage
 	}
 
 	current := strings.TrimPrefix(a.version, "v")
 	if !update.IsReleaseVersion(current) {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: version %q is not a release build; only release builds can update themselves\n", a.version)
+		_, _ = fmt.Fprintf(a.stderr, "peers update: version %q is not a release build; only release builds can update themselves\n", a.version)
 		return exitFailure
 	}
 
 	if !*yes {
 		if !updateIsTerminal(a.stdin) {
-			_, _ = fmt.Fprintln(a.stderr, `agent-peer update: standard input is not a terminal; run "agent-peer update --yes" to update without asking`)
+			_, _ = fmt.Fprintln(a.stderr, `peers update: standard input is not a terminal; run "peers update --yes" to update without asking`)
 			return exitFailure
 		}
-		_, _ = fmt.Fprintf(a.stdout, "agent-peer %s is installed. Update to the latest release? [y/N] ", current)
+		_, _ = fmt.Fprintf(a.stdout, "peers %s is installed. Update to the latest release? [y/N] ", current)
 		answer, err := readAnswer(a.stdin)
 		if err != nil {
-			_, _ = fmt.Fprintf(a.stderr, "agent-peer update: reading the answer: %v\n", err)
+			_, _ = fmt.Fprintf(a.stderr, "peers update: reading the answer: %v\n", err)
 			return exitFailure
 		}
 		if !isYes(answer) {
@@ -108,7 +108,7 @@ func (a *app) updateCmd(ctx context.Context, args []string) int {
 		if errors.Is(err, errUserLevelUpdateUnsupported) || errors.Is(err, errNoRunningBroker) {
 			return a.updateLocal(ctx, current)
 		}
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
 		return exitFailure
 	}
 	return a.reportBrokerUpdate(ctx, result)
@@ -121,12 +121,12 @@ func (a *app) updateCmd(ctx context.Context, args []string) int {
 func (a *app) updateLocal(ctx context.Context, current string) int {
 	target, err := updateTarget()
 	if err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
 		return exitFailure
 	}
 	if err := checkTargetDirWritable(filepath.Dir(target)); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: %v\n", err)
-		_, _ = fmt.Fprintln(a.stderr, `agent-peer update: run "sudo agent-peer update" to update a system-level installation`)
+		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
+		_, _ = fmt.Fprintln(a.stderr, `peers update: run "sudo peers update" to update a system-level installation`)
 		return exitFailure
 	}
 
@@ -134,15 +134,15 @@ func (a *app) updateLocal(ctx context.Context, current string) int {
 	client := updateNewClient()
 	release, err := a.deps.updateLatest(ctx, client, api)
 	if err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
 		return exitFailure
 	}
 	if !a.deps.updateNewer(current, release.Version) {
-		_, _ = fmt.Fprintf(a.stdout, "agent-peer %s is up to date\n", current)
+		_, _ = fmt.Fprintf(a.stdout, "peers %s is up to date\n", current)
 		return exitOK
 	}
 
-	_, _ = fmt.Fprintf(a.stdout, "agent-peer %s is installed; version %s is available.\n", current, release.Version)
+	_, _ = fmt.Fprintf(a.stdout, "peers %s is installed; version %s is available.\n", current, release.Version)
 	if release.URL != "" {
 		_, _ = fmt.Fprintf(a.stdout, "Release: %s\n", release.URL)
 	}
@@ -155,7 +155,7 @@ func (a *app) updateLocal(ctx context.Context, current string) int {
 		GOOS:    updateGOOS,
 		GOARCH:  updateGOARCH,
 	}); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
 		return exitFailure
 	}
 	_, _ = fmt.Fprintln(a.stdout, updateLocalTakesEffectHint)
@@ -169,21 +169,21 @@ func (a *app) reportBrokerUpdate(ctx context.Context, result brokerUpdateResult)
 	from := strings.TrimPrefix(result.FromVersion, "v")
 	to := strings.TrimPrefix(result.ToVersion, "v")
 	if to == "" {
-		_, _ = fmt.Fprintf(a.stdout, "agent-peer %s is up to date\n", from)
+		_, _ = fmt.Fprintf(a.stdout, "peers %s is up to date\n", from)
 		return exitOK
 	}
 	if !result.Restarting {
-		_, _ = fmt.Fprintf(a.stdout, "agent-peer %s is installed.\n", to)
+		_, _ = fmt.Fprintf(a.stdout, "peers %s is installed.\n", to)
 		_, _ = fmt.Fprintln(a.stdout, updateSessionHint)
 		return exitOK
 	}
 
 	_, _ = fmt.Fprintf(a.stdout, "The Broker is restarting to version %s.\n", to)
 	if err := a.waitForBrokerVersion(ctx, to, result.UserLevel); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer update: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
 		return exitFailure
 	}
-	_, _ = fmt.Fprintf(a.stdout, "The Broker is running agent-peer %s.\n", to)
+	_, _ = fmt.Fprintf(a.stdout, "The Broker is running peers %s.\n", to)
 	_, _ = fmt.Fprintln(a.stdout, updateSessionHint)
 	return exitOK
 }

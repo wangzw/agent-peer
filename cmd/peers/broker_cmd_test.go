@@ -110,7 +110,7 @@ func TestBrokerStartupFailureExitCodes(t *testing.T) {
 			if code := a.brokerCmd(context.Background(), nil); code != tc.code {
 				t.Fatalf("brokerCmd returned %d, want %d", code, tc.code)
 			}
-			if want := "agent-peer broker: startup failed"; brokerLastLine(stderr.String()) != want {
+			if want := "peers broker: startup failed"; brokerLastLine(stderr.String()) != want {
 				t.Errorf("last stderr line = %q, want %q", brokerLastLine(stderr.String()), want)
 			}
 		})
@@ -184,7 +184,7 @@ func TestBrokerHelpGoesToStdout(t *testing.T) {
 	if code := a.brokerCmd(context.Background(), []string{"-h"}); code != exitOK {
 		t.Fatalf("brokerCmd returned %d, want %d", code, exitOK)
 	}
-	if !strings.Contains(stdout.String(), "usage: agent-peer broker") {
+	if !strings.Contains(stdout.String(), "usage: peers broker") {
 		t.Errorf("stdout = %q, want the broker usage", stdout.String())
 	}
 	if stderr.Len() != 0 {

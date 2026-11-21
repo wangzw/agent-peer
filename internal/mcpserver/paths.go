@@ -7,7 +7,7 @@ import (
 )
 
 // runtimeDir returns the runtime directory of the account euid. It is the seam
-// the agentpeer_testenv build replaces (cmd/agent-peer unit adds
+// the agentpeer_testenv build replaces (cmd/peers unit adds
 // internal/mcpserver/runtimeroot_testenv.go); production code never replaces it.
 //
 // The runtime directory does not depend on any environment variable. The

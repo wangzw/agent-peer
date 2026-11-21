@@ -8,7 +8,7 @@ import (
 	"io"
 )
 
-const mcpUsage = "usage: agent-peer mcp"
+const mcpUsage = "usage: peers mcp"
 
 func init() {
 	subcommands["mcp"] = (*app).mcpCmd
@@ -25,15 +25,15 @@ func (a *app) mcpCmd(ctx context.Context, args []string) int {
 			_, _ = fmt.Fprintln(a.stdout, mcpUsage)
 			return exitOK
 		}
-		_, _ = fmt.Fprintf(a.stderr, "%s\nagent-peer mcp: %s\n", mcpUsage, err)
+		_, _ = fmt.Fprintf(a.stderr, "%s\npeers mcp: %s\n", mcpUsage, err)
 		return exitUsage
 	}
 	if fs.NArg() > 0 {
-		_, _ = fmt.Fprintf(a.stderr, "%s\nagent-peer mcp: unexpected argument %q\n", mcpUsage, fs.Arg(0))
+		_, _ = fmt.Fprintf(a.stderr, "%s\npeers mcp: unexpected argument %q\n", mcpUsage, fs.Arg(0))
 		return exitUsage
 	}
 	if err := a.deps.runMCP(ctx); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer mcp: %s\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers mcp: %s\n", err)
 		return exitFailure
 	}
 	return exitOK

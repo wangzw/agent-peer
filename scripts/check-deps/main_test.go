@@ -24,7 +24,7 @@ func TestNodeOf(t *testing.T) {
 		{"a proto subdirectory belongs to its module", project("internal/topic/topicpb"), "topic", true},
 		{"link proto belongs to link", project("internal/link/linkpb"), "link", true},
 		{"testkit", project("internal/testkit"), "testkit", true},
-		{"cmd", project("cmd/agent-peer"), "cmd", true},
+		{"cmd", project("cmd/peers"), "cmd", true},
 		{"third_party is outside the graph", project("third_party/foo"), "", false},
 		{"scripts are outside the graph", project("scripts/check-deps"), "", false},
 		{"standard library is outside the graph", "fmt", "", false},

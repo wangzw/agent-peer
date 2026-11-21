@@ -147,7 +147,7 @@ func TestStatusErrorExitsOne(t *testing.T) {
 	if got := a.statusCmd(context.Background(), nil); got != exitFailure {
 		t.Fatalf("statusCmd returned %d, want %d", got, exitFailure)
 	}
-	if want := "agent-peer status: permission_denied: x\n"; stderr.String() != want {
+	if want := "peers status: permission_denied: x\n"; stderr.String() != want {
 		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 	}
 	if stdout.Len() != 0 {
@@ -173,7 +173,7 @@ func TestStatusDiagnosticsOnlyExitsOne(t *testing.T) {
 }
 
 // TestStatusRejectsUnknownFlag checks the usage-error contract on the command
-// line: the usage comes first and the last line is "agent-peer status: <reason>".
+// line: the usage comes first and the last line is "peers status: <reason>".
 func TestStatusRejectsUnknownFlag(t *testing.T) {
 	stub := &termcmdStub{}
 	a, stdout, stderr := newTermcmdApp(stub)
@@ -190,7 +190,7 @@ func TestStatusRejectsUnknownFlag(t *testing.T) {
 	if !strings.HasPrefix(stderr.String(), statusUsage) {
 		t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
 	}
-	if got, want := brokerLastLine(stderr.String()), "agent-peer status: flag provided but not defined: -bogus"; got != want {
+	if got, want := brokerLastLine(stderr.String()), "peers status: flag provided but not defined: -bogus"; got != want {
 		t.Fatalf("last stderr line = %q, want %q", got, want)
 	}
 }
@@ -208,7 +208,7 @@ func TestStatusRejectsArguments(t *testing.T) {
 	if !strings.HasPrefix(stderr.String(), statusUsage) {
 		t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
 	}
-	if got, want := brokerLastLine(stderr.String()), `agent-peer status: unexpected argument "x"`; got != want {
+	if got, want := brokerLastLine(stderr.String()), `peers status: unexpected argument "x"`; got != want {
 		t.Fatalf("last stderr line = %q, want %q", got, want)
 	}
 }
@@ -226,7 +226,7 @@ func TestAuditRejectsArguments(t *testing.T) {
 	if !strings.HasPrefix(stderr.String(), auditUsage) {
 		t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
 	}
-	if got, want := brokerLastLine(stderr.String()), `agent-peer audit: unexpected argument "x"`; got != want {
+	if got, want := brokerLastLine(stderr.String()), `peers audit: unexpected argument "x"`; got != want {
 		t.Fatalf("last stderr line = %q, want %q", got, want)
 	}
 }
@@ -284,8 +284,8 @@ func TestAuditLimitRange(t *testing.T) {
 			if !strings.HasPrefix(stderr.String(), auditUsage) {
 				t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
 			}
-			if got := brokerLastLine(stderr.String()); !strings.HasPrefix(got, "agent-peer audit: ") {
-				t.Fatalf("last stderr line = %q, want it to start with %q", got, "agent-peer audit: ")
+			if got := brokerLastLine(stderr.String()); !strings.HasPrefix(got, "peers audit: ") {
+				t.Fatalf("last stderr line = %q, want it to start with %q", got, "peers audit: ")
 			}
 		})
 	}
@@ -298,7 +298,7 @@ func TestAuditErrorExitsOne(t *testing.T) {
 	if got := a.auditCmd(context.Background(), nil); got != exitFailure {
 		t.Fatalf("auditCmd returned %d, want %d", got, exitFailure)
 	}
-	if want := "agent-peer audit: permission_denied: x\n"; stderr.String() != want {
+	if want := "peers audit: permission_denied: x\n"; stderr.String() != want {
 		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 	}
 	if stdout.Len() != 0 {

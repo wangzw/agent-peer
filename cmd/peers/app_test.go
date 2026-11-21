@@ -34,7 +34,7 @@ func TestVersionPrintsInjectedVersion(t *testing.T) {
 	if got := a.run(context.Background(), []string{"--version"}); got != exitOK {
 		t.Fatalf("run(--version) = %d, want %d", got, exitOK)
 	}
-	if want := "agent-peer v1.2.3\n"; stdout.String() != want {
+	if want := "peers v1.2.3\n"; stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
 	if stderr.Len() != 0 {
@@ -51,7 +51,7 @@ func TestMainVersionContract(t *testing.T) {
 	if got := a.run(context.Background(), []string{"--version"}); got != exitOK {
 		t.Fatalf("run(--version) = %d, want %d", got, exitOK)
 	}
-	if want := "agent-peer dev\n"; stdout.String() != want {
+	if want := "peers dev\n"; stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
 	if stderr.Len() != 0 {
@@ -73,7 +73,7 @@ func TestNoArgumentsPrintsUsageToStderr(t *testing.T) {
 	if got := a.run(context.Background(), nil); got != exitUsage {
 		t.Fatalf("run() = %d, want %d", got, exitUsage)
 	}
-	if !strings.Contains(stderr.String(), "usage: agent-peer") {
+	if !strings.Contains(stderr.String(), "usage: peers") {
 		t.Fatalf("stderr = %q, want the usage text", stderr.String())
 	}
 	if stdout.Len() != 0 {
@@ -90,7 +90,7 @@ func TestHelpPrintsUsageToStdout(t *testing.T) {
 				t.Fatalf("run(%s) = %d, want %d", arg, got, exitOK)
 			}
 			out := stdout.String()
-			if !strings.Contains(out, "usage: agent-peer") {
+			if !strings.Contains(out, "usage: peers") {
 				t.Fatalf("stdout = %q, want the usage text", out)
 			}
 			if strings.Contains(out, "internal") {
@@ -150,7 +150,7 @@ func TestUnknownInternalCommandIsHidden(t *testing.T) {
 			if got := a.run(context.Background(), args); got != exitUsage {
 				t.Fatalf("run(%q) = %d, want %d", args, got, exitUsage)
 			}
-			if strings.Contains(stderr.String(), "usage: agent-peer") {
+			if strings.Contains(stderr.String(), "usage: peers") {
 				t.Fatalf("stderr = %q, want no top-level usage for the hidden group", stderr.String())
 			}
 			if stdout.Len() != 0 {

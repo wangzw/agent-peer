@@ -41,7 +41,7 @@ type updateTestEnv struct {
 func newUpdateTestEnv(t *testing.T) *updateTestEnv {
 	t.Helper()
 	dir := t.TempDir()
-	target := filepath.Join(dir, "agent-peer")
+	target := filepath.Join(dir, "peers")
 	if err := os.WriteFile(target, []byte("old binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestUpdateReportsUpToDate(t *testing.T) {
 	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
 		t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
 	}
-	if want := "agent-peer 0.1.1 is up to date\n"; stdout.String() != want {
+	if want := "peers 0.1.1 is up to date\n"; stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
 	if len(stub.applyCalls) != 0 {
@@ -196,7 +196,7 @@ func TestUpdateFailsBeforeAnyDownloadWithoutWritePermission(t *testing.T) {
 	if err := os.Mkdir(lockedDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	target := filepath.Join(lockedDir, "agent-peer")
+	target := filepath.Join(lockedDir, "peers")
 	if err := os.WriteFile(target, []byte("old binary"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestUpdateFailsBeforeAnyDownloadWithoutWritePermission(t *testing.T) {
 	if env.transport.calls != 0 {
 		t.Fatalf("network requests = %d, want none before the permission check passes", env.transport.calls)
 	}
-	if !strings.Contains(stderr.String(), `run "sudo agent-peer update"`) {
+	if !strings.Contains(stderr.String(), `run "sudo peers update"`) {
 		t.Fatalf("stderr = %q, want the sudo hint", stderr.String())
 	}
 	assertBinaryUnchanged(t, target)
@@ -314,7 +314,7 @@ func TestUpdateRootUsesApplyUpdate(t *testing.T) {
 	if len(stub.applyCalls) != 0 {
 		t.Fatalf("local apply calls = %d, want none for a system-level update", len(stub.applyCalls))
 	}
-	if !strings.Contains(stdout.String(), "agent-peer 0.1.2 is installed.") {
+	if !strings.Contains(stdout.String(), "peers 0.1.2 is installed.") {
 		t.Fatalf("stdout = %q, want the installed version", stdout.String())
 	}
 	assertBinaryUnchanged(t, env.target)
@@ -338,7 +338,7 @@ func TestUpdateBrokerAppliesTheUpdate(t *testing.T) {
 		t.Fatalf("local apply calls = %d, latest calls = %d, want none", len(stub.applyCalls), stub.latestCalls)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "agent-peer 0.1.2 is installed.") {
+	if !strings.Contains(out, "peers 0.1.2 is installed.") {
 		t.Fatalf("stdout = %q, want the installed version", out)
 	}
 	if !strings.Contains(out, designSessionHint+"\n") {
@@ -406,7 +406,7 @@ func TestUpdateWaitsForTheRestartedBroker(t *testing.T) {
 	if statusCalls != 3 {
 		t.Fatalf("UpdateStatus calls = %d, want 3 polls before the new version", statusCalls)
 	}
-	if !strings.Contains(stdout.String(), "The Broker is running agent-peer 0.1.2.") {
+	if !strings.Contains(stdout.String(), "The Broker is running peers 0.1.2.") {
 		t.Fatalf("stdout = %q, want the running version after the restart", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), designSessionHint+"\n") {
@@ -519,7 +519,7 @@ func TestUpdateBrokerUpToDate(t *testing.T) {
 	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
 		t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
 	}
-	if want := "agent-peer 0.1.1 is up to date\n"; stdout.String() != want {
+	if want := "peers 0.1.1 is up to date\n"; stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
 	if stub.brokerStatusCalls != 0 {

@@ -22,7 +22,7 @@ func init() {
 }
 
 // mcpRole is the child half of the process tests: it runs the MCP server over
-// stdio exactly as cmd/agent-peer does, and exits with Run's result.
+// stdio exactly as cmd/peers does, and exits with Run's result.
 func mcpRole() int {
 	if err := Run(context.Background(), Options{}); err != nil {
 		return 1

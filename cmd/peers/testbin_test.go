@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// testBinary is the agent-peer binary built once by TestMain. Subprocess tests
+// testBinary is the peers binary built once by TestMain. Subprocess tests
 // run it as a child process instead of calling the package's functions, so the
 // exit codes, the standard streams and the signal handling are the real ones.
 var testBinary string
@@ -38,12 +38,12 @@ const maxSocketPathBytes = 103
 // os.Environ because go build is a tool here, not the process under test; the
 // process under test gets a clean environment from sandbox.env.
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "agent-peer-bin-")
+	dir, err := os.MkdirTemp("", "peers-bin-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "create binary directory: %v\n", err)
 		os.Exit(1)
 	}
-	testBinary = filepath.Join(dir, "agent-peer")
+	testBinary = filepath.Join(dir, "peers")
 
 	build := exec.Command("go", "build",
 		"-tags", "agentpeer_testenv",

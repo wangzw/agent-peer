@@ -1,4 +1,4 @@
-// Command agent-peer is the single entry point for the Broker process, the MCP
+// Command peers is the single entry point for the Broker process, the MCP
 // server and the terminal commands.
 package main
 

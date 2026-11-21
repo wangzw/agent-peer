@@ -8,7 +8,7 @@ import (
 	"io"
 )
 
-const brokerUsage = "usage: agent-peer broker [--system] [--listen <address>] [--allow-degraded]\n"
+const brokerUsage = "usage: peers broker [--system] [--listen <address>] [--allow-degraded]\n"
 
 func init() {
 	subcommands["broker"] = (*app).brokerCmd
@@ -62,13 +62,13 @@ func (a *app) brokerCmd(ctx context.Context, args []string) int {
 	if failure == failInvalidListen {
 		_, _ = fmt.Fprint(a.stderr, brokerUsage)
 	}
-	_, _ = fmt.Fprintf(a.stderr, "agent-peer broker: %s\n", err)
+	_, _ = fmt.Fprintf(a.stderr, "peers broker: %s\n", err)
 	return exitCodeFor(failure)
 }
 
 // brokerUsageError reports a usage error that did not reach broker.Run.
 func (a *app) brokerUsageError(reason string) int {
 	_, _ = fmt.Fprint(a.stderr, brokerUsage)
-	_, _ = fmt.Fprintf(a.stderr, "agent-peer broker: %s\n", reason)
+	_, _ = fmt.Fprintf(a.stderr, "peers broker: %s\n", reason)
 	return exitUsage
 }

@@ -78,8 +78,8 @@ func TestMCPRejectsArguments(t *testing.T) {
 		args     []string
 		wantLast string
 	}{
-		{[]string{"x"}, `agent-peer mcp: unexpected argument "x"`},
-		{[]string{"--foo"}, "agent-peer mcp: flag provided but not defined: -foo"},
+		{[]string{"x"}, `peers mcp: unexpected argument "x"`},
+		{[]string{"--foo"}, "peers mcp: flag provided but not defined: -foo"},
 	}
 	for _, tc := range cases {
 		stub := &stubDeps{}
@@ -107,7 +107,7 @@ func TestMCPErrorExitsOne(t *testing.T) {
 	if got := a.mcpCmd(context.Background(), nil); got != exitFailure {
 		t.Fatalf("mcpCmd returned %d, want %d", got, exitFailure)
 	}
-	if want := "agent-peer mcp: boom\n"; stderr.String() != want {
+	if want := "peers mcp: boom\n"; stderr.String() != want {
 		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 	}
 	if stdout.Len() != 0 {
@@ -126,7 +126,7 @@ func TestMCPHelp(t *testing.T) {
 		if stub.mcpCalls != 0 {
 			t.Fatalf("mcpCmd(%q) called runMCP %d times, want 0", flagName, stub.mcpCalls)
 		}
-		if want := "usage: agent-peer mcp\n"; stdout.String() != want {
+		if want := "usage: peers mcp\n"; stdout.String() != want {
 			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 		}
 		if stderr.Len() != 0 {

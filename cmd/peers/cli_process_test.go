@@ -74,7 +74,7 @@ func runCLI(t *testing.T, sb *sandbox, timeout time.Duration, args ...string) cl
 	cmd.WaitDelay = waitDelay
 
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start agent-peer %s: %v", strings.Join(args, " "), err)
+		t.Fatalf("start peers %s: %v", strings.Join(args, " "), err)
 	}
 	done := make(chan struct{}, 1)
 	go func() {
@@ -86,7 +86,7 @@ func runCLI(t *testing.T, sb *sandbox, timeout time.Duration, args ...string) cl
 	case <-time.After(timeout):
 		_ = cmd.Process.Kill()
 		<-done
-		t.Fatalf("agent-peer %s did not exit within %s (stdout %q, stderr %q)",
+		t.Fatalf("peers %s did not exit within %s (stdout %q, stderr %q)",
 			strings.Join(args, " "), timeout, stdout.String(), stderr.String())
 	}
 	return cliResult{stdout: stdout.String(), stderr: stderr.String(), code: cmd.ProcessState.ExitCode()}
@@ -99,7 +99,7 @@ type lineResult struct {
 	err  error
 }
 
-// mcpProc is an "agent-peer mcp" child with connected standard streams.
+// mcpProc is a "peers mcp" child with connected standard streams.
 type mcpProc struct {
 	t      *testing.T
 	cmd    *exec.Cmd
@@ -110,7 +110,7 @@ type mcpProc struct {
 	exited chan struct{}
 }
 
-// startMCP starts "agent-peer mcp" with the sandbox environment. Standard
+// startMCP starts "peers mcp" with the sandbox environment. Standard
 // output is read line by line in the background, because the MCP protocol is
 // newline-delimited JSON on that stream.
 func startMCP(t *testing.T, sb *sandbox) *mcpProc {
@@ -141,7 +141,7 @@ func startMCP(t *testing.T, sb *sandbox) *mcpProc {
 		_ = inW.Close()
 		_ = outR.Close()
 		_ = outW.Close()
-		t.Fatalf("start agent-peer mcp: %v", err)
+		t.Fatalf("start peers mcp: %v", err)
 	}
 	// The child holds the other ends. Close the parent's copies so the reader
 	// sees EOF when the child exits and the writer sees a broken pipe.
@@ -298,7 +298,7 @@ func TestBinaryVersionFromLdflags(t *testing.T) {
 	if res.code != 0 {
 		t.Fatalf("exit code = %d, want 0 (stderr %q)", res.code, res.stderr)
 	}
-	if want := "agent-peer 0.0.0-cmdtest\n"; res.stdout != want {
+	if want := "peers 0.0.0-cmdtest\n"; res.stdout != want {
 		t.Fatalf("stdout = %q, want %q", res.stdout, want)
 	}
 	if res.stderr != "" {
@@ -322,7 +322,7 @@ func TestBinaryUnknownCommandExitCode(t *testing.T) {
 	if res.code != exitUsage {
 		t.Fatalf("service install --bogus exit code = %d, want %d (stderr %q)", res.code, exitUsage, res.stderr)
 	}
-	if !strings.Contains(res.stderr, "usage: agent-peer service install") {
+	if !strings.Contains(res.stderr, "usage: peers service install") {
 		t.Fatalf("service install --bogus stderr = %q, want the install usage", res.stderr)
 	}
 }
@@ -456,7 +456,7 @@ func TestAuditPermissionDenied(t *testing.T) {
 	if res.code != exitFailure {
 		t.Fatalf("exit code = %d, want %d (stderr %q)", res.code, exitFailure, res.stderr)
 	}
-	if want := "agent-peer audit: permission_denied: not allowed\n"; res.stderr != want {
+	if want := "peers audit: permission_denied: not allowed\n"; res.stderr != want {
 		t.Fatalf("stderr = %q, want %q", res.stderr, want)
 	}
 	if res.stdout != "" {

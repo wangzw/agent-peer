@@ -40,7 +40,7 @@ var (
 // checks for updates treats it as a non-release build.
 const DefaultVersion = "e2e"
 
-// BuildBinary builds ./cmd/agent-peer for goos/goarch with the default version
+// BuildBinary builds ./cmd/peers for goos/goarch with the default version
 // and returns the path of the resulting binary. The same parameters are built
 // only once per test process.
 func BuildBinary(tb testing.TB, goos, goarch string, tags ...string) string {
@@ -53,7 +53,7 @@ func BuildBinary(tb testing.TB, goos, goarch string, tags ...string) string {
 // scenario, name the version they want here.
 func BuildBinaryVersion(tb testing.TB, version, goos, goarch string, tags ...string) string {
 	tb.Helper()
-	return build(tb, "./cmd/agent-peer", version, goos, goarch, tags)
+	return build(tb, "./cmd/peers", version, goos, goarch, tags)
 }
 
 // BuildPackage builds pkg for goos/goarch and returns the path of the result.

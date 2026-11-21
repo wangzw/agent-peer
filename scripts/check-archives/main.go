@@ -154,7 +154,7 @@ func writeConfig(source, path, distDir string) error {
 // module added to the inventory joins the expectation automatically.
 func expectedFiles(root string) (map[string]struct{}, error) {
 	want := map[string]struct{}{
-		"agent-peer": {},
+		"peers":      {},
 		"install.sh": {},
 		"README.md":  {},
 		"LICENSE":    {},
@@ -318,7 +318,7 @@ func verifyArchive(path string, want map[string]struct{}, wantReadme []byte) ([]
 	for _, name := range missing(got, want) {
 		failures = append(failures, fmt.Sprintf("%s: unexpected %s", filepath.Base(path), name))
 	}
-	for _, name := range []string{"agent-peer", "install.sh"} {
+	for _, name := range []string{"peers", "install.sh"} {
 		entry, ok := files[name]
 		if !ok {
 			continue

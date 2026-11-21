@@ -16,12 +16,12 @@ func init() {
 }
 
 const (
-	configUsage = "usage: agent-peer config get [<key>]\n" +
-		"       agent-peer config set <key> <value>\n"
-	pairingKeyUsage = "usage: agent-peer pairing-key create\n"
-	peerUsage       = "usage: agent-peer peer list\n" +
-		"       agent-peer peer connect <address> --key <key> [--alias <alias>]\n" +
-		"       agent-peer peer disconnect <broker>\n"
+	configUsage = "usage: peers config get [<key>]\n" +
+		"       peers config set <key> <value>\n"
+	pairingKeyUsage = "usage: peers pairing-key create\n"
+	peerUsage       = "usage: peers peer list\n" +
+		"       peers peer connect <address> --key <key> [--alias <alias>]\n" +
+		"       peers peer disconnect <broker>\n"
 )
 
 // terminalUsageError prints a subcommand's usage followed by the reason and
@@ -29,7 +29,7 @@ const (
 // and audit.
 func (a *app) terminalUsageError(usage, command, reason string) int {
 	_, _ = fmt.Fprint(a.stderr, usage)
-	_, _ = fmt.Fprintf(a.stderr, "agent-peer %s: %s\n", command, reason)
+	_, _ = fmt.Fprintf(a.stderr, "peers %s: %s\n", command, reason)
 	return exitUsage
 }
 
@@ -65,8 +65,8 @@ func noFlagSet(name string) *flag.FlagSet {
 	return fs
 }
 
-// configCmd implements "agent-peer config get [<key>]" and
-// "agent-peer config set <key> <value>".
+// configCmd implements "peers config get [<key>]" and
+// "peers config set <key> <value>".
 func (a *app) configCmd(ctx context.Context, args []string) int {
 	if len(args) == 0 {
 		return a.terminalUsageError(configUsage, "config", "missing command")
@@ -84,7 +84,7 @@ func (a *app) configCmd(ctx context.Context, args []string) int {
 	}
 }
 
-// configGetCmd implements "agent-peer config get [<key>]". Without a key it
+// configGetCmd implements "peers config get [<key>]". Without a key it
 // lists every configuration item.
 func (a *app) configGetCmd(ctx context.Context, args []string) int {
 	fs := noFlagSet("config get")
@@ -100,13 +100,13 @@ func (a *app) configGetCmd(ctx context.Context, args []string) int {
 	}
 
 	if err := a.deps.runConfigGet(ctx, key, a.stdout); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer config get: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers config get: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
 }
 
-// configSetCmd implements "agent-peer config set <key> <value>".
+// configSetCmd implements "peers config set <key> <value>".
 func (a *app) configSetCmd(ctx context.Context, args []string) int {
 	fs := noFlagSet("config set")
 	if code, ok := a.terminalFlags(fs, configUsage, "config set", args); !ok {
@@ -120,13 +120,13 @@ func (a *app) configSetCmd(ctx context.Context, args []string) int {
 	}
 
 	if err := a.deps.runConfigSet(ctx, fs.Arg(0), fs.Arg(1), a.stdout); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer config set: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers config set: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
 }
 
-// pairingKeyCmd implements "agent-peer pairing-key create".
+// pairingKeyCmd implements "peers pairing-key create".
 func (a *app) pairingKeyCmd(ctx context.Context, args []string) int {
 	if len(args) == 0 {
 		return a.terminalUsageError(pairingKeyUsage, "pairing-key", "missing command")
@@ -149,14 +149,14 @@ func (a *app) pairingKeyCmd(ctx context.Context, args []string) int {
 	}
 
 	if err := a.deps.runPairingKeyCreate(ctx, a.stdout); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer pairing-key create: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers pairing-key create: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
 }
 
-// peerCmd implements "agent-peer peer list", "agent-peer peer connect" and
-// "agent-peer peer disconnect".
+// peerCmd implements "peers peer list", "peers peer connect" and
+// "peers peer disconnect".
 func (a *app) peerCmd(ctx context.Context, args []string) int {
 	if len(args) == 0 {
 		return a.terminalUsageError(peerUsage, "peer", "missing command")
@@ -176,7 +176,7 @@ func (a *app) peerCmd(ctx context.Context, args []string) int {
 	}
 }
 
-// peerListCmd implements "agent-peer peer list".
+// peerListCmd implements "peers peer list".
 func (a *app) peerListCmd(ctx context.Context, args []string) int {
 	fs := noFlagSet("peer list")
 	if code, ok := a.terminalFlags(fs, peerUsage, "peer list", args); !ok {
@@ -187,7 +187,7 @@ func (a *app) peerListCmd(ctx context.Context, args []string) int {
 	}
 
 	if err := a.deps.runPeerList(ctx, a.stdout); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer peer list: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers peer list: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
@@ -249,7 +249,7 @@ func parsePeerConnectArgs(args []string) (peerConnectArgs, bool, error) {
 	return parsed, false, nil
 }
 
-// peerConnectCmd implements "agent-peer peer connect <address> --key <key>
+// peerConnectCmd implements "peers peer connect <address> --key <key>
 // [--alias <alias>]". Warnings from the Broker are written to standard error
 // by the termcmd call and do not change the exit code.
 func (a *app) peerConnectCmd(ctx context.Context, args []string) int {
@@ -269,13 +269,13 @@ func (a *app) peerConnectCmd(ctx context.Context, args []string) int {
 	}
 
 	if err := a.deps.runPeerConnect(ctx, parsed.address, parsed.key, parsed.alias, a.stdout, a.stderr); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer peer connect: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers peer connect: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
 }
 
-// peerDisconnectCmd implements "agent-peer peer disconnect <broker>".
+// peerDisconnectCmd implements "peers peer disconnect <broker>".
 func (a *app) peerDisconnectCmd(ctx context.Context, args []string) int {
 	fs := noFlagSet("peer disconnect")
 	if code, ok := a.terminalFlags(fs, peerUsage, "peer disconnect", args); !ok {
@@ -289,7 +289,7 @@ func (a *app) peerDisconnectCmd(ctx context.Context, args []string) int {
 	}
 
 	if err := a.deps.runPeerDisconnect(ctx, fs.Arg(0), a.stdout); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer peer disconnect: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers peer disconnect: %v\n", err)
 		return exitFailure
 	}
 	return exitOK

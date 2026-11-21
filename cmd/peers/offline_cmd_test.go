@@ -82,7 +82,7 @@ func TestOfflineErrorExitsOne(t *testing.T) {
 	if got := a.run(context.Background(), []string{"offline"}); got != exitFailure {
 		t.Fatalf("run(offline) = %d, want %d", got, exitFailure)
 	}
-	if want := "agent-peer offline: permission_denied: write denied\n"; stderr.String() != want {
+	if want := "peers offline: permission_denied: write denied\n"; stderr.String() != want {
 		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 	}
 	if stdout.Len() != 0 {
@@ -104,7 +104,7 @@ func TestOfflineRejectsArguments(t *testing.T) {
 			if len(stub.setOnlineCalls) != 0 {
 				t.Fatalf("runSetOnline called %d times, want 0", len(stub.setOnlineCalls))
 			}
-			if !strings.Contains(stderr.String(), "agent-peer "+command+": unexpected argument \"extra\"") {
+			if !strings.Contains(stderr.String(), "peers "+command+": unexpected argument \"extra\"") {
 				t.Fatalf("stderr = %q, want the usage error", stderr.String())
 			}
 
@@ -112,7 +112,7 @@ func TestOfflineRejectsArguments(t *testing.T) {
 			if got := a.run(context.Background(), []string{command, "-h"}); got != exitOK {
 				t.Fatalf("run(%s -h) = %d, want %d", command, got, exitOK)
 			}
-			if want := "usage: agent-peer " + command + "\n"; stdout.String() != want {
+			if want := "usage: peers " + command + "\n"; stdout.String() != want {
 				t.Fatalf("usage output = %q, want %q", stdout.String(), want)
 			}
 		})

@@ -147,7 +147,7 @@ func runSystemUpdateStatusRole() int {
 	return 0
 }
 
-// buildAndInstallBinary builds cmd/agent-peer as the current user and installs
+// buildAndInstallBinary builds cmd/peers as the current user and installs
 // it into the root-owned directory the system-level test needs.
 func buildAndInstallBinary() error {
 	root, err := repoRoot()
@@ -161,12 +161,12 @@ func buildAndInstallBinary() error {
 	defer func() { _ = os.RemoveAll(tmp) }()
 
 	built := filepath.Join(tmp, "agent-peer")
-	build := exec.Command("go", "build", "-o", built, "./cmd/agent-peer")
+	build := exec.Command("go", "build", "-o", built, "./cmd/peers")
 	build.Dir = root
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
-		return fmt.Errorf("go build ./cmd/agent-peer: %w", err)
+		return fmt.Errorf("go build ./cmd/peers: %w", err)
 	}
 	if err := sudo("mkdir", "-p", filepath.Dir(installedBinary)); err != nil {
 		return err

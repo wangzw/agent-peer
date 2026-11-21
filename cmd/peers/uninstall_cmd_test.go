@@ -707,7 +707,7 @@ func TestUninstallAccountHintsAtSystemLevel(t *testing.T) {
 	if got := a.run(context.Background(), []string{"uninstall"}); got != exitOK {
 		t.Fatalf("run(uninstall) = %d, want %d (stderr %s)", got, exitOK, stderr)
 	}
-	if !strings.Contains(stdout.String(), "sudo agent-peer uninstall") {
+	if !strings.Contains(stdout.String(), "sudo peers uninstall") {
 		t.Errorf("stdout = %q, want the sudo hint", stdout)
 	}
 }
@@ -750,7 +750,7 @@ func TestUninstallAccountOnlySystemRefused(t *testing.T) {
 			if len(rec.steps) != 0 {
 				t.Errorf("steps = %q, want nothing changed", rec.steps)
 			}
-			want := "Run: sudo agent-peer uninstall"
+			want := "Run: sudo peers uninstall"
 			if tc.purge {
 				want += " --purge"
 			}
@@ -1089,7 +1089,7 @@ func runBinaryDeletion(t *testing.T, binary, exe string) (removed bool, output s
 	return removed, stdout.String()
 }
 
-func TestUninstallKeepsABinaryThatIsNotAgentPeer(t *testing.T) {
+func TestUninstallKeepsABinaryThatIsNotPeers(t *testing.T) {
 	cases := []struct {
 		name   string
 		binary string

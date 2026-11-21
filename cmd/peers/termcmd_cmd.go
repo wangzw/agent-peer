@@ -18,11 +18,11 @@ func init() {
 }
 
 const (
-	statusUsage = "usage: agent-peer status\n"
-	auditUsage  = "usage: agent-peer audit [--limit <n>]\n"
+	statusUsage = "usage: peers status\n"
+	auditUsage  = "usage: peers audit [--limit <n>]\n"
 )
 
-// statusCmd implements "agent-peer status". It connects to a running Broker
+// statusCmd implements "peers status". It connects to a running Broker
 // without launching one and writes the status to standard output.
 func (a *app) statusCmd(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
@@ -33,12 +33,12 @@ func (a *app) statusCmd(ctx context.Context, args []string) int {
 			return exitOK
 		}
 		_, _ = fmt.Fprint(a.stderr, statusUsage)
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer status: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers status: %v\n", err)
 		return exitUsage
 	}
 	if fs.NArg() > 0 {
 		_, _ = fmt.Fprint(a.stderr, statusUsage)
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer status: unexpected argument %q\n", fs.Arg(0))
+		_, _ = fmt.Fprintf(a.stderr, "peers status: unexpected argument %q\n", fs.Arg(0))
 		return exitUsage
 	}
 
@@ -49,13 +49,13 @@ func (a *app) statusCmd(ctx context.Context, args []string) int {
 		if errors.Is(err, termcmd.ErrDiagnosticsOnly) {
 			return exitFailure
 		}
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer status: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers status: %v\n", err)
 		return exitFailure
 	}
 	return exitOK
 }
 
-// auditCmd implements "agent-peer audit". It reads the audit log from a
+// auditCmd implements "peers audit". It reads the audit log from a
 // running Broker, without launching one, and writes one line per event.
 func (a *app) auditCmd(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("audit", flag.ContinueOnError)
@@ -77,22 +77,22 @@ func (a *app) auditCmd(ctx context.Context, args []string) int {
 			return exitOK
 		}
 		_, _ = fmt.Fprint(a.stderr, auditUsage)
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer audit: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers audit: %v\n", err)
 		return exitUsage
 	}
 	if fs.NArg() > 0 {
 		_, _ = fmt.Fprint(a.stderr, auditUsage)
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer audit: unexpected argument %q\n", fs.Arg(0))
+		_, _ = fmt.Fprintf(a.stderr, "peers audit: unexpected argument %q\n", fs.Arg(0))
 		return exitUsage
 	}
 	if limit > math.MaxUint32 {
 		_, _ = fmt.Fprint(a.stderr, auditUsage)
-		_, _ = fmt.Fprint(a.stderr, "agent-peer audit: --limit must be at most 4294967295\n")
+		_, _ = fmt.Fprint(a.stderr, "peers audit: --limit must be at most 4294967295\n")
 		return exitUsage
 	}
 
 	if err := a.deps.runAudit(ctx, a.stdout, uint32(limit)); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer audit: %v\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers audit: %v\n", err)
 		return exitFailure
 	}
 	return exitOK

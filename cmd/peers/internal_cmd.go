@@ -24,11 +24,11 @@ func init() {
 // speaks the helper protocol over the process's own standard streams.
 func (a *app) accountHelperCmd(ctx context.Context, args []string) int {
 	if len(args) > 0 {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer internal account-helper: unexpected argument %q\n", args[0])
+		_, _ = fmt.Fprintf(a.stderr, "peers internal account-helper: unexpected argument %q\n", args[0])
 		return exitUsage
 	}
 	if err := runAccountHelperFn(ctx, a.stdin, a.stdout); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer internal account-helper: %s\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers internal account-helper: %s\n", err)
 		return exitFailure
 	}
 	return exitOK
@@ -39,11 +39,11 @@ func (a *app) accountHelperCmd(ctx context.Context, args []string) int {
 // from standard input, writes one response to standard output and exits.
 func (a *app) accessCheckCmd(_ context.Context, args []string) int {
 	if len(args) > 0 {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer internal access-check: unexpected argument %q\n", args[0])
+		_, _ = fmt.Fprintf(a.stderr, "peers internal access-check: unexpected argument %q\n", args[0])
 		return exitUsage
 	}
 	if err := runAccessCheckFn(a.stdin, a.stdout); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer internal access-check: %s\n", err)
+		_, _ = fmt.Fprintf(a.stderr, "peers internal access-check: %s\n", err)
 		return exitFailure
 	}
 	return exitOK

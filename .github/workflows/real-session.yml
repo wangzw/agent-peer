@@ -64,7 +64,7 @@ jobs:
         timeout-minutes: 15
         run: |
           mkdir -p "$RUNNER_TEMP/build"
-          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/agent-peer" ./cmd/agent-peer
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/agent-peer" ./cmd/peers
           CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/rsprobe" ./test/realsession/rsprobe
       - name: Prepare
         env:
@@ -167,7 +167,7 @@ jobs:
         timeout-minutes: 15
         run: |
           mkdir -p "$RUNNER_TEMP/build"
-          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/agent-peer" ./cmd/agent-peer
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/agent-peer" ./cmd/peers
           CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/rsprobe" ./test/realsession/rsprobe
       - name: Prepare
         env:

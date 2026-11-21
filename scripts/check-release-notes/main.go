@@ -382,7 +382,7 @@ func (f *fakeGitHub) handle(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet:
 		// Repository metadata for the release preflight check.
 		writeJSON(w, http.StatusOK, map[string]any{
-			"id": 1, "name": "agent-peer", "full_name": "wangzw/agent-peer",
+			"id": 1, "name": "peers", "full_name": "wangzw/peers",
 		})
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"message": "Not Found"})

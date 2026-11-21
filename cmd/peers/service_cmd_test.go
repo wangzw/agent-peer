@@ -94,7 +94,7 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 			if tc.wantSystem {
 				level = "system-level, starts at boot"
 			}
-			if want := "agent-peer dev installed (" + level + ")\n"; !strings.HasPrefix(stdout.String(), want) {
+			if want := "peers dev installed (" + level + ")\n"; !strings.HasPrefix(stdout.String(), want) {
 				t.Fatalf("stdout = %q, want it to start with %q", stdout.String(), want)
 			}
 			if stderr.Len() != 0 {
@@ -157,15 +157,15 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 				RunLog:     "journalctl --user -u agent-peer.service",
 				AuditLog:   "/home/alice/.agent-peer/audit.log",
 			},
-			want: "agent-peer 0.1.2 installed (user-level, starts at login)\n" +
+			want: "peers 0.1.2 installed (user-level, starts at login)\n" +
 				"  binary:     /usr/local/bin/agent-peer\n" +
 				"  config:     /home/alice/.agent-peer/config.yaml (generated)\n" +
 				"  run log:    journalctl --user -u agent-peer.service\n" +
 				"  audit log:  /home/alice/.agent-peer/audit.log\n" +
-				"  start:      agent-peer service start\n" +
-				"  stop:       agent-peer service stop\n" +
-				"  restart:    agent-peer service restart\n" +
-				"  uninstall:  agent-peer uninstall\n",
+				"  start:      peers service start\n" +
+				"  stop:       peers service stop\n" +
+				"  restart:    peers service restart\n" +
+				"  uninstall:  peers uninstall\n",
 		},
 		{
 			name: "user-level kept configuration",
@@ -175,15 +175,15 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 				RunLog:     "journalctl --user -u agent-peer.service",
 				AuditLog:   "/home/alice/.agent-peer/audit.log",
 			},
-			want: "agent-peer 0.1.2 installed (user-level, starts at login)\n" +
+			want: "peers 0.1.2 installed (user-level, starts at login)\n" +
 				"  binary:     /usr/local/bin/agent-peer\n" +
 				"  config:     /home/alice/.agent-peer/config.yaml (kept)\n" +
 				"  run log:    journalctl --user -u agent-peer.service\n" +
 				"  audit log:  /home/alice/.agent-peer/audit.log\n" +
-				"  start:      agent-peer service start\n" +
-				"  stop:       agent-peer service stop\n" +
-				"  restart:    agent-peer service restart\n" +
-				"  uninstall:  agent-peer uninstall\n",
+				"  start:      peers service start\n" +
+				"  stop:       peers service stop\n" +
+				"  restart:    peers service restart\n" +
+				"  uninstall:  peers uninstall\n",
 		},
 		{
 			name:   "system-level generated configuration",
@@ -196,15 +196,15 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 				RunLog:     "journalctl -u agent-peer.service",
 				AuditLog:   "/var/log/agent-peer/audit.log",
 			},
-			want: "agent-peer 0.1.2 installed (system-level, starts at boot)\n" +
+			want: "peers 0.1.2 installed (system-level, starts at boot)\n" +
 				"  binary:     /usr/local/bin/agent-peer\n" +
 				"  config:     /etc/agent-peer/config.yaml (generated)\n" +
 				"  run log:    journalctl -u agent-peer.service\n" +
 				"  audit log:  /var/log/agent-peer/audit.log\n" +
-				"  start:      sudo agent-peer service start\n" +
-				"  stop:       sudo agent-peer service stop\n" +
-				"  restart:    sudo agent-peer service restart\n" +
-				"  uninstall:  agent-peer uninstall\n",
+				"  start:      sudo peers service start\n" +
+				"  stop:       sudo peers service stop\n" +
+				"  restart:    sudo peers service restart\n" +
+				"  uninstall:  peers uninstall\n",
 		},
 		{
 			name:   "system-level kept configuration",
@@ -216,15 +216,15 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 				RunLog:     "journalctl -u agent-peer.service",
 				AuditLog:   "/var/log/agent-peer/audit.log",
 			},
-			want: "agent-peer 0.1.2 installed (system-level, starts at boot)\n" +
+			want: "peers 0.1.2 installed (system-level, starts at boot)\n" +
 				"  binary:     /usr/local/bin/agent-peer\n" +
 				"  config:     /etc/agent-peer/config.yaml (kept)\n" +
 				"  run log:    journalctl -u agent-peer.service\n" +
 				"  audit log:  /var/log/agent-peer/audit.log\n" +
-				"  start:      sudo agent-peer service start\n" +
-				"  stop:       sudo agent-peer service stop\n" +
-				"  restart:    sudo agent-peer service restart\n" +
-				"  uninstall:  agent-peer uninstall\n" +
+				"  start:      sudo peers service start\n" +
+				"  stop:       sudo peers service stop\n" +
+				"  restart:    sudo peers service restart\n" +
+				"  uninstall:  peers uninstall\n" +
 				"To delegate administration, run: chgrp agent-peer /etc/agent-peer/config.yaml && chmod 0660 /etc/agent-peer/config.yaml\n",
 		},
 	}
@@ -265,15 +265,15 @@ func TestServiceInstallReportsDegraded(t *testing.T) {
 		RunLog:     "journalctl --user -u agent-peer.service",
 		AuditLog:   "/home/alice/.agent-peer/audit.log",
 	}
-	summary := "agent-peer 0.1.2 installed (user-level, starts at login)\n" +
+	summary := "peers 0.1.2 installed (user-level, starts at login)\n" +
 		"  binary:     /usr/local/bin/agent-peer\n" +
 		"  config:     /home/alice/.agent-peer/config.yaml (generated)\n" +
 		"  run log:    journalctl --user -u agent-peer.service\n" +
 		"  audit log:  /home/alice/.agent-peer/audit.log\n" +
-		"  start:      agent-peer service start\n" +
-		"  stop:       agent-peer service stop\n" +
-		"  restart:    agent-peer service restart\n" +
-		"  uninstall:  agent-peer uninstall\n"
+		"  start:      peers service start\n" +
+		"  stop:       peers service stop\n" +
+		"  restart:    peers service restart\n" +
+		"  uninstall:  peers uninstall\n"
 
 	cases := []struct {
 		name  string
@@ -352,7 +352,7 @@ func TestServiceUninstall(t *testing.T) {
 		{
 			name:   "not installed",
 			result: service.Result{},
-			want:   "agent-peer service is not installed\n",
+			want:   "peers service is not installed\n",
 		},
 	}
 	for _, tc := range cases {
@@ -416,7 +416,7 @@ func TestServiceReportsErrors(t *testing.T) {
 		if installCalls != 0 {
 			t.Fatalf("install calls = %d, want 0", installCalls)
 		}
-		if want := "agent-peer service install: no executable\n"; stderr.String() != want {
+		if want := "peers service install: no executable\n"; stderr.String() != want {
 			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 		}
 		if stdout.Len() != 0 {
@@ -437,7 +437,7 @@ func TestServiceReportsErrors(t *testing.T) {
 		if got := a.run(context.Background(), []string{"service", "install", "--system"}); got != exitFailure {
 			t.Fatalf("run(service install --system) = %d, want %d", got, exitFailure)
 		}
-		if want := "agent-peer service install: systemctl failed\n"; stderr.String() != want {
+		if want := "peers service install: systemctl failed\n"; stderr.String() != want {
 			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 		}
 		if stdout.Len() != 0 {
@@ -458,7 +458,7 @@ func TestServiceReportsErrors(t *testing.T) {
 		if got := a.run(context.Background(), []string{"service", "uninstall"}); got != exitFailure {
 			t.Fatalf("run(service uninstall) = %d, want %d", got, exitFailure)
 		}
-		if want := "agent-peer service uninstall: systemctl failed\n"; stderr.String() != want {
+		if want := "peers service uninstall: systemctl failed\n"; stderr.String() != want {
 			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 		}
 		if stdout.Len() != 0 {
@@ -472,15 +472,15 @@ func TestServiceUsageErrors(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"service"}, "agent-peer service: missing command\n"},
-		{[]string{"service", "bogus"}, "agent-peer service: unknown command \"bogus\"\n"},
-		{[]string{"service", "install", "extra"}, "agent-peer service install: unexpected argument \"extra\"\n"},
-		{[]string{"service", "install", "--bogus"}, "agent-peer service install: flag provided but not defined: -bogus\n"},
-		{[]string{"service", "install", "--admin-group", "ops"}, "agent-peer service install: --admin-group requires --system\n"},
-		{[]string{"service", "install", "--system", "--admin-group", "-ops"}, "agent-peer service install: invalid --admin-group \"-ops\": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens\n"},
-		{[]string{"service", "install", "--system", "--admin-group", "Ops"}, "agent-peer service install: invalid --admin-group \"Ops\": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens\n"},
-		{[]string{"service", "uninstall", "extra"}, "agent-peer service uninstall: unexpected argument \"extra\"\n"},
-		{[]string{"service", "uninstall", "--bogus"}, "agent-peer service uninstall: flag provided but not defined: -bogus\n"},
+		{[]string{"service"}, "peers service: missing command\n"},
+		{[]string{"service", "bogus"}, "peers service: unknown command \"bogus\"\n"},
+		{[]string{"service", "install", "extra"}, "peers service install: unexpected argument \"extra\"\n"},
+		{[]string{"service", "install", "--bogus"}, "peers service install: flag provided but not defined: -bogus\n"},
+		{[]string{"service", "install", "--admin-group", "ops"}, "peers service install: --admin-group requires --system\n"},
+		{[]string{"service", "install", "--system", "--admin-group", "-ops"}, "peers service install: invalid --admin-group \"-ops\": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens\n"},
+		{[]string{"service", "install", "--system", "--admin-group", "Ops"}, "peers service install: invalid --admin-group \"Ops\": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens\n"},
+		{[]string{"service", "uninstall", "extra"}, "peers service uninstall: unexpected argument \"extra\"\n"},
+		{[]string{"service", "uninstall", "--bogus"}, "peers service uninstall: flag provided but not defined: -bogus\n"},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {

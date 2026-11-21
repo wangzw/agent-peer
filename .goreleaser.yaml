@@ -1,11 +1,11 @@
 version: 2
 
-project_name: agent-peer
+project_name: peers
 
 builds:
-  - id: agent-peer
-    main: ./cmd/agent-peer
-    binary: agent-peer
+  - id: peers
+    main: ./cmd/peers
+    binary: peers
     env:
       - CGO_ENABLED=0
     goos:

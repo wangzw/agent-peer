@@ -281,7 +281,7 @@ func TestAdminCommandErrorsExitOne(t *testing.T) {
 			if got := a.run(context.Background(), tc.args); got != exitFailure {
 				t.Fatalf("run(%q) = %d, want %d", tc.args, got, exitFailure)
 			}
-			if want := "agent-peer " + tc.command + ": permission_denied: not allowed\n"; stderr.String() != want {
+			if want := "peers " + tc.command + ": permission_denied: not allowed\n"; stderr.String() != want {
 				t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 			}
 			if stdout.Len() != 0 {
@@ -337,8 +337,8 @@ func TestAdminUsageErrors(t *testing.T) {
 			if !strings.HasPrefix(stderr.String(), tc.usage) {
 				t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
 			}
-			if last := brokerLastLine(stderr.String()); !strings.HasPrefix(last, "agent-peer "+tc.command+": ") {
-				t.Fatalf("last stderr line = %q, want it to start with %q", last, "agent-peer "+tc.command+": ")
+			if last := brokerLastLine(stderr.String()); !strings.HasPrefix(last, "peers "+tc.command+": ") {
+				t.Fatalf("last stderr line = %q, want it to start with %q", last, "peers "+tc.command+": ")
 			}
 		})
 	}

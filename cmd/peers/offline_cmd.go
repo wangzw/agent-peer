@@ -11,17 +11,17 @@ func init() {
 }
 
 const (
-	offlineUsage = "usage: agent-peer offline\n"
-	onlineUsage  = "usage: agent-peer online\n"
+	offlineUsage = "usage: peers offline\n"
+	onlineUsage  = "usage: peers online\n"
 )
 
-// offlineCmd implements "agent-peer offline": it makes the running Broker
+// offlineCmd implements "peers offline": it makes the running Broker
 // refuse messages from other hosts while keeping its links.
 func (a *app) offlineCmd(ctx context.Context, args []string) int {
 	return a.setOnlineCmd(ctx, args, false, offlineUsage, "offline")
 }
 
-// onlineCmd implements "agent-peer online": it makes the running Broker accept
+// onlineCmd implements "peers online": it makes the running Broker accept
 // messages from other hosts again.
 func (a *app) onlineCmd(ctx context.Context, args []string) int {
 	return a.setOnlineCmd(ctx, args, true, onlineUsage, "online")
@@ -39,7 +39,7 @@ func (a *app) setOnlineCmd(ctx context.Context, args []string, online bool, usag
 	}
 
 	if err := a.deps.runSetOnline(ctx, online, a.stdout); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "agent-peer %s: %v\n", command, err)
+		_, _ = fmt.Fprintf(a.stderr, "peers %s: %v\n", command, err)
 		return exitFailure
 	}
 	return exitOK

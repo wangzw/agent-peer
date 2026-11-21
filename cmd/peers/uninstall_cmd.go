@@ -16,7 +16,7 @@ import (
 	"github.com/wangzw/peers/internal/broker/service"
 )
 
-const uninstallUsage = "usage: agent-peer uninstall [--purge]\n"
+const uninstallUsage = "usage: peers uninstall [--purge]\n"
 
 // The prompts are written to the controlling terminal, never to standard
 // input or output.
@@ -117,7 +117,7 @@ func runMCPCommand(name string, args ...string) ([]byte, error) {
 	return exec.Command(name, args...).CombinedOutput()
 }
 
-// uninstallCmd implements "agent-peer uninstall [--purge]". It removes the
+// uninstallCmd implements "peers uninstall [--purge]". It removes the
 // installation of the account that runs it, or the system-level installation
 // when run as root, and optionally the configuration, identity and logs.
 func (a *app) uninstallCmd(ctx context.Context, args []string) int {
@@ -183,7 +183,7 @@ func (a *app) uninstallAsRoot(ctx context.Context, opts service.Options, purge b
 		}
 	}
 	if !installed {
-		_, _ = fmt.Fprintln(a.stdout, "agent-peer is not installed")
+		_, _ = fmt.Fprintln(a.stdout, "peers is not installed")
 		return exitOK
 	}
 	return a.uninstallLevel(ctx, opts, true, purge, noServiceBinary)
@@ -214,7 +214,7 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 			return code
 		}
 		if uninstallSystemInstalledCheck(systemOpts) {
-			_, _ = fmt.Fprintf(a.stdout, "A system-level installation is still present; run: sudo agent-peer uninstall%s\n", flagSuffix(purge))
+			_, _ = fmt.Fprintf(a.stdout, "A system-level installation is still present; run: sudo peers uninstall%s\n", flagSuffix(purge))
 		}
 		return exitOK
 	}
@@ -224,13 +224,13 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 		return a.uninstallFail("inspect the installation", err)
 	}
 	if !systemInstalled {
-		_, _ = fmt.Fprintln(a.stdout, "agent-peer is not installed")
+		_, _ = fmt.Fprintln(a.stdout, "peers is not installed")
 		return exitOK
 	}
 
 	yes, asked := uninstallAskFn(uninstallSystemPrompt)
 	if !asked || !yes {
-		_, _ = fmt.Fprintf(a.stdout, "Run: sudo agent-peer uninstall%s\n", flagSuffix(purge))
+		_, _ = fmt.Fprintf(a.stdout, "Run: sudo peers uninstall%s\n", flagSuffix(purge))
 		return exitOK
 	}
 	if _, err := uninstallLookPathFn("sudo"); err != nil {
@@ -539,14 +539,14 @@ func fileOwner(path string) (uint32, error) {
 // uninstallUsageError reports a usage error found before the operation starts.
 func (a *app) uninstallUsageError(reason string) int {
 	_, _ = fmt.Fprint(a.stderr, uninstallUsage)
-	_, _ = fmt.Fprintf(a.stderr, "agent-peer uninstall: %s\n", reason)
+	_, _ = fmt.Fprintf(a.stderr, "peers uninstall: %s\n", reason)
 	return exitUsage
 }
 
 // uninstallFail reports the step that failed. The step functions name the path
 // and the cause, so the command adds only the step name.
 func (a *app) uninstallFail(step string, err error) int {
-	_, _ = fmt.Fprintf(a.stderr, "agent-peer uninstall: %s: %v\n", step, err)
+	_, _ = fmt.Fprintf(a.stderr, "peers uninstall: %s: %v\n", step, err)
 	return exitFailure
 }
 

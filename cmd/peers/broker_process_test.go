@@ -90,7 +90,7 @@ func hasBrokerStarted(p *brokerProc, pid int) bool {
 	return false
 }
 
-// startBrokerTerminal runs "agent-peer broker" the way a terminal launch does.
+// startBrokerTerminal runs "peers broker" the way a terminal launch does.
 // The returned process has no reader, so readiness is observed in standard
 // error.
 func startBrokerTerminal(t *testing.T, sb *sandbox, args ...string) *brokerProc {
@@ -210,7 +210,7 @@ func TestBrokerSecondInstanceFailsWithAnotherListenAddress(t *testing.T) {
 	if code := second.wait(3 * time.Second); code != exitAlreadyRunning {
 		t.Fatalf("second exit code = %d, want %d (stderr: %s)", code, exitAlreadyRunning, second.stderr.String())
 	}
-	reason := second.lastStderrLine("agent-peer broker: ")
+	reason := second.lastStderrLine("peers broker: ")
 	if !strings.Contains(reason, "already running") {
 		t.Fatalf("second stderr line = %q, want it to contain %q", reason, "already running")
 	}
@@ -246,7 +246,7 @@ func TestBrokerListenAddressUnavailable(t *testing.T) {
 	if code := p.wait(3 * time.Second); code != exitListenUnavailable {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitListenUnavailable, p.stderr.String())
 	}
-	reason := p.lastStderrLine("agent-peer broker: ")
+	reason := p.lastStderrLine("peers broker: ")
 	if !strings.Contains(reason, addr) {
 		t.Fatalf("stderr line = %q, want it to contain %q", reason, addr)
 	}
@@ -265,7 +265,7 @@ func TestBrokerInvalidConfig(t *testing.T) {
 		if code := p.wait(3 * time.Second); code != exitInvalidConfig {
 			t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitInvalidConfig, p.stderr.String())
 		}
-		reason := p.lastStderrLine("agent-peer broker: ")
+		reason := p.lastStderrLine("peers broker: ")
 		if !strings.Contains(reason, "config file parse error") {
 			t.Fatalf("stderr line = %q, want it to contain %q", reason, "config file parse error")
 		}
@@ -284,7 +284,7 @@ func TestBrokerInvalidConfig(t *testing.T) {
 		if code := p.wait(3 * time.Second); code != exitInvalidConfig {
 			t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitInvalidConfig, p.stderr.String())
 		}
-		reason := p.lastStderrLine("agent-peer broker: ")
+		reason := p.lastStderrLine("peers broker: ")
 		if !strings.Contains(reason, sb.configPath()) {
 			t.Fatalf("stderr line = %q, want it to name the config file %q", reason, sb.configPath())
 		}
@@ -301,7 +301,7 @@ func TestBrokerInsideSession(t *testing.T) {
 	if code := p.wait(3 * time.Second); code != exitInSession {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitInSession, p.stderr.String())
 	}
-	if reason := p.lastStderrLine("agent-peer broker: "); reason == "" {
+	if reason := p.lastStderrLine("peers broker: "); reason == "" {
 		t.Fatal("standard error carries no failure line, want the session failure reason")
 	}
 }
@@ -367,7 +367,7 @@ func TestBrokerRuntimeDirBadPermissions(t *testing.T) {
 	if code := p.wait(3 * time.Second); code != exitRuntimeDir {
 		t.Fatalf("exit code = %d, want %d (stderr: %s)", code, exitRuntimeDir, p.stderr.String())
 	}
-	reason := p.lastStderrLine("agent-peer broker: ")
+	reason := p.lastStderrLine("peers broker: ")
 	if !strings.Contains(reason, dir) {
 		t.Fatalf("stderr line = %q, want it to name the runtime directory %q", reason, dir)
 	}
@@ -384,7 +384,7 @@ func TestBrokerInvalidListenValue(t *testing.T) {
 	if stderr := p.stderr.String(); !strings.Contains(stderr, "--listen") {
 		t.Fatalf("stderr = %q, want it to mention %q", stderr, "--listen")
 	}
-	if stderr := p.stderr.String(); !strings.Contains(stderr, "usage: agent-peer broker") {
+	if stderr := p.stderr.String(); !strings.Contains(stderr, "usage: peers broker") {
 		t.Fatalf("stderr = %q, want the broker usage", stderr)
 	}
 }
@@ -407,7 +407,7 @@ func TestBrokerSystemRequiresRoot(t *testing.T) {
 	if stderr := p.stderr.String(); !strings.Contains(stderr, "must run as root") {
 		t.Fatalf("stderr = %q, want it to name the root requirement", stderr)
 	}
-	if reason := p.lastStderrLine("agent-peer broker: "); !strings.Contains(reason, "must run as root") {
+	if reason := p.lastStderrLine("peers broker: "); !strings.Contains(reason, "must run as root") {
 		t.Fatalf("stderr line = %q, want it to name the root requirement", reason)
 	}
 }
