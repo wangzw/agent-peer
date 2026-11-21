@@ -16,6 +16,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/wangzw/peers/internal/procsig"
 )
 
 // probeNames lists the probes the real-session workflow accepts. It is the
@@ -838,7 +840,7 @@ func envTerminate(pids []int, stdout io.Writer) {
 		return
 	}
 	for _, pid := range pids {
-		_ = syscall.Kill(pid, syscall.SIGTERM)
+		_ = procsig.SendSignal(pid, syscall.SIGTERM)
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -848,8 +850,8 @@ func envTerminate(pids []int, stdout io.Writer) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	for _, pid := range pids {
-		if syscall.Kill(pid, 0) == nil {
-			_ = syscall.Kill(pid, syscall.SIGKILL)
+		if procsig.SendSignal(pid, 0) == nil {
+			_ = procsig.SendSignal(pid, syscall.SIGKILL)
 		}
 	}
 	_, _ = fmt.Fprintf(stdout, "stopped %d probe process(es)\n", len(pids))
@@ -902,7 +904,7 @@ func envRemoveAll(path string) error {
 
 func envAnyAlive(pids []int) bool {
 	for _, pid := range pids {
-		if syscall.Kill(pid, 0) == nil {
+		if procsig.SendSignal(pid, 0) == nil {
 			return true
 		}
 	}

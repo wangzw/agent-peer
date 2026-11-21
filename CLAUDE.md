@@ -26,6 +26,10 @@ A cross-host communication system for agents. A host runs a Broker either as a s
 
 `make site-check` builds the website under `docs/site/` strictly and checks its internal links. It is not part of `make check`; run it when a change touches the website.
 
+## Signals
+
+Sending a signal to a real process must go through `procsig.SendSignal` in `internal/procsig/signal.go`. It refuses pids at or below 1, which would otherwise reach init, the caller's process group or every process the account may signal. `make lint` checks every non-test Go file outside `third_party/` and fails on a direct `syscall.Kill` or `unix.Kill` call outside that file.
+
 ## Commit Convention
 
 Supplements the `commit-convention` skill.

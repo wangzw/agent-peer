@@ -44,6 +44,7 @@ var allowed = map[string][]string{
 	"config":    {"accountdb"},
 	"inbox":     nil,
 	"accountdb": nil,
+	"procsig":   nil,
 	"localpb":   nil,
 }
 

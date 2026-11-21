@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/wangzw/peers/internal/procsig"
 )
 
 // owner identifies one incarnation of a test process: its PID, the kernel's
@@ -197,6 +199,6 @@ func ownerGone(name string) bool {
 
 // processExists reports whether pid names a process.
 func processExists(pid int) bool {
-	err := syscall.Kill(pid, 0)
+	err := procsig.SendSignal(pid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
 }

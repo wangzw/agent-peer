@@ -84,6 +84,7 @@ lint:
 	GOOS=darwin $(GOLANGCI_LINT) run ./...
 	GOOS=darwin $(GOLANGCI_LINT) run --build-tags e2e,e2e_darwin ./...
 	go mod tidy -diff
+	go run ./scripts/checksignals
 	go run ./scripts/check-deps -goos linux
 	go run ./scripts/check-deps -goos darwin
 	go run ./scripts/check-deps -tags e2e

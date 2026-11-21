@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wangzw/peers/internal/procsig"
 	"github.com/wangzw/peers/test/e2e/node"
 )
 
@@ -541,7 +542,7 @@ func (l *localNode) killProcesses() {
 		if proc.PID == self {
 			continue
 		}
-		_ = syscall.Kill(proc.PID, syscall.SIGKILL)
+		_ = procsig.SendSignal(proc.PID, syscall.SIGKILL)
 	}
 }
 

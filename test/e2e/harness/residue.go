@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wangzw/peers/internal/procsig"
 	"github.com/wangzw/peers/test/e2e/node"
 )
 
@@ -103,7 +104,7 @@ func killRuntimeProcesses(logf func(format string, args ...any)) {
 		if proc.PID == self {
 			continue
 		}
-		if err := syscall.Kill(proc.PID, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		if err := procsig.SendSignal(proc.PID, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
 			logf("cleanup: killing process %d: %v", proc.PID, err)
 		}
 	}
