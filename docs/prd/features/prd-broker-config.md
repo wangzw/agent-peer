@@ -393,7 +393,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 ### REQ-broker-config-047
 
-主机上已安装系统级服务时，`REQ-broker-config-044` 的询问必须改为 `Upgrade the system-level installation? [Y/n]`，直接回车或回答 y 时经 sudo 升级系统级安装；回答 n 时不得改动主机，命令以 0 退出，并提示另装用户级时带 `--user`。
+主机上已安装系统级服务时，`REQ-broker-config-044` 的询问必须改为 `Upgrade the system installation? [Y/n]`，直接回车或回答 y 时经 sudo 升级系统级安装；回答 n 时不得改动主机，命令以 0 退出，并提示另装用户级时带 `--user`。
 
 - **验收**：在已安装旧版本系统级服务的主机上，以普通账户执行一条在线安装命令：询问为这一句；直接回车并输入 sudo 密码后，系统级 Broker 以新版本运行，配置文件内容不变。在另一台同样的主机上回答 n：命令以 0 退出，二进制、服务与配置都没有变化，输出提示另装用户级时带 `--user`。
 - **状态**：已实现
@@ -461,7 +461,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 - **验收**：在同时有系统级服务与账户甲的用户级服务的主机上，甲执行 `peers service stop`，甲的用户级 Broker 停止，系统级 Broker 不受影响；甲执行 `sudo peers service restart`，系统级 Broker 以新的进程号运行，甲的用户级 Broker 仍是停止状态；甲执行 `peers service start`，用户级 Broker 重新运行。没有安装该级别的服务时，命令以非零退出并说明该级别没有安装服务；甲在只有系统级服务的主机上执行，命令以 1 退出并给出 `sudo peers service <命令> --system`。先停止甲的用户级服务，让另一个进程占用配置中的监听端口，甲执行 `peers service start`：输出降级原因与修复命令，退出码为 3，服务处于运行状态。
 - **状态**：已实现
-- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl`（`stop and start act on one level only`、`a user-level command with only the system service names sudo`、`no installed service names the level`、`start reports a degraded Broker and keeps the service running`；最后一例保留 `service start` 的退出码 3，并断言 `peers service status` 的 stdout 含 `Broker: degraded (local only):` 与 `Fix:`）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControl`、`TestSystemServiceControl`、`TestServiceControlNotInstalled`、`TestUserServiceControlDegraded`（同样断言 `peers service status` 的 stdout 含状态行与 `Fix:`）
+- **端到端测试**：`test/e2e/system/service_control_test.go` 的 `TestServiceControl`（`stop and start act on one level only`、`a user command with only the system service names sudo`、`no installed service names the level`、`start reports a degraded Broker and keeps the service running`；最后一例保留 `service start` 的退出码 3，并断言 `peers service status` 的 stdout 含 `Broker: degraded (local only):` 与 `Fix:`）；`test/e2e/darwinservice/control_test.go` 的 `TestUserServiceControl`、`TestSystemServiceControl`、`TestServiceControlNotInstalled`、`TestUserServiceControlDegraded`（同样断言 `peers service status` 的 stdout 含状态行与 `Fix:`）
 
 ### REQ-broker-config-056
 

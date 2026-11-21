@@ -1,6 +1,6 @@
 # peers
 
-A cross-host communication system for agents. A host runs a Broker either as a system service that serves every account or as a user-level process that serves one account. Claude Code sessions join their Broker through MCP tools, and once two Brokers are paired, agents on different hosts can discover each other and exchange messages.
+A cross-host communication system for agents. A host runs a Broker either as a system service that serves every account or as a user service that serves one account. Claude Code sessions join their Broker through MCP tools, and once two Brokers are paired, agents on different hosts can discover each other and exchange messages.
 
 ## Language
 

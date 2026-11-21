@@ -68,7 +68,7 @@ service Local {
 
 `SetConfig` 先解析审计发起者，`agent_id` 无效时不改动配置；对于键不存在、密钥类配置项与本次运行由 `--listen` 固定的 `broker.listen`，它在处理取值之前拒绝，说明不取决于取值的写法，取值无法解析时同样给出。`GetConfig` 的 `key` 为空时返回全部配置项，按键名的字典序；非空时只返回该项，未知键返回 `invalid_argument`。`Audit` 的 `since` 缺省时返回全部记录；`limit` 非 0 时返回最新的 N 条，仍按时间顺序发送，读完即结束，不跟随新事件。
 
-`Disconnect` 的 `broker` 参数取对端的生效别名或 64 位十六进制指纹（大小写不敏感），先按别名解析，解析不到且恰为 64 位十六进制时按指纹解析；指定的 Broker 不是对端时返回 `not_found`；解除配对经注入的关闭链路接口断开链路（`REQ-broker-pairing-021`）。`Connect` 成功后促使对该对端立即拨号；成功应答带对方的生效别名、指纹、地址中的主机名与警告（`REQ-broker-pairing-010`）。警告按地址逐条给出：对 `Peer.Candidates` 中来源为 `SourcePairing` 与 `SourceAcceptor` 的每个地址，名录中每个指纹不同于对方的发布者各产生一条，说明为 `fingerprint mismatch: the directory card for <addr> belongs to <card fingerprint>, but the paired broker presented <peer fingerprint>`，两个指纹均为完整的 64 位小写十六进制；没有不一致时警告为空（`REQ-broker-pairing-023`）。失败时错误码：地址或本地别名写法不合法为 `invalid_argument`，别名冲突为 `needs_local_alias`，对方拒绝、握手超时、连接在握手完成前关闭或对方违反配对协议为 `pairing_rejected`，地址连不上为 `peer_unreachable`（`REQ-broker-pairing-004`、`REQ-broker-pairing-011`）。`ListBrokers` 中对端的对外地址列表：本方是拨号方的取接受方告知的列表与名片所载的列表，不含发起配对时拨通的地址；本方是接受方的只取名片所载的列表。不取对端表中来源为名片的候选地址，名片地址以名录当前有效的名片为准。对端的状态按链路是否已建立、是否知道地址取三者之一。被拒绝或角色不符时 `status_detail` 说明需要重新配对，协议版本不兼容时说明带对方版本（已知时）。排序先对端后非对端，同类按别名再按指纹（`REQ-broker-discovery-012`、`REQ-broker-discovery-013`、`REQ-broker-pairing-035`）。
+`Disconnect` 的 `broker` 参数取对端的生效别名或 64 位十六进制指纹（大小写不敏感），先按别名解析，解析不到且恰为 64 位十六进制时按指纹解析；指定的 Broker 不是对端时返回 `not_found`；解除配对经注入的关闭链路接口断开链路（`REQ-broker-pairing-021`）。`Connect` 成功后促使对该对端立即拨号；成功应答带对方的生效别名、指纹、地址中的主机名与警告（`REQ-broker-pairing-010`）。警告按地址逐条给出：对 `Peer.Candidates` 中来源为 `SourcePairing` 与 `SourceAcceptor` 的每个地址，名录中每个指纹不同于对方的发布者各产生一条，说明为 `fingerprint mismatch: the directory card for <addr> belongs to <card fingerprint>, but the paired Broker presented <peer fingerprint>`，两个指纹均为完整的 64 位小写十六进制；没有不一致时警告为空（`REQ-broker-pairing-023`）。失败时错误码：地址或本地别名写法不合法为 `invalid_argument`，别名冲突为 `needs_local_alias`，对方拒绝、握手超时、连接在握手完成前关闭或对方违反配对协议为 `pairing_rejected`，地址连不上为 `peer_unreachable`（`REQ-broker-pairing-004`、`REQ-broker-pairing-011`）。`ListBrokers` 中对端的对外地址列表：本方是拨号方的取接受方告知的列表与名片所载的列表，不含发起配对时拨通的地址；本方是接受方的只取名片所载的列表。不取对端表中来源为名片的候选地址，名片地址以名录当前有效的名片为准。对端的状态按链路是否已建立、是否知道地址取三者之一。被拒绝或角色不符时 `status_detail` 说明需要重新配对，协议版本不兼容时说明带对方版本（已知时）。排序先对端后非对端，同类按别名再按指纹（`REQ-broker-discovery-012`、`REQ-broker-discovery-013`、`REQ-broker-pairing-035`）。
 
 调用方的账户不是任何调用的参数，它取自连接的进程凭据。下表是每个调用的前提；用户级 Broker 的检查器恒允许，配置文件属于本账户，表中的权限前提只在系统级 Broker 上检查。
 
@@ -130,7 +130,7 @@ service Local {
 
 帮助按配对、本机 Broker 与安装三组显示；`help` 命令本身不进帮助列表，`mcp` 与 `internal` 隐藏。`--admin-group` 只接受与 `--system` 一起使用，单独给出或以用户级给出时按用法错误退出。
 
-`service offline` 与 `service online` 连接所选级别的 Broker，与 `config set broker.offline <值>` 等价，输出一行 `Broker is now offline` 或 `Broker is now online`，审计记录与 `config set` 相同。service 下的全部子命令接受互斥的 `--system` 与 `--user`，都不给时 root 为系统级，其他账户为本账户的用户级；服务定义显式写出其中一个。
+`service offline` 与 `service online` 连接所选级别的 Broker，与 `config set broker.offline <值>` 等价，输出一行 `The Broker is now offline.` 或 `The Broker is now online.`，审计记录与 `config set` 相同。service 下的全部子命令接受互斥的 `--system` 与 `--user`，都不给时 root 为系统级，其他账户为本账户的用户级；服务定义显式写出其中一个。
 
 `broker connect` 的 `<address>` 与 `connect_broker` 工具相同，写成 `address:port` 或 `hostname(address:port)`；`broker disconnect` 的 `<broker>` 与 `disconnect_broker` 工具相同，写别名或 64 位十六进制指纹。每个终端命令都支持 `-h` 与 `--help`。参数错误时先输出 `<path>: <原因>`，再输出 `Run '<path> --help' for usage.`，以用法错误的退出码（2）结束；只有不带动词地执行命令组时才打印完整的用法文本。
 
@@ -179,7 +179,7 @@ service Local {
 成功或降级时，`service install` 打印汇总（`REQ-broker-config-050`）：
 
 ```
-peers <version> installed (<user-level|system-level>, starts at <login|boot>)
+peers <version> installed (<user service|system service>, starts at <login|boot>)
   binary:     <path>
   config:     <path> (generated|kept)
   run log:    journalctl ... | <log file path>
@@ -194,7 +194,7 @@ peers <version> installed (<user-level|system-level>, starts at <login|boot>)
 
 发布包的安装脚本把二进制放进目标目录、以它调用 `service install`、为执行安装的用户注册 MCP 服务（`REQ-broker-config-041`）；服务定义的写入、启动与重装仍只由 `service install` 负责，它可重复执行，安装脚本因此不另做判断。远程安装脚本负责下载发布包、核对发布包的 sha256 并在解压后调用包内的 `install.sh`；权限检查、拒绝以 `root` 走用户级安装等判断仍由包内脚本负责（`REQ-broker-config-042`）。
 
-发布包的安装脚本在没有 `--system` 与 `--user` 时确定安装级别：当前是 root 时为系统级；能在终端询问时，主机上已有系统级服务定义则询问 `Upgrade the system-level installation? [Y/n]`，否则询问 `Install for every account on this host? [y/N]`；无法询问时为用户级。同时给出 `--system` 与 `--user` 时以用法错误退出；以 root 执行 `--user` 时拒绝，提示去掉 `--user`。级别为系统级而当前不是 root 时，脚本以 `sudo sh <自身路径> --system <原参数>` 重新执行；主机上找不到 `sudo` 时以非零退出，说明需要 sudo，并提示改用 `--user` 装用户级。`service install` 以 3 退出时，脚本继续注册 MCP 服务并输出自己的汇总，最后以 3 退出；脚本自己的汇总只列 MCP 注册与 PATH 两项，其余由 `service install` 输出，升级时在汇总之前输出 `upgraded from <旧版本>`，旧版本取替换前目标路径上二进制的 `--version`。`--no-service` 时脚本自己输出二进制路径与版本。对 `Upgrade the system-level installation? [Y/n]` 回答 n 时，脚本不做任何改动，以 0 退出，并提示另装用户级时带 `--user`（`REQ-broker-config-044` 至 `REQ-broker-config-048`）。
+发布包的安装脚本在没有 `--system` 与 `--user` 时确定安装级别：当前是 root 时为系统级；能在终端询问时，主机上已有系统级服务定义则询问 `Upgrade the system installation? [Y/n]`，否则询问 `Install for every account on this host? [y/N]`；无法询问时为用户级。同时给出 `--system` 与 `--user` 时以用法错误退出；以 root 执行 `--user` 时拒绝，提示去掉 `--user`。级别为系统级而当前不是 root 时，脚本以 `sudo sh <自身路径> --system <原参数>` 重新执行；主机上找不到 `sudo` 时以非零退出，说明需要 sudo，并提示改用 `--user` 装用户级。`service install` 以 3 退出时，脚本继续注册 MCP 服务并输出自己的汇总，最后以 3 退出；脚本自己的汇总只列 MCP 注册与 PATH 两项，其余由 `service install` 输出，升级时在汇总之前输出 `upgraded from <旧版本>`，旧版本取替换前目标路径上二进制的 `--version`。`--no-service` 时脚本自己输出二进制路径与版本。对 `Upgrade the system installation? [Y/n]` 回答 n 时，脚本不做任何改动，以 0 退出，并提示另装用户级时带 `--user`（`REQ-broker-config-044` 至 `REQ-broker-config-048`）。
 
 升级只替换二进制，不改写服务定义。已安装的服务要重新执行 `service install`，才采用当前版本写入的服务定义与启动方式。
 
