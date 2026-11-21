@@ -726,8 +726,8 @@ func hostSystemDefinitionPath() string {
 }
 
 const (
-	levelInstallPrompt = "Install system-wide (all accounts)? [y/N]"
-	levelUpgradePrompt = "Upgrade the system-wide installation? [Y/n]"
+	levelInstallPrompt = "Install for every account on this host? [y/N]"
+	levelUpgradePrompt = "Upgrade the system-level installation? [Y/n]"
 )
 
 func TestInstallScriptSystemReexecutesThroughSudo(t *testing.T) {

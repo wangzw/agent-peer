@@ -22,7 +22,7 @@ const uninstallUsage = "usage: agent-peer uninstall [--purge]\n"
 // input or output.
 const (
 	uninstallDataPrompt   = "Also remove configuration, identity, audit and service logs? [y/N] "
-	uninstallSystemPrompt = "Uninstall the system-wide installation (requires sudo)? [y/N] "
+	uninstallSystemPrompt = "Uninstall the system-level installation (requires sudo)? [y/N] "
 )
 
 // The test seams replace the terminal, sudo, the account and the installation
@@ -118,7 +118,7 @@ func runMCPCommand(name string, args ...string) ([]byte, error) {
 }
 
 // uninstallCmd implements "agent-peer uninstall [--purge]". It removes the
-// installation of the account that runs it, or the system-wide installation
+// installation of the account that runs it, or the system-level installation
 // when run as root, and optionally the configuration, identity and logs.
 func (a *app) uninstallCmd(ctx context.Context, args []string) int {
 	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
@@ -214,7 +214,7 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 			return code
 		}
 		if uninstallSystemInstalledCheck(systemOpts) {
-			_, _ = fmt.Fprintf(a.stdout, "A system-wide installation is still present; run: sudo agent-peer uninstall%s\n", flagSuffix(purge))
+			_, _ = fmt.Fprintf(a.stdout, "A system-level installation is still present; run: sudo agent-peer uninstall%s\n", flagSuffix(purge))
 		}
 		return exitOK
 	}

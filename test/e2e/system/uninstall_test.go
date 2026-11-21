@@ -626,7 +626,7 @@ func TestUninstallREQBrokerConfig052NonRootSystemOnly(t *testing.T) {
 		if refused.ExitCode != 0 {
 			t.Fatalf("refused uninstall: exit %d\n%s", refused.ExitCode, refused.Stdout)
 		}
-		if !strings.Contains(refused.Stdout, "Uninstall the system-wide installation (requires sudo)? [y/N]") {
+		if !strings.Contains(refused.Stdout, "Uninstall the system-level installation (requires sudo)? [y/N]") {
 			t.Errorf("output does not contain the sudo question:\n%s", refused.Stdout)
 		}
 		if !strings.Contains(refused.Stdout, "sudo agent-peer uninstall") {

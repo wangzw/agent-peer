@@ -77,8 +77,8 @@ const (
 
 	// installLevelPrompt and installUpgradePrompt are the questions the script
 	// asks on the controlling terminal.
-	installLevelPrompt   = "Install system-wide (all accounts)? [y/N]"
-	installUpgradePrompt = "Upgrade the system-wide installation? [Y/n]"
+	installLevelPrompt   = "Install for every account on this host? [y/N]"
+	installUpgradePrompt = "Upgrade the system-level installation? [Y/n]"
 )
 
 // installArchiveReadme stands in for the user-facing README a release archive
@@ -206,7 +206,7 @@ func TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemWide(t *testing
 	removePreinstalledSystemBinary(t)
 	configureInstallSudo(t)
 
-	t.Run("REQ-broker-config-044 y installs system-wide", func(t *testing.T) {
+	t.Run("REQ-broker-config-044 y installs at the system level", func(t *testing.T) {
 		res := runInstallScriptWithTerminal(t, installAccount, installUserEnv(), archive, "y\n", "sh", "./install.sh")
 		if res.ExitCode != 0 {
 			t.Fatalf("install with y on the terminal: exit %d\n%s", res.ExitCode, res.Output)
@@ -263,8 +263,8 @@ func TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser(t *testing.T)
 }
 
 // TestREQBrokerConfig045_InstallScriptRootDoesNotAsk runs the script as root without
-// any arguments and checks that it installs system-wide without a level
-// question.
+// any arguments and checks that it installs at the system level without a
+// level question.
 func TestREQBrokerConfig045_InstallScriptRootDoesNotAsk(t *testing.T) {
 	if !syscontainer.InContainer() {
 		stageInstallArchive(t)
@@ -276,7 +276,7 @@ func TestREQBrokerConfig045_InstallScriptRootDoesNotAsk(t *testing.T) {
 	archive := prepareInstallArchive(t)
 	removePreinstalledSystemBinary(t)
 
-	t.Run("REQ-broker-config-045 root installs system-wide without asking", func(t *testing.T) {
+	t.Run("REQ-broker-config-045 root installs at the system level without asking", func(t *testing.T) {
 		res := runInstallScriptAs(t, "root", nil, archive, "sh", "./install.sh")
 		if res.ExitCode != 0 {
 			t.Fatalf("root install: exit %d\nstdout:\n%s\nstderr:\n%s",
@@ -348,7 +348,7 @@ func TestREQBrokerConfig047_InstallScriptUpgradePrompt(t *testing.T) {
 	configPath := filepath.Join(installSystemConfigDir, "config.yaml")
 	configBefore := readFile(t, configPath)
 
-	t.Run("REQ-broker-config-047 enter upgrades the system-wide install", func(t *testing.T) {
+	t.Run("REQ-broker-config-047 enter upgrades the system-level install", func(t *testing.T) {
 		res := runInstallScriptWithTerminal(t, installAccount, installUserEnv(), archive, "\n", "sh", "./install.sh")
 		if res.ExitCode != 0 {
 			t.Fatalf("upgrade with Enter on the terminal: exit %d\n%s", res.ExitCode, res.Output)
@@ -450,7 +450,7 @@ func TestREQBrokerConfig048_InstallScriptUserFlag(t *testing.T) {
 }
 
 // TestREQBrokerConfig048_InstallScriptSystemFlag checks that --system skips the
-// level question, runs the script through sudo and installs system-wide.
+// level question, runs the script through sudo and installs at the system level.
 func TestREQBrokerConfig048_InstallScriptSystemFlag(t *testing.T) {
 	if !syscontainer.InContainer() {
 		stageInstallArchive(t)
