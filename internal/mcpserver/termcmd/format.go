@@ -111,7 +111,7 @@ func WriteStatus(w io.Writer, resp *localpb.StatusResponse) error {
 
 // WriteDegraded writes the two lines that say why the Broker runs degraded:
 // the level and cause on the first line and the repair on the second. It is
-// the only place these lines are built, so status, peer list and the service
+// the only place these lines are built, so status, broker list and the service
 // commands print the same text.
 func WriteDegraded(w io.Writer, level localpb.DegradedLevel, reason, fix string) error {
 	if _, err := fmt.Fprintf(w, "Broker: degraded (%s): %s\n",

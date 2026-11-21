@@ -41,8 +41,8 @@ const (
 
 	// termAdminConnectedWait bounds host A's wait for the connected marker. Once
 	// host A publishes the pairing file, host B may still be finishing its own
-	// start before it reads the file: the user Broker's socket wait and one peer
-	// list. After that come the peer connect, the wait for the link to reach
+	// start before it reads the file: the user Broker's socket wait and one broker
+	// list. After that come the broker connect, the wait for the link to reach
 	// connected, and the wait for the pairing audit record. The connect call
 	// blocks for at most link.dial_timeout on its own dial, so it is counted at
 	// that bound rather than at termAdminCallWait. 3*termAdminCallWait +
@@ -158,8 +158,8 @@ func termAdminHostA(t *testing.T) {
 
 	// The output must carry the key, its expiry and the advertised address host
 	// B can dial.
-	created := syscontainer.RunAs(t, "root", nil, "pairing-key", "create")
-	termAdminRequireOK(t, created, "peers pairing-key create as root")
+	created := syscontainer.RunAs(t, "root", nil, "key", "create")
+	termAdminRequireOK(t, created, "peers key create as root")
 	key, shown := termAdminPairingKey(t, created.Stdout)
 	address := termAdminAdvertisedAddress(t, shown)
 
@@ -197,11 +197,11 @@ func termAdminHostA(t *testing.T) {
 	}
 
 	// Root unpairs host B from host A.
-	disconnected := syscontainer.RunAs(t, "root", nil, "peer", "disconnect", hostAPeer.alias)
-	termAdminRequireOK(t, disconnected, "peers peer disconnect as root")
+	disconnected := syscontainer.RunAs(t, "root", nil, "broker", "disconnect", hostAPeer.alias)
+	termAdminRequireOK(t, disconnected, "peers broker disconnect as root")
 	wantDisconnect := "Disconnected " + hostAPeer.alias
 	if got := strings.TrimSpace(disconnected.Stdout); got != wantDisconnect {
-		t.Fatalf("peer disconnect printed %q, want %q", got, wantDisconnect)
+		t.Fatalf("broker disconnect printed %q, want %q", got, wantDisconnect)
 	}
 
 	// The disconnect removed the pair, so host A lists no Broker again.
@@ -267,12 +267,12 @@ func termAdminHostB(t *testing.T) {
 	// Pair with host A using only the address and key host A printed.
 	data := syscontainer.PairAwait(t, termAdminPairingFile, termAdminPairingWait)
 	address, key := termAdminParsePairing(t, data)
-	connected := syscontainer.RunAs(t, "peer", peerEnv, "peer", "connect", address, "--key", key)
-	termAdminRequireOK(t, connected, "peers peer connect as peer on the other host")
+	connected := syscontainer.RunAs(t, "peer", peerEnv, "broker", "connect", address, "--key", key)
+	termAdminRequireOK(t, connected, "peers broker connect as peer on the other host")
 	pairedAlias, pairedFingerprint := termAdminConnectOutput(t, connected.Stdout)
 
 	// Host B's terminal lists host A as a connected dialer peer, matching what
-	// peer connect printed.
+	// broker connect printed.
 	hostBPeer := termAdminWaitPeer(t, "peer", peerEnv, "host B", "dialer")
 	if hostBPeer.alias != pairedAlias || hostBPeer.fingerprint != pairedFingerprint {
 		t.Errorf("host B lists peer %q (%s), want the paired alias %q and fingerprint %s",
@@ -293,9 +293,9 @@ func termAdminHostB(t *testing.T) {
 	// Host A unpaired, and pairing drops the link when the removed entry is not
 	// replaced. Host B may take a moment to observe the closed link, so wait for
 	// its listing to stop showing a connected row.
-	harness.Eventually(t, termAdminCallWait, "host B's peer list to stop showing the other Broker connected",
+	harness.Eventually(t, termAdminCallWait, "host B's broker list to stop showing the other Broker connected",
 		func() (bool, string) {
-			res := syscontainer.RunAs(t, "peer", peerEnv, "peer", "list")
+			res := syscontainer.RunAs(t, "peer", peerEnv, "broker", "list")
 			if res.ExitCode != 0 {
 				return false, fmt.Sprintf("exit %d: %s", res.ExitCode, res.Stderr)
 			}
@@ -321,7 +321,7 @@ type termAdminEvent struct {
 	account string
 }
 
-// termAdminPeerRow is one row of "peers peer list".
+// termAdminPeerRow is one row of "peers broker list".
 type termAdminPeerRow struct {
 	alias       string
 	fingerprint string
@@ -361,7 +361,7 @@ func termAdminWaitRegistered(t *testing.T, session *syscontainer.Session) {
 	})
 }
 
-// termAdminPairingKey checks the output of "pairing-key create" and returns the
+// termAdminPairingKey checks the output of "key create" and returns the
 // key with every address it printed.
 func termAdminPairingKey(t *testing.T, stdout string) (key string, shown []string) {
 	t.Helper()
@@ -383,30 +383,30 @@ func termAdminPairingKey(t *testing.T, stdout string) (key string, shown []strin
 	}
 
 	if key == "" {
-		t.Fatalf("pairing-key create printed no key:\n%s", stdout)
+		t.Fatalf("key create printed no key:\n%s", stdout)
 	}
 	if expires == "" {
-		t.Fatalf("pairing-key create printed no expiry:\n%s", stdout)
+		t.Fatalf("key create printed no expiry:\n%s", stdout)
 	}
 	expiry, err := time.Parse(time.RFC3339, expires)
 	if err != nil {
-		t.Fatalf("pairing-key create printed an expiry %q that is not RFC 3339: %v", expires, err)
+		t.Fatalf("key create printed an expiry %q that is not RFC 3339: %v", expires, err)
 	}
 	if !strings.HasSuffix(expires, "Z") {
-		t.Errorf("pairing-key create printed the expiry %q, want UTC with a Z suffix", expires)
+		t.Errorf("key create printed the expiry %q, want UTC with a Z suffix", expires)
 	}
 	if !expiry.After(time.Now()) {
-		t.Errorf("pairing-key create printed the expiry %q, which is not in the future", expires)
+		t.Errorf("key create printed the expiry %q, which is not in the future", expires)
 	}
 	if len(shown) == 0 {
-		t.Fatalf("pairing-key create printed no address:\n%s", stdout)
+		t.Fatalf("key create printed no address:\n%s", stdout)
 	}
 	return key, shown
 }
 
 // termAdminAdvertisedAddress returns the printed address whose dial part is
 // termAdminAdvertise. The command prints each address as "name(host:port)", and
-// peer connect accepts that whole form. Any other printed address may be
+// broker connect accepts that whole form. Any other printed address may be
 // unreachable from the other host, so the configured one must be present.
 func termAdminAdvertisedAddress(t *testing.T, shown []string) string {
 	t.Helper()
@@ -419,21 +419,21 @@ func termAdminAdvertisedAddress(t *testing.T, shown []string) string {
 			return entry
 		}
 	}
-	t.Fatalf("pairing-key create printed addresses %v, none dials %s", shown, termAdminAdvertise)
+	t.Fatalf("key create printed addresses %v, none dials %s", shown, termAdminAdvertise)
 	return ""
 }
 
-// termAdminRequireNoBrokers checks that "peer list" reports an empty listing.
+// termAdminRequireNoBrokers checks that "broker list" reports an empty listing.
 func termAdminRequireNoBrokers(t *testing.T, account string, env []string, host string) {
 	t.Helper()
-	res := syscontainer.RunAs(t, account, env, "peer", "list")
-	termAdminRequireOK(t, res, "peers peer list as "+account+" on "+host)
+	res := syscontainer.RunAs(t, account, env, "broker", "list")
+	termAdminRequireOK(t, res, "peers broker list as "+account+" on "+host)
 	if !strings.Contains(res.Stdout, "Brokers: none") {
-		t.Fatalf("%s's peer list does not print \"Brokers: none\":\n%s", host, res.Stdout)
+		t.Fatalf("%s's broker list does not print \"Brokers: none\":\n%s", host, res.Stdout)
 	}
 }
 
-// termAdminConnectOutput checks the output of "peer connect" and returns the
+// termAdminConnectOutput checks the output of "broker connect" and returns the
 // alias and fingerprint it names.
 func termAdminConnectOutput(t *testing.T, stdout string) (alias, fingerprint string) {
 	t.Helper()
@@ -441,32 +441,32 @@ func termAdminConnectOutput(t *testing.T, stdout string) (alias, fingerprint str
 	const prefix = "Paired with "
 	line := strings.TrimSpace(stdout)
 	if !strings.HasPrefix(line, prefix) {
-		t.Fatalf("peer connect printed %q, want %q<alias> (<fingerprint>)", line, prefix)
+		t.Fatalf("broker connect printed %q, want %q<alias> (<fingerprint>)", line, prefix)
 	}
 	rest := strings.TrimPrefix(line, prefix)
 	open := strings.LastIndex(rest, " (")
 	if open < 0 || !strings.HasSuffix(rest, ")") {
-		t.Fatalf("peer connect printed %q, want %q<alias> (<fingerprint>)", line, prefix)
+		t.Fatalf("broker connect printed %q, want %q<alias> (<fingerprint>)", line, prefix)
 	}
 	alias = strings.TrimSpace(rest[:open])
 	fingerprint = rest[open+2 : len(rest)-1]
 	if alias == "" {
-		t.Fatalf("peer connect printed no alias: %q", line)
+		t.Fatalf("broker connect printed no alias: %q", line)
 	}
 	if !termAdminIsFingerprint(fingerprint) {
-		t.Fatalf("peer connect printed fingerprint %q, want 64 lowercase hexadecimal digits", fingerprint)
+		t.Fatalf("broker connect printed fingerprint %q, want 64 lowercase hexadecimal digits", fingerprint)
 	}
 	return alias, fingerprint
 }
 
-// termAdminWaitPeer waits until "peer list" on one host shows the other Broker
+// termAdminWaitPeer waits until "broker list" on one host shows the other Broker
 // connected in wantDirection and returns that row.
 func termAdminWaitPeer(t *testing.T, account string, env []string, host, wantDirection string) termAdminPeerRow {
 	t.Helper()
 
 	var row termAdminPeerRow
-	harness.Eventually(t, termAdminLinkWait, host+"'s peer list to show the other Broker connected", func() (bool, string) {
-		res := syscontainer.RunAs(t, account, env, "peer", "list")
+	harness.Eventually(t, termAdminLinkWait, host+"'s broker list to show the other Broker connected", func() (bool, string) {
+		res := syscontainer.RunAs(t, account, env, "broker", "list")
 		if res.ExitCode != 0 {
 			return false, fmt.Sprintf("exit %d: %s", res.ExitCode, res.Stderr)
 		}

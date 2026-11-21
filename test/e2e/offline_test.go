@@ -309,7 +309,7 @@ func TestBrokerOffline(t *testing.T) {
 		}
 
 		const offlineLine = "Broker: offline; messages from other hosts are refused. Run peers online to accept them."
-		for _, command := range [][]string{{"status"}, {"peer", "list"}} {
+		for _, command := range [][]string{{"status"}, {"broker", "list"}} {
 			res := bNode.Exec(t, append([]string{"/usr/local/bin/peers"}, command...), nil)
 			if res.ExitCode != 0 {
 				t.Fatalf("peers %v exited %d\nstdout: %s\nstderr: %s", command, res.ExitCode, res.Stdout, res.Stderr)
@@ -320,7 +320,7 @@ func TestBrokerOffline(t *testing.T) {
 		}
 
 		offSetOnline(t, b1, true)
-		for _, command := range [][]string{{"status"}, {"peer", "list"}} {
+		for _, command := range [][]string{{"status"}, {"broker", "list"}} {
 			res := bNode.Exec(t, append([]string{"/usr/local/bin/peers"}, command...), nil)
 			if res.ExitCode != 0 {
 				t.Fatalf("peers %v exited %d\nstdout: %s\nstderr: %s", command, res.ExitCode, res.Stdout, res.Stderr)

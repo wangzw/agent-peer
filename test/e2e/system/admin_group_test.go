@@ -198,13 +198,13 @@ func TestREQBrokerConfig043_SystemInstallAdminGroup(t *testing.T) {
 		syscontainer.StartUserBroker(t, agSeedMember, "--listen", agPeerListen)
 		key := agCreatePairingKey(t, agSeedMember)
 
-		res := syscontainer.RunAs(t, installAccount, nil, "pairing-key", "create")
+		res := syscontainer.RunAs(t, installAccount, nil, "key", "create")
 		if res.ExitCode != 0 {
-			t.Fatalf("peers pairing-key create as %s: exit %d\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers key create as %s: exit %d\nstdout: %s\nstderr: %s",
 				installAccount, res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
 		if !strings.Contains(res.Stdout, "Key: ") {
-			t.Errorf("pairing-key create as %s printed %q, want a key line", installAccount, res.Stdout)
+			t.Errorf("key create as %s printed %q, want a key line", installAccount, res.Stdout)
 		}
 
 		res = syscontainer.RunAs(t, installAccount, nil, "config", "set", "broker.alias", "admin-e2e")
@@ -216,13 +216,13 @@ func TestREQBrokerConfig043_SystemInstallAdminGroup(t *testing.T) {
 			t.Errorf("config set as %s printed %q, want the changed item", installAccount, res.Stdout)
 		}
 
-		res = syscontainer.RunAs(t, installAccount, nil, "peer", "connect", agPeerListen, "--key", key)
+		res = syscontainer.RunAs(t, installAccount, nil, "broker", "connect", agPeerListen, "--key", key)
 		if res.ExitCode != 0 {
-			t.Fatalf("peers peer connect as %s: exit %d\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers broker connect as %s: exit %d\nstdout: %s\nstderr: %s",
 				installAccount, res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
 		if !strings.Contains(res.Stdout, "Paired with ") {
-			t.Errorf("peer connect as %s printed %q, want the paired alias", installAccount, res.Stdout)
+			t.Errorf("broker connect as %s printed %q, want the paired alias", installAccount, res.Stdout)
 		}
 
 		agWaitAudit(t, []string{"pairing_key_created", "config_set", "pairing_succeeded"}, installAccount)
@@ -316,9 +316,9 @@ func TestREQBrokerConfig043_SystemInstallAdminGroup(t *testing.T) {
 			name string
 			args []string
 		}{
-			{"pairing-key create", []string{"pairing-key", "create"}},
+			{"key create", []string{"key", "create"}},
 			{"config set", []string{"config", "set", "broker.alias", "other-alias"}},
-			{"peer connect", []string{"peer", "connect", agPeerListen, "--key", key}},
+			{"broker connect", []string{"broker", "connect", agPeerListen, "--key", key}},
 		} {
 			res := syscontainer.RunAs(t, agNonMember, nil, call.args...)
 			if res.ExitCode == 0 {
@@ -592,8 +592,8 @@ func agWaitPort(t *testing.T, addr string, want bool) {
 // account's terminal commands.
 func agWaitSystemBroker(t *testing.T) {
 	t.Helper()
-	harness.Eventually(t, agServiceBound, "the installed system Broker to answer peer list", func() (bool, string) {
-		res := syscontainer.RunAs(t, "root", nil, "peer", "list")
+	harness.Eventually(t, agServiceBound, "the installed system Broker to answer broker list", func() (bool, string) {
+		res := syscontainer.RunAs(t, "root", nil, "broker", "list")
 		return res.ExitCode == 0, res.Stdout + res.Stderr
 	})
 }
@@ -601,9 +601,9 @@ func agWaitSystemBroker(t *testing.T) {
 // agCreatePairingKey creates a one-time pairing key at account's own Broker.
 func agCreatePairingKey(t *testing.T, account string) string {
 	t.Helper()
-	res := syscontainer.RunAs(t, account, nil, "pairing-key", "create")
+	res := syscontainer.RunAs(t, account, nil, "key", "create")
 	if res.ExitCode != 0 {
-		t.Fatalf("peers pairing-key create as %s: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers key create as %s: exit %d\nstdout: %s\nstderr: %s",
 			account, res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 	for _, line := range strings.Split(res.Stdout, "\n") {
@@ -611,7 +611,7 @@ func agCreatePairingKey(t *testing.T, account string) string {
 			return strings.TrimSpace(key)
 		}
 	}
-	t.Fatalf("peers pairing-key create as %s printed no key:\n%s", account, res.Stdout)
+	t.Fatalf("peers key create as %s printed no key:\n%s", account, res.Stdout)
 	return ""
 }
 

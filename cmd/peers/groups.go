@@ -9,7 +9,9 @@ import (
 // functions are empty until their group is implemented.
 
 // addPairingCommands adds the broker and key commands.
-func addPairingCommands(root *cobra.Command, a *app) {}
+func addPairingCommands(root *cobra.Command, a *app) {
+	a.addBrokerAndKeyCommands(root)
+}
 
 // addConfigCommands adds the config commands.
 func addConfigCommands(root *cobra.Command, a *app) {}

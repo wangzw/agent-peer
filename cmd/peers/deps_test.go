@@ -114,6 +114,7 @@ func (s *stubDeps) deps() deps {
 			}
 			return s.auditErr
 		},
+		peerNames: func(context.Context) ([]string, error) { return nil, nil },
 		updateAPIBase: func() string {
 			if s.updateAPIBase != nil {
 				return s.updateAPIBase()

@@ -61,6 +61,9 @@ type termcmdStub struct {
 	peerDisconnectCalls []string
 	peerDisconnectOut   []io.Writer
 	peerDisconnectErr   error
+	peerNames           []string
+	peerNamesErr        error
+	peerNamesCalls      int
 }
 
 func (s *termcmdStub) deps() deps {
@@ -109,6 +112,10 @@ func (s *termcmdStub) deps() deps {
 			s.peerDisconnectCalls = append(s.peerDisconnectCalls, broker)
 			s.peerDisconnectOut = append(s.peerDisconnectOut, stdout)
 			return s.peerDisconnectErr
+		},
+		peerNames: func(context.Context) ([]string, error) {
+			s.peerNamesCalls++
+			return s.peerNames, s.peerNamesErr
 		},
 	}
 }

@@ -85,6 +85,9 @@ func realDeps(version string) deps {
 		runPeerDisconnect: func(ctx context.Context, broker string, stdout io.Writer) error {
 			return termcmd.RunPeerDisconnect(ctx, findBroker, broker, stdout)
 		},
+		peerNames: func(ctx context.Context) ([]string, error) {
+			return termcmd.PeerNames(ctx, findBroker)
+		},
 
 		updateAPIBase:        update.APIBase,
 		updateLatest:         update.Latest,

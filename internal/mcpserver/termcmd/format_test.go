@@ -462,7 +462,7 @@ func TestWriteBrokerListWithoutLocalState(t *testing.T) {
 	}
 }
 
-// TestWriteBrokerListBrokerState covers the local state peer list shows before
+// TestWriteBrokerListBrokerState covers the local state broker list shows before
 // the table: local only degradation, offline, and both together.
 func TestWriteBrokerListBrokerState(t *testing.T) {
 	const reason = "listen address :17443 is unavailable: address already in use"

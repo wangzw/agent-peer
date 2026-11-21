@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -668,7 +669,7 @@ func TestRunPeerListEmpty(t *testing.T) {
 	}
 }
 
-// TestRunPeerListShowsLocalState checks that peer list prints the state the
+// TestRunPeerListShowsLocalState checks that broker list prints the state the
 // Broker reports for itself, without calling Status.
 func TestRunPeerListShowsLocalState(t *testing.T) {
 	path := fakelocal.SocketPath(t)
@@ -698,6 +699,31 @@ func TestRunPeerListShowsLocalState(t *testing.T) {
 	}
 	if n := methodCalls(srv, "Status"); n != 0 {
 		t.Errorf("Status calls = %d, want 0", n)
+	}
+}
+
+// TestPeerNamesCollectsAliasesAndFingerprints checks the disconnect completion
+// candidates: a paired Broker contributes its alias and fingerprint, one
+// without an alias only the fingerprint, and a non-peer nothing.
+func TestPeerNamesCollectsAliasesAndFingerprints(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	fakelocal.Start(t, path, fakelocal.Handlers{
+		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
+			return &localpb.ListBrokersResponse{Brokers: []*localpb.BrokerInfo{
+				{Alias: "web", Fingerprint: []byte{0xab, 0xcd}, IsPeer: true},
+				{Fingerprint: []byte{0x01, 0x02}, IsPeer: true},
+				{Alias: "card", Fingerprint: []byte{0x03, 0x04}, IsPeer: false},
+			}}, nil
+		},
+	})
+
+	got, err := PeerNames(t.Context(), fixedSelector(path))
+	if err != nil {
+		t.Fatalf("PeerNames: %v", err)
+	}
+	want := []string{"web", "abcd", "0102"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("PeerNames = %q, want %q", got, want)
 	}
 }
 

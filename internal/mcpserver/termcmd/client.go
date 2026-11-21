@@ -242,6 +242,39 @@ func RunPeerDisconnect(ctx context.Context, sel Selector, broker string, w io.Wr
 	return err
 }
 
+// PeerNames returns the aliases and fingerprints of the paired Brokers. It
+// feeds the shell completion of a broker argument: a Broker known through the
+// directory but not paired contributes no candidate. The caller decides what a
+// failure means; this function writes nothing.
+func PeerNames(ctx context.Context, sel Selector) ([]string, error) {
+	client, closeConn, err := dial(ctx, sel)
+	if err != nil {
+		return nil, err
+	}
+	defer closeConn()
+
+	callCtx, cancel := context.WithTimeout(ctx, UnaryTimeout)
+	defer cancel()
+
+	resp, err := client.ListBrokers(callCtx, &localpb.ListBrokersRequest{})
+	if err != nil {
+		return nil, errors.New(Describe(err))
+	}
+	var names []string
+	for _, b := range resp.GetBrokers() {
+		if !b.GetIsPeer() {
+			continue
+		}
+		if alias := b.GetAlias(); alias != "" {
+			names = append(names, alias)
+		}
+		if fingerprint := fingerprintHex(b.GetFingerprint()); fingerprint != "" {
+			names = append(names, fingerprint)
+		}
+	}
+	return names, nil
+}
+
 // ApplyUpdateResult is the outcome of the Broker's ApplyUpdate RPC.
 type ApplyUpdateResult struct {
 	FromVersion string

@@ -97,7 +97,8 @@ type deps struct {
 
 	// Broker configuration and pairing commands. The Broker is selected the
 	// same way status and audit select it; warn carries the warnings of a
-	// successful peer connect.
+	// successful broker connect. peerNames supplies the disconnect completion
+	// candidates: the aliases and fingerprints of the paired Brokers.
 	runConfigGet        func(ctx context.Context, key string, stdout io.Writer) error
 	runConfigSet        func(ctx context.Context, key, value string, stdout io.Writer) error
 	runSetOnline        func(ctx context.Context, online bool, stdout io.Writer) error
@@ -105,6 +106,7 @@ type deps struct {
 	runPeerList         func(ctx context.Context, stdout io.Writer) error
 	runPeerConnect      func(ctx context.Context, address, key, alias string, stdout, warn io.Writer) error
 	runPeerDisconnect   func(ctx context.Context, broker string, stdout io.Writer) error
+	peerNames           func(ctx context.Context) ([]string, error)
 
 	// Update command. The command asks the selected Broker to install the
 	// newest release itself. When that Broker is this account's user-level

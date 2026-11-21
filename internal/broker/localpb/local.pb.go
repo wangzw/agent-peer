@@ -1746,14 +1746,14 @@ func (x *ListBrokersResponse) GetLocal() *LocalBrokerState {
 	return nil
 }
 
-// LocalBrokerState is what list_brokers and peer list show about the Broker
+// LocalBrokerState is what list_brokers and broker list show about the Broker
 // that answers, as opposed to its peers.
 type LocalBrokerState struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// offline is the value of broker.offline.
 	Offline bool `protobuf:"varint,1,opt,name=offline,proto3" json:"offline,omitempty"`
 	// degraded is unset unless the Broker runs degraded; it then holds the same
-	// value as StatusResponse.degraded, so peer list can print the Fix line.
+	// value as StatusResponse.degraded, so broker list can print the Fix line.
 	Degraded      *DegradedState `protobuf:"bytes,2,opt,name=degraded,proto3" json:"degraded,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

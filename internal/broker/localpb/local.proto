@@ -161,13 +161,13 @@ message ListBrokersResponse {
   LocalBrokerState local = 2;
 }
 
-// LocalBrokerState is what list_brokers and peer list show about the Broker
+// LocalBrokerState is what list_brokers and broker list show about the Broker
 // that answers, as opposed to its peers.
 message LocalBrokerState {
   // offline is the value of broker.offline.
   bool offline = 1;
   // degraded is unset unless the Broker runs degraded; it then holds the same
-  // value as StatusResponse.degraded, so peer list can print the Fix line.
+  // value as StatusResponse.degraded, so broker list can print the Fix line.
   DegradedState degraded = 2;
 }
 

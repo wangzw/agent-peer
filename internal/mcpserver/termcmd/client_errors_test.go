@@ -69,7 +69,7 @@ func TestRunCommandsReturnBrokerErrorsWithoutOutput(t *testing.T) {
 			},
 		},
 		{
-			name: "pairing-key create",
+			name: "key create",
 			handlers: func(err error) fakelocal.Handlers {
 				return fakelocal.Handlers{CreatePairingKey: func(context.Context, *localpb.CreatePairingKeyRequest) (*localpb.CreatePairingKeyResponse, error) {
 					return nil, err
@@ -80,7 +80,7 @@ func TestRunCommandsReturnBrokerErrorsWithoutOutput(t *testing.T) {
 			},
 		},
 		{
-			name: "peer list",
+			name: "broker list",
 			handlers: func(err error) fakelocal.Handlers {
 				return fakelocal.Handlers{ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
 					return nil, err
@@ -91,7 +91,7 @@ func TestRunCommandsReturnBrokerErrorsWithoutOutput(t *testing.T) {
 			},
 		},
 		{
-			name: "peer connect",
+			name: "broker connect",
 			handlers: func(err error) fakelocal.Handlers {
 				return fakelocal.Handlers{Connect: func(context.Context, *localpb.ConnectRequest) (*localpb.ConnectResponse, error) {
 					return nil, err

@@ -45,17 +45,17 @@ At least one of the two hosts must be able to reach port 17443 on the other. On 
 With a user-level Broker:
 
 ```sh
-peers pairing-key create
-peers peer connect <address> --key <key>
-peers peer list
+peers key create
+peers broker connect <address> --key <key>
+peers broker list
 ```
 
 With a system-level Broker, run the same commands with `sudo`:
 
 ```sh
-sudo peers pairing-key create
-sudo peers peer connect <address> --key <key>
-sudo peers peer list
+sudo peers key create
+sudo peers broker connect <address> --key <key>
+sudo peers broker list
 ```
 
 An administrator account that runs no user-level Broker can run them without `sudo`; the command then selects the system-level Broker. An account that also runs a user-level Broker uses `sudo` to reach the system-level Broker.
