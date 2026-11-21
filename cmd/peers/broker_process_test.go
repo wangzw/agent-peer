@@ -28,17 +28,6 @@ func dialBroker(t *testing.T, addr string) {
 	_ = conn.Close()
 }
 
-// assertDialFails fails the test when something accepts connections on addr.
-func assertDialFails(t *testing.T, addr string) {
-	t.Helper()
-
-	conn, err := net.DialTimeout("tcp", addr, time.Second)
-	if err == nil {
-		_ = conn.Close()
-		t.Fatalf("dial %s succeeded, want the address to stay unbound", addr)
-	}
-}
-
 // waitBrokerStarted polls until the child writes its broker_started record.
 // The record is written in Step 10 of Run in run.go, after the account lock
 // and both listeners are in place, so it means the Broker is serving this
@@ -198,13 +187,17 @@ func TestBrokerSecondInstanceFailsWithAnotherListenAddress(t *testing.T) {
 	sb := newSandbox(t)
 	first, firstPort := startBrokerTerminalOnFreePort(t, sb)
 
-	// Pick the second address while the first Broker holds its own port, so
-	// the two addresses differ. The first Broker is ready only after its
-	// broker_started record, which it writes once the account lock is held, so
-	// the second instance fails on the lock before it binds. A port taken by
-	// another process therefore cannot change its exit code, and this start
-	// needs no retry.
-	secondPort := freePort(t)
+	// Ask for a different address and hold it for the rest of the test, so it
+	// is provably not the first Broker's and not bindable by anyone else. The
+	// first Broker is ready only after its broker_started record, which it
+	// writes once the account lock is held, so the second instance must fail on
+	// the lock before it binds. The held address makes that observable: a
+	// Broker that bound before taking the lock would exit with
+	// exitListenUnavailable, while this one exits with exitAlreadyRunning.
+	//
+	// A freePort released here would instead be free for another parallel test
+	// to take before the assertion, which is what made this test flaky.
+	secondPort, _ := occupiedPort(t)
 
 	second := startBrokerTerminal(t, sb, "--listen", listenAddr(secondPort))
 	if code := second.wait(3 * time.Second); code != exitAlreadyRunning {
@@ -214,7 +207,6 @@ func TestBrokerSecondInstanceFailsWithAnotherListenAddress(t *testing.T) {
 	if !strings.Contains(reason, "already running") {
 		t.Fatalf("second stderr line = %q, want it to contain %q", reason, "already running")
 	}
-	assertDialFails(t, listenAddr(secondPort))
 
 	if err := first.cmd.Process.Signal(syscall.Signal(0)); err != nil {
 		t.Fatalf("first broker is not running after the second failed: %v", err)
