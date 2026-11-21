@@ -108,6 +108,30 @@ rs_snap() {
 	tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" >"$OUT/$file"
 }
 
+# rs_grep_status prints grep's exit status for a search over the pane text: 0
+# when it matched, 1 when it did not, and 2 or more when it could not run.
+# Callers that draw a conclusion from the result branch on this status instead
+# of on grep's truthiness, because a search that could not run says nothing
+# about the pane.
+#
+# The pane goes through process substitution so the status is grep's own. A
+# plain "printf ... | grep -q" under pipefail reports the writer's SIGPIPE
+# instead whenever the pane has content after the matching line: bash's printf
+# writes line by line, grep -q exits as soon as it matches, and the next write
+# fails with EPIPE and kills printf with SIGPIPE, so the pipeline returns 141
+# even though grep matched. That is what left the trust dialog unanswered with
+# "rc=2 sends=0"; it does not need a large pane, only content after the match.
+# The callers' retry on grep's exit 2 remains as a defense against a search
+# that could not run, but it is not the cause of that failure.
+#
+# Usage: rs_grep_status PANE GREP_ARG...
+rs_grep_status() {
+	local pane="$1" st=0
+	shift
+	grep "$@" < <(printf '%s\n' "$pane") || st=$?
+	printf '%s\n' "$st"
+}
+
 # rs_wait_pane polls the pane until the extended regular expression matches.
 rs_wait_pane() {
 	local window="$1" pattern="$2" seconds="$3"
@@ -115,7 +139,7 @@ rs_wait_pane() {
 	local pane=""
 	while ((SECONDS < deadline)); do
 		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if printf '%s\n' "$pane" | grep -qE -- "$pattern"; then
+		if [[ "$(rs_grep_status "$pane" -qE -- "$pattern")" == 0 ]]; then
 			return 0
 		fi
 		sleep 0.2
@@ -132,7 +156,7 @@ rs_wait_pane_literal() {
 	local deadline=$((SECONDS + seconds)) pane=""
 	while ((SECONDS < deadline)); do
 		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if printf '%s\n' "$pane" | grep -qF -- "$text"; then
+		if [[ "$(rs_grep_status "$pane" -qF -- "$text")" == 0 ]]; then
 			return 0
 		fi
 		sleep 0.1
@@ -148,17 +172,22 @@ rs_wait_pane_literal() {
 # mode" take turns, so either can be absent while the session is idle.
 rs_wait_turn_idle() {
 	local window="$1" seconds="$2"
-	local deadline=$((SECONDS + seconds)) pane="" quiet=0
+	local deadline=$((SECONDS + seconds)) pane="" quiet=0 st=0
 	while ((SECONDS < deadline)); do
 		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if printf '%s\n' "$pane" | grep -qF -- 'esc to interrupt'; then
-			quiet=0
-		else
+		st="$(rs_grep_status "$pane" -qF -- 'esc to interrupt')"
+		case "$st" in
+		0) quiet=0 ;;
+		1)
 			quiet=$((quiet + 1))
 			if ((quiet >= 5)); then
 				return 0
 			fi
-		fi
+			;;
+		# The search could not run: this poll is no evidence of a quiet
+		# turn, so the run of quiet polls restarts rather than counting it.
+		*) quiet=0 ;;
+		esac
 		sleep 0.2
 	done
 	return 1
@@ -634,19 +663,24 @@ RS_READY_DIALOG_RE='Quick safety check|Yes, I trust this folder|Do you trust the
 # starts with Try ". A bare "❯" is not a criterion: it is visible behind a
 # dialog as well.
 rs_ready_criterion() {
-	local pane="$1"
-	if printf '%s\n' "$pane" | grep -qiE -- "$RS_READY_DIALOG_RE"; then
-		return 1
-	fi
-	if printf '%s\n' "$pane" | grep -qF -- '? for shortcuts'; then
+	local pane="$1" st=0
+	st="$(rs_grep_status "$pane" -qiE -- "$RS_READY_DIALOG_RE")"
+	case "$st" in
+	0) return 1 ;;
+	1) ;;
+	# The search could not run, so a dialog cannot be ruled out; call the
+	# pane not ready rather than ready over a screen it could not inspect.
+	*) return 1 ;;
+	esac
+	if [[ "$(rs_grep_status "$pane" -qF -- '? for shortcuts')" == 0 ]]; then
 		printf '%s\n' '? for shortcuts'
 		return 0
 	fi
-	if printf '%s\n' "$pane" | grep -qF -- "(shift+tab to cycle)"; then
+	if [[ "$(rs_grep_status "$pane" -qF -- "(shift+tab to cycle)")" == 0 ]]; then
 		printf '%s\n' "(shift+tab to cycle)"
 		return 0
 	fi
-	if printf '%s\n' "$pane" | grep -qF -- 'Try "'; then
+	if [[ "$(rs_grep_status "$pane" -qF -- 'Try "')" == 0 ]]; then
 		printf '%s\n' 'Try " placeholder'
 		return 0
 	fi
@@ -670,24 +704,43 @@ RS_TRUST_DIALOG_RESEND_BUDGET=10
 # shown in the pane, and returns 0. It returns 2 without pressing anything when
 # the dialog is on screen but neither known option carries the cursor: another
 # screen may be underneath, and a blind Enter could confirm the wrong choice.
+# It returns 3 when a search over the pane could not run: the cursor is then
+# unknown, not absent, and the caller retries instead of refusing the dialog.
+# That retry is a defense against a search that could not run; it is not the
+# cause of the broken-pipe failure above.
 # It is separate from rs_wait_ready so the key choice can be tested without a
 # tmux server.
+#
+# The pane is searched through rs_grep_status so the answer comes from grep's
+# own status. Under pipefail a plain "printf ... | grep -q" reports the
+# writer's SIGPIPE instead: printf keeps writing after grep -q exits on the
+# match, the failed write kills printf, and the pipeline returns 141 as if the
+# option were absent. That is what made this check return 2 without a key.
 #
 # The dialog focuses "No, exit" when the probe root resolves through a symlink,
 # which /tmp does on macOS (/private/tmp); Enter alone would then end the
 # session. The cursor moves to the trust entry only when the marker sits on the
 # refusal, so the Linux behavior is unchanged.
 rs_accept_trust_dialog() {
-	local window="$1" pane="$2"
-	if printf '%s\n' "$pane" | grep -qF -- '❯ No, exit'; then
+	local window="$1" pane="$2" st=0
+	st="$(rs_grep_status "$pane" -qF -- '❯ No, exit')"
+	case "$st" in
+	0)
 		rs_keys "$window" Down Enter
 		return 0
-	fi
-	if printf '%s\n' "$pane" | grep -qF -- '❯ Yes, I trust this folder'; then
+		;;
+	1) ;;
+	*) return 3 ;;
+	esac
+	st="$(rs_grep_status "$pane" -qF -- '❯ Yes, I trust this folder')"
+	case "$st" in
+	0)
 		rs_keys "$window" Enter
 		return 0
-	fi
-	return 2
+		;;
+	1) return 2 ;;
+	*) return 3 ;;
+	esac
 }
 
 # rs_dismiss_trust_dialog sends the trust keys until the dialog leaves the
@@ -712,8 +765,14 @@ rs_accept_trust_dialog() {
 # A capture that fails says nothing about the dialog, so its empty output is
 # not read as the dialog leaving. The capture is retried within the budget, and
 # success is reported only from a capture that succeeded and showed no dialog.
+# A search over the pane that could not run is treated the same way: it says
+# nothing about the dialog, so it is retried too, and neither "gone" nor an
+# unknown focus is reported from it. Only a search that ran and found no match
+# ends the wait successfully. That retry is a defense against a search that
+# could not run; the flake it was added with came from the writer's SIGPIPE,
+# not from grep's exit status.
 rs_dismiss_trust_dialog() {
-	local window="$1" seconds="${2:-$RS_TRUST_DIALOG_RESEND_BUDGET}" deadline pane="" sends=0 rc=0
+	local window="$1" seconds="${2:-$RS_TRUST_DIALOG_RESEND_BUDGET}" deadline pane="" sends=0 rc=0 st=0
 	deadline=$((SECONDS + seconds))
 	while :; do
 		if ! pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null)"; then
@@ -724,12 +783,29 @@ rs_dismiss_trust_dialog() {
 			sleep 0.5
 			continue
 		fi
-		if ! printf '%s\n' "$pane" | grep -qiE -- "$RS_TRUST_DIALOG_RE"; then
+		st="$(rs_grep_status "$pane" -qiE -- "$RS_TRUST_DIALOG_RE")"
+		if ((st >= 2)); then
+			if ((SECONDS >= deadline)); then
+				printf '%s\n' "$sends"
+				return 1
+			fi
+			sleep 0.5
+			continue
+		fi
+		if ((st == 1)); then
 			printf '%s\n' "$sends"
 			return 0
 		fi
 		rc=0
 		rs_accept_trust_dialog "$window" "$pane" || rc=$?
+		if ((rc == 3)); then
+			if ((SECONDS >= deadline)); then
+				printf '%s\n' "$sends"
+				return 1
+			fi
+			sleep 0.5
+			continue
+		fi
 		if ((rc == 2)); then
 			printf '%s\n' "$sends"
 			return 2
@@ -754,14 +830,14 @@ rs_wait_ready() {
 	local deadline=$((SECONDS + seconds)) pane="" criterion="" dialogs=0 dialog_bursts=0
 	while ((SECONDS < deadline)); do
 		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if printf '%s\n' "$pane" | grep -qF -- 'Yes, I accept'; then
+		if [[ "$(rs_grep_status "$pane" -qF -- 'Yes, I accept')" == 0 ]]; then
 			dialogs=$((dialogs + 1))
 			printf '%s\n' "$pane" >"$OUT/dialog-$window-$dialogs.txt"
 			rs_keys "$window" Down Enter
 			sleep 1
 			continue
 		fi
-		if printf '%s\n' "$pane" | grep -qiE -- "$RS_TRUST_DIALOG_RE"; then
+		if [[ "$(rs_grep_status "$pane" -qiE -- "$RS_TRUST_DIALOG_RE")" == 0 ]]; then
 			dialogs=$((dialogs + 1))
 			printf '%s\n' "$pane" >"$OUT/dialog-$window-$dialogs.txt"
 			rs_obs "$window: workspace trust dialog on screen; macOS resolves /tmp to /private/tmp and Claude Code keys trust by the resolved path, so an entry written for the literal path can miss"
@@ -826,11 +902,14 @@ rs_obs_mode() {
 # readiness criteria alone would not exclude.
 rs_pane_idle() {
 	local window="$1" seconds="$2"
-	local deadline=$((SECONDS + seconds)) pane=""
+	local deadline=$((SECONDS + seconds)) pane="" st=0
 	while ((SECONDS < deadline)); do
 		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if ! printf '%s\n' "$pane" | grep -qF -- 'esc to interrupt' &&
-			rs_ready_criterion "$pane" >/dev/null; then
+		st="$(rs_grep_status "$pane" -qF -- 'esc to interrupt')"
+		# Only a search that ran and found the hint absent, together with a
+		# ready composer, means idle. A hint that matched (0) or a search
+		# that could not run (2 or more) says the turn may be running.
+		if ((st == 1)) && rs_ready_criterion "$pane" >/dev/null; then
 			return 0
 		fi
 		sleep 0.5

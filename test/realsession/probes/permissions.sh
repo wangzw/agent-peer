@@ -73,7 +73,7 @@ perm_run_turn() {
 	while ((SECONDS < deadline)); do
 		now=$SECONDS
 		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if printf '%s\n' "$pane" | grep -qE -- "$dialog_pattern"; then
+		if [[ "$(rs_grep_status "$pane" -qE -- "$dialog_pattern")" == 0 ]]; then
 			PERM_DIALOGS=$((PERM_DIALOGS + 1))
 			printf '%s\n' "$pane" >"$OUT/$window-dialog-$PERM_DIALOGS.txt"
 			rs_keys "$window" Escape
@@ -81,7 +81,7 @@ perm_run_turn() {
 			sleep 3
 			continue
 		fi
-		if printf '%s\n' "$pane" | grep -qF 'esc to interrupt'; then
+		if [[ "$(rs_grep_status "$pane" -qF 'esc to interrupt')" == 0 ]]; then
 			started=1
 			sleep 0.3
 			continue

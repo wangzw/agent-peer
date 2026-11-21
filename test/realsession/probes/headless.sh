@@ -116,7 +116,7 @@ fi
 
 list_reply="$(rs_call hl-rx list_agents '{}')"
 printf '%s\n' "$list_reply" >"$OUT/hl-list-agents.txt"
-if ! printf '%s\n' "$list_reply" | grep -qF -- 'hl@hostB'; then
+if [[ "$(rs_grep_status "$list_reply" -qF -- 'hl@hostB')" != 0 ]]; then
 	rs_obs "list_agents did not show hl@hostB"
 	exec 3>&-
 	stop_headless "$hl_pid"

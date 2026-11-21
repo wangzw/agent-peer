@@ -323,7 +323,7 @@ wait_hold_or_record() {
 	local deadline=$((SECONDS + seconds)) pane
 	while ((SECONDS < deadline)); do
 		pane="$(tmux -L "$TMUX_SERVER" capture-pane -p -t "$window" 2>/dev/null || true)"
-		if printf '%s\n' "$pane" | grep -qF -- "$HANDSHAKE_TITLE"; then
+		if [[ "$(rs_grep_status "$pane" -qF -- "$HANDSHAKE_TITLE")" == 0 ]]; then
 			printf 'held\n'
 			return 0
 		fi

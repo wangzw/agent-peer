@@ -617,6 +617,73 @@ func TestRsAcceptTrustDialogChoosesTheFocusableEntry(t *testing.T) {
 	}
 }
 
+// TestRsAcceptTrustDialogSurvivesABrokenPipe checks that the focus search is
+// read from grep's own status when the pane writer gets SIGPIPE. bash's printf
+// writes the pane line by line; grep -q exits as soon as it matches, and while
+// the pane still has content to send the next write fails with EPIPE and kills
+// printf with SIGPIPE. Under pipefail a plain "printf ... | grep -q" then
+// returns 141, not grep's 0, and the trust dialog was left unanswered with
+// "rc=2 sends=0". This pane is about 1MB, far beyond the pipe buffer, and puts
+// the focused refusal on its first line, so the writer always has content left
+// when grep exits. No write delay or strace is needed, so the test also runs on
+// macOS. The injected-exit-2 tests cover a search that could not run; this one
+// covers the broken pipe they cannot produce.
+func TestRsAcceptTrustDialogSurvivesABrokenPipe(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	record := filepath.Join(root, "keys.txt")
+	stub := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + record + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(stub), 0o755); err != nil {
+		t.Fatalf("writing the tmux stub: %v", err)
+	}
+
+	// The focused refusal is on the first line, so grep -q matches in its
+	// first read. The padding is about 1MB, far beyond the 64KB pipe buffer,
+	// so printf still holds content when grep exits and its next write breaks.
+	var pane strings.Builder
+	pane.WriteString("Quick safety check\n ❯ No, exit\n   Yes, I trust this folder\n")
+	for pane.Len() < 1<<20 {
+		pane.WriteString("filler line that carries neither known option\n")
+	}
+	panePath := filepath.Join(root, "pane.txt")
+	if err := os.WriteFile(panePath, []byte(pane.String()), 0o644); err != nil {
+		t.Fatalf("writing the pane: %v", err)
+	}
+
+	// The pane is read from a file instead of passed as an argument, so the
+	// fixture stays under the command-line size limit on macOS.
+	cmd := exec.Command("bash", "-c", `source "$1"; pane="$(cat "$2")"; rc=0; rs_accept_trust_dialog w "$pane" || rc=$?; printf 'rc=%s\n' "$rc"`, "bash", lib, panePath)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=selftest",
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("calling rs_accept_trust_dialog: %v\n%s", err, out)
+	}
+	if got, want := strings.TrimSpace(string(out)), "rc=0"; got != want {
+		t.Fatalf("rs_accept_trust_dialog = %q, want %q; the writer's broken pipe must not hide grep's match", got, want)
+	}
+
+	data, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("reading the recorded keys: %v", err)
+	}
+	want := "-L peers-rs send-keys -t w Down Enter\n"
+	if got := string(data); got != want {
+		t.Errorf("keys sent = %q, want one Down Enter burst for the focused refusal", got)
+	}
+}
+
 // TestRsDismissTrustDialogResendsWhenTheFirstBurstIsDropped checks the retry
 // around the trust dialog. Claude Code draws the dialog before it reads keys,
 // so a burst sent right after the first capture can be discarded and the next
@@ -908,6 +975,288 @@ esac
 			t.Errorf("the helper pressed keys without a successful capture: %q", data)
 		}
 	})
+}
+
+// realGrepPath returns the absolute path of the grep on PATH, so a stub can
+// delegate to it after failing a chosen search.
+func realGrepPath(t *testing.T) string {
+	t.Helper()
+	path, err := exec.LookPath("grep")
+	if err != nil {
+		t.Fatalf("finding grep: %v", err)
+	}
+	return path
+}
+
+// TestRsDismissTrustDialogRetriesWhenTheFocusCheckFails checks that a search
+// that could not run is not read as an unknown focus. grep exits 2 when it
+// cannot run, and under a loaded runner that failure made the helper report
+// "rc=2 sends=0" without pressing any key, so the wait ended before the dialog
+// was answered. A failed search says nothing about the cursor: the helper must
+// retry within its budget, and a later search that runs must still dismiss the
+// dialog with one burst.
+func TestRsDismissTrustDialogRetriesWhenTheFocusCheckFails(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	record := filepath.Join(root, "keys.txt")
+	sends := filepath.Join(root, "sends")
+	// The dialog leaves only after a burst reaches the pane, so a retry that
+	// presses nothing still sees the dialog on its next capture.
+	tmuxStub := `#!/bin/sh
+case "$3" in
+capture-pane)
+	if [ "$(cat '` + sends + `' 2>/dev/null || echo 0)" -eq 0 ]; then
+		printf 'Quick safety check\n ❯ No, exit\n   Yes, I trust this folder\n'
+	else
+		printf '❯ \n'
+	fi
+	;;
+send-keys)
+	printf '%s\n' "$*" >> '` + record + `'
+	n=$(cat '` + sends + `' 2>/dev/null || echo 0)
+	printf '%s' "$((n + 1))" > '` + sends + `'
+	;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(tmuxStub), 0o755); err != nil {
+		t.Fatalf("writing the tmux stub: %v", err)
+	}
+	// Fail the first focus search with grep's "could not run" status and run
+	// every other search for real.
+	marker := filepath.Join(root, "failed-once")
+	grepStub := `#!/bin/sh
+if [ "$1" = "-qF" ] && [ ! -e '` + marker + `' ]; then
+	: > '` + marker + `'
+	exit 2
+fi
+exec '` + realGrepPath(t) + `' "$@"
+`
+	if err := os.WriteFile(filepath.Join(bin, "grep"), []byte(grepStub), 0o755); err != nil {
+		t.Fatalf("writing the grep stub: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-c", `source "$1"; rc=0; bursts="$(rs_dismiss_trust_dialog w 5)" || rc=$?; printf 'rc=%s sends=%s\n' "$rc" "$bursts"`, "bash", lib)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=selftest",
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("calling rs_dismiss_trust_dialog: %v\n%s", err, out)
+	}
+	if got, want := strings.TrimSpace(string(out)), "rc=0 sends=1"; got != want {
+		t.Fatalf("rs_dismiss_trust_dialog = %q, want %q; a search that could not run must not end the wait", got, want)
+	}
+
+	data, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatalf("reading the recorded keys: %v", err)
+	}
+	want := "-L peers-rs send-keys -t w Down Enter\n"
+	if got := string(data); got != want {
+		t.Errorf("keys sent = %q, want one Down Enter burst after the search recovered", got)
+	}
+}
+
+// TestRsAcceptTrustDialogRetriesWhenTheFocusSearchFails checks the contract a
+// failed search gets from rs_accept_trust_dialog: 3, meaning the cursor is
+// unknown and the caller must retry, not 2, which would tell the caller the
+// dialog carries no known focus and stop it from pressing any key.
+func TestRsAcceptTrustDialogRetriesWhenTheFocusSearchFails(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	record := filepath.Join(root, "keys.txt")
+	tmuxStub := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + record + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(tmuxStub), 0o755); err != nil {
+		t.Fatalf("writing the tmux stub: %v", err)
+	}
+	grepStub := `#!/bin/sh
+if [ "$1" = "-qF" ]; then
+	exit 2
+fi
+exec '` + realGrepPath(t) + `' "$@"
+`
+	if err := os.WriteFile(filepath.Join(bin, "grep"), []byte(grepStub), 0o755); err != nil {
+		t.Fatalf("writing the grep stub: %v", err)
+	}
+
+	script := `source "$1"; rc=0; rs_accept_trust_dialog w "$2" || rc=$?; printf 'rc=%s\n' "$rc"`
+	pane := "Quick safety check\n ❯ No, exit\n   Yes, I trust this folder\n"
+	cmd := exec.Command("bash", "-c", script, "bash", lib, pane)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=selftest",
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("calling rs_accept_trust_dialog: %v\n%s", err, out)
+	}
+	if got, want := strings.TrimSpace(string(out)), "rc=3"; got != want {
+		t.Fatalf("rs_accept_trust_dialog = %q, want %q; a failed search is not an unknown focus", got, want)
+	}
+	if data, err := os.ReadFile(record); err == nil && len(data) > 0 {
+		t.Errorf("the helper pressed keys from a failed search: %q", data)
+	}
+}
+
+// TestRsWaitTurnIdleDoesNotCountAFailedSearchAsQuiet checks that a search that
+// could not run is not counted as a quiet poll. Five such polls used to add up
+// to an idle verdict about a pane the helper had never inspected.
+func TestRsWaitTurnIdleDoesNotCountAFailedSearchAsQuiet(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	tmuxStub := `#!/bin/sh
+case "$3" in
+capture-pane)
+	printf '❯ \n'
+	;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(tmuxStub), 0o755); err != nil {
+		t.Fatalf("writing the tmux stub: %v", err)
+	}
+	grepStub := `#!/bin/sh
+if [ "$1" = "-qF" ]; then
+	exit 2
+fi
+exec '` + realGrepPath(t) + `' "$@"
+`
+	if err := os.WriteFile(filepath.Join(bin, "grep"), []byte(grepStub), 0o755); err != nil {
+		t.Fatalf("writing the grep stub: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-c", `source "$1"; rc=0; rs_wait_turn_idle w 2 || rc=$?; printf 'rc=%s\n' "$rc"`, "bash", lib)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=selftest",
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("calling rs_wait_turn_idle: %v\n%s", err, out)
+	}
+	if got, want := strings.TrimSpace(string(out)), "rc=1"; got != want {
+		t.Fatalf("rs_wait_turn_idle = %q, want %q; a search that could not run is not evidence of a quiet turn", got, want)
+	}
+}
+
+// TestRsReadyCriterionDoesNotTrustAFailedDialogSearch checks that a pane is
+// not called ready when the search that rules out a dialog could not run. The
+// guard used to fall through on a failed search, so a criterion visible behind
+// a dialog it never inspected could end the wait as ready.
+func TestRsReadyCriterionDoesNotTrustAFailedDialogSearch(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	grepStub := `#!/bin/sh
+if [ "$1" = "-qiE" ]; then
+	exit 2
+fi
+exec '` + realGrepPath(t) + `' "$@"
+`
+	if err := os.WriteFile(filepath.Join(bin, "grep"), []byte(grepStub), 0o755); err != nil {
+		t.Fatalf("writing the grep stub: %v", err)
+	}
+
+	script := `source "$1"; rc=0; out="$(rs_ready_criterion "$2")" || rc=$?; printf 'rc=%s out=%s\n' "$rc" "$out"`
+	pane := "Yes, I trust this folder\n? for shortcuts\n"
+	cmd := exec.Command("bash", "-c", script, "bash", lib, pane)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=selftest",
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("calling rs_ready_criterion: %v\n%s", err, out)
+	}
+	if got, want := strings.TrimSpace(string(out)), "rc=1 out="; got != want {
+		t.Fatalf("rs_ready_criterion = %q, want %q; a pane could not be called ready when its dialog search could not run", got, want)
+	}
+}
+
+// TestRsPaneIdleDoesNotTrustAFailedTurnSearch checks that a pane is not called
+// idle when the search for the running-turn hint could not run. The retry
+// around that search must not turn a failed check into an idle verdict.
+func TestRsPaneIdleDoesNotTrustAFailedTurnSearch(t *testing.T) {
+	lib, err := filepath.Abs(filepath.Join(probeScriptsDir, "lib.sh"))
+	if err != nil {
+		t.Fatalf("resolving the lib.sh path: %v", err)
+	}
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("creating the stub directory: %v", err)
+	}
+	tmuxStub := `#!/bin/sh
+case "$3" in
+capture-pane)
+	printf 'esc to interrupt\nTry "\n'
+	;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "tmux"), []byte(tmuxStub), 0o755); err != nil {
+		t.Fatalf("writing the tmux stub: %v", err)
+	}
+	grepStub := `#!/bin/sh
+for a in "$@"; do
+	if [ "$a" = "esc to interrupt" ]; then
+		exit 2
+	fi
+done
+exec '` + realGrepPath(t) + `' "$@"
+`
+	if err := os.WriteFile(filepath.Join(bin, "grep"), []byte(grepStub), 0o755); err != nil {
+		t.Fatalf("writing the grep stub: %v", err)
+	}
+
+	cmd := exec.Command("bash", "-c", `source "$1"; rc=0; rs_pane_idle w 1 || rc=$?; printf 'rc=%s\n' "$rc"`, "bash", lib)
+	cmd.Dir = root
+	cmd.Env = []string{
+		"R=" + root,
+		"PROBE=selftest",
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("calling rs_pane_idle: %v\n%s", err, out)
+	}
+	if got, want := strings.TrimSpace(string(out)), "rc=1"; got != want {
+		t.Fatalf("rs_pane_idle = %q, want %q; a search that could not run is not evidence that the turn ended", got, want)
+	}
 }
 
 // TestRsDismissTrustDialogRefusesAnUnknownFocus checks that a recognized
