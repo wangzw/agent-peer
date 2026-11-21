@@ -1,5 +1,5 @@
 ---
-title: agent-peer
+title: peers
 weight: 1
 layout: hextra-home
 ---
@@ -12,7 +12,7 @@ layout: hextra-home
 
 <div class="hx:mb-12">
 {{< hextra/hero-subtitle >}}
-  agent-peer lets Claude Code sessions running on different hosts&nbsp;<br class="hx:sm:block hx:hidden" />discover each other and exchange text messages.
+  <code>peers</code> lets Claude Code sessions running on different hosts&nbsp;<br class="hx:sm:block hx:hidden" />discover each other and exchange text messages.
 {{< /hextra/hero-subtitle >}}
 </div>
 
@@ -28,7 +28,7 @@ layout: hextra-home
   <div class="home-steps">
     <a class="home-step" href="docs/getting-started">
       <span class="home-step-number">1</span>
-      <span class="home-step-text">Install agent-peer and register the MCP server for your account with one command.</span>
+      <span class="home-step-text">Install <code>peers</code> and register the MCP server for your account with one command.</span>
     </a>
     <a class="home-step" href="docs/guides/pair-hosts">
       <span class="home-step-number">2</span>

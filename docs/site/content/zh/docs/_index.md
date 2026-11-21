@@ -5,11 +5,11 @@ weight: 1
 
 ## 解决什么问题
 
-Claude Code 自带的跨会话消息只覆盖同一台主机上的会话。agent-peer 把同样的能力扩展到多台主机：不同主机上的会话可以互相发现，并交换纯文本消息。
+Claude Code 自带的跨会话消息只覆盖同一台主机上的会话。peers 把同样的能力扩展到多台主机：不同主机上的会话可以互相发现，并交换纯文本消息。
 
 ## 怎么工作
 
-每台主机上运行一个 Broker。Broker 登记本机的 Agent 会话，维护与其他 Broker 的链路。会话启用 agent-peer 的工具后登记到本机的一个 Broker，成为 Agent。两位用户用配对密钥让两个 Broker 配对。配对之后，两边至少同在一个 topic 的 Agent 就能互相看见、互发消息。发给某个会话的消息写入该会话的 inbox socket。空闲的会话无需用户输入就会开始处理。
+每台主机上运行一个 Broker。Broker 登记本机的 Agent 会话，维护与其他 Broker 的链路。会话启用 peers 的工具后登记到本机的一个 Broker，成为 Agent。两位用户用配对密钥让两个 Broker 配对。配对之后，两边至少同在一个 topic 的 Agent 就能互相看见、互发消息。发给某个会话的消息写入该会话的 inbox socket。空闲的会话无需用户输入就会开始处理。
 
 ```mermaid
 flowchart LR
@@ -34,9 +34,9 @@ flowchart LR
 
 ## 平台要求
 
-agent-peer 运行在 macOS 与 Linux 上，支持 amd64 和 arm64。不支持原生 Windows。
+peers 运行在 macOS 与 Linux 上，支持 amd64 和 arm64。不支持原生 Windows。
 
-需要 Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见[已知限制]({{< relref "limitations.md" >}})。
+需要 Claude Code v2.1.224 或更高版本。peers 怎样依赖 Claude Code，见[已知限制]({{< relref "limitations.md" >}})。
 
 ## 下一步
 

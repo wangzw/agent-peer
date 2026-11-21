@@ -14,7 +14,7 @@ topic 决定谁能看见谁。两个 Agent 至少同在一个 topic，并且位�
 
 ## 找到对方 Agent
 
-在每台主机的工作区里启动一个会话，启用 agent-peer 工具。给两个会话起不同的名字；会话名会成为 Agent 名。
+在每台主机的工作区里启动一个会话，启用 peers 工具。给两个会话起不同的名字；会话名会成为 Agent 名。
 
 项目配置文件没有声明 topic 时，两个会话都会加入该仓库的默认 topic。topic 取自 git `origin` 地址，规范化为小写主机名加仓库路径：`git@github.com:org/repo.git`、`ssh://git@GitHub.com:22/org/repo.git` 和 `https://github.com/org/repo` 都会变成 `github.com/org/repo`。
 
@@ -22,7 +22,7 @@ topic 决定谁能看见谁。两个 Agent 至少同在一个 topic，并且位�
 
 ## 在项目里指定 topic
 
-要给项目固定一组 topic，可以在工作目录或上层目录提交一个 `.agent-peer.yaml`：
+要给项目固定一组 topic，可以在工作目录或上层目录提交一个 `.peers.yaml`：
 
 ```yaml
 topics:
@@ -40,6 +40,6 @@ topics:
 
 ## 没有共同 topic 时
 
-两个工作区的 `origin` 地址不同时，两个 Agent 不会出现在对方的列表里。经 agent-peer 之外的途径从另一位用户那里得知 topic 名，然后说“加入 topic `<topic-name>`。”（模型会调用 `join_topic`）。这个调用不需要任何其他 Agent 或用户批准。
+两个工作区的 `origin` 地址不同时，两个 Agent 不会出现在对方的列表里。经 peers 之外的途径从另一位用户那里得知 topic 名，然后说“加入 topic `<topic-name>`。”（模型会调用 `join_topic`）。这个调用不需要任何其他 Agent 或用户批准。
 
 `list_topics` 显示本会话已加入的 topic 和本 Broker 知道的公开 topic；`leave_topic` 用于退出。不带名字调用 `join_topic` 或 `leave_topic` 时，作用于本会话的全部默认 topic，见 [topic]({{< relref "/docs/concepts/topics" >}})。不属于任何 topic 的 Agent 不会出现在任何其他 Agent 的列表里。

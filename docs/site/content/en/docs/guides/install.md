@@ -1,21 +1,21 @@
 ---
-title: Install agent-peer
-linkTitle: Install agent-peer
+title: Install
+linkTitle: Install
 weight: 1
 ---
 
-This guide covers the install level, installing a particular version, installing from the release archive, the install script's options, the installation output, install failures, manual installation and building from source. [Getting Started]({{< relref "/docs/getting-started" >}}) gives the one-command installation; to keep an installation up to date with `agent-peer update`, see [Update agent-peer]({{< relref "update.md" >}}).
+This guide covers the install level, installing a particular version, installing from the release archive, the install script's options, the installation output, install failures, manual installation and building from source. [Getting Started]({{< relref "/docs/getting-started" >}}) gives the one-command installation; to keep an installation up to date with `peers update`, see [Update `peers`]({{< relref "update.md" >}}).
 
 ## Choose the install level
 
-The one-command installation and the release archive's `sh ./install.sh` install either level. Run as root, the script installs system-wide without asking. Any other account with a terminal and no option that names the level is asked `Install system-wide (all accounts)? [y/N]`: `y` installs system-wide through `sudo`, and any other answer installs for that account. Without a terminal, a non-root account gets a user-level installation. When the host already has a system-level service, the question becomes `Upgrade the system-wide installation? [Y/n]`: pressing Enter or answering y upgrades the system-level installation, and answering n leaves the host unchanged, exits with code 0 and suggests `--user`. `--system` and `--user` skip the question; giving both is a usage error, and `--user` as root is refused with a message to drop it. If `sudo` is not available after a `y` answer, the script fails with `a system-level install needs sudo, which was not found; install sudo, or pass --user for a user-level install`.
+The one-command installation and the release archive's `sh ./install.sh` install either level. Run as root, the script installs at the system level without asking. Any other account with a terminal and no option that names the level is asked `Install for every account on this host? [y/N]`: `y` installs at the system level through `sudo`, and any other answer installs for that account. Without a terminal, a non-root account gets a user-level installation. When the host already has a system-level service, the question becomes `Upgrade the system-level installation? [Y/n]`: pressing Enter or answering y upgrades the system-level installation, and answering n leaves the host unchanged, exits with code 0 and suggests `--user`. `--system` and `--user` skip the question; giving both is a usage error, and `--user` as root is refused with a message to drop it. If `sudo` is not available after a `y` answer, the script fails with `a system-level install needs sudo, which was not found; install sudo, or pass --user for a user-level install`.
 
 ## Install with one command
 
 To install a particular version, set it first and pass `--version`:
 
 ```sh
-VERSION=0.3.0
+VERSION=0.4.0
 curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh -s -- --version "$VERSION"
 ```
 
@@ -36,11 +36,11 @@ The script does the same work as the `install.sh` in the archive, described in t
 
 ## Install from the release archive
 
-agent-peer is distributed as a `tar.gz` archive on [GitHub Releases](https://github.com/wangzw/peers/releases/latest). Download the archive for your platform and architecture together with `checksums.txt` from the same release:
+`peers` is distributed as a `tar.gz` archive on [GitHub Releases](https://github.com/wangzw/peers/releases/latest). Download the archive for your platform and architecture together with `checksums.txt` from the same release:
 
 ```sh
-VERSION=0.3.0
-curl -LO https://github.com/wangzw/peers/releases/download/v${VERSION}/agent-peer_${VERSION}_<os>_<arch>.tar.gz
+VERSION=0.4.0
+curl -LO https://github.com/wangzw/peers/releases/download/v${VERSION}/peers_${VERSION}_<os>_<arch>.tar.gz
 curl -LO https://github.com/wangzw/peers/releases/download/v${VERSION}/checksums.txt
 ```
 
@@ -49,23 +49,23 @@ Replace `<os>_<arch>` with `darwin_amd64`, `darwin_arm64`, `linux_amd64` or `lin
 Check the archive against `checksums.txt` before using it. On Linux:
 
 ```sh
-VERSION=0.3.0
-grep agent-peer_${VERSION}_linux_arm64.tar.gz checksums.txt | sha256sum -c -
+VERSION=0.4.0
+grep peers_${VERSION}_linux_arm64.tar.gz checksums.txt | sha256sum -c -
 ```
 
 On macOS, use `shasum` instead:
 
 ```sh
-VERSION=0.3.0
-grep agent-peer_${VERSION}_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
+VERSION=0.4.0
+grep peers_${VERSION}_darwin_arm64.tar.gz checksums.txt | shasum -a 256 -c -
 ```
 
 Create a directory and extract the archive into it: the archive has no top-level directory, so without one its files, including `LICENSE`, `README.md` and `third_party/`, land directly in the current directory:
 
 ```sh
-VERSION=0.3.0
-mkdir agent-peer-${VERSION}
-tar -xzf agent-peer_${VERSION}_darwin_arm64.tar.gz -C agent-peer-${VERSION}
+VERSION=0.4.0
+mkdir peers-${VERSION}
+tar -xzf peers_${VERSION}_darwin_arm64.tar.gz -C peers-${VERSION}
 ```
 
 Replace `darwin` with `linux` on Linux.
@@ -73,25 +73,25 @@ Replace `darwin` with `linux` on Linux.
 Enter the extracted directory and run the script:
 
 ```sh
-VERSION=0.3.0
-cd agent-peer-${VERSION}
+VERSION=0.4.0
+cd peers-${VERSION}
 sh ./install.sh
 ```
 
 The script asks for the level as the online command does; [Choose the install level](#choose-the-install-level) covers the question.
 
-The user-level form installs the binary into `~/.local/bin`, installs and starts the user-level Broker service, and registers the MCP server for your account. The system-level form installs the binary into `/usr/local/bin`, installs and starts the system-level Broker service, and registers the MCP server for the account that ran the install; it also creates the `agent-peer` group and asks whether to add that account to it. [The admin group]({{< relref "management-permissions.md" >}}#the-admin-group) covers the group, the question and its effect.
+The user-level form installs the binary into `~/.local/bin`, installs and starts the user-level Broker service, and registers the MCP server for your account. The system-level form installs the binary into `/usr/local/bin`, installs and starts the system-level Broker service, and registers the MCP server for the account that ran the install; it also creates the `peers` group and asks whether to add that account to it. [The admin group]({{< relref "management-permissions.md" >}}#the-admin-group) covers the group, the question and its effect.
 
 The script accepts these options:
 
 | Option | Effect |
 |---|---|
-| `--system` | Install system-wide without the level question; the script re-runs itself through `sudo` when it is not root. |
+| `--system` | Install at the system level without the level question; the script re-runs itself through `sudo` when it is not root. |
 | `--user` | Install for your account without the level question. Cannot be combined with `--system`. |
 | `--prefix <dir>` | Install the binary into `<dir>` instead of the default, `~/.local/bin` for a user-level installation or `/usr/local/bin` for a system-level one. |
 | `--no-service` | Do not install the Broker service. [Start the Broker](#start-the-broker) yourself. |
 | `--no-mcp` | Do not register the MCP server. |
-| `--admin-group <name>` | Manage the system Broker through the group `<name>` instead of the default `agent-peer` group; the name may start only with a lowercase letter or an underscore and may contain only lowercase letters, digits, underscores and hyphens. Valid only with `--system`. |
+| `--admin-group <name>` | Manage the system Broker through the group `<name>` instead of the default `peers` group; the name may start only with a lowercase letter or an underscore and may contain only lowercase letters, digits, underscores and hyphens. Valid only with `--system`. |
 | `--join-admin-group` | Add the account that ran the install to the admin group without asking. Valid only with `--system`. |
 | `--no-admin-group` | Do not ask whether to add the account that ran the install to the admin group. Valid only with `--system`. |
 
@@ -101,29 +101,29 @@ The script is safe to run again: it replaces the binary, restarts the service wi
 
 With `--no-mcp`, the script skips the registration, and you run the registration command in the manual section yourself. When it cannot find `claude`, or runs as root without `sudo` and has no account to register for, it prints the `claude mcp add` command to run.
 
-If the configuration file for the level does not exist, `service install` creates it with every configuration key listed: `~/.agent-peer/config.yaml` for a user-level service, and `/etc/agent-peer/config.yaml` for a system-level one. [Configuration keys]({{< relref "/docs/reference/configuration" >}}) describes the file.
+If the configuration file for the level does not exist, `service install` creates it with every configuration key listed: `~/.peers/config.yaml` for a user-level service, and `/etc/peers/config.yaml` for a system-level one. [Configuration keys]({{< relref "/docs/reference/configuration" >}}) describes the file.
 
-On macOS, the script clears the quarantine attribute from the binary itself, so a browser download needs no extra step. If the user-level install directory is not on `PATH`, the script says so; add it to `PATH` to run `agent-peer` by name. A user-level service on macOS needs a graphical login session; on a host without one, install system-wide or use `--no-service`.
+On macOS, the script clears the quarantine attribute from the binary itself, so a browser download needs no extra step. If the user-level install directory is not on `PATH`, the script says so; add it to `PATH` to run `peers` by name. A user-level service on macOS needs a graphical login session; on a host without one, install at the system level or use `--no-service`.
 
 A system-level installation requires the binary's directory and every directory above it to be owned by root and not writable by group or others. On an Intel Mac with Homebrew, `/usr/local/bin` belongs to your account, so the installation is refused; create a root-owned directory with `sudo mkdir -p <dir>` and pass it with `--prefix` instead.
 
 ## Installation output
 
-A successful installation's summary begins with `agent-peer <version> installed (<level>, starts at <login|boot>)`, and an upgrade prints `upgraded from <version>` before it. The summary reports the level, the binary path, the version, the configuration file path, the location of the run log, the audit log path, and the commands to start, stop, restart and uninstall the Broker. The start, stop and restart commands use `sudo` for a system-level installation. [Files and paths]({{< relref "/docs/reference/files" >}}) lists the configuration, run log, audit log and runtime paths.
+A successful installation's summary begins with `peers <version> installed (<level>, starts at <login|boot>)`, and an upgrade prints `upgraded from <version>` before it. With `--no-service`, the summary begins with `peers <version> installed (no service)`. The summary reports the level, the binary path, the version, the configuration file path, the location of the run log, the audit log path, and the commands to start, stop, restart and uninstall the Broker. The start, stop and restart commands use `sudo` for a system-level installation. [Files and paths]({{< relref "/docs/reference/files" >}}) lists the configuration, run log, audit log and runtime paths.
 
-A failed installation names the cause: an address that is already in use is reported with the address, the configuration file and `broker.listen`; a service manager error gives the command and its output; missing permissions give the path and the missing permission; and a Broker that exits during startup gives the reason from its run log. Only when the service is running and the Broker has entered a degraded run does the install keep the service, give a fix command and exit with code 3; a service that a failed install wrote or enabled does not start at boot or login. [agent-peer service install]({{< relref "/docs/reference/cli" >}}#agent-peer-service-install) and [the port question in the FAQ]({{< relref "/docs/faq" >}}#what-happens-if-the-port-is-already-in-use) give the details.
+A failed installation names the cause: an address that is already in use is reported with the address, the configuration file and `broker.listen`; a service manager error gives the command and its output; missing permissions give the path and the missing permission; and a Broker that exits during startup gives the reason from its run log. Only when the service is running and the Broker has entered a degraded run does the install keep the service, give a fix command and exit with code 3; a service that a failed install wrote or enabled does not start at boot or login. [peers service install]({{< relref "/docs/reference/cli" >}}#peers-service-install) and [the port question in the FAQ]({{< relref "/docs/faq" >}}#what-happens-if-the-port-is-already-in-use) give the details.
 
-To remove an installation, see [agent-peer uninstall]({{< relref "/docs/reference/cli" >}}#agent-peer-uninstall); to start, stop or restart its service, see [service start, stop and restart]({{< relref "/docs/reference/cli" >}}#agent-peer-service-start-stop-and-restart).
+To remove an installation, see [peers uninstall]({{< relref "/docs/reference/cli" >}}#peers-uninstall); to start, stop or restart its service, see [service start, stop and restart]({{< relref "/docs/reference/cli" >}}#peers-service-start-stop-and-restart).
 
 ## Install manually
 
-Download, verify and extract the archive as described in the previous section, then install the binary by hand. The commands below run from the directory that contains the extracted `agent-peer-${VERSION}` directory, so run `cd ..` first if you entered it in the previous section.
+Download, verify and extract the archive as described in the previous section, then install the binary by hand. The commands below run from the directory that contains the extracted `peers-${VERSION}` directory, so run `cd ..` first if you entered it in the previous section.
 
 On macOS, a browser download carries the quarantine attribute, and because the binaries are not signed or notarized, macOS blocks the binary until the attribute is removed. Clear it from the extracted binary if a browser downloaded the archive:
 
 ```sh
-VERSION=0.3.0
-xattr -d com.apple.quarantine agent-peer-${VERSION}/agent-peer
+VERSION=0.4.0
+xattr -d com.apple.quarantine peers-${VERSION}/peers
 ```
 
 A command-line download with `curl` or `wget` does not set the attribute.
@@ -133,10 +133,10 @@ If you install a system-level service, use the `sudo install` step in [Run the B
 Move the binary into a directory on your `PATH`:
 
 ```sh
-VERSION=0.3.0
+VERSION=0.4.0
 mkdir -p ~/.local/bin
-mv agent-peer-${VERSION}/agent-peer ~/.local/bin/
-agent-peer --version
+mv peers-${VERSION}/peers ~/.local/bin/
+peers --version
 ```
 
 The printed version matches the version you downloaded.
@@ -146,10 +146,10 @@ The printed version matches the version you downloaded.
 Register the server once for your account:
 
 ```sh
-claude mcp add --scope user peer -- agent-peer mcp
+claude mcp add --scope user peer -- peers mcp
 ```
 
-The server name must be `peer`. Claude Code shows the tools as `mcp__peer__<tool>`, and you write permission rules with that name. If `agent-peer` is not on your `PATH`, use its absolute path.
+The server name must be `peer`. Claude Code shows the tools as `mcp__peer__<tool>`, and you write permission rules with that name. If `peers` is not on your `PATH`, use its absolute path.
 
 Check the registration:
 
@@ -168,13 +168,13 @@ Sessions connect to a Broker but never start one. If the host already has a syst
 Otherwise, install a user-level service; the install starts it right away, and from then on it starts at login:
 
 ```sh
-agent-peer service install
+peers service install
 ```
 
-A user-level install must not run as root, and on macOS it needs a graphical login session; on a host without one, install the system-level service with `agent-peer service install --system`, as root or through an administrator; see [Run a system Broker]({{< relref "system-broker.md" >}}). Alternatively, run the Broker in a terminal outside Claude Code and leave it running:
+A user-level install must not run as root, and on macOS it needs a graphical login session; on a host without one, install the system-level service with `peers service install --system`, as root or through an administrator; see [Run a system Broker]({{< relref "system-broker.md" >}}). Alternatively, run the Broker in a terminal outside Claude Code and leave it running:
 
 ```sh
-agent-peer broker
+peers broker
 ```
 
 A Broker started inside a session exits with code 6. Starting the Broker does not require reconnecting the MCP server. [Run the Broker as a service]({{< relref "run-as-service.md" >}}) covers both service forms and uninstalling it.
@@ -184,12 +184,12 @@ A Broker started inside a session exits with code 6. Starting the Broker does no
 To build from source you need Go 1.27. Clone the repository and build:
 
 ```sh
-VERSION=0.3.0
+VERSION=0.4.0
 git clone https://github.com/wangzw/peers
 cd peers
-go build -trimpath -ldflags "-X main.version=$VERSION" -o agent-peer ./cmd/agent-peer
+go build -trimpath -ldflags "-X main.version=$VERSION" -o peers ./cmd/peers
 ```
 
-Without `-ldflags`, `agent-peer --version` prints `agent-peer dev`, and `agent-peer update` does not update such a binary. Installing with `go install …@version` is not supported, because `go.mod` uses a `replace` directive that points at a vendored dependency.
+Without `-ldflags`, `peers --version` prints `peers dev`, and `peers update` does not update such a binary. Installing with `go install …@version` is not supported, because `go.mod` uses a `replace` directive that points at a vendored dependency.
 
-The build leaves `agent-peer` in the current directory; follow the manual installation steps above to put it on `PATH`, register the MCP server and start the Broker.
+The build leaves `peers` in the current directory; follow the manual installation steps above to put it on `PATH`, register the MCP server and start the Broker.

@@ -3,7 +3,7 @@ title: Broker
 weight: 1
 ---
 
-A Broker is the daemon on a host that registers the agent sessions it serves, keeps its links to other Brokers, and writes incoming messages into the target session's inbox socket. A session that enables the agent-peer tools registers with one Broker on its own host when its name is usable.
+A Broker is the daemon on a host that registers the agent sessions it serves, keeps its links to other Brokers, and writes incoming messages into the target session's inbox socket. A session that enables the `peers` tools registers with one Broker on its own host when its name is usable.
 
 ## Two forms
 
@@ -27,8 +27,8 @@ A Broker is private by default. A public Broker publishes a broker card with its
 
 ## Configuration
 
-The configuration is a YAML file. A user Broker reads `~/.agent-peer/config.yaml`; a system Broker reads `/etc/agent-peer/config.yaml`. The tools and terminal commands that read or change configuration follow the operating system's permissions on that file: read access lets an account read the configuration, the full status and the audit log; write access lets it change settings, create one-time pairing keys, pair or unpair. Listing agents and topics, joining a topic and sending messages need neither.
+The configuration is a YAML file. A user Broker reads `~/.peers/config.yaml`; a system Broker reads `/etc/peers/config.yaml`. The tools and terminal commands that read or change configuration follow the operating system's permissions on that file: read access lets an account read the configuration, the full status and the audit log; write access lets it change settings, create one-time pairing keys, pair or unpair. Listing agents and topics, joining a topic and sending messages need neither.
 
-A Broker can also be set offline, which refuses messages from other hosts while links and pairings stay in place; [Command line]({{< relref "/docs/reference/cli" >}}#agent-peer-offline-and-online) gives the two commands.
+A Broker can also be set offline, which refuses messages from other hosts while links and pairings stay in place; [Command line]({{< relref "/docs/reference/cli" >}}#peers-offline-and-online) gives the two commands.
 
 See [Topics]({{< relref "/docs/concepts/topics" >}}) for how a Broker decides visibility, [Pairing]({{< relref "/docs/concepts/pairing" >}}) for how it trusts another Broker, and [Links]({{< relref "/docs/concepts/links" >}}) for the connection between peers. [Run the Broker as a service]({{< relref "/docs/guides/run-as-service" >}}) and [Run a system Broker]({{< relref "/docs/guides/system-broker" >}}) cover the two deployment forms; [Configuration keys]({{< relref "/docs/reference/configuration" >}}) and [Files and paths]({{< relref "/docs/reference/files" >}}) list the keys and paths.

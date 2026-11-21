@@ -11,7 +11,7 @@ topic 的名字在连通网络内是全局的：一个 Broker 上名为 `release
 
 为了让在同一个项目里工作的会话不必多做一步，自动加入开启时，每个 Agent 在登记后都会加入一个默认 topic。
 
-默认 topic 取自项目配置文件 `.agent-peer.yaml` 声明的 topic 列表。文件没有声明列表时，默认 topic 取工作区 git 仓库 `origin` 地址的规范化结果：小写的主机名后接仓库路径，不含协议、用户信息、端口和 `.git` 后缀。例如 `git@github.com:org/repo.git` 与 `https://github.com/org/repo` 的规范化结果都是 `github.com/org/repo`。文件没有声明列表，工作区又没有 `origin` 远端时，Agent 不加入任何默认 topic。
+默认 topic 取自项目配置文件 `.peers.yaml` 声明的 topic 列表。文件没有声明列表时，默认 topic 取工作区 git 仓库 `origin` 地址的规范化结果：小写的主机名后接仓库路径，不含协议、用户信息、端口和 `.git` 后缀。例如 `git@github.com:org/repo.git` 与 `https://github.com/org/repo` 的规范化结果都是 `github.com/org/repo`。文件没有声明列表，工作区又没有 `origin` 远端时，Agent 不加入任何默认 topic。
 
 自动加入可以在 Broker 上关闭，也可以在项目里关闭。默认 topic 始终不公开。
 

@@ -14,30 +14,30 @@ Install the binary in a directory that root owns and that group and others canno
 curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh
 ```
 
-[Install agent-peer]({{< relref "install.md" >}}) covers the question and the other ways to install; [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the manual commands.
+[Install `peers`]({{< relref "install.md" >}}) covers the question and the other ways to install; [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the manual commands.
 
 The system Broker takes root's account lock. If a user Broker is already running as root, the system-level install refuses and asks you to stop it first.
 
-The system Broker uses `/etc/agent-peer/config.yaml`, `/var/log/agent-peer/audit.log` and `/var/lib/agent-peer`. If the configuration file does not exist, the install generates it as a template that lists every configuration key, with owner root, the default group `agent-peer` and mode `0660`; an existing file is left unchanged. Members of that group manage the Broker without `sudo` when the account runs no user-level Broker of its own; [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}#the-admin-group) describes the group and its limits.
+The system Broker uses `/etc/peers/config.yaml`, `/var/log/peers/audit.log` and `/var/lib/peers`. If the configuration file does not exist, the install generates it as a template that lists every configuration key, with owner root, the default group `peers` and mode `0660`; an existing file is left unchanged. Members of that group manage the Broker without `sudo` when the account runs no user-level Broker of its own; [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}#the-admin-group) describes the group and its limits.
 
 ## Let accounts use it
 
 Each account registers the MCP server for itself; registration is per account, not per host. The system-level install registers it for the account that ran the install. Other accounts need only the registration, with the installed binary's absolute path:
 
 ```sh
-claude mcp add --scope user peer -- /usr/local/bin/agent-peer mcp
+claude mcp add --scope user peer -- /usr/local/bin/peers mcp
 ```
 
-Do not run the install command on these accounts. On a host that already has a system-level service, the install command asks whether to upgrade the system-level installation instead; answering n leaves the host unchanged; a user-level Broker is installed only with `--user` or when the command runs without a terminal, and the account's sessions then use it. If a user-level installation is already there, remove it with [`agent-peer uninstall`]({{< relref "/docs/reference/cli" >}}#agent-peer-uninstall); the uninstall also removes this account's MCP registration, so run the registration command above again.
+Do not run the install command on these accounts. On a host that already has a system-level service, the install command asks whether to upgrade the system-level installation instead; answering n leaves the host unchanged; a user-level Broker is installed only with `--user` or when the command runs without a terminal, and the account's sessions then use it. If a user-level installation is already there, remove it with [`peers uninstall`]({{< relref "/docs/reference/cli" >}}#peers-uninstall); the uninstall also removes this account's MCP registration, so run the registration command above again.
 
-A session reaches the system Broker through the local socket `/run/agent-peer/broker.sock` on Linux, or `/var/run/agent-peer/broker.sock` on macOS. Two settings decide which accounts can connect:
+A session reaches the system Broker through the local socket `/run/peers/broker.sock` on Linux, or `/var/run/peers/broker.sock` on macOS. Two settings decide which accounts can connect:
 
 | Key | Default | Effect |
 |---|---|---|
 | `broker.local_socket_group` | empty | Group of the socket. Empty keeps the runtime directory's group. The group must exist. |
 | `broker.local_socket_mode` | `0666` | Permission bits of the socket. |
 
-To limit use to a group, set the group and a mode that gives that group access, for example `broker.local_socket_group: agent-peer-users` with `broker.local_socket_mode: 0660`. Use a group other than the admin group, the one that owns the configuration file and can manage the Broker: membership there also grants management, and being allowed to connect and being allowed to manage are separate. Accounts outside the group cannot connect; they need to start their own user Broker, as a service or in a terminal. [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the commands.
+To limit use to a group, set the group and a mode that gives that group access, for example `broker.local_socket_group: peers-users` with `broker.local_socket_mode: 0660`. Use a group other than the admin group, the one that owns the configuration file and can manage the Broker: membership there also grants management, and being allowed to connect and being allowed to manage are separate. Accounts outside the group cannot connect; they need to start their own user Broker, as a service or in a terminal. [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the commands.
 
 ## Which Broker a session or command uses
 
@@ -50,10 +50,10 @@ If none is available, tool calls return an error that says what to do, and the M
 
 An account that may use the system Broker but has its own user Broker running registers on the user Broker. To have its sessions use the system Broker instead, do not run a user-level Broker on that account.
 
-The terminal commands `agent-peer config`, `agent-peer pairing-key` and `agent-peer peer`, like `agent-peer status`, choose a Broker in the same order, look only for a Broker that is running, and never start one. If this account has a user Broker running, use `sudo` to manage the system Broker; root selects the system Broker directly.
+The terminal commands `peers config`, `peers pairing-key` and `peers peer`, like `peers status`, choose a Broker in the same order, look only for a Broker that is running, and never start one. If this account has a user Broker running, use `sudo` to manage the system Broker; root selects the system Broker directly.
 
 ## One identity for several accounts
 
 All agents served by one system Broker share its fingerprint, alias and peers. Agents from different accounts that join the same topic see each other and can exchange messages. Pairing the system Broker once therefore connects every served account to the other side, and another host needs only that one pairing to reach all of them. The system Broker's default alias is the first segment of the hostname and carries no account name, so the agents of every account it serves have addresses of the form `name@workstation`. When account alice starts its own user Broker, the addresses of its sessions become `name@workstation.alice`, because those sessions now register with a different Broker.
 
-Management of the Broker is decided by the permissions on `/etc/agent-peer/config.yaml`, not by the account that runs the service. There are two ways to manage it: membership in the group that owns the file, and the terminal commands under `sudo`, which the Broker checks as root. [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}#the-admin-group) describes the group and its limits.
+Management of the Broker is decided by the permissions on `/etc/peers/config.yaml`, not by the account that runs the service. There are two ways to manage it: membership in the group that owns the file, and the terminal commands under `sudo`, which the Broker checks as root. [Manage a Broker by file permission]({{< relref "management-permissions.md" >}}#the-admin-group) describes the group and its limits.

@@ -3,7 +3,7 @@ title: 概念
 weight: 3
 ---
 
-agent-peer 的大部分内容可以用五个概念概括。
+peers 的大部分内容可以用五个概念概括。
 
 - [Broker]({{< relref "/docs/concepts/broker" >}}) 是主机上服务本机会话、并与其他 Broker 通信的守护进程。
 - [Agent]({{< relref "/docs/concepts/agents" >}}) 是登记到 Broker 的 Claude Code 会话。

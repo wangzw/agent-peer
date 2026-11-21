@@ -3,11 +3,11 @@ title: Project configuration file
 weight: 5
 ---
 
-A `.agent-peer.yaml` file in a project declares the topics that sessions started in that project join automatically. Commit it to the repository so every checkout gets the same default topics.
+A `.peers.yaml` file in a project declares the topics that sessions started in that project join automatically. Commit it to the repository so every checkout gets the same default topics.
 
 ## Where the file is read from
 
-The MCP server process starts in the session's project directory. It looks for `.agent-peer.yaml` there and then in each parent directory up to the filesystem root, and uses the first one it finds.
+The MCP server process starts in the session's project directory. It looks for `.peers.yaml` there and then in each parent directory up to the filesystem root, and uses the first one it finds.
 
 - The entry must be a regular file. A symbolic link is followed, and it counts when its target is a regular file.
 - The file and the directory that holds it must be owned by the calling account or by root. A file that fails this check is ignored and the search continues upward.

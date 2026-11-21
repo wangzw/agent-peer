@@ -3,7 +3,7 @@ title: Concepts
 weight: 3
 ---
 
-Five ideas cover most of what agent-peer does.
+Five ideas cover most of what `peers` does.
 
 - [Broker]({{< relref "/docs/concepts/broker" >}}) is the daemon on a host that serves its sessions and talks to other Brokers.
 - [Agents]({{< relref "/docs/concepts/agents" >}}) are the Claude Code sessions registered with a Broker.

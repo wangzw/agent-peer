@@ -11,7 +11,7 @@ Topic names are global within a connected network: a topic named `release` on on
 
 So that sessions working in one project need no extra step, each agent joins a default topic at registration when automatic joining is on.
 
-The default topic comes from the project configuration file `.agent-peer.yaml`, which declares a list of topics. When the file declares no list, the default topic is the normalized `origin` address of the workspace's git repository: the lowercased host followed by the repository path, without the protocol, user information, port or `.git` suffix. For example, `git@github.com:org/repo.git` and `https://github.com/org/repo` both give `github.com/org/repo`. When the file declares no list and the workspace has no `origin` remote, the agent joins no default topic.
+The default topic comes from the project configuration file `.peers.yaml`, which declares a list of topics. When the file declares no list, the default topic is the normalized `origin` address of the workspace's git repository: the lowercased host followed by the repository path, without the protocol, user information, port or `.git` suffix. For example, `git@github.com:org/repo.git` and `https://github.com/org/repo` both give `github.com/org/repo`. When the file declares no list and the workspace has no `origin` remote, the agent joins no default topic.
 
 Automatic joining can be turned off for a Broker or for a project. The default topic is always private.
 

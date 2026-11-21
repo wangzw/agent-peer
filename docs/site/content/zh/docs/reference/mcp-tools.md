@@ -5,7 +5,7 @@ weight: 1
 
 本页列出的是模型替你调用的 MCP 工具。你平时用自然语言提出要求即可；这些工具不是斜杠命令，输入 `/` 不会列出。用 `/mcp` 可以查看 `peer` 服务是否已连上。
 
-Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer，安装会为运行它的账户注册这个服务：系统级安装为执行安装的账户注册，即使命令经 `sudo` 重新执行自己也是这个账户；以 root 直接执行时只打印注册命令，不做注册。手动注册用 `claude mcp add --scope user peer -- agent-peer mcp`。模型看到的工具名是 `mcp__peer__<tool>`，权限规则也按这个名字写，例如 `mcp__peer__send_message`。
+Claude Code 会话经名为 `peer` 的 MCP 服务使用 peers，安装会为运行它的账户注册这个服务：系统级安装为执行安装的账户注册，即使命令经 `sudo` 重新执行自己也是这个账户；以 root 直接执行时只打印注册命令，不做注册。手动注册用 `claude mcp add --scope user peer -- peers mcp`。模型看到的工具名是 `mcp__peer__<tool>`，权限规则也按这个名字写，例如 `mcp__peer__send_message`。
 
 ## 工具
 
@@ -27,7 +27,7 @@ Claude Code 会话经名为 `peer` 的 MCP 服务使用 agent-peer，安装会�
 
 ## 返回结果
 
-Broker 的降级运行会体现在工具调用上。仅诊断降级时，每个工具都返回错误码为 `broker_degraded` 的错误并附原因，`agent-peer status` 也会给出同样的原因与修复方法。仅本机降级时，工具照常工作，只有 `create_pairing_key` 返回 `broker_degraded`，错误说明里给出无法绑定的地址，以及修改 `broker.listen` 的方法。两档降级都会自行恢复，不重启进程；重试时机见 [agent-peer broker]({{< relref "/docs/reference/cli" >}}#agent-peer-broker)。
+Broker 的降级运行会体现在工具调用上。仅诊断降级时，每个工具都返回错误码为 `broker_degraded` 的错误并附原因，`peers status` 也会给出同样的原因与修复方法。仅本机降级时，工具照常工作，只有 `create_pairing_key` 返回 `broker_degraded`，错误说明里给出无法绑定的地址，以及修改 `broker.listen` 的方法。两档降级都会自行恢复，不重启进程；重试时机见 [peers broker]({{< relref "/docs/reference/cli" >}}#peers-broker)。
 
 ### Agent
 
@@ -55,24 +55,24 @@ Broker 的降级运行会体现在工具调用上。仅诊断降级时，每个�
 
 `update_broker` 返回 `from_version`、`to_version`、`restarting` 与一句 `result`。Broker 升级时，`restarting` 为真，结果为 `Upgrading the Broker from <from> to <to>; the Broker restarts and the connection recovers automatically. Reopen this session to use the new MCP server.`。已经是最新版本时，`to_version` 为空，`restarting` 为假，结果为 `The Broker is already up to date (<from>).`。调用在 Broker 应答后立即返回，早于重启完成。
 
-调用失败时，错误以 `Upgrade failed` 开头。Broker 不能自我更新时，错误以 ``(code: failed_precondition). Run `agent-peer update` in a terminal instead.`` 结尾；已有更新在进行时，错误内容为 `another update is already in progress`，并以 `(code: aborted)` 结尾。
+调用失败时，错误以 `Upgrade failed` 开头。Broker 不能自我更新时，错误以 ``(code: failed_precondition). Run `peers update` in a terminal instead.`` 结尾；已有更新在进行时，错误内容为 `another update is already in progress`，并以 `(code: aborted)` 结尾。
 
 ### 更新提示
 
 每个 MCP 服务进程在第一次工具调用时向 Broker 查询更新状态，此后最多每 10 分钟查询一次。已知有更新的正式发布版本时，该次工具结果的末尾多出一段文本：
 
 ```text
-agent-peer <v> is available (this Broker runs <c>). Ask the agent to call update_broker, or run `agent-peer update` in a terminal.
+peers <latest> is available (this Broker runs <installed>). Ask the agent to call update_broker, or run `peers update` in a terminal.
 ```
 
-`<v>` 是可用版本，`<c>` 是当前版本。同一个版本在一个会话中只提示一次；会话开着期间出了新版本，之后的工具调用会再提示一次。以工具错误结束的调用同样附带。查询失败或超时、Broker 是旧版而不支持该查询，或 `update.check` 关闭时，不附提示，工具结果保持原样。
+`<latest>` 是最新版本，`<installed>` 是已安装版本。同一个版本在一个会话中只提示一次；会话开着期间出了新版本，之后的工具调用会再提示一次。以工具错误结束的调用同样附带。查询失败或超时，或 `update.check` 关闭时，不附提示，工具结果保持原样。查询失败不计入查询间隔，下一次工具调用会重新查询。
 
 ## 配置文件权限
 
 表中的“无”“读”“写”指调用方账户对 Broker 配置文件的访问级别。账户取自操作系统为本机 socket 另一端进程提供的凭据，不采信调用方的陈述。
 
 - 用户级 Broker 的配置文件属于本账户，所以每次调用都通过。
-- 系统级 Broker 以该文件判定权限：读权限允许 `get_config`；写权限允许 `connect_broker`、`disconnect_broker`、`create_pairing_key`、`set_config`、`set_broker_online` 与 `update_broker`。管理员给组 `agent-peer` 授予文件的相应权限，就把这些操作委托给了这个组；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。
+- 系统级 Broker 以该文件判定权限：读权限允许 `get_config`；写权限允许 `connect_broker`、`disconnect_broker`、`create_pairing_key`、`set_config`、`set_broker_online` 与 `update_broker`。管理员给组 `peers` 授予文件的相应权限，就把这些操作委托给了这个组；管理组见[以配置文件权限管理 Broker]({{< relref "/docs/guides/management-permissions" >}})。
 - 消息与 topic 工具以及 `list_brokers` 不要求配置文件权限。
 
 `update_broker` 不是只读工具：它的声明不带只读标记，并标为破坏性操作，Claude Code 默认会在执行前请你确认。不要把 `update_broker` 加入自动批准：这道确认是 Broker 被替换并重启前的最后一道人工检查。`set_broker_online` 与 `set_config` 分开声明，Claude Code 的权限设置可以单独放行它。

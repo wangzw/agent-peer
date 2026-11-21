@@ -5,7 +5,7 @@ weight: 1
 
 This page lists the MCP tools that the model calls on your behalf. You ask for what you want in natural language; the tools are not slash commands, and typing `/` does not list them. Use `/mcp` to check that the `peer` server is connected.
 
-A Claude Code session reaches agent-peer through the MCP server `peer`, which the install registers for the account that runs it; a system-level installation registers it for the account that ran the install, including when the command re-runs itself through `sudo`, and prints the command instead of registering when run as root without `sudo`. To register it by hand, run `claude mcp add --scope user peer -- agent-peer mcp`. The model then sees the tools as `mcp__peer__<tool>`, and permission rules use that name, for example `mcp__peer__send_message`.
+A Claude Code session reaches `peers` through the MCP server `peer`, which the install registers for the account that runs it; a system-level installation registers it for the account that ran the install, including when the command re-runs itself through `sudo`, and prints the command instead of registering when run as root without `sudo`. To register it by hand, run `claude mcp add --scope user peer -- peers mcp`. The model then sees the tools as `mcp__peer__<tool>`, and permission rules use that name, for example `mcp__peer__send_message`.
 
 ## Tools
 
@@ -27,7 +27,7 @@ A Claude Code session reaches agent-peer through the MCP server `peer`, which th
 
 ## Results
 
-A Broker can report a degraded run through the tools. In a diagnostics-only run every tool returns an error with the code `broker_degraded` and the reason, and `agent-peer status` shows the same reason with the fix. In a local-only run the tools work except `create_pairing_key`, which returns `broker_degraded` with the address that cannot be bound and the `broker.listen` fix. Both kinds of degraded run recover without restarting the process; [agent-peer broker]({{< relref "/docs/reference/cli" >}}#agent-peer-broker) describes when they retry.
+A Broker can report a degraded run through the tools. In a diagnostics-only run every tool returns an error with the code `broker_degraded` and the reason, and `peers status` shows the same reason with the fix. In a local-only run the tools work except `create_pairing_key`, which returns `broker_degraded` with the address that cannot be bound and the `broker.listen` fix. Both kinds of degraded run recover without restarting the process; [`peers broker`]({{< relref "/docs/reference/cli" >}}#peers-broker) describes when they retry.
 
 ### Agents
 
@@ -55,24 +55,24 @@ A Broker can report a degraded run through the tools. In a diagnostics-only run 
 
 `update_broker` returns `from_version`, `to_version`, `restarting` and a `result` sentence. When the Broker upgrades, `restarting` is true and the result is `Upgrading the Broker from <from> to <to>; the Broker restarts and the connection recovers automatically. Reopen this session to use the new MCP server.` When it is already up to date, `to_version` is empty, `restarting` is false, and the result is `The Broker is already up to date (<from>).` The call returns as soon as the Broker answers, before the restart finishes.
 
-A failed call returns an error beginning `Upgrade failed`. When the Broker cannot update itself, the error ends with ``(code: failed_precondition). Run `agent-peer update` in a terminal instead.``; when another update is already in progress, it says `another update is already in progress` and ends with `(code: aborted)`.
+A failed call returns an error beginning `Upgrade failed`. When the Broker cannot update itself, the error ends with ``(code: failed_precondition). Run `peers update` in a terminal instead.``; when another update is already in progress, it says `another update is already in progress` and ends with `(code: aborted)`.
 
 ### Update notice
 
 Each MCP server process queries the Broker for the update state on its first tool call, and then at most once every 10 minutes. When a newer formal release is known, that tool result ends with one more text block:
 
 ```text
-agent-peer <v> is available (this Broker runs <c>). Ask the agent to call update_broker, or run `agent-peer update` in a terminal.
+peers <latest> is available (this Broker runs <installed>). Ask the agent to call update_broker, or run `peers update` in a terminal.
 ```
 
-`<v>` is the available version and `<c>` is the current version. A session shows the notice once for a given version; if a newer release appears while the session stays open, a later tool call carries the notice again. A tool call that ends in a tool error still carries it. The notice is omitted and the tool result is unchanged when the query fails or times out, when the Broker does not support the query because it is an older Broker, or when `update.check` is off.
+`<latest>` is the newest release and `<installed>` is the installed version. A session shows the notice once for a given version; if a newer release appears while the session stays open, a later tool call carries the notice again. A tool call that ends in a tool error still carries it. The notice is omitted and the tool result is unchanged when the query fails or times out, or when `update.check` is off. A failed query is not counted, so the next tool call queries again.
 
 ## Config-file permission
 
 The permission column in the table names the level of access the calling account has to the Broker's configuration file. The account is taken from the process credentials the operating system reports for the local socket, not from anything the call says.
 
 - A user Broker's configuration file belongs to the account, so every call passes.
-- A system Broker uses the file to decide: read access allows `get_config`; write access allows `connect_broker`, `disconnect_broker`, `create_pairing_key`, `set_config`, `set_broker_online` and `update_broker`. An administrator delegates these operations by granting the `agent-peer` group access to the file; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group.
+- A system Broker uses the file to decide: read access allows `get_config`; write access allows `connect_broker`, `disconnect_broker`, `create_pairing_key`, `set_config`, `set_broker_online` and `update_broker`. An administrator delegates these operations by granting the `peers` group access to the file; [Manage a Broker by file permission]({{< relref "/docs/guides/management-permissions" >}}) explains the group.
 - The messaging and topic tools, and `list_brokers`, need no file permission.
 
 Unlike the read-only tools, `update_broker` does not carry the read-only annotation and is declared destructive, so Claude Code asks by default for confirmation before the call runs. Do not add it to automatic approval: that confirmation is the last manual check before the Broker is replaced and restarted. `set_broker_online` is declared separately from `set_config`, so Claude Code's permission settings can allow it on its own.

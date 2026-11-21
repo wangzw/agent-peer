@@ -1,25 +1,25 @@
 ---
-title: Update agent-peer
-linkTitle: Update agent-peer
+title: Update
+linkTitle: Update
 weight: 8
 ---
 
-agent-peer checks for newer releases of itself, and you install them from a terminal or from a session when you choose to. The check is automatic; an installation asks for confirmation by default unless you pass `--yes`, and a session asks by default for your approval of the `update_broker` call. Upgrading also changes the default alias of a Broker that has no `broker.alias` set, so the agent addresses your peers see can change; see [Why did agent addresses change after upgrading?]({{< relref "/docs/faq" >}}).
+`peers` checks for newer releases of itself, and you install them from a terminal or from a session when you choose to. The check is automatic; an installation asks for confirmation by default unless you pass `--yes`, and a session asks by default for your approval of the `update_broker` call.
 
 ## Check for new releases
 
 A release build of the Broker checks GitHub shortly after it starts: it waits about one minute, checks once, and then checks every 24 hours by default. The check runs in the Broker process, so one Broker covers every session that connects to it.
 
-When a newer release exists, you see it in two places. The last line of `agent-peer status` is:
+When a newer release exists, you see it in two places. The last line of `peers status` is the following, where `<latest>` is the newest release and `<installed>` the installed version:
 
 ```text
-Update: 0.3.0 available (current 0.2.0); run agent-peer update
+Update: <latest> available (current <installed>); run peers update
 ```
 
 When a newer release is available, a tool result in the session ends with:
 
 ```text
-agent-peer 0.3.0 is available (this Broker runs 0.2.0). Ask the agent to call update_broker, or run `agent-peer update` in a terminal.
+peers <latest> is available (this Broker runs <installed>). Ask the agent to call update_broker, or run `peers update` in a terminal.
 ```
 
 A session shows the notice once for a given version. If a newer release appears while the session stays open, a later tool call shows the notice again. The MCP server queries the Broker for the update state on its first tool call and then at most once every 10 minutes. A build that is not a formal release, such as a binary built from source without `-ldflags`, does not check and never shows either line.
@@ -28,17 +28,17 @@ Two configuration keys control the check: `update.check` turns it on and off, an
 
 ## Update the binary
 
-`agent-peer update` installs only a newer formal release; you cannot choose a version or roll back.
+`peers update` installs only a newer formal release; you cannot choose a version or roll back.
 
 Run the command in a terminal:
 
 ```sh
-agent-peer update
+peers update
 ```
 
 It first refuses a binary that is not a release build. It then asks before changing anything; answering `y` or `yes` goes ahead, and any other answer cancels the update and leaves the binary and the service as they were. Only after you confirm does it select a Broker; what it then does depends on that Broker and on how it runs.
 
-Add `--yes` to skip the question. When standard input is not a terminal, as in a script or a scheduled job, the command requires `--yes` and otherwise refuses with `standard input is not a terminal; run "agent-peer update --yes" to update without asking`. When the installed version is already the latest, the command prints `agent-peer 0.3.0 is up to date` and exits without changing anything.
+Add `--yes` to skip the question. When standard input is not a terminal, as in a script or a scheduled job, the command requires `--yes` and otherwise refuses with `standard input is not a terminal; run "peers update --yes" to update without asking`. When the installed version is already the latest, the command prints `peers 0.4.0 is up to date` and exits without changing anything.
 
 [Command line]({{< relref "/docs/reference/cli" >}}) gives the full description of the command.
 
@@ -47,9 +47,9 @@ Add `--yes` to skip the question. When standard input is not a terminal, as in a
 When this account's user-level Broker is running under the service manager, the command asks that Broker to update itself. The Broker downloads the archive for this platform and architecture, checks it against `checksums.txt`, runs the new binary to confirm that it reports the expected version, replaces its binary while keeping the original mode and owner, and exits; the service manager starts the new version. The command returns only after the new Broker reports the new version, and the output looks like this:
 
 ```text
-agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
-The Broker is restarting to version 0.3.0.
-The Broker is running agent-peer 0.3.0.
+peers <installed> is installed. Update to the latest release? [y/N] y
+The Broker is restarting to version <latest>.
+The Broker is running peers <latest>.
 Sessions that are already open keep the old MCP server until they are reopened; this Broker's connections recover automatically.
 ```
 
@@ -57,7 +57,7 @@ When the user-level Broker does not run under the service manager, the Broker de
 
 ### Update a system-level installation
 
-For a system-level installation the command asks the system-level Broker to update itself, and the Broker does the same work: it checks write permission on its configuration file, downloads and verifies the release, replaces its binary, and the service manager restarts it. Members of the admin group run the command without `sudo`; [Management permissions]({{< relref "/docs/guides/management-permissions" >}}#the-admin-group) describes the group. An account outside the group is refused, because the Broker checks write permission on its configuration file, so use `sudo agent-peer update` instead, or join the group first. When this account also runs its own user-level Broker, the command selects that Broker first, so `sudo agent-peer update` is the way to reach the system-level Broker.
+For a system-level installation the command asks the system-level Broker to update itself, and the Broker does the same work: it checks write permission on its configuration file, downloads and verifies the release, replaces its binary, and the service manager restarts it. Members of the admin group run the command without `sudo`; [Management permissions]({{< relref "/docs/guides/management-permissions" >}}#the-admin-group) describes the group. An account outside the group is refused, because the Broker checks write permission on its configuration file, so use `sudo peers update` instead, or join the group first. When this account also runs its own user-level Broker, the command selects that Broker first, so `sudo peers update` is the way to reach the system-level Broker.
 
 A system-level Broker that you started by hand in a terminal cannot update itself: the command reports an error that gives the commands for installing the Broker as a service. Whether a Broker runs under the service manager is decided by the main process PID that the service manager reports.
 
@@ -69,10 +69,10 @@ An update the Broker applies downloads through the Broker service process, so it
 
 A system-level Broker reads them from its service environment:
 
-- Linux: run `sudo systemctl edit agent-peer.service`, add `[Service]` and `Environment=HTTPS_PROXY=http://proxy.example:8080` (plus `HTTP_PROXY` and `NO_PROXY` as needed), then run `sudo agent-peer service restart`. The drop-in survives a reinstall.
-- macOS: add an `EnvironmentVariables` dictionary to `/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist` with `HTTPS_PROXY` and any other variables, then run `sudo agent-peer service restart`, which reads the plist again. A reinstall rewrites the plist, so add the dictionary again afterwards.
+- Linux: run `sudo systemctl edit peers.service`, add `[Service]` and `Environment=HTTPS_PROXY=http://proxy.example:8080` (plus `HTTP_PROXY` and `NO_PROXY` as needed), then run `sudo peers service restart`. The drop-in survives a reinstall.
+- macOS: add an `EnvironmentVariables` dictionary to `/Library/LaunchDaemons/io.github.wangzw.peers.plist` with `HTTPS_PROXY` and any other variables, then run `sudo peers service restart`, which reads the plist again. A reinstall rewrites the plist, so add the dictionary again afterwards.
 
-A user-level service works the same way: on Linux, edit the drop-in with `systemctl --user edit agent-peer.service` and restart the service with `agent-peer service restart`; on macOS, add the dictionary to `~/Library/LaunchAgents/io.github.wangzw.agent-peer.plist` and run `agent-peer service restart`, which reads the plist again. A reinstall rewrites that plist too, so add the dictionary again afterwards.
+A user-level service works the same way: on Linux, edit the drop-in with `systemctl --user edit peers.service` and restart the service with `peers service restart`; on macOS, add the dictionary to `~/Library/LaunchAgents/io.github.wangzw.peers.plist` and run `peers service restart`, which reads the plist again. A reinstall rewrites that plist too, so add the dictionary again afterwards.
 
 ### Update with no running Broker
 
@@ -82,7 +82,7 @@ When no Broker is running, the command replaces the binary itself, after checkin
 The new binary takes effect the next time the Broker starts.
 ```
 
-Start the Broker the way you started it before, for example with `agent-peer broker` in a terminal, to run the new version. If the directory is not writable, the command stops before any download and tells you to run `sudo agent-peer update`.
+Start the Broker the way you started it before, for example with `peers broker` in a terminal, to run the new version. If the directory is not writable, the command stops before any download and tells you to run `sudo peers update`.
 
 ### Update from a session
 
@@ -100,9 +100,9 @@ When the Broker applies an update, it restarts and its connections recover autom
 
 | Installation | Command | What happens |
 |---|---|---|
-| User-level: on a host without a system-level service, answered n or pressed Enter at `Install system-wide (all accounts)? [y/N]`; ran without a terminal as a non-root account; ran with `--user`; or placed the binary in `~/.local/bin` yourself | `agent-peer update` | With a service, the Broker replaces its binary and the service manager restarts it. Without one, the command replaces the binary and it takes effect at the next start. |
-| System-level: the install command with `--system` or answered y at the level question, or run as root, or a manual `sudo install` into `/usr/local/bin` | `agent-peer update` for a member of the admin group with no user-level Broker running; otherwise `sudo agent-peer update`, or join the group if the account is outside it | The Broker replaces its binary and the service manager restarts it. |
-| No running Broker | `agent-peer update` | The command replaces the binary, and nothing is started or restarted. |
+| User-level: on a host without a system-level service, answered n or pressed Enter at `Install for every account on this host? [y/N]`; ran without a terminal as a non-root account; ran with `--user`; or placed the binary in `~/.local/bin` yourself | `peers update` | With a service, the Broker replaces its binary and the service manager restarts it. Without one, the command replaces the binary and it takes effect at the next start. |
+| System-level: the install command with `--system` or answered y at the level question, or run as root, or a manual `sudo install` into `/usr/local/bin` | `peers update` for a member of the admin group with no user-level Broker running; otherwise `sudo peers update`, or join the group if the account is outside it | The Broker replaces its binary and the service manager restarts it. |
+| No running Broker | `peers update` | The command replaces the binary, and nothing is started or restarted. |
 
 A binary built from source with the release version in `-ldflags` follows the row for the installation it belongs to. A binary built without `-ldflags` reports the version `dev`; it is not a release build, and the command refuses with `version "dev" is not a release build; only release builds can update themselves`. Install a release to update in place.
 
@@ -113,9 +113,9 @@ If the binary is a symbolic link, the command resolves the link and replaces the
 To stop the Broker from checking:
 
 ```sh
-agent-peer config set update.check false
+peers config set update.check false
 ```
 
-The notice disappears at once: `agent-peer status` no longer prints the `Update` line, and sessions no longer show the update notice. A host without access to GitHub can leave the check off; `agent-peer update` contacts GitHub only when you run it yourself.
+The notice disappears at once: `peers status` no longer prints the `Update` line, and sessions no longer show the update notice. A host without access to GitHub can leave the check off; `peers update` contacts GitHub only when you run it yourself.
 
 [The security model]({{< relref "/docs/security" >}}) describes the network access the check makes.

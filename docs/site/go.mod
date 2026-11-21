@@ -1,4 +1,4 @@
-module github.com/wangzw/agent-peer/docs/site
+module github.com/wangzw/peers/docs/site
 
 go 1.27.4
 

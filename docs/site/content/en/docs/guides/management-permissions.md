@@ -11,18 +11,18 @@ The tools and the terminal commands can change a Broker only as far as the calli
 | Operation | Required access to the configuration file |
 |---|---|
 | `list_agents`, `list_topics`, `join_topic`, `leave_topic`, `send_message` | none |
-| `list_brokers`, `agent-peer peer list` | none |
-| `get_config`, `agent-peer config get`, full `agent-peer status` output, `agent-peer audit` | read |
-| `set_config`, `agent-peer config set` | write |
-| `set_broker_online`, `agent-peer offline`, `agent-peer online` | write |
-| `create_pairing_key`, `agent-peer pairing-key create` | write |
-| `connect_broker`, `agent-peer peer connect` | write |
-| `disconnect_broker`, `agent-peer peer disconnect` | write |
-| `update_broker`, `agent-peer update` through the Broker | write |
+| `list_brokers`, `peers peer list` | none |
+| `get_config`, `peers config get`, full `peers status` output, `peers audit` | read |
+| `set_config`, `peers config set` | write |
+| `set_broker_online`, `peers offline`, `peers online` | write |
+| `create_pairing_key`, `peers pairing-key create` | write |
+| `connect_broker`, `peers peer connect` | write |
+| `disconnect_broker`, `peers peer disconnect` | write |
+| `update_broker`, `peers update` through the Broker | write |
 
-`agent-peer update` checks write permission on the binary's directory instead when it replaces the binary locally, because no Broker is running or the selected user Broker does not run as a service.
+`peers update` checks write permission on the binary's directory instead when it replaces the binary locally, because no Broker is running or the selected user Broker does not run as a service.
 
-A user Broker's configuration file belongs to the account that runs it, so these checks pass for that account without any setup. A system Broker's file is `/etc/agent-peer/config.yaml`. A new installation creates it with owner root, the default group `agent-peer` and mode `0660`; an existing file is left unchanged. Read access also lets an account read the full status and the audit log; write access lets it change settings and manage pairing. Both levels are ordinary file permissions, not a separate list of administrators.
+A user Broker's configuration file belongs to the account that runs it, so these checks pass for that account without any setup. A system Broker's file is `/etc/peers/config.yaml`. A new installation creates it with owner root, the default group `peers` and mode `0660`; an existing file is left unchanged. Read access also lets an account read the full status and the audit log; write access lets it change settings and manage pairing. Both levels are ordinary file permissions, not a separate list of administrators.
 
 Members of the group that owns the configuration file manage the Broker without `sudo`. An account that runs the terminal commands with `sudo` is checked as root, so an administrator can manage the Broker that way whatever the file's group is. If this account also runs a user-level Broker, its terminal commands connect to that Broker; run them with `sudo` to manage the system Broker. The section [Which Broker a session or command uses]({{< relref "system-broker.md" >}}#which-broker-a-session-or-command-uses) describes the order.
 
@@ -30,15 +30,15 @@ The check identifies an operating-system account, not a person or a model. Any p
 
 ## The admin group
 
-`agent-peer service install --system` creates the `agent-peer` group by default when it does not exist, and uses an existing group without changing its members. Pass `--admin-group <name>` to use another group instead; the name may start only with a lowercase letter or an underscore and may contain only lowercase letters, digits, underscores and hyphens. New configuration files belong to the group with mode `0660`, so members of the group manage the Broker without `sudo`. The group is trusted as if its members could edit the configuration file by hand; it does not make them root.
+`peers service install --system` creates the `peers` group by default when it does not exist, and uses an existing group without changing its members. Pass `--admin-group <name>` to use another group instead; the name may start only with a lowercase letter or an underscore and may contain only lowercase letters, digits, underscores and hyphens. New configuration files belong to the group with mode `0660`, so members of the group manage the Broker without `sudo`. The group is trusted as if its members could edit the configuration file by hand; it does not make them root.
 
-The install script asks whether to add the account that ran the install to the group, and does not add it by default. `--join-admin-group` adds that account without asking, and `--no-admin-group` neither asks nor adds it. Without a terminal, the script adds nothing and prints the command to join the group. A new membership applies from the next call through the Broker, because the Broker reads the account's groups from the account database on each check. Log in again, or run `newgrp agent-peer`, before the account's own processes use the new membership, for example to edit the configuration file directly. To add another account, run `sudo usermod -aG agent-peer <account>` on Linux, or `sudo dseditgroup -o edit -a <account> -t user agent-peer` on macOS; if you set `--admin-group`, use that group name instead.
+The install script asks whether to add the account that ran the install to the group, and does not add it by default. `--join-admin-group` adds that account without asking, and `--no-admin-group` neither asks nor adds it. Without a terminal, the script adds nothing and prints the command to join the group. A new membership applies from the next call through the Broker, because the Broker reads the account's groups from the account database on each check. Log in again, or run `newgrp peers`, before the account's own processes use the new membership, for example to edit the configuration file directly. To add another account, run `sudo usermod -aG peers <account>` on Linux, or `sudo dseditgroup -o edit -a <account> -t user peers` on macOS; if you set `--admin-group`, use that group name instead.
 
 For an existing installation, give the file to the group with the command the install output prints:
 
 ```sh
-sudo chgrp agent-peer /etc/agent-peer/config.yaml
-sudo chmod 0660 /etc/agent-peer/config.yaml
+sudo chgrp peers /etc/peers/config.yaml
+sudo chmod 0660 /etc/peers/config.yaml
 ```
 
 Use `0640` instead of `0660` to grant read access only.
@@ -58,5 +58,5 @@ Being allowed to use the Broker and being allowed to manage it are separate. The
 
 - Claude Code's own permission settings decide whether a tool call needs your approval. They apply to the tools only: the terminal commands do not go through Claude Code's approval. The file check is independent of both; a tool call runs only when the file check and the approval both allow it.
 - Do not add `update_broker` to Claude Code's auto-approve list. That confirmation is the last manual check before an upgrade, and for a system-level installation the Broker replaces a binary that runs as root.
-- Neither the tools nor the terminal commands can set `pairing.static_key` or read its value. `get_config` and `agent-peer config get` report only whether it is set, and `set_config` and `agent-peer config set` always fail for it. Edit the configuration file to set, replace or delete it; the Broker applies the change without a restart.
+- Neither the tools nor the terminal commands can set `pairing.static_key` or read its value. `get_config` and `peers config get` report only whether it is set, and `set_config` and `peers config set` always fail for it. Edit the configuration file to set, replace or delete it; the Broker applies the change without a restart.
 - A permission error changes nothing: the configuration, the peers and the valid pairing keys stay as they were. When a terminal command lacks the required permission, the Broker's English error, which includes the path of the configuration file, is written to standard error, and the command exits with code 1.

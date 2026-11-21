@@ -1,5 +1,5 @@
 baseURL: https://zhanwei.wang/peers/
-title: agent-peer
+title: peers
 locale: en
 
 defaultContentLanguage: en
@@ -39,7 +39,7 @@ languages:
     locale: en
     contentDir: content/en
     weight: 1
-    title: agent-peer
+    title: peers
     params:
       description: Cross-host communication for agents.
     menus:
@@ -65,7 +65,7 @@ languages:
     locale: zh-CN
     contentDir: content/zh
     weight: 2
-    title: agent-peer
+    title: peers
     params:
       description: agent 之间的跨主机通信。
     menus:

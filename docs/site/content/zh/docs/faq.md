@@ -3,7 +3,7 @@ title: 常见问题
 weight: 8
 ---
 
-## 如何安装 agent-peer？
+## 如何安装 peers？
 
 这条命令安装最新版本，并为你的账户注册 MCP 服务；能询问时会问安装级别：
 
@@ -11,17 +11,17 @@ weight: 8
 curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh
 ```
 
-发布包解压后也有一个 `install.sh`，在解压后的目录里运行 `sh ./install.sh`，同样会询问级别；也可以手动安装二进制。[安装 agent-peer]({{< relref "guides/install.md" >}})介绍级别询问与各种安装方式，包括系统级安装。
+发布包解压后也有一个 `install.sh`，在解压后的目录里运行 `sh ./install.sh`，同样会询问级别；也可以手动安装二进制。[安装 peers]({{< relref "guides/install.md" >}})介绍级别询问与各种安装方式，包括系统级安装。
 
 主机上已经有你能使用的系统级 Broker 时，只需注册 MCP 服务，不要安装用户级 Broker；命令见[运行系统级 Broker]({{< relref "guides/system-broker.md" >}})。
 
-## 如何卸载 agent-peer？
+## 如何卸载 peers？
 
-运行 `agent-peer uninstall` 卸载本账户的安装；系统级安装用 `sudo agent-peer uninstall` 卸载。命令会询问是否删除配置、身份、审计和服务日志，除非回答 `y`，这些数据都会保留。[卸载 agent-peer]({{< relref "guides/uninstall.md" >}})介绍各个级别、询问内容以及只卸载服务的做法。
+运行 `peers uninstall` 卸载本账户的安装；系统级安装用 `sudo peers uninstall` 卸载。命令会询问是否删除配置、身份、审计和服务日志，除非回答 `y`，这些数据都会保留。[卸载 peers]({{< relref "guides/uninstall.md" >}})介绍各个级别、询问内容以及只卸载服务的做法。
 
 ## 配置文件在哪里？
 
-用户级 Broker 读 `~/.agent-peer/config.yaml`，系统级 Broker 读 `/etc/agent-peer/config.yaml`。`agent-peer service install` 在该级别的文件不存在时生成它。没有文件时，每个键都取默认值，Broker 照常运行。生成的文件与修改方法见[配置键]({{< relref "reference/configuration.md" >}})。
+用户级 Broker 读 `~/.peers/config.yaml`，系统级 Broker 读 `/etc/peers/config.yaml`。`peers service install` 在该级别的文件不存在时生成它。没有文件时，每个键都取默认值，Broker 照常运行。生成的文件与修改方法见[配置键]({{< relref "reference/configuration.md" >}})。
 
 ## 支持哪些平台？
 
@@ -29,7 +29,7 @@ macOS 与 Linux，支持 amd64 与 arm64。不支持原生 Windows。见[已知�
 
 ## 需要哪个版本的 Claude Code？
 
-Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见[已知限制]({{< relref "limitations.md" >}})。
+Claude Code v2.1.224 或更高版本。peers 怎样依赖 Claude Code，见[已知限制]({{< relref "limitations.md" >}})。
 
 ## 有中心服务器吗？
 
@@ -37,35 +37,35 @@ Claude Code v2.1.224 或更高版本。agent-peer 怎样依赖 Claude Code，见
 
 ## 需要手动启动 Broker 吗？
 
-会话不会自己启动 Broker。主机上已经有你能使用的系统级 Broker 时，只需注册 MCP 服务，会话会连接到它。否则需要自己启动：用 `agent-peer service install` 把它安装为用户级服务，安装完成就会启动，此后随登录启动；另一种做法是在 Claude Code 之外的终端里运行 `agent-peer broker`。安装脚本已经默认安装并启动用户级服务，用它装好之后无需再做这一步。在会话里启动的 Broker 会以退出码 6 退出。见[把 Broker 安装为服务]({{< relref "guides/run-as-service.md" >}})。
+会话不会自己启动 Broker。主机上已经有你能使用的系统级 Broker 时，只需注册 MCP 服务，会话会连接到它。否则需要自己启动：用 `peers service install` 把它安装为用户级服务，安装完成就会启动，此后随登录启动；另一种做法是在 Claude Code 之外的终端里运行 `peers broker`。安装脚本已经默认安装并启动用户级服务，用它装好之后无需再做这一步。在会话里启动的 Broker 会以退出码 6 退出。见[把 Broker 安装为服务]({{< relref "guides/run-as-service.md" >}})。
 
 ## 没有 Broker 在运行时会怎样？
 
-工具调用返回错误，说明该怎么做，具体视情形而定；MCP 服务进程不会启动 Broker。第一次查找时用户级与系统级 Broker 都找不到，或者用户级 Broker 的 socket 消失、拒绝连接（例如被强杀之后），报的是同一条：先提示本机如有系统级 Broker 请管理员启动它，再给出两种用户级启动方法，即 `agent-peer service install`，或在 Claude Code 之外的终端里运行 `agent-peer broker`。原先连在系统级 Broker 上的会话断开后，只提示联系管理员。用户级 socket 还在应答，但握手或调用失败时，报告 Broker 不可用，并说明 MCP 服务会在后台重试，不给出启动方法。启动 Broker 之后，会话不必重新连接 MCP 服务。需要 Broker 的终端命令，例如 `agent-peer peer list`，做法相同：只查找正在运行的 Broker，不会启动它。见[命令行]({{< relref "reference/cli.md" >}})。
+工具调用返回错误，说明该怎么做，具体视情形而定；MCP 服务进程不会启动 Broker。第一次查找时用户级与系统级 Broker 都找不到，或者用户级 Broker 的 socket 消失、拒绝连接（例如被强杀之后），报的是同一条：先提示本机如有系统级 Broker 请管理员启动它，再给出两种用户级启动方法，即 `peers service install`，或在 Claude Code 之外的终端里运行 `peers broker`。原先连在系统级 Broker 上的会话断开后，只提示联系管理员。用户级 socket 还在应答，但握手或调用失败时，报告 Broker 不可用，并说明 MCP 服务会在后台重试，不给出启动方法。启动 Broker 之后，会话不必重新连接 MCP 服务。需要 Broker 的终端命令，例如 `peers peer list`，做法相同：只查找正在运行的 Broker，不会启动它。见[命令行]({{< relref "reference/cli.md" >}})。
 
 ## 一个账户能运行多个 Broker 吗？
 
 不能。一个账户至多运行一个 Broker，用另一个监听地址再启动一个会失败。见[Broker]({{< relref "concepts/broker.md" >}})。
 
-## 升级后 Agent 地址为什么变了？
+## Broker 的默认别名是什么？
 
-从 v0.2.0 起，默认别名不再包含监听端口：主机名为 `workstation` 的系统级 Broker 报出 `workstation`，不再是旧形式 `workstation-17443`；账户 alice 的用户级 Broker 报出 `workstation.alice`。因此，从 v0.1.0 升级、又没有设置 `broker.alias` 的 Broker 别名通常会变，对端看到的 Agent 地址也随之改变，除非对端已经为它设了本地别名；保存了旧地址的会话要改用新地址。对端遇到与已有别名冲突时会自行处理：为改了别名的 Broker 生成一个本地别名，原有地址不会因此指向另一个 Broker。想沿用旧别名，就在升级前把它读出来：说“读取 broker.alias 这个配置键。”（模型会调用 `get_config`），或者从 `agent-peer status` 输出的 Agent 地址里取 `@` 后面的部分；升级后把配置文件里的 `broker.alias` 设回该值，例如 `workstation-17443`。默认端口下，旧别名是完整主机名加上 `-17443`，截短到 24 个字符。无论用哪种方式升级，包括在线安装、发布包里的 `install.sh`、`agent-peer update` 或手工替换二进制，情形都一样。
+没有设置 `broker.alias` 时，系统级 Broker 报出主机名的第一段，即第一个 `.` 之前的部分。用户级 Broker 报出这一段、一个 `.` 和账户名；主机名为 `workstation` 时，系统级 Broker 是 `workstation`，账户 alice 的用户级 Broker 是 `workstation.alice`。别名不含监听端口，所以改端口或对外地址都不会改变它。想自选别名，就在配置文件里设置 `broker.alias`。完整规则见[配置键]({{< relref "reference/configuration.md" >}})。
 
-## 怎样更新 agent-peer？
+## 怎样更新 peers？
 
-在终端运行 `agent-peer update`，或在会话里说“更新 Broker。”并批准这次调用（模型会调用 `update_broker`）。系统级安装由管理组成员更新，不用 `sudo`；不在组内的账户用 `sudo agent-peer update`，或先加入管理组。同一账户还运行着用户级 Broker 时，用 `sudo agent-peer update` 到达系统级 Broker。更新会校验下载内容、替换二进制；作为服务运行的 Broker 会用新版本重启，没有在运行的 Broker，或者不在服务管理器下运行的用户级 Broker，下次启动时才用上新版本。已经打开的会话要用 `/mcp` 重连或重开。见[更新 agent-peer]({{< relref "guides/update.md" >}})。
+在终端运行 `peers update`，或在会话里说“更新 Broker。”并批准这次调用（模型会调用 `update_broker`）。系统级安装由管理组成员更新，不用 `sudo`；不在组内的账户用 `sudo peers update`，或先加入管理组。同一账户还运行着用户级 Broker 时，用 `sudo peers update` 到达系统级 Broker。更新会校验下载内容、替换二进制；作为服务运行的 Broker 会用新版本重启，没有在运行的 Broker，或者不在服务管理器下运行的用户级 Broker，下次启动时才用上新版本。已经打开的会话要用 `/mcp` 重连或重开。见[更新 peers]({{< relref "guides/update.md" >}})。
 
 ## 能关闭更新检查吗？
 
-能。运行 `agent-peer config set update.check false`，`Update` 一行和会话里的提示会立刻消失，之后不再检查。检查与更新的工作方式见[更新 agent-peer]({{< relref "guides/update.md" >}})，检查向 GitHub 发送什么见[安全模型]({{< relref "security.md" >}})。
+能。运行 `peers config set update.check false`，`Update` 一行和会话里的提示会立刻消失，之后不再检查。检查与更新的工作方式见[更新 peers]({{< relref "guides/update.md" >}})，检查向 GitHub 发送什么见[安全模型]({{< relref "security.md" >}})。
 
 ## 两台主机如何开始互相信任？
 
-两台主机里至少要有一台能连到另一台。在对方能连上的那台主机上说“生成一个配对密钥。”并批准这次调用（模型会调用 `create_pairing_key`），或运行 `agent-peer pairing-key create` 生成一次性配对密钥，连同显示的地址一起，通过系统之外的途径交给另一台。另一台说“连接到 `<address>` 上的 Broker，密钥是 `<key>`。”并批准这次调用（模型会调用 `connect_broker`），或运行 `agent-peer peer connect <address> --key <key>` 配对，使用该一次性密钥或接受方配置的预置静态密钥，此后双方各凭指纹认对方。见[配对]({{< relref "concepts/pairing.md" >}})与[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。
+两台主机里至少要有一台能连到另一台。在对方能连上的那台主机上说“生成一个配对密钥。”并批准这次调用（模型会调用 `create_pairing_key`），或运行 `peers pairing-key create` 生成一次性配对密钥，连同显示的地址一起，通过系统之外的途径交给另一台。另一台说“连接到 `<address>` 上的 Broker，密钥是 `<key>`。”并批准这次调用（模型会调用 `connect_broker`），或运行 `peers peer connect <address> --key <key>` 配对，使用该一次性密钥或接受方配置的预置静态密钥，此后双方各凭指纹认对方。见[配对]({{< relref "concepts/pairing.md" >}})与[两台主机配对]({{< relref "guides/pair-hosts.md" >}})。
 
 ## 什么是 topic？需要自己创建吗？
 
-topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会话通常共享一个默认 topic，它取自 `.agent-peer.yaml` 或 git origin 地址，所以不需要自己创建。见[topic]({{< relref "concepts/topics.md" >}})。
+topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会话通常共享一个默认 topic，它取自 `.peers.yaml` 或 git origin 地址，所以不需要自己创建。见[topic]({{< relref "concepts/topics.md" >}})。
 
 ## 没有配对的主机能看到我的会话吗？
 
@@ -89,15 +89,15 @@ topic 是 Agent 之间可见与通信的范围。同一个项目里工作的会�
 
 ## 谁能修改 Broker 的配置？
 
-对 Broker 配置文件有写权限的账户可以用 `set_config` 或 `agent-peer config set` 修改配置，用 `create_pairing_key` 或 `agent-peer pairing-key create` 生成一次性配对密钥，用 `connect_broker` 与 `disconnect_broker`，或 `agent-peer peer connect` 与 `agent-peer peer disconnect` 配对和解除配对；读权限允许读取配置和审计日志。终端命令按执行命令的账户判定权限。管理组成员在本账户没有运行自己的用户级 Broker 时，不用 `sudo` 就能管理系统级 Broker；管理员用 `sudo` 执行命令时，系统级 Broker 按 root 的权限判定。见[管理权限]({{< relref "guides/management-permissions.md" >}})，管理组的说明见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)一节。
+对 Broker 配置文件有写权限的账户可以用 `set_config` 或 `peers config set` 修改配置，用 `create_pairing_key` 或 `peers pairing-key create` 生成一次性配对密钥，用 `connect_broker` 与 `disconnect_broker`，或 `peers peer connect` 与 `peers peer disconnect` 配对和解除配对；读权限允许读取配置和审计日志。终端命令按执行命令的账户判定权限。管理组成员在本账户没有运行自己的用户级 Broker 时，不用 `sudo` 就能管理系统级 Broker；管理员用 `sudo` 执行命令时，系统级 Broker 按 root 的权限判定。见[管理权限]({{< relref "guides/management-permissions.md" >}})，管理组的说明见[管理组]({{< relref "guides/management-permissions.md" >}}#管理组)一节。
 
 ## 端口被占用时会怎样？
 
-前台运行的 Broker 启动失败。另一个进程占用地址时，新装或重装会失败，说明地址已被占用，不注册服务。已经安装为服务的 Broker 在启动时发现端口被占用，会进入仅本机降级：本机 Agent 照常工作，生成配对密钥失败，对端连不进来。它不会另选地址或端口；腾出端口，或者修改监听地址，不用重启就会恢复。见[配置键]({{< relref "reference/configuration.md" >}})与 [agent-peer service install]({{< relref "reference/cli.md" >}}#agent-peer-service-install)。
+前台运行的 Broker 启动失败。另一个进程占用地址时，新装或重装会失败，说明地址已被占用，不注册服务。已经安装为服务的 Broker 在启动时发现端口被占用，会进入仅本机降级：本机 Agent 照常工作，生成配对密钥失败，对端连不进来。它不会另选地址或端口；腾出端口，或者修改监听地址，不用重启就会恢复。见[配置键]({{< relref "reference/configuration.md" >}})与 [peers service install]({{< relref "reference/cli.md" >}}#peers-service-install)。
 
 ## 怎么看运行日志和审计记录？
 
-用 `agent-peer status` 查看 Agent、topic、对端和链路，用 `agent-peer audit` 查看审计日志。Broker 处于降级运行时，`agent-peer status` 会给出原因与修复方法。把 Broker 安装为服务，运行日志由服务管理器保存：Linux 上用 `journalctl --user -u agent-peer.service`，系统级服务用 `journalctl -u agent-peer.service`；macOS 上用户级服务写入 `~/Library/Logs/agent-peer/broker.log`，系统级写入 `/var/log/agent-peer/broker.log`。在终端运行 `agent-peer broker`，日志就留在那个终端里。见[文件与路径]({{< relref "reference/files.md" >}})的“日志”一节。
+用 `peers status` 查看 Agent、topic、对端和链路，用 `peers audit` 查看审计日志。Broker 处于降级运行时，`peers status` 会给出原因与修复方法。把 Broker 安装为服务，运行日志由服务管理器保存：Linux 上用 `journalctl --user -u peers.service`，系统级服务用 `journalctl -u peers.service`；macOS 上用户级服务写入 `~/Library/Logs/peers/broker.log`，系统级写入 `/var/log/peers/broker.log`。在终端运行 `peers broker`，日志就留在那个终端里。见[文件与路径]({{< relref "reference/files.md" >}})的“日志”一节。
 
 ## 无界面会话能收到消息吗？
 

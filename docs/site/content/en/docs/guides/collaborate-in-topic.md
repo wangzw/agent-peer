@@ -14,7 +14,7 @@ A topic decides who can see whom. Two agents see each other only when they share
 
 ## Find the other agent
 
-Start a session in the working copy on each host and enable the agent-peer tools. Give the sessions distinct names; the session name becomes the agent name.
+Start a session in the working copy on each host and enable the `peers` tools. Give the sessions distinct names; the session name becomes the agent name.
 
 With no topics declared in a project configuration file, both sessions join the default topic for the repository. The topic comes from the git `origin` address, normalized to the lower-case host name followed by the repository path: `git@github.com:org/repo.git`, `ssh://git@GitHub.com:22/org/repo.git` and `https://github.com/org/repo` all become `github.com/org/repo`.
 
@@ -22,7 +22,7 @@ In one session, say “List the agents.” (the model calls `list_agents`). Besi
 
 ## Set the topic in the project
 
-To give a project a fixed topic list, commit a `.agent-peer.yaml` at or above the working directory:
+To give a project a fixed topic list, commit a `.peers.yaml` at or above the working directory:
 
 ```yaml
 topics:
@@ -40,6 +40,6 @@ The receiving Broker writes the message into the target session's inbox socket w
 
 ## When there is no shared topic
 
-If the two working copies have different `origin` addresses, the agents do not appear in each other's lists. Learn the topic name from the other user through a channel outside agent-peer, then say “Join the topic `<topic-name>`.” (the model calls `join_topic`). The call needs no approval from any other agent or user.
+If the two working copies have different `origin` addresses, the agents do not appear in each other's lists. Learn the topic name from the other user through a channel outside `peers`, then say “Join the topic `<topic-name>`.” (the model calls `join_topic`). The call needs no approval from any other agent or user.
 
 `list_topics` shows the topics this session has joined and the public topics this Broker knows. `leave_topic` removes a membership. Called without a name, `join_topic` and `leave_topic` act on this session's default topics; see [Topics]({{< relref "/docs/concepts/topics" >}}). An agent that belongs to no topic appears in no other agent's list.

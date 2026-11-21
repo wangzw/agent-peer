@@ -14,30 +14,30 @@ weight: 6
 curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh
 ```
 
-[安装 agent-peer]({{< relref "install.md" >}})介绍这个询问以及其他安装方式；手动命令见[把 Broker 安装为服务]({{< relref "run-as-service.md" >}})。
+[安装 peers]({{< relref "install.md" >}})介绍这个询问以及其他安装方式；手动命令见[把 Broker 安装为服务]({{< relref "run-as-service.md" >}})。
 
 系统级 Broker 取的是 root 的账户锁。如果 root 名下已有用户级 Broker 在运行，系统级安装会被拒绝，并提示先停掉它。
 
-系统级 Broker 使用 `/etc/agent-peer/config.yaml`、`/var/log/agent-peer/audit.log` 和 `/var/lib/agent-peer`。配置文件不存在时，安装会生成它，内容是一份列出全部键的模板，属主为 root，属组为默认的 `agent-peer`，权限 `0660`；已存在的文件不改动。该组的成员在本账户没有运行自己的用户级 Broker 时，不用 `sudo` 就能管理 Broker；这个组及它的限制见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}}#管理组)。
+系统级 Broker 使用 `/etc/peers/config.yaml`、`/var/log/peers/audit.log` 和 `/var/lib/peers`。配置文件不存在时，安装会生成它，内容是一份列出全部键的模板，属主为 root，属组为默认的 `peers`，权限 `0660`；已存在的文件不改动。该组的成员在本账户没有运行自己的用户级 Broker 时，不用 `sudo` 就能管理 Broker；这个组及它的限制见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}}#管理组)。
 
 ## 允许账户使用它
 
 每个账户各自注册 MCP 服务；注册按账户进行，不按主机进行。系统级安装已经为执行安装的账户注册好。其他账户只需注册 MCP 服务，用安装后二进制的绝对路径：
 
 ```sh
-claude mcp add --scope user peer -- /usr/local/bin/agent-peer mcp
+claude mcp add --scope user peer -- /usr/local/bin/peers mcp
 ```
 
-不要在这些账户上执行安装命令。主机上已有系统级服务时，安装命令会改问是否升级系统级安装，回答 n 不改动主机；只有带 `--user`，或者在没有终端时执行，才会装出用户级 Broker，装了以后本账户的会话改用它。已经有用户级安装的，用 [`agent-peer uninstall`]({{< relref "/docs/reference/cli" >}}#agent-peer-uninstall) 卸掉；卸载会删掉本账户的 MCP 注册，之后要重新执行上面的注册命令。
+不要在这些账户上执行安装命令。主机上已有系统级服务时，安装命令会改问是否升级系统级安装，回答 n 不改动主机；只有带 `--user`，或者在没有终端时执行，才会装出用户级 Broker，装了以后本账户的会话改用它。已经有用户级安装的，用 [`peers uninstall`]({{< relref "/docs/reference/cli" >}}#peers-uninstall) 卸掉；卸载会删掉本账户的 MCP 注册，之后要重新执行上面的注册命令。
 
-会话通过本机 socket 访问系统级 Broker：Linux 上是 `/run/agent-peer/broker.sock`，macOS 上是 `/var/run/agent-peer/broker.sock`。两个设置决定哪些账户能连接：
+会话通过本机 socket 访问系统级 Broker：Linux 上是 `/run/peers/broker.sock`，macOS 上是 `/var/run/peers/broker.sock`。两个设置决定哪些账户能连接：
 
 | 键 | 默认值 | 作用 |
 |---|---|---|
 | `broker.local_socket_group` | 空 | socket 的属组。空表示沿用运行时目录的属组。组必须存在。 |
 | `broker.local_socket_mode` | `0666` | socket 的权限位。 |
 
-要限定到某个组，就把 socket 的属组设为这个组，并把 socket 权限设为允许该组访问的值，例如 `broker.local_socket_group: agent-peer-users` 配 `broker.local_socket_mode: 0660`。这个组不要用管理组，也就是拥有配置文件、能管理 Broker 的那个组：管理组的成员同时也能管理 Broker，而能不能连接和能不能管理是两件事。组外的账户连不上，需要自己启动用户级 Broker，安装为服务或在终端运行都可以。命令见[把 Broker 安装为服务]({{< relref "run-as-service.md" >}})。
+要限定到某个组，就把 socket 的属组设为这个组，并把 socket 权限设为允许该组访问的值，例如 `broker.local_socket_group: peers-users` 配 `broker.local_socket_mode: 0660`。这个组不要用管理组，也就是拥有配置文件、能管理 Broker 的那个组：管理组的成员同时也能管理 Broker，而能不能连接和能不能管理是两件事。组外的账户连不上，需要自己启动用户级 Broker，安装为服务或在终端运行都可以。命令见[把 Broker 安装为服务]({{< relref "run-as-service.md" >}})。
 
 ## 会话或命令使用哪个 Broker
 
@@ -50,10 +50,10 @@ claude mcp add --scope user peer -- /usr/local/bin/agent-peer mcp
 
 一个账户有权使用系统级 Broker，但它自己的用户级 Broker 正在运行，会话会登记到用户级 Broker 上。要让它的会话改用系统级 Broker，就不要在这个账户上运行用户级 Broker。
 
-终端命令 `agent-peer config`、`agent-peer pairing-key` 和 `agent-peer peer` 与 `agent-peer status` 一样，按同样的顺序选择 Broker，只查找正在运行的 Broker，不会启动 Broker。本账户有用户级 Broker 在运行时，要用 `sudo` 才能管理系统级 Broker；root 直接选中系统级 Broker。
+终端命令 `peers config`、`peers pairing-key` 和 `peers peer` 与 `peers status` 一样，按同样的顺序选择 Broker，只查找正在运行的 Broker，不会启动 Broker。本账户有用户级 Broker 在运行时，要用 `sudo` 才能管理系统级 Broker；root 直接选中系统级 Broker。
 
 ## 多个账户共用一个身份
 
 同一个系统级 Broker 服务的所有 Agent 共用它的指纹、别名和对端。不同账户的 Agent 只要加入同一个 topic，就能互相看见并互发消息。因此系统级 Broker 配对一次，所有被服务的账户就都连到了对方；另一台主机只需要这一次配对，就能访问这些账户。系统级 Broker 的默认别名是主机名的第一段，不带账户名，所以它服务的每个账户的 Agent 地址都形如 `name@workstation`。账户 alice 另起用户级 Broker 后，该账户会话的地址变成 `name@workstation.alice`，因为这些会话登记到了另一个 Broker。
 
-Broker 的管理权限由 `/etc/agent-peer/config.yaml` 的文件权限决定，与运行服务的账户无关。管理它有两种方式：成为拥有该文件的组的成员，或以 `sudo` 执行终端命令，后者由 Broker 按 root 的权限判定。这个组及它的限制见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}}#管理组)。
+Broker 的管理权限由 `/etc/peers/config.yaml` 的文件权限决定，与运行服务的账户无关。管理它有两种方式：成为拥有该文件的组的成员，或以 `sudo` 执行终端命令，后者由 Broker 按 root 的权限判定。这个组及它的限制见[以配置文件权限管理 Broker]({{< relref "management-permissions.md" >}}#管理组)。

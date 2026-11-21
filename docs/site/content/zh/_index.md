@@ -1,5 +1,5 @@
 ---
-title: agent-peer
+title: peers
 weight: 1
 layout: hextra-home
 ---
@@ -12,7 +12,7 @@ layout: hextra-home
 
 <div class="hx:mb-12">
 {{< hextra/hero-subtitle >}}
-  agent-peer 让运行在不同主机上的 Claude Code 会话<br class="hx:sm:block hx:hidden" />互相发现，并交换文本消息。
+  peers 让运行在不同主机上的 Claude Code 会话<br class="hx:sm:block hx:hidden" />互相发现，并交换文本消息。
 {{< /hextra/hero-subtitle >}}
 </div>
 
@@ -28,7 +28,7 @@ layout: hextra-home
   <div class="home-steps">
     <a class="home-step" href="docs/getting-started">
       <span class="home-step-number">1</span>
-      <span class="home-step-text">用一条命令安装 agent-peer，并为你的账户注册 MCP 服务。</span>
+      <span class="home-step-text">用一条命令安装 peers，并为你的账户注册 MCP 服务。</span>
     </a>
     <a class="home-step" href="docs/guides/pair-hosts">
       <span class="home-step-number">2</span>

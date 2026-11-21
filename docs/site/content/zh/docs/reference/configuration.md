@@ -3,18 +3,18 @@ title: 配置键
 weight: 3
 ---
 
-两种部署形态各读一个 YAML 文件：用户级 Broker 读 `~/.agent-peer/config.yaml`，系统级 Broker 读 `/etc/agent-peer/config.yaml`。没有文件时 Broker 照常运行，每个键都可选，未出现的键取默认值。`agent-peer service install` 如何生成这个文件，见下文“生成的配置文件”一节。Broker 会监视该文件，所以无论是手工修改、经 `set_config` 修改，还是经 `agent-peer config set` 修改，合法的改动都会在运行期间生效。两个保活键是例外：它们在建立监听或链路时读取，改动只对之后建立的监听或链路生效。
+两种部署形态各读一个 YAML 文件：用户级 Broker 读 `~/.peers/config.yaml`，系统级 Broker 读 `/etc/peers/config.yaml`。没有文件时 Broker 照常运行，每个键都可选，未出现的键取默认值。`peers service install` 如何生成这个文件，见下文“生成的配置文件”一节。Broker 会监视该文件，所以无论是手工修改、经 `set_config` 修改，还是经 `peers config set` 修改，合法的改动都会在运行期间生效。两个保活键是例外：它们在建立监听或链路时读取，改动只对之后建立的监听或链路生效。
 
 ## 生成的配置文件
 
-`agent-peer service install` 只在该级别的配置文件不存在时写入模板，已存在的文件不改。模板列出全部键，每个键上方有一行说明。有固定默认值的键直接写出取值。默认值为空或在运行时计算的 5 个键写成注释并附示例：`broker.alias`（默认值在运行时计算），以及默认为空的 `broker.advertise`、`broker.advertise_extra`、`broker.local_socket_group` 和 `pairing.static_key`。取消注释并填入合法值，改动就会像其他合法改动一样在 Broker 运行期间生效。没有配置文件就启动的 Broker 不会得到模板。
+`peers service install` 只在该级别的配置文件不存在时写入模板，已存在的文件不改。模板列出全部键，每个键上方有一行说明。有固定默认值的键直接写出取值。默认值为空或在运行时计算的 5 个键写成注释并附示例：`broker.alias`（默认值在运行时计算），以及默认为空的 `broker.advertise`、`broker.advertise_extra`、`broker.local_socket_group` 和 `pairing.static_key`。取消注释并填入合法值，改动就会像其他合法改动一样在 Broker 运行期间生效。没有配置文件就启动的 Broker 不会得到模板。
 
-两份模板有三处不同。第一行写明级别，分别是 `# agent-peer user Broker configuration.` 与 `# agent-peer system Broker configuration.`。开头注释不同：用户级模板说明这个文件只属于本账户，系统级模板则说明，把文件的读权限授予某个组，该组的账户就能读取配置、完整状态与审计日志，把写权限授予某个组，该组的账户就能修改配置、管理配对。此外，用户级模板在 `broker.local_socket_group` 与 `broker.local_socket_mode` 这两个键的说明后注明，它们只对系统级 Broker 生效。
+两份模板有三处不同。第一行写明级别，分别是 `# peers user Broker configuration.` 与 `# peers system Broker configuration.`。开头注释不同：用户级模板说明这个文件只属于本账户，系统级模板则说明，把文件的读权限授予某个组，该组的账户就能读取配置、完整状态与审计日志，把写权限授予某个组，该组的账户就能修改配置、管理配对。此外，用户级模板在 `broker.local_socket_group` 与 `broker.local_socket_mode` 这两个键的说明后注明，它们只对系统级 Broker 生效。
 
 模板以一段说明注释开头：
 
 ```yaml
-# agent-peer user Broker configuration.
+# peers user Broker configuration.
 #
 # Every key is optional; a key that is absent takes its default value.
 # This file belongs to this account only: only this account runs the Broker
@@ -36,7 +36,7 @@ pairing:
 
 ## 配置键
 
-| 键 | 类型 | 默认值 | 含义 | `set_config`、`agent-peer config set` |
+| 键 | 类型 | 默认值 | 含义 | `set_config`、`peers config set` |
 |---|---|---|---|---|
 | `broker.alias` | 字符串 | 推导得出 | 本 Broker 自报的别名。未设置时由主机名推导，用户级 Broker 还取运行它的账户名。取值为 1 至 24 个字符，限字母、数字、`.`、`-` 和 `_`。细则见表后的说明。 | 可以 |
 | `broker.public` | 布尔 | `false` | 是否发布名片，使本 Broker 为整个连通网络所知。 | 可以 |
@@ -71,9 +71,9 @@ pairing:
 | `update.check` | 布尔 | `true` | Broker 是否周期检查 GitHub 上是否有更新的正式发布版本。为 `false` 时不发出检查请求。 | 可以 |
 | `update.check_interval` | 时长 | `24h` | Broker 检查新版本的间隔。下限为 `1h`。 | 可以 |
 
-更新检查会访问 GitHub。[安全模型]({{< relref "docs/security" >}})说明它发送什么、接收什么。`agent-peer update` 也访问 GitHub，但只在你运行它时。
+更新检查会访问 GitHub。[安全模型]({{< relref "docs/security" >}})说明它发送什么、接收什么。`peers update` 也访问 GitHub，但只在你运行它时。
 
-未设置 `broker.alias` 时，系统级 Broker 取系统主机名的第一段，即第一个 `.` 之前的部分；用户级 Broker 取这一段、`.` 和运行它的账户名，例如 `workstation` 与 `workstation.alice`。别名与监听地址、监听端口和对外地址都无关。不在别名字符集内的字符换成 `-`。账户名查不到或为空时用十进制 uid 代替，例如 `workstation.1000`。主机名读不到或为空时，主机名部分取 `broker`。别名超过 24 个字符时先截短主机名部分，主机名部分至少保留 1 个字符，仍然超长再截短账户名部分。截短后去掉末尾的 `.` 与 `-`；账户名部分改用 uid 时即截短 uid。从 v0.1.0 升级后，没有设置此项的 Broker 别名通常会变；不监听、主机名本来就是单个段且不超过 24 个字符的系统级 Broker 除外，它的别名不变，用户级 Broker 则一律在主机名后追加 `.` 与账户名。要沿用旧别名就在这里设置此项，例如设回 `workstation-17443`。升级前要读出旧别名，可以用 `get_config` 工具读 `broker.alias`，或取 `agent-peer status` 输出的 Agent 地址里 `@` 后面的部分；升级后这两个途径读到的已经是新别名，所以要先记下旧别名，升级后把它设回配置文件的 `broker.alias`。默认端口下，旧别名是完整主机名加上 `-17443`，截短到 24 个字符。
+未设置 `broker.alias` 时，系统级 Broker 取系统主机名的第一段，即第一个 `.` 之前的部分；用户级 Broker 取这一段、`.` 和运行它的账户名，例如 `workstation` 与 `workstation.alice`。别名与监听地址、监听端口和对外地址都无关。不在别名字符集内的字符换成 `-`。账户名查不到或为空时用十进制 uid 代替，例如 `workstation.1000`。主机名读不到或为空时，主机名部分取 `broker`。别名超过 24 个字符时先截短主机名部分，主机名部分至少保留 1 个字符，仍然超长再截短账户名部分。截短后去掉末尾的 `.` 与 `-`；账户名部分改用 uid 时即截短 uid。想自选别名，就设置 `broker.alias`。
 
 ## 类型与约束
 
@@ -92,6 +92,6 @@ pairing:
 
 ## 修改配置
 
-`set_config` 以文本接收新值，返回旧值与新值。`agent-peer config set` 在终端做同样的事，规则相同。两者修改模板中写成注释的键时，都在注释所在位置取消注释并写入新值，文件其余内容不变。文件不存在时，新建的文件只写这一项。两者都不能修改 `pairing.static_key`，在 Broker 以 `--listen` 运行时也都不能修改 `broker.listen`。修改 `update.check_interval` 不会中断当前检查周期，新值从下一个周期起生效。把 `update.check` 设为 `false` 会停止检查，并清除已报告的可用版本。手工编辑文件时，Broker 采纳其中合法的改动；某个键的值不合法时，该键保留旧值，Broker 向日志写入一条错误。
+`set_config` 以文本接收新值，返回旧值与新值。`peers config set` 在终端做同样的事，规则相同。两者修改模板中写成注释的键时，都在注释所在位置取消注释并写入新值，文件其余内容不变。文件不存在时，新建的文件只写这一项。两者都不能修改 `pairing.static_key`，在 Broker 以 `--listen` 运行时也都不能修改 `broker.listen`。修改 `update.check_interval` 不会中断当前检查周期，新值从下一个周期起生效。把 `update.check` 设为 `false` 会停止检查，并清除已报告的可用版本。手工编辑文件时，Broker 采纳其中合法的改动；某个键的值不合法时，该键保留旧值，Broker 向日志写入一条错误。
 
 文件位置与权限见[文件与路径]({{< relref "docs/reference/files" >}})。会话默认加入哪些 topic 见[项目配置文件]({{< relref "docs/reference/project-config" >}})。
