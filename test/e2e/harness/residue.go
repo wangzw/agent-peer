@@ -28,10 +28,12 @@ const supervisorChildEnv = "APE2E_TEST_SUPERVISOR_CHILD"
 // volumes named ape2e-*, the test images named peers-e2e, and the runtime
 // roots themselves. Every project, root and image carries its owner's PID,
 // start time and PID namespace, so resources of a live owner are left alone and
-// two suites can run on one host. A resource whose owner lies in another PID
-// namespace is left alone too: this process cannot tell whether that owner is
-// alive. It tolerates an empty system and reports failures through logf instead
-// of stopping.
+// two suites can run on one host. A project started from a compose file names
+// its owner in the OwnerLabel label instead of its project name; a manual
+// cleanup selects the same way and removes only resources whose owner is gone. A
+// resource whose owner lies in another PID namespace is left alone too: this
+// process cannot tell whether that owner is alive. It tolerates an empty system
+// and reports failures through logf instead of stopping.
 func CleanResidue(logf func(format string, args ...any)) {
 	killRuntimeProcesses(logf)
 	removeDockerResidue(logf)
@@ -108,12 +110,15 @@ func killRuntimeProcesses(logf func(format string, args ...any)) {
 }
 
 // dockerResource is one container, network or volume with the compose project
-// that owns it. The name is the fallback marker when a resource carries no
-// project label.
+// and owner label that name it. The label wins over the project name, which
+// wins over the resource name: a project started from a compose file keeps a
+// readable name and carries its owner in the label, while a harness-built
+// project carries the marker in its name.
 type dockerResource struct {
 	id      string
 	name    string
 	project string
+	owner   string
 }
 
 // deadDockerIDs returns the resources whose owner is gone. Resources without a
@@ -121,7 +126,10 @@ type dockerResource struct {
 func deadDockerIDs(resources []dockerResource) []string {
 	var ids []string
 	for _, resource := range resources {
-		marker := resource.project
+		marker := resource.owner
+		if marker == "" {
+			marker = resource.project
+		}
 		if marker == "" {
 			marker = resource.name
 		}
@@ -176,38 +184,58 @@ func removeDockerImages(logf func(format string, args ...any)) {
 	}
 }
 
-// dockerContainers lists the ape2e-* containers with their compose project.
+// The listings separate fields with a pipe instead of a space: a resource
+// without a project or owner label would otherwise collapse two adjacent
+// spaces, and the empty field would shift the ones after it.
+const (
+	dockerProjectLabel = "com.docker.compose.project"
+	dockerResourceSep  = "|"
+)
+
+// dockerContainers lists the ape2e-* containers with their compose project and
+// owner label.
 func dockerContainers() []dockerResource {
 	return dockerResources("ps", "-a", "--filter", "name=ape2e-", "--format",
-		`{{.ID}} {{.Names}} {{.Label "com.docker.compose.project"}}`)
+		`{{.ID}}|{{.Names}}|{{.Label "`+dockerProjectLabel+`"}}|{{.Label "`+OwnerLabel+`"}}`)
 }
 
-// dockerNetworks lists the ape2e-* networks with their compose project.
+// dockerNetworks lists the ape2e-* networks with their compose project and
+// owner label.
 func dockerNetworks() []dockerResource {
 	return dockerResources("network", "ls", "--filter", "name=ape2e-", "--format",
-		`{{.ID}} {{.Name}} {{.Label "com.docker.compose.project"}}`)
+		`{{.ID}}|{{.Name}}|{{.Label "`+dockerProjectLabel+`"}}|{{.Label "`+OwnerLabel+`"}}`)
 }
 
-// dockerVolumes lists the ape2e-* volumes with their compose project. The name
-// is the identifier volume rm takes.
+// dockerVolumes lists the ape2e-* volumes with their compose project and owner
+// label. The name is the identifier volume rm takes; the second field is left
+// empty because a volume has no separate name.
 func dockerVolumes() []dockerResource {
 	return dockerResources("volume", "ls", "--filter", "name=ape2e-", "--format",
-		`{{.Name}} {{.Label "com.docker.compose.project"}}`)
+		`{{.Name}}||{{.Label "`+dockerProjectLabel+`"}}|{{.Label "`+OwnerLabel+`"}}`)
 }
 
 func dockerResources(args ...string) []dockerResource {
+	return parseDockerResources(dockerLines(args...))
+}
+
+// parseDockerResources reads the pipe-separated listing lines the three
+// listing formats produce.
+func parseDockerResources(lines []string) []dockerResource {
 	var resources []dockerResource
-	for _, line := range dockerLines(args...) {
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
+	for _, line := range lines {
+		fields := strings.Split(line, dockerResourceSep)
+		if len(fields) == 0 || strings.TrimSpace(fields[0]) == "" {
 			continue
 		}
 		resource := dockerResource{id: fields[0], name: fields[0]}
-		if len(fields) > 1 {
+		if len(fields) > 1 && fields[1] != "" {
 			resource.name = fields[1]
 		}
 		if len(fields) > 2 {
 			resource.project = fields[2]
+		}
+		if len(fields) > 3 {
+			resource.owner = fields[3]
 		}
 		resources = append(resources, resource)
 	}

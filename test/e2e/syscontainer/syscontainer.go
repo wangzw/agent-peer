@@ -11,6 +11,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -295,6 +296,12 @@ func Run(t *testing.T, svc Service, extraEnv ...string) {
 		t.Logf("syscontainer: output of %s in %s:\n%s", t.Name(), c.project, strings.TrimSpace(string(out)))
 	}
 	if err != nil {
+		// Compose passes the inner process's exit status through. A SIGKILL
+		// (137, usually the OOM killer) leaves logs that end before the kill, so
+		// the daemon's events for this project are what explain the failure.
+		if diagnostic := c.exitDiagnostic(err); diagnostic != "" {
+			t.Fatalf("syscontainer: %s failed inside the %s container: %v\n%s", t.Name(), svc, err, diagnostic)
+		}
 		t.Fatalf("syscontainer: %s failed inside the %s container: %v", t.Name(), svc, err)
 	}
 }
@@ -321,15 +328,19 @@ func newTestContainer(t *testing.T, extraEnv ...string) *container {
 	// so the network is removed before its slot is handed to another project.
 	subnet := allocSystemSubnet(t)
 	project := projectName(t.Name())
+	owner := ownerLabelValue()
 	env := []string{
 		"PEERS_E2E_SYSTEM_IMAGE=" + image,
 		"PEERS_E2E_BIN=" + filepath.Dir(testBinary),
 		"PEERS_E2E_SYSTEM_SUBNET=" + subnet,
+		ownerEnv + "=" + owner,
 	}
 	env = append(env, extraEnv...)
 	c := &container{
 		t:           t,
 		project:     project,
+		owner:       owner,
+		started:     time.Now(),
 		composeFile: filepath.Join(dir, "compose.yaml"),
 		// The compose file mounts this directory at /opt/peers-test.
 		env: append(os.Environ(), env...),
@@ -448,6 +459,7 @@ func RunPairTest(t *testing.T, opts PairOptions) {
 	}
 
 	var failed []string
+	var diagnostics []string
 	for range hosts {
 		result := <-results
 		if len(result.out) > 0 {
@@ -456,9 +468,16 @@ func RunPairTest(t *testing.T, opts PairOptions) {
 		}
 		if result.err != nil {
 			failed = append(failed, string(result.role))
+			if diagnostic := c.exitDiagnostic(result.err); diagnostic != "" {
+				diagnostics = append(diagnostics, fmt.Sprintf("host %s: %s", result.role, diagnostic))
+			}
 		}
 	}
 	if len(failed) > 0 {
+		if len(diagnostics) > 0 {
+			t.Fatalf("syscontainer: %s failed on host %s\n%s",
+				t.Name(), strings.Join(failed, ", "), strings.Join(diagnostics, "\n"))
+		}
 		t.Fatalf("syscontainer: %s failed on host %s", t.Name(), strings.Join(failed, ", "))
 	}
 }
@@ -478,8 +497,14 @@ func (c *container) forwardEnvArgs() []string {
 
 // container is one compose project started for one test.
 type container struct {
-	t           *testing.T
-	project     string
+	t       *testing.T
+	project string
+	// owner is this process's owner marker as stored in harness.OwnerLabel. It
+	// names the docker events a failed run is diagnosed with.
+	owner string
+	// started is when the project was created, the start of the event window a
+	// failed run is diagnosed with.
+	started     time.Time
 	composeFile string
 	env         []string
 	// forward is passed into the container with -e, one NAME=value per entry.
@@ -491,6 +516,21 @@ func (c *container) command(args ...string) *exec.Cmd {
 	cmd := exec.Command("docker", args...)
 	cmd.Env = c.env
 	return cmd
+}
+
+// exitDiagnostic returns the text that explains an inner run that exited with
+// killedExitCode, or "" for any other failure. It asks the daemon for the
+// events of this project's owner label since the project started, under its
+// own bound so a hung daemon cannot delay the failure report.
+func (c *container) exitDiagnostic(err error) string {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), systemdEvidenceBound)
+	defer cancel()
+	run := func(args ...string) string { return c.docker(ctx, args...) }
+	return collectExitDiagnostic(exitErr.ExitCode(), run, c.owner, c.started, time.Now())
 }
 
 // systemdRebuildLedger records every systemd container rebuild. make e2e prints

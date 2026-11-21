@@ -1,8 +1,15 @@
+# Every service, network and volume carries the owner label below. The Go
+# caller (syscontainer.newTestContainer) passes this process's marker as
+# ape2e-<pid>-<start>-pidns<inode>, and harness.CleanResidue removes only
+# resources whose owner is gone. A manual cleanup uses the same filter:
+#   docker ps -a --filter label=peers.e2e.owner
 services:
   plain:
     image: ${PEERS_E2E_SYSTEM_IMAGE:?}
     init: true
     user: root
+    labels:
+      peers.e2e.owner: ${PEERS_E2E_OWNER:?}
     # The no-egress check installs an OUTPUT DROP rule inside this container
     # when the internal network's gateway is reachable. Only this container's
     # netns is changed.
@@ -22,6 +29,8 @@ services:
     image: ${PEERS_E2E_SYSTEM_IMAGE:?}
     privileged: true
     cgroup: host
+    labels:
+      peers.e2e.owner: ${PEERS_E2E_OWNER:?}
     tmpfs:
       - /run
       - /run/lock
@@ -44,6 +53,8 @@ services:
     image: ${PEERS_E2E_SYSTEM_IMAGE:?}
     privileged: true
     cgroup: host
+    labels:
+      peers.e2e.owner: ${PEERS_E2E_OWNER:?}
     tmpfs:
       - /run
       - /run/lock
@@ -60,6 +71,8 @@ services:
 
 volumes:
   pair-shared:
+    labels:
+      peers.e2e.owner: ${PEERS_E2E_OWNER:?}
 
 networks:
   # Explicitly declared and internal so the containers have no way out. The
@@ -72,6 +85,8 @@ networks:
   # parallel; the default is what a manual compose invocation uses.
   system:
     internal: true
+    labels:
+      peers.e2e.owner: ${PEERS_E2E_OWNER:?}
     ipam:
       config:
         - subnet: ${PEERS_E2E_SYSTEM_SUBNET:-198.19.240.0/24}

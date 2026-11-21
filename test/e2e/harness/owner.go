@@ -27,6 +27,24 @@ type owner struct {
 // the marker.
 const ownerNamespacePrefix = "pidns"
 
+// OwnerLabel is the docker label that carries a project's owner marker on its
+// containers, networks and volumes. Compose project names built by the harness
+// carry the marker themselves, but a project started from a compose file
+// (test/e2e/compose/system/compose.yaml) keeps its readable name and is
+// identified through this label instead. CleanResidue reads the label before
+// the project name, and a manual cleanup can select the same way:
+//
+//	docker ps -a --filter label=peers.e2e.owner
+const OwnerLabel = "peers.e2e.owner"
+
+// OwnerMarker returns this process's owner marker as a label value, in the
+// same "ape2e-<pid>-<start>-pidns<inode>" form a project name carries. A
+// cleanup reads it back with the same parser, so a label value and a project
+// name cannot disagree about who owns the resource.
+func OwnerMarker() string {
+	return "ape2e-" + currentOwner().String()
+}
+
 // String formats the marker that names carry: "<pid>-<start>-pidns<inode>".
 // A platform without PID namespaces records zero, which a cleanup treats as
 // unknown and therefore leaves alone on a host that does have namespaces.
