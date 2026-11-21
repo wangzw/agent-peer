@@ -1,4 +1,4 @@
-//go:build agentpeer_testenv
+//go:build peers_testenv
 
 package mcpserver
 
@@ -38,7 +38,7 @@ func runProcessEnv(t *testing.T, extra ...string) []string {
 	env := []string{
 		"PATH=" + os.Getenv("PATH"),
 		"HOME=" + t.TempDir(),
-		"AGENT_PEER_TEST_ROLE=mcp",
+		"PEERS_TEST_ROLE=mcp",
 	}
 	return append(env, extra...)
 }
@@ -70,7 +70,7 @@ func TestRunProcessServesMCP(t *testing.T) {
 	sock := fakelocal.SocketPath(t)
 	srv := fakelocal.Start(t, sock, fakelocal.Handlers{})
 	env := runProcessEnv(t,
-		"AGENT_PEER_TEST_SOCKET="+sock,
+		"PEERS_TEST_SOCKET="+sock,
 		"CLAUDE_CODE_MESSAGING_SOCKET=/s",
 	)
 	cs, _ := startRunProcess(t, env)
@@ -94,7 +94,7 @@ func TestRunProcessServesMCP(t *testing.T) {
 func TestRunProcessSurvivesMissingBroker(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing.sock")
 	env := runProcessEnv(t,
-		"AGENT_PEER_TEST_SOCKET="+missing,
+		"PEERS_TEST_SOCKET="+missing,
 		"CLAUDE_CODE_MESSAGING_SOCKET=/s",
 	)
 	cs, cmd := startRunProcess(t, env)
@@ -115,8 +115,8 @@ func TestRunProcessSurvivesMissingBroker(t *testing.T) {
 	if !res.IsError {
 		t.Fatal("list_agents succeeded without a Broker")
 	}
-	if text := textContent(t, res); !strings.Contains(text, "AGENT_PEER_TEST_SOCKET") {
-		t.Errorf("list_agents error = %q, want the AGENT_PEER_TEST_SOCKET path", text)
+	if text := textContent(t, res); !strings.Contains(text, "PEERS_TEST_SOCKET") {
+		t.Errorf("list_agents error = %q, want the PEERS_TEST_SOCKET path", text)
 	}
 
 	if err := cmd.Process.Signal(syscall.Signal(0)); err != nil {

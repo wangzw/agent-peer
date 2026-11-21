@@ -28,7 +28,7 @@ const (
 	sgConfigPath = "/etc/peers/config.yaml"
 	// sgSocketPath is the system Broker's local socket.
 	sgSocketPath = "/run/peers/broker.sock"
-	// sgUsersGID is the gid of agentpeer-users in the system image.
+	// sgUsersGID is the gid of peers-users in the system image.
 	sgUsersGID = 2001
 	// sgOtherUID is the uid of other in the system image.
 	sgOtherUID = 2000
@@ -43,7 +43,7 @@ const (
 
 // TestREQBrokerConfig027_GroupRestrictsUse checks that the group and mode of
 // the system Broker's local socket decide which accounts may use it. peer is
-// in agentpeer-users and other is not, so other's session reports that no
+// in peers-users and other is not, so other's session reports that no
 // Broker is available until the user starts other's own user-level Broker; it
 // never registers with the system Broker.
 func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
@@ -53,8 +53,8 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 	}
 
 	syscontainer.StartSystemBroker(t,
-		"broker:\n  local_socket_group: agentpeer-users\n  local_socket_mode: \"0660\"\n")
-	syscontainer.WaitFor(t, "the system socket to be 0660 agentpeer-users", func() bool {
+		"broker:\n  local_socket_group: peers-users\n  local_socket_mode: \"0660\"\n")
+	syscontainer.WaitFor(t, "the system socket to be 0660 peers-users", func() bool {
 		mode, gid := sgSocketModeGID(t, sgSocketPath)
 		return mode == 0o660 && gid == sgUsersGID
 	})
@@ -154,16 +154,16 @@ func TestSystemSocketGroupReappliedOnReload(t *testing.T) {
 	})
 
 	sgWriteSystemConfig(t,
-		"broker:\n  local_socket_group: agentpeer-users\n  local_socket_mode: \"0660\"\n")
+		"broker:\n  local_socket_group: peers-users\n  local_socket_mode: \"0660\"\n")
 
-	syscontainer.WaitFor(t, "the reloaded socket to be 0660 agentpeer-users", func() bool {
+	syscontainer.WaitFor(t, "the reloaded socket to be 0660 peers-users", func() bool {
 		mode, gid := sgSocketModeGID(t, sgSocketPath)
 		return mode == 0o660 && gid == sgUsersGID
 	})
 
 	sgAssertNotPermitted(t, "other", sgSocketPath)
 	if res := syscontainer.RunAs(t, "peer",
-		[]string{"AGENT_PEER_TEST_SOCKET=" + sgSocketPath}, "status"); res.ExitCode != 0 {
+		[]string{"PEERS_TEST_SOCKET=" + sgSocketPath}, "status"); res.ExitCode != 0 {
 		t.Errorf("status as peer through the reloaded system socket: exit %d\n%s", res.ExitCode, res.Stderr)
 	}
 }
@@ -188,9 +188,9 @@ func TestSystemSocketGroupUnknownRejected(t *testing.T) {
 		t.Errorf("the startup error does not name broker.local_socket_group:\n%s", res.Stderr)
 	}
 
-	const valid = "broker:\n  local_socket_group: agentpeer-users\n  local_socket_mode: \"0660\"\n"
+	const valid = "broker:\n  local_socket_group: peers-users\n  local_socket_mode: \"0660\"\n"
 	syscontainer.StartSystemBroker(t, valid)
-	syscontainer.WaitFor(t, "the system socket to be 0660 agentpeer-users", func() bool {
+	syscontainer.WaitFor(t, "the system socket to be 0660 peers-users", func() bool {
 		mode, gid := sgSocketModeGID(t, sgSocketPath)
 		return mode == 0o660 && gid == sgUsersGID
 	})
@@ -221,13 +221,13 @@ func TestSystemSocketGroupUnknownRejected(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &got); err != nil {
 		t.Fatalf("decoding get_config result %q: %v", text, err)
 	}
-	if len(got.Entries) != 1 || got.Entries[0].Value != "agentpeer-users" {
-		t.Errorf("broker.local_socket_group after the refused set = %q, want agentpeer-users", text)
+	if len(got.Entries) != 1 || got.Entries[0].Value != "peers-users" {
+		t.Errorf("broker.local_socket_group after the refused set = %q, want peers-users", text)
 	}
 
 	// The refused change must leave the socket's group and mode untouched. The
 	// refused set is already complete, so a one-second observation is enough.
-	harness.Consistently(t, time.Second, "the socket group stays agentpeer-users", func() (bool, string) {
+	harness.Consistently(t, time.Second, "the socket group stays peers-users", func() (bool, string) {
 		mode, gid := sgSocketModeGID(t, sgSocketPath)
 		return mode == 0o660 && gid == sgUsersGID,
 			"mode " + mode.String() + " gid " + strconv.FormatUint(uint64(gid), 10)
@@ -240,7 +240,7 @@ func TestSystemSocketGroupUnknownRejected(t *testing.T) {
 // problem.
 func sgAssertNotPermitted(t *testing.T, account, path string) {
 	t.Helper()
-	res := syscontainer.RunAs(t, account, []string{"AGENT_PEER_TEST_SOCKET=" + path}, "status")
+	res := syscontainer.RunAs(t, account, []string{"PEERS_TEST_SOCKET=" + path}, "status")
 	if res.ExitCode == 0 {
 		t.Errorf("status as %s through the system socket succeeded; stdout:\n%s", account, res.Stdout)
 		return

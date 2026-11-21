@@ -122,7 +122,7 @@ func NewSession(t *testing.T, account, name string, opts ...SessionOption) *Sess
 		env = append(env, "CLAUDE_CONFIG_DIR="+configDir)
 	}
 	env = append(env, cfg.env...)
-	cmd := Command(account, env, agentPeerBinary, "mcp")
+	cmd := Command(account, env, peersBinary, "mcp")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 

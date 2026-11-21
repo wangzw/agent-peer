@@ -12,7 +12,7 @@ source "$(dirname "$0")/lib.sh"
 # service.
 
 PORT=27443
-RUNTIME_DIR="/tmp/agent-peer-$(id -u)"
+RUNTIME_DIR="/tmp/peers-$(id -u)"
 BROKER_SOCKET="$RUNTIME_DIR/broker.sock"
 BROKER_LOCK="$RUNTIME_DIR/broker.lock"
 PROMPT='Call mcp__peer__list_agents and show the raw result.'
@@ -29,14 +29,14 @@ cleanup() {
 }
 rs_on_exit cleanup
 
-# broker_pids prints the pids whose executable is R/bin/agent-peer and whose
+# broker_pids prints the pids whose executable is R/bin/peers and whose
 # first argument is "broker".
 broker_pids() {
 	local dir pid exe arg1
 	for dir in /proc/[0-9]*; do
 		pid="${dir#/proc/}"
 		exe="$(readlink "$dir/exe" 2>/dev/null || true)"
-		if [[ "$exe" != "$R/bin/agent-peer" ]]; then
+		if [[ "$exe" != "$R/bin/peers" ]]; then
 			continue
 		fi
 		arg1="$(tr '\0' '\n' <"$dir/cmdline" 2>/dev/null | sed -n '2p' || true)"
@@ -75,7 +75,7 @@ wait_for() {
 	"$check"
 }
 
-# mcp_pids prints the pids whose executable is R/bin/agent-peer and whose first
+# mcp_pids prints the pids whose executable is R/bin/peers and whose first
 # argument is "mcp". The MCP service process is the one Claude Code keeps for
 # the session; its pid staying the same across recovery is the file evidence
 # that the session never reconnected the service.
@@ -84,7 +84,7 @@ mcp_pids() {
 	for dir in /proc/[0-9]*; do
 		pid="${dir#/proc/}"
 		exe="$(readlink "$dir/exe" 2>/dev/null || true)"
-		if [[ "$exe" != "$R/bin/agent-peer" ]]; then
+		if [[ "$exe" != "$R/bin/peers" ]]; then
 			continue
 		fi
 		arg1="$(tr '\0' '\n' <"$dir/cmdline" 2>/dev/null | sed -n '2p' || true)"
@@ -181,7 +181,7 @@ rs_obs "port $PORT is held by pid $occupier_pid"
 # Step 3: a terminal start must fail on the held address, before any session
 # exists. The config names 127.0.0.1:27443.
 terminal_rc=0
-"$R/run" agent-peer broker >"$OUT/terminal-start.stdout" 2>"$OUT/terminal-start.stderr" || terminal_rc=$?
+"$R/run" peers broker >"$OUT/terminal-start.stdout" 2>"$OUT/terminal-start.stderr" || terminal_rc=$?
 printf '%s\n' "$terminal_rc" >"$OUT/terminal-start.exit"
 if ((terminal_rc != 4)); then
 	rs_obs "the terminal Broker start exited $terminal_rc, want 4"
@@ -265,7 +265,7 @@ if ! wait_for_record "$ERROR_MARKER" 120; then
 	exit 1
 fi
 rs_excerpt "$ERROR_MARKER" list-agents-error.jsonl
-for want in 'agent-peer service install' 'agent-peer broker'; do
+for want in 'peers service install' 'peers broker'; do
 	if ! grep -qF -- "$want" "$OUT/list-agents-error.jsonl"; then
 		rs_obs "the first list_agents result does not name $want"
 		rs_snap down timeout-down-first-startup-advice.txt

@@ -1,4 +1,4 @@
-//go:build agentpeer_testenv
+//go:build peers_testenv
 
 package broker
 
@@ -12,8 +12,8 @@ import (
 
 // testClockFileEnv names a file whose content is a time.ParseDuration string,
 // such as "144h", added to the clock the directory reads. It is consulted only
-// by builds carrying the agentpeer_testenv tag.
-const testClockFileEnv = "AGENT_PEER_TEST_CLOCK_FILE"
+// by builds carrying the peers_testenv tag.
+const testClockFileEnv = "PEERS_TEST_CLOCK_FILE"
 
 func init() {
 	path := os.Getenv(testClockFileEnv)

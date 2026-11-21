@@ -1,4 +1,4 @@
-//go:build agentpeer_testenv
+//go:build peers_testenv
 
 package mcpserver
 
@@ -9,20 +9,20 @@ import (
 	"path/filepath"
 )
 
-// findNamedSocket honors AGENT_PEER_TEST_SOCKET, the test hook that replaced
+// findNamedSocket honors PEERS_TEST_SOCKET, the test hook that replaced
 // the removed AGENT_PEER_SOCKET. The variable is read only in builds with the
-// agentpeer_testenv tag. Its semantics are the old ones: the named socket is
+// peers_testenv tag. Its semantics are the old ones: the named socket is
 // used, a socket that does not answer is an error rather than a fall-through to
 // account selection, and the peer must be this account or root.
 func (s *selector) findNamedSocket(ctx context.Context) (target, bool, error) {
-	raw := s.environment("AGENT_PEER_TEST_SOCKET")
+	raw := s.environment("PEERS_TEST_SOCKET")
 	if raw == "" {
 		return target{}, false, nil
 	}
 	path, err := filepath.Abs(raw)
 	if err != nil {
 		return target{}, false, fmt.Errorf(
-			"the socket %s named by AGENT_PEER_TEST_SOCKET is unavailable (%v)", raw, err)
+			"the socket %s named by PEERS_TEST_SOCKET is unavailable (%v)", raw, err)
 	}
 	r := s.probePath(ctx, path, kindTest)
 	switch r.Outcome {
@@ -30,11 +30,11 @@ func (s *selector) findNamedSocket(ctx context.Context) (target, bool, error) {
 		return target{Path: path, Kind: kindTest}, true, nil
 	case probeWrongPeer:
 		return target{}, false, fmt.Errorf(
-			"the socket %s named by AGENT_PEER_TEST_SOCKET is served by uid %d, not this account (%d) or root",
+			"the socket %s named by PEERS_TEST_SOCKET is served by uid %d, not this account (%d) or root",
 			path, r.PeerUID, os.Geteuid())
 	default:
 		return target{}, false, fmt.Errorf(
-			"the socket %s named by AGENT_PEER_TEST_SOCKET is unavailable (%s)", path, probeDescription(r.Outcome))
+			"the socket %s named by PEERS_TEST_SOCKET is unavailable (%s)", path, probeDescription(r.Outcome))
 	}
 }
 

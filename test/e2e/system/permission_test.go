@@ -221,7 +221,7 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 		t.Errorf("the system Broker's audit log records pairing_key_created:\n%s", audit)
 	}
 
-	// other's account is added to agentpeer-admins in the account database; the
+	// other's account is added to peers-admins in the account database; the
 	// running MCP server keeps its old group list, so only a fresh check of the
 	// database can see the grant.
 	permGrantAdmins(t, "0660")
@@ -254,10 +254,10 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 		t.Fatalf("disconnect_broker as other after the grant: %s", text)
 	}
 
-	// The grant belongs to other's account. peer is not in agentpeer-admins, so
+	// The grant belongs to other's account. peer is not in peers-admins, so
 	// a fresh call from peer against the system Broker is still refused.
 	sysPeer := syscontainer.NewSession(t, "peer", "syspeer",
-		syscontainer.WithEnv("AGENT_PEER_TEST_SOCKET="+permSocketPath))
+		syscontainer.WithEnv("PEERS_TEST_SOCKET="+permSocketPath))
 	permWaitConnected(t, sysPeer)
 	text, isError = sysPeer.Call(t, "set_config",
 		map[string]any{"key": "broker.alias", "value": "peer-alias"})
@@ -304,7 +304,7 @@ func TestREQBrokerConfig022_ReadNeedsConfigReadPermission(t *testing.T) {
 		t.Errorf("get_config as other after the grant does not name broker.alias: %s", text)
 	}
 
-	// peer is not in agentpeer-admins and the mode stays 0640, so the read is
+	// peer is not in peers-admins and the mode stays 0640, so the read is
 	// refused until the ACL entry below grants it.
 	peer := syscontainer.NewSession(t, "peer", "peeragent")
 	permWaitConnected(t, peer)
@@ -349,7 +349,7 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 	peerBroker := syscontainer.StartUserBroker(t, "peer", "--listen", ":17444")
 
 	peer := syscontainer.NewSession(t, "peer", "peeragent",
-		syscontainer.WithEnv("AGENT_PEER_TEST_SOCKET="+permSocketPath))
+		syscontainer.WithEnv("PEERS_TEST_SOCKET="+permSocketPath))
 	permWaitRegistered(t, peer)
 	other := syscontainer.NewSession(t, "other", "otheragent")
 	permWaitRegistered(t, other)
@@ -741,14 +741,14 @@ func permFileSHA256(t *testing.T, path string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// permGrantAdmins adds other to agentpeer-admins and gives that group access to
+// permGrantAdmins adds other to peers-admins and gives that group access to
 // the configuration file with mode. It changes neither other's running MCP
 // server nor the Broker.
 func permGrantAdmins(t *testing.T, mode string) {
 	t.Helper()
-	permRunRoot(t, "chgrp", "agentpeer-admins", permConfigPath)
+	permRunRoot(t, "chgrp", "peers-admins", permConfigPath)
 	permRunRoot(t, "chmod", mode, permConfigPath)
-	permRunRoot(t, "usermod", "-aG", "agentpeer-admins", "other")
+	permRunRoot(t, "usermod", "-aG", "peers-admins", "other")
 }
 
 // permRunRoot runs a command as root and fails the test when it does not

@@ -25,7 +25,7 @@ const supervisorChildEnv = "APE2E_TEST_SUPERVISOR_CHILD"
 
 // CleanResidue removes what runs whose owner is gone leave behind: processes
 // whose runtime root is under /tmp/ape2e, the compose containers, networks and
-// volumes named ape2e-*, the test images named agent-peer-e2e, and the runtime
+// volumes named ape2e-*, the test images named peers-e2e, and the runtime
 // roots themselves. Every project, root and image carries its owner's PID,
 // start time and PID namespace, so resources of a live owner are left alone and
 // two suites can run on one host. A resource whose owner lies in another PID
@@ -87,7 +87,7 @@ func RunTestProcess(logf func(format string, args ...any), args []string) int {
 // that suite is still using it.
 func killRuntimeProcesses(logf func(format string, args ...any)) {
 	procs, err := node.ListProcs(func(p node.Proc) bool {
-		root := p.Env["AGENT_PEER_TEST_RUNTIME_ROOT"]
+		root := p.Env["PEERS_TEST_RUNTIME_ROOT"]
 		return strings.HasPrefix(root, runtimeRootPrefix) && ownerGone(filepath.Base(root))
 	})
 	if err != nil {
@@ -159,13 +159,13 @@ func removeDockerResidue(logf func(format string, args ...any)) {
 	}
 }
 
-// removeDockerImages removes the agent-peer-e2e images whose owner is gone.
+// removeDockerImages removes the peers-e2e images whose owner is gone.
 // The image tag names its owner, so the image of a live suite is left alone
 // even when both suites run as the same account. A tag without the marker was
 // built before the marker existed; its owner cannot be told apart from a live
 // one, so it is left alone too.
 func removeDockerImages(logf func(format string, args ...any)) {
-	refs := dockerLines("images", "agent-peer-e2e", "--format", "{{.Repository}}:{{.Tag}}")
+	refs := dockerLines("images", "peers-e2e", "--format", "{{.Repository}}:{{.Tag}}")
 	for _, ref := range refs {
 		if !imageTagOwnerGone(ref) {
 			continue

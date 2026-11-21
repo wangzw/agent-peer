@@ -1,4 +1,4 @@
-//go:build agentpeer_testenv
+//go:build peers_testenv
 
 package mcpserver
 
@@ -15,7 +15,7 @@ import (
 	"github.com/wangzw/peers/internal/testkit/fakelocal"
 )
 
-// AGENT_PEER_TEST_SOCKET names the socket to use, ahead of account selection.
+// PEERS_TEST_SOCKET names the socket to use, ahead of account selection.
 func TestSelectTestSocketTakesPrecedence(t *testing.T) {
 	envPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, envPath, fakelocal.Handlers{})
@@ -23,7 +23,7 @@ func TestSelectTestSocketTakesPrecedence(t *testing.T) {
 	fakelocal.Start(t, userPath, fakelocal.Handlers{})
 	systemPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, systemPath, fakelocal.Handlers{})
-	t.Setenv("AGENT_PEER_TEST_SOCKET", envPath)
+	t.Setenv("PEERS_TEST_SOCKET", envPath)
 
 	s := &selector{
 		userSocket:   userPath,
@@ -40,13 +40,13 @@ func TestSelectTestSocketTakesPrecedence(t *testing.T) {
 	}
 }
 
-// A dead AGENT_PEER_TEST_SOCKET must not silently fall through to another
+// A dead PEERS_TEST_SOCKET must not silently fall through to another
 // Broker.
 func TestSelectTestSocketMissingDoesNotFallThrough(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "absent.sock")
 	userPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, userPath, fakelocal.Handlers{})
-	t.Setenv("AGENT_PEER_TEST_SOCKET", missing)
+	t.Setenv("PEERS_TEST_SOCKET", missing)
 
 	s := &selector{
 		userSocket:   userPath,
@@ -56,20 +56,20 @@ func TestSelectTestSocketMissingDoesNotFallThrough(t *testing.T) {
 
 	_, err := s.Find(context.Background())
 	if err == nil {
-		t.Fatal("Find returned nil error for a dead AGENT_PEER_TEST_SOCKET")
+		t.Fatal("Find returned nil error for a dead PEERS_TEST_SOCKET")
 	}
-	if !strings.Contains(err.Error(), missing) || !strings.Contains(err.Error(), "AGENT_PEER_TEST_SOCKET") {
-		t.Fatalf("error = %q, want it to name %s and AGENT_PEER_TEST_SOCKET", err, missing)
+	if !strings.Contains(err.Error(), missing) || !strings.Contains(err.Error(), "PEERS_TEST_SOCKET") {
+		t.Fatalf("error = %q, want it to name %s and PEERS_TEST_SOCKET", err, missing)
 	}
 }
 
-// AGENT_PEER_TEST_SOCKET names a socket that must be served by this account or
+// PEERS_TEST_SOCKET names a socket that must be served by this account or
 // by root. Another account makes the socket unusable, and the error names the
 // path and the account that answered.
 func TestSelectRejectsForeignTestSocket(t *testing.T) {
 	envPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, envPath, fakelocal.Handlers{})
-	t.Setenv("AGENT_PEER_TEST_SOCKET", envPath)
+	t.Setenv("PEERS_TEST_SOCKET", envPath)
 
 	foreign := uint32(os.Geteuid()) + 1
 	old := peerUID
@@ -87,7 +87,7 @@ func TestSelectRejectsForeignTestSocket(t *testing.T) {
 		t.Fatalf("Find accepted a socket served by uid %d", foreign)
 	}
 	wantUID := strconv.FormatUint(uint64(foreign), 10)
-	for _, want := range []string{envPath, wantUID, "AGENT_PEER_TEST_SOCKET"} {
+	for _, want := range []string{envPath, wantUID, "PEERS_TEST_SOCKET"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error = %q, want it to contain %q", err, want)
 		}
@@ -100,7 +100,7 @@ func TestSelectRejectsForeignTestSocket(t *testing.T) {
 func TestFindBrokerWithDialRefusesForeignPeer(t *testing.T) {
 	path := fakelocal.SocketPath(t)
 	srv := fakelocal.Start(t, path, fakelocal.Handlers{})
-	t.Setenv("AGENT_PEER_TEST_SOCKET", path)
+	t.Setenv("PEERS_TEST_SOCKET", path)
 
 	gotPath, dial, err := FindBrokerWithDial(context.Background())
 	if err != nil {

@@ -712,7 +712,7 @@ func ctConfig(parts ...string) string {
 // ctBinary builds the tagged product binary once per test process.
 func ctBinary(t *testing.T) string {
 	t.Helper()
-	return harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
+	return harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "peers_testenv")
 }
 
 // ctStartBroker starts a Broker and fails when it does not come up. It returns

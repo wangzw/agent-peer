@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	// agentPeerBinary is the peers build in the base image.
-	agentPeerBinary = "/usr/local/bin/peers"
+	// peersBinary is the peers build in the base image.
+	peersBinary = "/usr/local/bin/peers"
 	// systemConfigPath is the system Broker's configuration file.
 	systemConfigPath = "/etc/peers/config.yaml"
 	// systemSocketPath is the system Broker's local socket.
@@ -77,7 +77,7 @@ func StartSystemBrokerEnv(t *testing.T, configYAML string, env []string) *Proc {
 	if configYAML != "" {
 		writeSystemConfig(t, configYAML)
 	}
-	cmd := Command("root", env, agentPeerBinary, "broker", "--system")
+	cmd := Command("root", env, peersBinary, "broker", "--system")
 	return startAndWait(t, cmd, systemSocketPath, "the system Broker")
 }
 
@@ -85,7 +85,7 @@ func StartSystemBrokerEnv(t *testing.T, configYAML string, env []string) *Proc {
 // account's user-level socket. The process is terminated when the test ends.
 func StartUserBroker(t *testing.T, account string, args ...string) *Proc {
 	t.Helper()
-	return StartUserBrokerPath(t, agentPeerBinary, account, nil, args...)
+	return StartUserBrokerPath(t, peersBinary, account, nil, args...)
 }
 
 // StartUserBrokerPath is StartUserBroker with an explicit executable and
@@ -248,7 +248,7 @@ func RunAs(t *testing.T, account string, env []string, args ...string) Result {
 	if len(args) == 0 {
 		t.Fatalf("syscontainer: RunAs needs a command")
 	}
-	return runCommand(t, account, env, agentPeerBinary, args...)
+	return runCommand(t, account, env, peersBinary, args...)
 }
 
 // runCommand runs name as account and returns its output and exit code. A

@@ -22,7 +22,7 @@ source "$(dirname "$0")/lib.sh"
 # Claude Code 2.1.311 rejects stream-json input and output unless --verbose is
 # given, so every headless command below carries it.
 
-BROKER_SOCK="/tmp/agent-peer-$(id -u)/broker.sock"
+BROKER_SOCK="/tmp/peers-$(id -u)/broker.sock"
 TSV="$OUT/binding.tsv"
 headless_args=(-p --model haiku --input-format stream-json --output-format stream-json --verbose)
 
@@ -60,22 +60,22 @@ record_present() {
 	return 1
 }
 
-# proc_is_agent_peer_mcp reports whether a process runs "agent-peer mcp".
-proc_is_agent_peer_mcp() {
+# proc_is_peers_mcp reports whether a process runs "peers mcp".
+proc_is_peers_mcp() {
 	local pid="$1" cmd0
 	local -a argv=()
 	[[ -r "/proc/$pid/cmdline" ]] || return 1
 	mapfile -d '' -t argv <"/proc/$pid/cmdline" 2>/dev/null || return 1
 	((${#argv[@]} >= 2)) || return 1
 	cmd0="${argv[0]}"
-	[[ "$cmd0" == "$R/bin/agent-peer" || "${cmd0##*/}" == "agent-peer" ]] || return 1
+	[[ "$cmd0" == "$R/bin/peers" || "${cmd0##*/}" == "peers" ]] || return 1
 	[[ "${argv[1]}" == "mcp" ]]
 }
 
 # find_mcp_pid searches the process tree under $1 for the MCP server.
 find_mcp_pid() {
 	local root="$1" child
-	if proc_is_agent_peer_mcp "$root"; then
+	if proc_is_peers_mcp "$root"; then
 		printf '%s\n' "$root"
 		return 0
 	fi
@@ -246,7 +246,7 @@ stop_headless() {
 # instead of /dev/null. Registration is judged from rsprobe status and the
 # child session socket only: this log records successful registrations alone,
 # so it is kept as raw evidence and is not read by the checks.
-"$R/run" agent-peer broker 2>"$OUT/broker.log" &
+"$R/run" peers broker 2>"$OUT/broker.log" &
 if ! rs_wait_file "$BROKER_SOCK" 15; then
 	echo "binding: the Broker socket $BROKER_SOCK did not appear (see $OUT/broker.log)" >&2
 	exit 1

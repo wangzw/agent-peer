@@ -149,7 +149,7 @@ const (
 	// ThrottleInterval, and the user Broker's 2-second reconnect maximum.
 	reloginRecoveryBound = 30 * time.Second
 	// mutationEnv selects a negative control for the relogin test.
-	mutationEnv = "AGENT_PEER_E2E_MUTATION"
+	mutationEnv = "PEERS_E2E_MUTATION"
 )
 
 // TestUserServiceRestoresLinkAfterRelogin installs the user-level service,

@@ -36,11 +36,11 @@ const (
 )
 
 // inContainerEnv marks a test process that runs inside the container.
-const inContainerEnv = "AGENT_PEER_E2E_IN_CONTAINER"
+const inContainerEnv = "PEERS_E2E_IN_CONTAINER"
 
 // expectFailEnv forwards an intentional failure request into the container. It
 // is set only by the smoke test that checks failure propagation.
-const expectFailEnv = "AGENT_PEER_E2E_EXPECT_FAIL"
+const expectFailEnv = "PEERS_E2E_EXPECT_FAIL"
 
 const (
 	// systemdReadyBound is the total budget for one systemd container to finish
@@ -70,7 +70,7 @@ func InContainer() bool {
 var testBinary string
 
 // testBinaryPath is the path the container sees.
-const testBinaryPath = "/opt/agent-peer-test"
+const testBinaryPath = "/opt/peers-test"
 
 // ArtifactPath returns the path inside the container of a file staged with
 // StageArtifact.
@@ -177,7 +177,7 @@ func systemImage(t *testing.T) string {
 		if err != nil {
 			t.Fatalf("syscontainer: reading the system Dockerfile: %v", err)
 		}
-		tag := "agent-peer-e2e-system:" + shortHash(base+"\x00"+string(dockerfile))
+		tag := "peers-e2e-system:" + shortHash(base+"\x00"+string(dockerfile))
 		if imageExists(tag) {
 			systemImageTag = tag
 			return
@@ -322,16 +322,16 @@ func newTestContainer(t *testing.T, extraEnv ...string) *container {
 	subnet := allocSystemSubnet(t)
 	project := projectName(t.Name())
 	env := []string{
-		"AGENT_PEER_E2E_SYSTEM_IMAGE=" + image,
-		"AGENT_PEER_E2E_BIN=" + filepath.Dir(testBinary),
-		"AGENT_PEER_E2E_SYSTEM_SUBNET=" + subnet,
+		"PEERS_E2E_SYSTEM_IMAGE=" + image,
+		"PEERS_E2E_BIN=" + filepath.Dir(testBinary),
+		"PEERS_E2E_SYSTEM_SUBNET=" + subnet,
 	}
 	env = append(env, extraEnv...)
 	c := &container{
 		t:           t,
 		project:     project,
 		composeFile: filepath.Join(dir, "compose.yaml"),
-		// The compose file mounts this directory at /opt/agent-peer-test.
+		// The compose file mounts this directory at /opt/peers-test.
 		env: append(os.Environ(), env...),
 		// The inner process needs the values; compose exec reads them from the
 		// docker CLI environment, which is this build of env.

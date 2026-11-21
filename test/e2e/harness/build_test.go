@@ -76,8 +76,8 @@ func TestBuildBinaryCachesAndInjectsVersion(t *testing.T) {
 // the same package at several versions in one process: each version lands in
 // its own output and reports itself, while the default stays e2e.
 func TestBuildBinaryVersionStampsTheNamedVersion(t *testing.T) {
-	old := BuildBinaryVersion(t, "0.1.0", runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
-	next := BuildBinaryVersion(t, "0.1.2", runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
+	old := BuildBinaryVersion(t, "0.1.0", runtime.GOOS, runtime.GOARCH, "peers_testenv")
+	next := BuildBinaryVersion(t, "0.1.2", runtime.GOOS, runtime.GOARCH, "peers_testenv")
 	if old == next {
 		t.Fatalf("BuildBinaryVersion returned the same path %q for two versions", old)
 	}

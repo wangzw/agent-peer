@@ -46,7 +46,7 @@ func TestMain(m *testing.M) {
 	testBinary = filepath.Join(dir, "peers")
 
 	build := exec.Command("go", "build",
-		"-tags", "agentpeer_testenv",
+		"-tags", "peers_testenv",
 		"-ldflags", "-X main.version=0.0.0-cmdtest",
 		"-o", testBinary,
 		".")
@@ -67,12 +67,12 @@ func TestMain(m *testing.M) {
 // broker.sock" would exceed the 104-byte Unix socket path limit.
 type sandbox struct {
 	t    *testing.T
-	root string // value of AGENT_PEER_TEST_RUNTIME_ROOT
-	home string // value of AGENT_PEER_TEST_HOME and HOME
+	root string // value of PEERS_TEST_RUNTIME_ROOT
+	home string // value of PEERS_TEST_HOME and HOME
 
 	// extraEnv is appended to env for every child started from this sandbox.
 	// Tests use it for the variables the child needs beyond the fixed four,
-	// such as AGENT_PEER_TEST_SOCKET or CLAUDE_CODE_MESSAGING_SOCKET.
+	// such as PEERS_TEST_SOCKET or CLAUDE_CODE_MESSAGING_SOCKET.
 	extraEnv []string
 }
 
@@ -122,14 +122,14 @@ func sandboxRoot() (string, error) {
 
 // env is the child environment. It starts from nothing rather than
 // os.Environ so the session variables of the test runner (for example
-// CLAUDE_CODE_MESSAGING_SOCKET or AGENT_PEER_TEST_SOCKET) cannot leak into the
+// CLAUDE_CODE_MESSAGING_SOCKET or PEERS_TEST_SOCKET) cannot leak into the
 // process under test.
 func (s *sandbox) env() []string {
 	env := []string{
 		"PATH=" + os.Getenv("PATH"),
 		"HOME=" + s.home,
-		"AGENT_PEER_TEST_RUNTIME_ROOT=" + s.root,
-		"AGENT_PEER_TEST_HOME=" + s.home,
+		"PEERS_TEST_RUNTIME_ROOT=" + s.root,
+		"PEERS_TEST_HOME=" + s.home,
 	}
 	return append(env, s.extraEnv...)
 }
@@ -148,7 +148,7 @@ func (s *sandbox) configPath() string {
 }
 
 // writeConfig writes the account configuration. The account home is selected
-// through AGENT_PEER_TEST_HOME, not HOME, so this does not depend on the child
+// through PEERS_TEST_HOME, not HOME, so this does not depend on the child
 // honoring HOME.
 func (s *sandbox) writeConfig(yaml string) {
 	s.t.Helper()

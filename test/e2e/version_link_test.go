@@ -99,7 +99,7 @@ func TestLinkVersionMismatchAndRecovery(t *testing.T) {
 	if code := b.StopBroker(t, syscall.SIGTERM); code != 0 {
 		t.Fatalf("B's Broker exited %d on SIGTERM, want 0", code)
 	}
-	vlStartBroker(t, b, harness.BrokerSpec{Env: map[string]string{"AGENT_PEER_TEST_LINK_PROTOCOL_VERSION": "2"}})
+	vlStartBroker(t, b, harness.BrokerSpec{Env: map[string]string{"PEERS_TEST_LINK_PROTOCOL_VERSION": "2"}})
 
 	harness.Eventually(t, vlRelinkBound, "A reports the link version mismatch", func() (bool, string) {
 		peer, state := vlPeer(t, a)

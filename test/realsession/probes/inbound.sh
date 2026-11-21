@@ -269,7 +269,7 @@ find_broker_pid() {
 	local proc exe second
 	for proc in /proc/[0-9]*; do
 		exe="$(readlink "$proc/exe" 2>/dev/null)" || continue
-		[[ "$exe" == "$R/bin/agent-peer" ]] || continue
+		[[ "$exe" == "$R/bin/peers" ]] || continue
 		[[ -r "$proc/cmdline" ]] || continue
 		second="$(tr '\0' '\n' <"$proc/cmdline" | sed -n '2p')"
 		if [[ "$second" == broker ]]; then
@@ -387,7 +387,7 @@ rs_excerpt 'inb-first@hostB' step1-list-agents-record.jsonl
 
 broker_pid="$(find_broker_pid || true)"
 if [[ -z "$broker_pid" ]]; then
-	rs_obs "no agent-peer broker process was found after inb-first started"
+	rs_obs "no peers broker process was found after inb-first started"
 	exit 1
 fi
 ps -o pid=,ppid=,sid=,uid=,comm=,args= -p "$broker_pid" >"$OUT/broker-ps.txt" 2>/dev/null || true

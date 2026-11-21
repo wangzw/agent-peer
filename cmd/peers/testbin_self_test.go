@@ -19,7 +19,7 @@ import (
 // path limit. t.Setenv forbids t.Parallel, which is why this test is serial.
 func TestSandboxEnvFromEmpty(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_MESSAGING_SOCKET", "/x")
-	t.Setenv("AGENT_PEER_TEST_SOCKET", "/y")
+	t.Setenv("PEERS_TEST_SOCKET", "/y")
 
 	sb := newSandbox(t)
 	env := sb.env()
@@ -36,7 +36,7 @@ func TestSandboxEnvFromEmpty(t *testing.T) {
 		got[name] = value
 	}
 
-	want := []string{"HOME", "PATH", "AGENT_PEER_TEST_HOME", "AGENT_PEER_TEST_RUNTIME_ROOT"}
+	want := []string{"HOME", "PATH", "PEERS_TEST_HOME", "PEERS_TEST_RUNTIME_ROOT"}
 	if len(got) != len(want) {
 		t.Fatalf("env has %d variables, want exactly %d: %q", len(got), len(want), env)
 	}
@@ -45,13 +45,13 @@ func TestSandboxEnvFromEmpty(t *testing.T) {
 			t.Fatalf("env is missing %s: %q", name, env)
 		}
 	}
-	for _, name := range []string{"CLAUDE_CODE_MESSAGING_SOCKET", "AGENT_PEER_TEST_SOCKET"} {
+	for _, name := range []string{"CLAUDE_CODE_MESSAGING_SOCKET", "PEERS_TEST_SOCKET"} {
 		if _, ok := got[name]; ok {
 			t.Fatalf("env leaked %s from the test process: %q", name, env)
 		}
 	}
 
-	root := got["AGENT_PEER_TEST_RUNTIME_ROOT"]
+	root := got["PEERS_TEST_RUNTIME_ROOT"]
 	if !filepath.IsAbs(root) {
 		t.Fatalf("runtime root %q is not absolute", root)
 	}
@@ -61,8 +61,8 @@ func TestSandboxEnvFromEmpty(t *testing.T) {
 	if root != sb.root {
 		t.Fatalf("runtime root %q is not the sandbox root %q", root, sb.root)
 	}
-	if got["HOME"] != got["AGENT_PEER_TEST_HOME"] {
-		t.Fatalf("HOME %q and AGENT_PEER_TEST_HOME %q differ", got["HOME"], got["AGENT_PEER_TEST_HOME"])
+	if got["HOME"] != got["PEERS_TEST_HOME"] {
+		t.Fatalf("HOME %q and PEERS_TEST_HOME %q differ", got["HOME"], got["PEERS_TEST_HOME"])
 	}
 
 	wantRuntime := filepath.Join(sb.root, strconv.Itoa(os.Geteuid()))

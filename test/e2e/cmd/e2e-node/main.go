@@ -203,7 +203,7 @@ func runServe(args []string) int {
 	socket := flags.String("ctl", "", "control socket path")
 	home := flags.String("home", "", "account home directory")
 	binary := flags.String("bin", "", "peers binary")
-	runtimeRoot := flags.String("runtime-root", "", "value of AGENT_PEER_TEST_RUNTIME_ROOT")
+	runtimeRoot := flags.String("runtime-root", "", "value of PEERS_TEST_RUNTIME_ROOT")
 	path := flags.String("path", os.Getenv("PATH"), "value of PATH for child processes")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -242,7 +242,7 @@ func runServe(args []string) int {
 
 	extra := make(map[string]string)
 	if *runtimeRoot != "" {
-		extra["AGENT_PEER_TEST_RUNTIME_ROOT"] = *runtimeRoot
+		extra["PEERS_TEST_RUNTIME_ROOT"] = *runtimeRoot
 	}
 	env := node.BaseEnv{Home: *home, Path: *path, Extra: extra}
 	tb := node.NewTB("e2e-node", "")

@@ -4,7 +4,7 @@
 # unit derives its systemd image from this one and keeps these names.
 #   accounts: peer (uid/gid given as build arguments, matching the user that
 #     runs the host tests) and other (uid 2000)
-#   binaries: /usr/local/bin/agent-peer and /usr/local/bin/e2e-node
+#   binaries: /usr/local/bin/peers and /usr/local/bin/e2e-node
 #   account home: /home/peer
 #   control socket: the host mounts a directory at /ctl, and the node agent
 #     listens on /ctl/ctl.sock
@@ -37,10 +37,10 @@ RUN if ! getent group "${GID}" >/dev/null; then groupadd --gid "${GID}" peer; fi
     fi \
  && useradd --create-home --uid 2000 other
 
-COPY agent-peer /usr/local/bin/agent-peer
+COPY peers /usr/local/bin/peers
 COPY e2e-node /usr/local/bin/e2e-node
-RUN chmod 0755 /usr/local/bin/agent-peer /usr/local/bin/e2e-node
+RUN chmod 0755 /usr/local/bin/peers /usr/local/bin/e2e-node
 
 WORKDIR /home/peer
 USER peer
-ENTRYPOINT ["e2e-node", "serve", "--ctl", "/ctl/ctl.sock", "--home", "/home/peer", "--bin", "/usr/local/bin/agent-peer"]
+ENTRYPOINT ["e2e-node", "serve", "--ctl", "/ctl/ctl.sock", "--home", "/home/peer", "--bin", "/usr/local/bin/peers"]

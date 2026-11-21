@@ -105,7 +105,7 @@ func accountHomeDir() (string, error) {
 	return os.UserHomeDir()
 }
 
-// homeDirSource is the seam the agentpeer_testenv build replaces; production code never replaces it.
+// homeDirSource is the seam the peers_testenv build replaces; production code never replaces it.
 var homeDirSource = accountHomeDir
 
 // runningAccountName looks up the name of the account the Broker runs as, the

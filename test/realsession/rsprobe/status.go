@@ -58,7 +58,7 @@ func runStatus(args []string, stdout io.Writer) error {
 
 // defaultSocketPath is where a user-level Broker listens for the current uid.
 func defaultSocketPath() string {
-	return fmt.Sprintf("/tmp/agent-peer-%d/broker.sock", os.Getuid())
+	return fmt.Sprintf("/tmp/peers-%d/broker.sock", os.Getuid())
 }
 
 // fetchStatus connects to the Broker's local socket, performs the version

@@ -17,7 +17,7 @@ import (
 const (
 	// brokerStderrPrefix starts the line a Broker writes to standard error when
 	// it fails to start.
-	brokerStderrPrefix = "agent-peer broker: "
+	brokerStderrPrefix = "peers broker: "
 	// brokerProbeInterval is how often StartBroker tries the local socket while
 	// the Broker process is starting.
 	brokerProbeInterval = 50 * time.Millisecond
@@ -34,7 +34,7 @@ const (
 
 // BrokerSpec describes one Broker process to start.
 type BrokerSpec struct {
-	// Path is the agent-peer binary.
+	// Path is the peers binary.
 	Path string
 	// Args follow "broker" on the command line, for example
 	// ["--listen", "127.0.0.1:41234"].

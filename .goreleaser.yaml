@@ -22,7 +22,7 @@ builds:
     hooks:
       post:
         - cmd: >-
-            sh -c 'if grep -a -q AGENT_PEER_TEST_ "$0"; then echo "test hook string AGENT_PEER_TEST_ found in $0" >&2; exit 1; fi' "{{ .Path }}"
+            sh -c 'if grep -a -q PEERS_TEST_ "$0"; then echo "test hook string PEERS_TEST_ found in $0" >&2; exit 1; fi' "{{ .Path }}"
 
 archives:
   - formats:

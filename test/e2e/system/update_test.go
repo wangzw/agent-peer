@@ -188,7 +188,7 @@ func TestREQUpdate004_ConfirmedUpdateRestartsUserService(t *testing.T) {
 	// The Broker performs the update, so its own service environment must reach
 	// the fake API; the command's environment only covers a local fallback.
 	selfUpdateSetUserUnitEnv(t, "peer", svc.userEnv, fake.URL())
-	env := append(append([]string(nil), svc.userEnv...), "AGENT_PEER_TEST_UPDATE_API="+fake.URL())
+	env := append(append([]string(nil), svc.userEnv...), "PEERS_TEST_UPDATE_API="+fake.URL())
 
 	beforeHash := updateFileHash(t, svc.target)
 	res := updateRunInteractive(t, "peer", env, svc.target, "y\n", "update")
@@ -236,7 +236,7 @@ func TestREQUpdate004_RefusedUpdateChangesNothing(t *testing.T) {
 
 	svc := updateSetupUserService(t)
 	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
-	env := append(append([]string(nil), svc.userEnv...), "AGENT_PEER_TEST_UPDATE_API="+fake.URL())
+	env := append(append([]string(nil), svc.userEnv...), "PEERS_TEST_UPDATE_API="+fake.URL())
 
 	beforeHash := updateFileHash(t, svc.target)
 	res := updateRunInteractive(t, "peer", env, svc.target, "n\n", "update")
@@ -279,7 +279,7 @@ func TestREQUpdate004_YesSkipsPrompt(t *testing.T) {
 	// The Broker performs the update, so its own service environment must reach
 	// the fake API; the command's environment only covers a local fallback.
 	selfUpdateSetUserUnitEnv(t, "peer", svc.userEnv, fake.URL())
-	env := append(append([]string(nil), svc.userEnv...), "AGENT_PEER_TEST_UPDATE_API="+fake.URL())
+	env := append(append([]string(nil), svc.userEnv...), "PEERS_TEST_UPDATE_API="+fake.URL())
 
 	beforeHash := updateFileHash(t, svc.target)
 	res := runWithEnv(t, "peer", env, svc.target, "update", "--yes")
@@ -339,7 +339,7 @@ func TestREQUpdate005_FailedUpdateKeepsBinaryAndService(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fake.SetRelease(updateLoadRelease(t, updateNewVersion, tc.archive, tc.checksums))
-			env := append(append([]string(nil), svc.userEnv...), "AGENT_PEER_TEST_UPDATE_API="+fake.URL())
+			env := append(append([]string(nil), svc.userEnv...), "PEERS_TEST_UPDATE_API="+fake.URL())
 
 			beforeHash := updateFileHash(t, svc.target)
 			beforePID := userServiceMainPID(t, svc.userEnv)
@@ -393,7 +393,7 @@ func TestREQUpdate006_UpdateRequiresWritePermission(t *testing.T) {
 	}
 
 	beforeHash := updateFileHash(t, target)
-	env := []string{"AGENT_PEER_TEST_UPDATE_API=" + fake.URL()}
+	env := []string{"PEERS_TEST_UPDATE_API=" + fake.URL()}
 	res := runWithEnv(t, "peer", env, target, "update", "--yes")
 	combined := res.Stdout + res.Stderr
 	if res.ExitCode == 0 {

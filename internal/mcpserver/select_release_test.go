@@ -1,4 +1,4 @@
-//go:build !agentpeer_testenv
+//go:build !peers_testenv
 
 package mcpserver
 
@@ -11,7 +11,7 @@ import (
 
 // TestReleaseBuildIgnoresSocketEnvironment proves that a release build reads
 // neither the removed AGENT_PEER_SOCKET nor the test hook
-// AGENT_PEER_TEST_SOCKET. The selector's environment seam records every
+// PEERS_TEST_SOCKET. The selector's environment seam records every
 // lookup, and selection must complete without one: the account's user-level
 // Broker wins even though both variables name another live socket.
 func TestReleaseBuildIgnoresSocketEnvironment(t *testing.T) {
@@ -23,7 +23,7 @@ func TestReleaseBuildIgnoresSocketEnvironment(t *testing.T) {
 	fakelocal.Start(t, systemPath, fakelocal.Handlers{})
 
 	t.Setenv("AGENT_PEER_SOCKET", envPath)
-	t.Setenv("AGENT_PEER_TEST_SOCKET", envPath)
+	t.Setenv("PEERS_TEST_SOCKET", envPath)
 
 	var asked []string
 	s := &selector{

@@ -1,4 +1,4 @@
-# Build gates for agent-peer.
+# Build gates for peers.
 #
 # Every parallel-capable target takes its job count from JOBS, which the caller
 # sets explicitly (default 4). Nothing here probes the host's CPU count.
@@ -62,7 +62,7 @@ lint:
 	fi
 	shellcheck scripts/install.sh scripts/remote-install.sh
 	$(GOLANGCI_LINT) run ./...
-	$(GOLANGCI_LINT) run --build-tags agentpeer_testenv ./...
+	$(GOLANGCI_LINT) run --build-tags peers_testenv ./...
 	$(GOLANGCI_LINT) run --build-tags e2e ./...
 	GOOS=darwin $(GOLANGCI_LINT) run ./...
 	GOOS=darwin $(GOLANGCI_LINT) run --build-tags e2e,e2e_darwin ./...
@@ -88,10 +88,10 @@ archive-check:
 proto-lint:
 	buf lint
 
-# The agentpeer_testenv round discovers what to run instead of naming it. A
+# The peers_testenv round discovers what to run instead of naming it. A
 # package is included when its .GoFiles or .TestGoFiles differ under the tag,
 # and a test function is included when it is declared in a file whose
-# //go:build line requires agentpeer_testenv without negating it. A new hook
+# //go:build line requires peers_testenv without negating it. A new hook
 # test is therefore executed without an edit here.
 test:
 	go build ./...
@@ -102,25 +102,25 @@ test:
 	@root="$$(mktemp -d)"; home="$$(mktemp -d)"; scratch="$$(mktemp -d)"; \
 	cleanup() { status=$$1; rm -rf "$$root" "$$home" "$$scratch"; exit $$status; }; \
 	go list -e -f '{{.ImportPath}}|{{join .GoFiles " "}}|{{join .TestGoFiles " "}}' ./... > "$$scratch/plain" || cleanup $$?; \
-	go list -e -tags agentpeer_testenv -f '{{.ImportPath}}|{{join .GoFiles " "}}|{{join .TestGoFiles " "}}' ./... > "$$scratch/tagged" || cleanup $$?; \
+	go list -e -tags peers_testenv -f '{{.ImportPath}}|{{join .GoFiles " "}}|{{join .TestGoFiles " "}}' ./... > "$$scratch/tagged" || cleanup $$?; \
 	pkgs="$$(diff "$$scratch/plain" "$$scratch/tagged" | sed -n 's/^[<>] \([^|]*\)|.*/\1/p' | sort -u)"; \
 	$(GIT) ls-files '*.go' > "$$scratch/files" || cleanup $$?; \
 	tests=""; \
 	for file in $$(grep -v '^third_party/' "$$scratch/files"); do \
-		if awk '/^package / { exit 1 } /^\/\/go:build / { if ($$0 ~ /agentpeer_testenv/ && $$0 !~ /!agentpeer_testenv/) exit 0; exit 1 }' "$$file"; then \
+		if awk '/^package / { exit 1 } /^\/\/go:build / { if ($$0 ~ /peers_testenv/ && $$0 !~ /!peers_testenv/) exit 0; exit 1 }' "$$file"; then \
 			for name in $$(sed -n 's/^func \(Test[A-Za-z0-9_]*\)(.*/\1/p' "$$file"); do \
 				if [ -z "$$tests" ]; then tests="$$name"; else tests="$$tests|$$name"; fi; \
 			done; \
 		fi; \
 	done; \
 	if [ -z "$$pkgs" ] || [ -z "$$tests" ]; then \
-		echo "test: no agentpeer_testenv hook tests found"; \
+		echo "test: no peers_testenv hook tests found"; \
 		cleanup 0; \
 	fi; \
-	echo "test: agentpeer_testenv packages:$$pkgs"; \
-	echo "test: agentpeer_testenv tests:^($$tests)$$"; \
-	AGENT_PEER_TEST_RUNTIME_ROOT="$$root" AGENT_PEER_TEST_HOME="$$home" \
-		go test -race -count=1 -json -tags agentpeer_testenv -p $(JOBS) -parallel $(JOBS) \
+	echo "test: peers_testenv packages:$$pkgs"; \
+	echo "test: peers_testenv tests:^($$tests)$$"; \
+	PEERS_TEST_RUNTIME_ROOT="$$root" PEERS_TEST_HOME="$$home" \
+		go test -race -count=1 -json -tags peers_testenv -p $(JOBS) -parallel $(JOBS) \
 			-run "^($$tests)$$" $$pkgs > "$$scratch/testenv.json"; \
 	status=$$?; \
 	go run ./scripts/testreport -label test-env "$$scratch/testenv.json" || cleanup $$?; \

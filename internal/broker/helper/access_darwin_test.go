@@ -65,7 +65,7 @@ func testExecStartEnv(t *testing.T, role string, env []string) func(context.Cont
 	return func(context.Context, Account) (*Process, error) {
 		cmd := exec.Command(os.Args[0])
 		cmd.Env = append([]string{
-			"AGENT_PEER_TEST_HELPER_ROLE=" + role,
+			"PEERS_TEST_HELPER_ROLE=" + role,
 			"HOME=" + home,
 			"PATH=" + path,
 		}, env...)

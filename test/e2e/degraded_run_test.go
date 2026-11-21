@@ -32,7 +32,7 @@ func TestDegradedRun(t *testing.T) {
 	}
 	drNoSocket := func(t *testing.T) {
 		t.Helper()
-		res := host.Exec(t, []string{"sh", "-c", `test ! -S "$AGENT_PEER_TEST_RUNTIME_ROOT/$(id -u)/broker.sock"`}, nil)
+		res := host.Exec(t, []string{"sh", "-c", `test ! -S "$PEERS_TEST_RUNTIME_ROOT/$(id -u)/broker.sock"`}, nil)
 		if res.ExitCode != 0 {
 			t.Fatalf("a local socket was left behind: %s", strings.TrimSpace(res.Stderr))
 		}

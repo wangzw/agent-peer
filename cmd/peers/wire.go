@@ -14,7 +14,7 @@ import (
 // protocolOverrides returns the local and link protocol versions sent in the
 // version handshake. Zero means the version of the generated localpb and
 // linkpb packages, which is the only value a release build uses. The version
-// compatibility unit replaces this function in agentpeer_testenv builds.
+// compatibility unit replaces this function in peers_testenv builds.
 var protocolOverrides = func() (local, link uint32) { return 0, 0 }
 
 // brokerRun is the process entry point behind the broker subcommand. It is a

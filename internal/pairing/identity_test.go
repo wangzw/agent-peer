@@ -550,7 +550,7 @@ func TestWriteIdentityFileExclusiveRejectsExistingTarget(t *testing.T) {
 
 // identityWriteFailureEnv marks the child process of
 // TestGenerateIdentityWriteFailureLeavesNoPartialKey.
-const identityWriteFailureEnv = "AGENT_PEER_TEST_IDENTITY_WRITE_FAILURE_DIR"
+const identityWriteFailureEnv = "PEERS_TEST_IDENTITY_WRITE_FAILURE_DIR"
 
 // A failed key write must leave no identity.key at all. The child process caps
 // its file size so the key write fails after a partial write; with the old

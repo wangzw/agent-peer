@@ -28,9 +28,9 @@ func envTestClaude(t *testing.T, versionLine string) string {
 	return path
 }
 
-func envTestAgentPeer(t *testing.T) string {
+func envTestPeers(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "agent-peer")
+	path := filepath.Join(t.TempDir(), "peers")
 	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -38,17 +38,17 @@ func envTestAgentPeer(t *testing.T) string {
 }
 
 // envTestInit builds a complete probe root whose Broker data directory is a
-// temporary path, never the account's ~/.agent-peer.
+// temporary path, never the account's ~/.peers.
 func envTestInit(t *testing.T) (root, home string) {
 	t.Helper()
 	base := t.TempDir()
 	root = filepath.Join(base, "root")
-	home = filepath.Join(base, "home", ".agent-peer")
+	home = filepath.Join(base, "home", ".peers")
 	err := runEnvInit([]string{
 		"--root", root,
 		"--claude-bin", envTestClaude(t, "2.1.311 (Claude Code)"),
-		"--agent-peer-bin", envTestAgentPeer(t),
-		"--agent-peer-home", home,
+		"--peers-bin", envTestPeers(t),
+		"--peers-home", home,
 	}, io.Discard)
 	if err != nil {
 		t.Fatalf("env init: %v", err)
@@ -78,12 +78,12 @@ func TestEnvInitLayout(t *testing.T) {
 				t.Errorf("%s/%s missing: %v", kind, name, err)
 			}
 		}
-		project, err := os.ReadFile(filepath.Join(root, "work", name, ".agent-peer.yaml"))
+		project, err := os.ReadFile(filepath.Join(root, "work", name, ".peers.yaml"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got, want := string(project), "topics: [rs-probe]\n"; got != want {
-			t.Errorf("work/%s/.agent-peer.yaml = %q, want %q", name, got, want)
+			t.Errorf("work/%s/.peers.yaml = %q, want %q", name, got, want)
 		}
 	}
 
@@ -93,10 +93,10 @@ func TestEnvInitLayout(t *testing.T) {
 	} else if string(data) != claudeScript {
 		t.Errorf("bin/claude content = %q", data)
 	}
-	if data, err := os.ReadFile(filepath.Join(root, "bin", "agent-peer")); err != nil {
-		t.Errorf("read bin/agent-peer: %v", err)
+	if data, err := os.ReadFile(filepath.Join(root, "bin", "peers")); err != nil {
+		t.Errorf("read bin/peers: %v", err)
 	} else if string(data) != "#!/bin/sh\nexit 0\n" {
-		t.Errorf("bin/agent-peer content = %q", data)
+		t.Errorf("bin/peers content = %q", data)
 	}
 	if _, err := os.Stat(filepath.Join(root, "bin", "rsprobe")); err != nil {
 		t.Errorf("bin/rsprobe missing: %v", err)
@@ -156,7 +156,7 @@ func TestEnvInitLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := homeInfo.Mode().Perm(); got != 0o700 {
-		t.Errorf("agent-peer home mode = %o, want 700", got)
+		t.Errorf("peers home mode = %o, want 700", got)
 	}
 	configPath := filepath.Join(home, "config.yaml")
 	configData, err := os.ReadFile(configPath)
@@ -232,8 +232,8 @@ func TestEnvInitRejectsWrongVersion(t *testing.T) {
 	err := runEnvInit([]string{
 		"--root", filepath.Join(base, "root"),
 		"--claude-bin", envTestClaude(t, "2.1.327 (Claude Code)"),
-		"--agent-peer-bin", envTestAgentPeer(t),
-		"--agent-peer-home", filepath.Join(base, "home", ".agent-peer"),
+		"--peers-bin", envTestPeers(t),
+		"--peers-home", filepath.Join(base, "home", ".peers"),
 	}, io.Discard)
 	if err == nil {
 		t.Fatal("env init accepted version 2.1.327")
@@ -243,7 +243,7 @@ func TestEnvInitRejectsWrongVersion(t *testing.T) {
 	}
 }
 
-func TestEnvInitRefusesExistingAgentPeerHome(t *testing.T) {
+func TestEnvInitRefusesExistingPeersHome(t *testing.T) {
 	base := t.TempDir()
 	home := filepath.Join(base, "existing")
 	if err := os.MkdirAll(home, 0o700); err != nil {
@@ -259,11 +259,11 @@ func TestEnvInitRefusesExistingAgentPeerHome(t *testing.T) {
 	err := runEnvInit([]string{
 		"--root", root,
 		"--claude-bin", envTestClaude(t, "2.1.311 (Claude Code)"),
-		"--agent-peer-bin", envTestAgentPeer(t),
-		"--agent-peer-home", home,
+		"--peers-bin", envTestPeers(t),
+		"--peers-home", home,
 	}, io.Discard)
 	if err == nil {
-		t.Fatal("env init accepted an existing agent-peer home")
+		t.Fatal("env init accepted an existing peers home")
 	}
 	if !strings.Contains(err.Error(), "refusing to touch existing") {
 		t.Fatalf("error = %v, want a refusal", err)
@@ -462,7 +462,7 @@ func TestEnvLsofPIDsParsesTheHolderScan(t *testing.T) {
 // /tmp/..., and the same holds for any symlinked directory.
 func TestEnvSameExecutableResolvesSymlinks(t *testing.T) {
 	root := t.TempDir()
-	exe := filepath.Join(root, "agent-peer")
+	exe := filepath.Join(root, "peers")
 	if err := os.WriteFile(exe, nil, 0o755); err != nil {
 		t.Fatalf("creating %s: %v", exe, err)
 	}
@@ -470,7 +470,7 @@ func TestEnvSameExecutableResolvesSymlinks(t *testing.T) {
 	if err := os.Symlink(root, link); err != nil {
 		t.Fatalf("linking %s to %s: %v", link, root, err)
 	}
-	if !envSameExecutable(filepath.Join(link, "agent-peer"), exe) {
+	if !envSameExecutable(filepath.Join(link, "peers"), exe) {
 		t.Errorf("envSameExecutable did not resolve the symlinked root")
 	}
 
@@ -492,7 +492,7 @@ func TestEnvSameExecutableResolvesSymlinks(t *testing.T) {
 		t.Fatalf("creating the /tmp root: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(tmpRoot) })
-	tmpExe := filepath.Join(tmpRoot, "agent-peer")
+	tmpExe := filepath.Join(tmpRoot, "peers")
 	if err := os.WriteFile(tmpExe, nil, 0o755); err != nil {
 		t.Fatalf("creating %s: %v", tmpExe, err)
 	}
@@ -500,22 +500,22 @@ func TestEnvSameExecutableResolvesSymlinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolving %s: %v", tmpRoot, err)
 	}
-	if !envSameExecutable(tmpExe, filepath.Join(canonicalRoot, "agent-peer")) {
+	if !envSameExecutable(tmpExe, filepath.Join(canonicalRoot, "peers")) {
 		t.Errorf("envSameExecutable did not match /tmp with its canonical path %s", canonicalRoot)
 	}
 }
 
 // TestEnvBrokerLockFreeRejectsAForeignHolder runs the whole lock check with the
 // lock held by another process. The holder is this test binary re-executed, so
-// its executable is not the probe's agent-peer and the check must report a
+// its executable is not the probe's peers and the check must report a
 // foreign holder rather than accept the lock as the probe's own.
 func TestEnvBrokerLockFreeRejectsAForeignHolder(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
 		t.Fatalf("creating the probe bin directory: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "bin", "agent-peer"), nil, 0o755); err != nil {
-		t.Fatalf("creating the probe's agent-peer: %v", err)
+	if err := os.WriteFile(filepath.Join(root, "bin", "peers"), nil, 0o755); err != nil {
+		t.Fatalf("creating the probe's peers: %v", err)
 	}
 	lockPath := filepath.Join(t.TempDir(), "broker.lock")
 	if err := os.WriteFile(lockPath, nil, 0o600); err != nil {
@@ -585,15 +585,15 @@ func TestEnvBrokerLockHolderHelper(t *testing.T) {
 // running the cleanup itself, and not treat a sibling directory whose name
 // starts with "bin" as the probe's bin directory.
 func TestEnvDarwinProbePIDs(t *testing.T) {
-	root := filepath.Join(string(os.PathSeparator), "private", "tmp", "agent-peer-rs")
+	root := filepath.Join(string(os.PathSeparator), "private", "tmp", "peers-rs")
 	prefix := filepath.Join(root, "bin") + string(os.PathSeparator)
 	psOutput := strings.Join([]string{
 		"  123 " + prefix + "claude --model haiku",
 		"  124 /usr/bin/python3 -c x",
-		"  125 " + prefix + "agent-peer broker --ready-fd=3",
+		"  125 " + prefix + "peers broker --ready-fd=3",
 		"  126 " + prefix + "rsprobe watch --dir x",
 		"  abc " + prefix + "claude",
-		"  127 " + root + "binother/agent-peer",
+		"  127 " + root + "binother/peers",
 		"",
 	}, "\n")
 	got := envDarwinProbePIDs(psOutput, prefix, 125)
@@ -643,7 +643,7 @@ func TestUsageCountsDistinctMessageIDs(t *testing.T) {
 
 func TestCleanKeepsOut(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "rs")
-	home := filepath.Join(t.TempDir(), "home", ".agent-peer")
+	home := filepath.Join(t.TempDir(), "home", ".peers")
 
 	outFile := filepath.Join(root, "out", "x", "a.txt")
 	if err := os.MkdirAll(filepath.Dir(outFile), 0o755); err != nil {
@@ -666,7 +666,7 @@ func TestCleanKeepsOut(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runEnvClean([]string{"--root", root, "--agent-peer-home", home}, io.Discard); err != nil {
+	if err := runEnvClean([]string{"--root", root, "--peers-home", home}, io.Discard); err != nil {
 		t.Fatalf("env clean: %v", err)
 	}
 	if _, err := os.Stat(outFile); err != nil {
@@ -676,7 +676,7 @@ func TestCleanKeepsOut(t *testing.T) {
 		t.Errorf("clean left R/home: %v", err)
 	}
 	if _, err := os.Stat(home); !os.IsNotExist(err) {
-		t.Errorf("clean left the agent-peer home: %v", err)
+		t.Errorf("clean left the peers home: %v", err)
 	}
 	if _, err := os.Stat(root); err != nil {
 		t.Errorf("clean removed the probe root: %v", err)
@@ -708,7 +708,7 @@ func TestCleanPassesRSRootToCompose(t *testing.T) {
 	}
 
 	root := filepath.Join(base, "rs")
-	home := filepath.Join(base, "agent-peer-home")
+	home := filepath.Join(base, "peers-home")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -716,7 +716,7 @@ func TestCleanPassesRSRootToCompose(t *testing.T) {
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Chdir(base)
 
-	if err := runEnvClean([]string{"--root", root, "--agent-peer-home", home}, io.Discard); err != nil {
+	if err := runEnvClean([]string{"--root", root, "--peers-home", home}, io.Discard); err != nil {
 		t.Fatalf("env clean: %v", err)
 	}
 	data, err := os.ReadFile(record)

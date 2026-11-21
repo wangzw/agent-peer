@@ -11,7 +11,7 @@ type BaseEnv struct {
 	Home string
 	// Path becomes PATH.
 	Path string
-	// Extra adds variables, for example AGENT_PEER_TEST_RUNTIME_ROOT.
+	// Extra adds variables, for example PEERS_TEST_RUNTIME_ROOT.
 	Extra map[string]string
 }
 

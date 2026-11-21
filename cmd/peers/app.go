@@ -60,7 +60,7 @@ var subcommands = map[string]func(*app, context.Context, []string) int{}
 
 // signalRestoreHook runs after the first signal has cancelled ctx and the
 // default signal handling has been restored. Production builds keep the no-op
-// value; the agentpeer_testenv build points it at a channel so a subprocess
+// value; the peers_testenv build points it at a channel so a subprocess
 // test can observe the restore instead of waiting a fixed interval.
 var signalRestoreHook = func() {}
 

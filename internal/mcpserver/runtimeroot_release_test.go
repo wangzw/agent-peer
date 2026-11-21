@@ -1,4 +1,4 @@
-//go:build !agentpeer_testenv
+//go:build !peers_testenv
 
 package mcpserver
 
@@ -13,14 +13,14 @@ import (
 
 const (
 	// releaseChildEnv marks the child process of TestTestEnvIgnoredInReleaseBuild.
-	releaseChildEnv = "AGENT_PEER_TESTENV_RELEASE_CHILD"
+	releaseChildEnv = "PEERS_TESTENV_RELEASE_CHILD"
 	// releaseRoot is the value the child puts in the environment. A build that
 	// installs the hook would use it.
 	releaseRoot = "/r"
 )
 
 // TestTestEnvIgnoredInReleaseBuild checks that a build without the
-// agentpeer_testenv tag does not point the socket paths at the test runtime
+// peers_testenv tag does not point the socket paths at the test runtime
 // root. The hook is installed by package init, so the environment has to be in
 // place before the child starts: t.Setenv runs after init and therefore passes
 // whether or not the hook exists. The child re-executes this test binary with
@@ -47,7 +47,7 @@ func runReleaseChild(t *testing.T, name string) {
 	cmd := exec.Command(os.Args[0], "-test.run=^"+name+"$", "-test.v")
 	cmd.Env = releaseChildEnvVars(
 		releaseChildEnv+"=1",
-		"AGENT_PEER_TEST_RUNTIME_ROOT="+releaseRoot,
+		"PEERS_TEST_RUNTIME_ROOT="+releaseRoot,
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

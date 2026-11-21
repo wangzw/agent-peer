@@ -75,7 +75,7 @@ func (b *lockedBuffer) String() string {
 func startFakePeer(t *testing.T) *fakePeer {
 	t.Helper()
 
-	bin := harness.BuildPackage(t, "./test/e2e/fakepeer", runtime.GOOS, runtime.GOARCH, "e2e", "agentpeer_testenv")
+	bin := harness.BuildPackage(t, "./test/e2e/fakepeer", runtime.GOOS, runtime.GOARCH, "e2e", "peers_testenv")
 	home := t.TempDir()
 	// The runtime root must stay short; the fake peer itself binds no socket
 	// but the product code derives paths from it.
@@ -87,8 +87,8 @@ func startFakePeer(t *testing.T) *fakePeer {
 
 	cmd := exec.Command(bin)
 	cmd.Env = []string{
-		"AGENT_PEER_TEST_HOME=" + home,
-		"AGENT_PEER_TEST_RUNTIME_ROOT=" + root,
+		"PEERS_TEST_HOME=" + home,
+		"PEERS_TEST_RUNTIME_ROOT=" + root,
 		"PATH=" + os.Getenv("PATH"),
 	}
 	stdin, err := cmd.StdinPipe()

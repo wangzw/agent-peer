@@ -67,8 +67,8 @@ func TestRealSessionWorkflowShape(t *testing.T) {
 		uploadName string
 		tools      string
 	}{
-		{"probe", "probe/", "ubuntu-24.04", "/tmp/agent-peer-rs", "probe-${{ env.PROBE }}", "apt-get"},
-		{"probe-macos", "probe-macos/", "macos-latest", "/private/tmp/agent-peer-rs", "probe-macos-${{ env.PROBE }}", "brew install"},
+		{"probe", "probe/", "ubuntu-24.04", "/tmp/peers-rs", "probe-${{ env.PROBE }}", "apt-get"},
+		{"probe-macos", "probe-macos/", "macos-latest", "/private/tmp/peers-rs", "probe-macos-${{ env.PROBE }}", "brew install"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.job, func(t *testing.T) {
@@ -520,7 +520,7 @@ func TestSocketOwnerPIDDarwin(t *testing.T) {
 		t.Fatalf("writing the lsof stub: %v", err)
 	}
 
-	sock := "/private/tmp/agent-peer-501/broker.sock"
+	sock := "/private/tmp/peers-501/broker.sock"
 	cases := []struct {
 		name string
 		lsof string
@@ -611,7 +611,7 @@ func TestRsAcceptTrustDialogChoosesTheFocusableEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the recorded keys: %v", err)
 	}
-	want := "-L agent-peer-rs send-keys -t w Down Enter\n-L agent-peer-rs send-keys -t w Enter\n"
+	want := "-L peers-rs send-keys -t w Down Enter\n-L peers-rs send-keys -t w Enter\n"
 	if got := string(data); got != want {
 		t.Errorf("keys sent = %q, want %q", got, want)
 	}
@@ -676,7 +676,7 @@ esac
 	if err != nil {
 		t.Fatalf("reading the recorded keys: %v", err)
 	}
-	want := "-L agent-peer-rs send-keys -t w Down Enter\n-L agent-peer-rs send-keys -t w Down Enter\n"
+	want := "-L peers-rs send-keys -t w Down Enter\n-L peers-rs send-keys -t w Down Enter\n"
 	if got := string(data); got != want {
 		t.Errorf("keys sent = %q, want two Down Enter bursts", got)
 	}
@@ -863,7 +863,7 @@ esac
 		if err != nil {
 			t.Fatalf("reading the recorded keys: %v", err)
 		}
-		want := "-L agent-peer-rs send-keys -t w Down Enter\n"
+		want := "-L peers-rs send-keys -t w Down Enter\n"
 		if got := string(data); got != want {
 			t.Errorf("keys sent = %q, want one Down Enter burst after the capture recovered", got)
 		}

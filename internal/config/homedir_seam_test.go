@@ -3,7 +3,7 @@ package config
 import "testing"
 
 // TestNewCoreUsesHomeDirSource checks that newCore reads the account home
-// directory through the homeDirSource seam, so the agentpeer_testenv build can
+// directory through the homeDirSource seam, so the peers_testenv build can
 // replace it. It cannot run in parallel because it changes a package-level
 // variable.
 func TestNewCoreUsesHomeDirSource(t *testing.T) {

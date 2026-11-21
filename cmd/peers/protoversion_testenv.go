@@ -1,4 +1,4 @@
-//go:build agentpeer_testenv
+//go:build peers_testenv
 
 package main
 
@@ -12,8 +12,8 @@ import (
 // which the Broker and the MCP server replace with the version of the
 // generated packages.
 func parseProtocolOverrides(getenv func(string) string) (local, link uint32) {
-	return parseProtocolVersion(getenv("AGENT_PEER_TEST_LOCAL_PROTOCOL_VERSION")),
-		parseProtocolVersion(getenv("AGENT_PEER_TEST_LINK_PROTOCOL_VERSION"))
+	return parseProtocolVersion(getenv("PEERS_TEST_LOCAL_PROTOCOL_VERSION")),
+		parseProtocolVersion(getenv("PEERS_TEST_LINK_PROTOCOL_VERSION"))
 }
 
 // parseProtocolVersion parses one override value. ParseUint rejects a sign, so

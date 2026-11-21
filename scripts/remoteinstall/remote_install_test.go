@@ -112,19 +112,19 @@ func (f *fixture) writeRelease(version string) {
 // environ returns the environment for a run. overrides replace the defaults.
 func (f *fixture) environ(overrides map[string]string) []string {
 	env := map[string]string{
-		"HOME":                         f.home,
-		"PATH":                         f.fakes + string(os.PathListSeparator) + systemPath,
-		"TMPDIR":                       f.tmpdir,
-		"LC_ALL":                       "C",
-		"FAKE_UNAME_S":                 "Linux",
-		"FAKE_UNAME_M":                 "x86_64",
-		"FAKE_CURL_LOG":                f.curlLog,
-		"FAKE_WGET_LOG":                f.wgetLog,
-		"FAKE_RELEASE_BASE":            releaseBase,
-		"FAKE_RELEASE_DIR":             f.releaseDir,
-		"FAKE_EFFECTIVE_URL":           releaseBase + "/tag/v0.1.1",
-		"FAKE_INSTALL_ARGS":            f.installArgs,
-		"AGENT_PEER_TEST_RELEASE_BASE": releaseBase,
+		"HOME":                    f.home,
+		"PATH":                    f.fakes + string(os.PathListSeparator) + systemPath,
+		"TMPDIR":                  f.tmpdir,
+		"LC_ALL":                  "C",
+		"FAKE_UNAME_S":            "Linux",
+		"FAKE_UNAME_M":            "x86_64",
+		"FAKE_CURL_LOG":           f.curlLog,
+		"FAKE_WGET_LOG":           f.wgetLog,
+		"FAKE_RELEASE_BASE":       releaseBase,
+		"FAKE_RELEASE_DIR":        f.releaseDir,
+		"FAKE_EFFECTIVE_URL":      releaseBase + "/tag/v0.1.1",
+		"FAKE_INSTALL_ARGS":       f.installArgs,
+		"PEERS_TEST_RELEASE_BASE": releaseBase,
 	}
 	for key, value := range overrides {
 		env[key] = value
@@ -745,9 +745,9 @@ func TestTransportRestrictions(t *testing.T) {
 		f := newFixture(t)
 		base := "http://release.invalid/releases"
 		_, stderr, code := f.run(map[string]string{
-			"AGENT_PEER_TEST_RELEASE_BASE": base,
-			"FAKE_RELEASE_BASE":            base,
-			"FAKE_EFFECTIVE_URL":           base + "/tag/v0.1.1",
+			"PEERS_TEST_RELEASE_BASE": base,
+			"FAKE_RELEASE_BASE":       base,
+			"FAKE_EFFECTIVE_URL":      base + "/tag/v0.1.1",
 		})
 		if code != 0 {
 			t.Fatalf("exit = %d, want 0; stderr:\n%s", code, stderr)

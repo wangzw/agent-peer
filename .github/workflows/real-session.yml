@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      R: /tmp/agent-peer-rs
+      R: /tmp/peers-rs
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
@@ -64,7 +64,7 @@ jobs:
         timeout-minutes: 15
         run: |
           mkdir -p "$RUNNER_TEMP/build"
-          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/agent-peer" ./cmd/peers
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/peers" ./cmd/peers
           CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/rsprobe" ./test/realsession/rsprobe
       - name: Prepare
         env:
@@ -74,9 +74,9 @@ jobs:
             echo "secret CLAUDE_CODE_OAUTH_TOKEN is missing" >&2
             exit 1
           fi
-          "$RUNNER_TEMP/build/rsprobe" env init --root "$R" --claude-bin "$(readlink -f "$HOME/.local/bin/claude")" --agent-peer-bin "$RUNNER_TEMP/build/agent-peer"
+          "$RUNNER_TEMP/build/rsprobe" env init --root "$R" --claude-bin "$(readlink -f "$HOME/.local/bin/claude")" --peers-bin "$RUNNER_TEMP/build/peers"
           "$R/bin/rsprobe" env check --root "$R"
-          "$R/run" claude mcp add --scope user peer -- "$R/bin/agent-peer" mcp
+          "$R/run" claude mcp add --scope user peer -- "$R/bin/peers" mcp
       - name: Run the probe
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -113,13 +113,13 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: probe-${{ env.PROBE }}
-          path: /tmp/agent-peer-rs/out/${{ env.PROBE }}/
+          path: /tmp/peers-rs/out/${{ env.PROBE }}/
           if-no-files-found: error
           retention-days: 30
 
   # The macOS job runs the probes that need no Linux-only tooling: it installs
   # tmux and jq through Homebrew, copies the same pinned Claude Code build and
-  # agent-peer binaries, and runs the same probe scripts. The Linux job keeps
+  # peers binaries, and runs the same probe scripts. The Linux job keeps
   # the apt packages, strace and stress-ng, which no macOS probe uses.
   #
   # The probe root is /private/tmp rather than /tmp because macOS makes /tmp a
@@ -131,7 +131,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     env:
-      R: /private/tmp/agent-peer-rs
+      R: /private/tmp/peers-rs
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
@@ -167,7 +167,7 @@ jobs:
         timeout-minutes: 15
         run: |
           mkdir -p "$RUNNER_TEMP/build"
-          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/agent-peer" ./cmd/peers
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/peers" ./cmd/peers
           CGO_ENABLED=0 go build -o "$RUNNER_TEMP/build/rsprobe" ./test/realsession/rsprobe
       - name: Prepare
         env:
@@ -179,9 +179,9 @@ jobs:
           fi
           # macOS readlink has no -f; python3 resolves the installed symlink.
           claude_bin="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$HOME/.local/bin/claude")"
-          "$RUNNER_TEMP/build/rsprobe" env init --root "$R" --claude-bin "$claude_bin" --agent-peer-bin "$RUNNER_TEMP/build/agent-peer"
+          "$RUNNER_TEMP/build/rsprobe" env init --root "$R" --claude-bin "$claude_bin" --peers-bin "$RUNNER_TEMP/build/peers"
           "$R/bin/rsprobe" env check --root "$R"
-          "$R/run" claude mcp add --scope user peer -- "$R/bin/agent-peer" mcp
+          "$R/run" claude mcp add --scope user peer -- "$R/bin/peers" mcp
       - name: Run the probe
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -218,6 +218,6 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: probe-macos-${{ env.PROBE }}
-          path: /private/tmp/agent-peer-rs/out/${{ env.PROBE }}/
+          path: /private/tmp/peers-rs/out/${{ env.PROBE }}/
           if-no-files-found: error
           retention-days: 30

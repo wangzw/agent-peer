@@ -1,4 +1,4 @@
-//go:build agentpeer_testenv
+//go:build peers_testenv
 
 package config
 
@@ -18,10 +18,10 @@ func TestTestRuntimeRoot(t *testing.T) {
 }
 
 func TestTestEnvHooksInstalled(t *testing.T) {
-	root := os.Getenv("AGENT_PEER_TEST_RUNTIME_ROOT")
-	home := os.Getenv("AGENT_PEER_TEST_HOME")
+	root := os.Getenv("PEERS_TEST_RUNTIME_ROOT")
+	home := os.Getenv("PEERS_TEST_HOME")
 	if root == "" || home == "" {
-		t.Skip("AGENT_PEER_TEST_RUNTIME_ROOT and AGENT_PEER_TEST_HOME are not set")
+		t.Skip("PEERS_TEST_RUNTIME_ROOT and PEERS_TEST_HOME are not set")
 	}
 	if got, want := runtimeDirPath(1000), filepath.Join(root, "1000"); got != want {
 		t.Errorf("runtimeDirPath(1000) = %q, want %q", got, want)

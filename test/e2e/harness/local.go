@@ -49,7 +49,7 @@ type localNode struct {
 func NewLocalHost(t *testing.T, opts LocalOptions) *Node {
 	t.Helper()
 
-	bin := BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
+	bin := BuildBinary(t, runtime.GOOS, runtime.GOARCH, "peers_testenv")
 
 	// A short path keeps the Broker's Unix socket under the length limit. The
 	// name carries the owner marker, including its PID namespace, so a cleanup
@@ -72,8 +72,8 @@ func NewLocalHost(t *testing.T, opts LocalOptions) *Node {
 			Home: home,
 			Path: os.Getenv("PATH"),
 			Extra: map[string]string{
-				"AGENT_PEER_TEST_RUNTIME_ROOT": root,
-				"AGENT_PEER_TEST_HOME":         acct,
+				"PEERS_TEST_RUNTIME_ROOT": root,
+				"PEERS_TEST_HOME":         acct,
 			},
 		},
 		freeAddrs: map[string]bool{},
@@ -526,7 +526,7 @@ func terminateBroker(b *node.BrokerProc) {
 // it. The scan is the node library's; no second implementation lives here.
 func (l *localNode) killProcesses() {
 	procs, err := node.ListProcs(func(p node.Proc) bool {
-		return p.Env["AGENT_PEER_TEST_RUNTIME_ROOT"] == l.root
+		return p.Env["PEERS_TEST_RUNTIME_ROOT"] == l.root
 	})
 	if err != nil {
 		// Other platforms cannot scan processes; the processes the node

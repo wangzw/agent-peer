@@ -41,13 +41,13 @@ func TestLocalHostEnvIsolates(t *testing.T) {
 		"first":  firstEnv,
 		"second": secondEnv,
 	} {
-		root, ok := env["AGENT_PEER_TEST_RUNTIME_ROOT"]
+		root, ok := env["PEERS_TEST_RUNTIME_ROOT"]
 		if !ok {
-			t.Fatalf("%s node has no AGENT_PEER_TEST_RUNTIME_ROOT in %v", name, env)
+			t.Fatalf("%s node has no PEERS_TEST_RUNTIME_ROOT in %v", name, env)
 		}
-		acct, ok := env["AGENT_PEER_TEST_HOME"]
+		acct, ok := env["PEERS_TEST_HOME"]
 		if !ok {
-			t.Fatalf("%s node has no AGENT_PEER_TEST_HOME in %v", name, env)
+			t.Fatalf("%s node has no PEERS_TEST_HOME in %v", name, env)
 		}
 		if !filepath.IsAbs(root) {
 			t.Errorf("%s node runtime root %q is not absolute", name, root)
@@ -63,7 +63,7 @@ func TestLocalHostEnvIsolates(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"AGENT_PEER_TEST_RUNTIME_ROOT", "AGENT_PEER_TEST_HOME", "HOME"} {
+	for _, name := range []string{"PEERS_TEST_RUNTIME_ROOT", "PEERS_TEST_HOME", "HOME"} {
 		if firstEnv[name] == secondEnv[name] {
 			t.Errorf("two nodes share %s=%q", name, firstEnv[name])
 		}
@@ -76,7 +76,7 @@ func TestLocalHostEnvIsolates(t *testing.T) {
 func pidsWithRuntimeRoot(t *testing.T, root string) []int {
 	t.Helper()
 	procs, err := node.ListProcs(func(p node.Proc) bool {
-		return p.Env["AGENT_PEER_TEST_RUNTIME_ROOT"] == root
+		return p.Env["PEERS_TEST_RUNTIME_ROOT"] == root
 	})
 	if err != nil {
 		t.Fatalf("listing processes: %v", err)

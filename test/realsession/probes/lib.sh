@@ -11,7 +11,7 @@ set -euo pipefail
 
 OUT="$R/out/$PROBE"
 WORK="$R/work/$PROBE"
-TMUX_SERVER=agent-peer-rs
+TMUX_SERVER=peers-rs
 
 # RS_COMPOSE is resolved from this script's location rather than the caller's
 # working directory, so every probe finds the peer host compose file whether the
@@ -258,7 +258,7 @@ rs_agent() {
 		--cwd "$dir" \
 		--ctl "$R/ctl/$name.sock" \
 		--recv-log "$OUT/$name.recv.jsonl" \
-		--agent-peer "$R/bin/agent-peer" \
+		--peers "$R/bin/peers" \
 		>>"$OUT/agents.log" 2>&1 &
 	# An external process starting is slower than the Go tests' 3-second rule.
 	rs_wait_file "$R/ctl/$name.sock" "$RS_CONTAINER_WAIT"
@@ -420,9 +420,9 @@ socket_owner_pid() {
 rs_start_broker() {
 	local log="${RS_BROKER_LOG:-$OUT/broker.log}"
 	local sock deadline owner
-	sock="/tmp/agent-peer-$(id -u)/broker.sock"
+	sock="/tmp/peers-$(id -u)/broker.sock"
 	mkdir -p "$OUT"
-	"$R/run" agent-peer broker >>"$log" 2>&1 &
+	"$R/run" peers broker >>"$log" 2>&1 &
 	RS_BROKER_PID=$!
 	if ((RS_BROKER_HOOKED == 0)); then
 		rs_on_exit rs_stop_broker
@@ -482,7 +482,7 @@ rs_hosta_agent() {
 		--cwd /rs/work \
 		--ctl "/rs/$name.ctl" \
 		--recv-log "/rs/$name.recv.jsonl" \
-		--agent-peer /usr/local/bin/agent-peer
+		--peers /usr/local/bin/peers
 	deadline=$((SECONDS + RS_CONTAINER_WAIT))
 	while ((SECONDS < deadline)); do
 		if docker compose -f "$RS_COMPOSE" exec -T hosta test -S "/rs/$name.ctl"; then

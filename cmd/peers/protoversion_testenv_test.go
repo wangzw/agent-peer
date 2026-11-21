@@ -1,4 +1,4 @@
-//go:build agentpeer_testenv
+//go:build peers_testenv
 
 package main
 
@@ -22,8 +22,8 @@ func TestParseProtocolOverrides(t *testing.T) {
 	}
 	for _, c := range cases {
 		env := map[string]string{
-			"AGENT_PEER_TEST_LOCAL_PROTOCOL_VERSION": c.local,
-			"AGENT_PEER_TEST_LINK_PROTOCOL_VERSION":  c.link,
+			"PEERS_TEST_LOCAL_PROTOCOL_VERSION": c.local,
+			"PEERS_TEST_LINK_PROTOCOL_VERSION":  c.link,
 		}
 		local, link := parseProtocolOverrides(func(k string) string { return env[k] })
 		if local != c.wantLocal || link != c.wantLink {
@@ -36,8 +36,8 @@ func TestParseProtocolOverrides(t *testing.T) {
 // TestProtocolOverridesInstalled checks that the testenv init hook replaced the
 // production seam, so the wire layer reads the environment variables.
 func TestProtocolOverridesInstalled(t *testing.T) {
-	t.Setenv("AGENT_PEER_TEST_LOCAL_PROTOCOL_VERSION", "5")
-	t.Setenv("AGENT_PEER_TEST_LINK_PROTOCOL_VERSION", "6")
+	t.Setenv("PEERS_TEST_LOCAL_PROTOCOL_VERSION", "5")
+	t.Setenv("PEERS_TEST_LINK_PROTOCOL_VERSION", "6")
 
 	local, link := protocolOverrides()
 	if local != 5 || link != 6 {

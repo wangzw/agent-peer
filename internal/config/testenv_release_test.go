@@ -1,4 +1,4 @@
-//go:build !agentpeer_testenv
+//go:build !peers_testenv
 
 package config
 
@@ -11,7 +11,7 @@ import (
 
 const (
 	// releaseChildEnv marks the child process of TestTestEnvIgnoredInReleaseBuild.
-	releaseChildEnv = "AGENT_PEER_TESTENV_RELEASE_CHILD"
+	releaseChildEnv = "PEERS_TESTENV_RELEASE_CHILD"
 	// releaseRoot and releaseHome are the values the child puts in the
 	// environment. A build that installs the hooks would use them.
 	releaseRoot = "/r"
@@ -19,7 +19,7 @@ const (
 )
 
 // TestTestEnvIgnoredInReleaseBuild checks that a build without the
-// agentpeer_testenv tag does not install the environment hooks. The hooks are
+// peers_testenv tag does not install the environment hooks. The hooks are
 // installed by package init, so the environment has to be in place before the
 // child starts: t.Setenv runs after init and therefore passes whether or not
 // the hooks exist. The child re-executes this test binary with the selectors
@@ -34,7 +34,7 @@ func TestTestEnvIgnoredInReleaseBuild(t *testing.T) {
 			t.Fatalf("homeDirSource() error = %v", err)
 		}
 		if got == releaseHome {
-			t.Errorf("homeDirSource() = %q, release build must ignore AGENT_PEER_TEST_HOME", got)
+			t.Errorf("homeDirSource() = %q, release build must ignore PEERS_TEST_HOME", got)
 		}
 		return
 	}
@@ -50,8 +50,8 @@ func runReleaseChild(t *testing.T, name string) {
 	cmd := exec.Command(os.Args[0], "-test.run=^"+name+"$", "-test.v")
 	cmd.Env = releaseChildEnvVars(
 		releaseChildEnv+"=1",
-		"AGENT_PEER_TEST_RUNTIME_ROOT="+releaseRoot,
-		"AGENT_PEER_TEST_HOME="+releaseHome,
+		"PEERS_TEST_RUNTIME_ROOT="+releaseRoot,
+		"PEERS_TEST_HOME="+releaseHome,
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

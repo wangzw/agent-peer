@@ -17,7 +17,7 @@ func TestUserSocketPath(t *testing.T) {
 	// variables are what a wrong implementation would be tempted to use.
 	t.Setenv("TMPDIR", "/elsewhere/tmp")
 	t.Setenv("XDG_RUNTIME_DIR", "/elsewhere/xdg")
-	t.Setenv("AGENT_PEER_TEST_RUNTIME_ROOT", "/elsewhere/test")
+	t.Setenv("PEERS_TEST_RUNTIME_ROOT", "/elsewhere/test")
 	if got := userSocketPath(1001); got != want {
 		t.Fatalf("userSocketPath(1001) with environment overrides = %q, want %q", got, want)
 	}
@@ -47,7 +47,7 @@ func TestSystemSocketPath(t *testing.T) {
 
 	t.Setenv("TMPDIR", "/elsewhere/tmp")
 	t.Setenv("XDG_RUNTIME_DIR", "/elsewhere/xdg")
-	t.Setenv("AGENT_PEER_TEST_RUNTIME_ROOT", "/elsewhere/test")
+	t.Setenv("PEERS_TEST_RUNTIME_ROOT", "/elsewhere/test")
 	if got, want := systemSocketPath(), userSocketPath(0); got != want {
 		t.Fatalf("systemSocketPath() with environment overrides = %q, want %q", got, want)
 	}

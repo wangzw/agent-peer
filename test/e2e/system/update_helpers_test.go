@@ -84,7 +84,7 @@ func updateStagedOldBinary() string {
 func updateStageAssets(t *testing.T) {
 	t.Helper()
 
-	old := harness.BuildBinaryVersion(t, updateOldVersion, "linux", runtime.GOARCH, "agentpeer_testenv")
+	old := harness.BuildBinaryVersion(t, updateOldVersion, "linux", runtime.GOARCH, "peers_testenv")
 	good := harness.BuildBinaryVersion(t, updateNewVersion, "linux", runtime.GOARCH)
 	other := harness.BuildBinaryVersion(t, updateOtherVersion, "linux", runtime.GOARCH)
 
@@ -156,7 +156,7 @@ func updateBrokerConfig(check bool) string {
 func updateStartPeerBroker(t *testing.T, fake *harness.FakeGitHub, check bool) *syscontainer.Proc {
 	t.Helper()
 	writeAccountFile(t, "peer", "/home/peer/.peers/config.yaml", updateBrokerConfig(check))
-	env := []string{"AGENT_PEER_TEST_UPDATE_API=" + fake.URL()}
+	env := []string{"PEERS_TEST_UPDATE_API=" + fake.URL()}
 	return syscontainer.StartUserBrokerPath(t, updateStagedOldBinary(), "peer", env,
 		"--listen", updateBrokerListen)
 }
@@ -175,7 +175,7 @@ func updatePeerEnv(t *testing.T, account string) []string {
 // updateStatus runs the terminal status command against peer's user Broker.
 func updateStatus(t *testing.T, exe string) syscontainer.Result {
 	t.Helper()
-	env := append(updatePeerEnv(t, "peer"), "AGENT_PEER_TEST_SOCKET="+syscontainer.UserSocketPath(t, "peer"))
+	env := append(updatePeerEnv(t, "peer"), "PEERS_TEST_SOCKET="+syscontainer.UserSocketPath(t, "peer"))
 	return runWithEnv(t, "peer", env, exe, "status")
 }
 
@@ -191,7 +191,7 @@ func updateBrokerVersion(t *testing.T, account string) (string, error) {
 	t.Helper()
 	base := syscontainer.Command(account, []string{
 		registerClientRoleEnv + "=" + updateStatusClientRole,
-		"AGENT_PEER_TEST_SOCKET=" + syscontainer.UserSocketPath(t, account),
+		"PEERS_TEST_SOCKET=" + syscontainer.UserSocketPath(t, account),
 	}, copyTestBinary(t))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -211,7 +211,7 @@ func updateBrokerVersion(t *testing.T, account string) (string, error) {
 // runUpdateStatusClientRole is the body of the test binary when TestMain
 // selects the update-status role. It prints the version the Broker runs.
 func runUpdateStatusClientRole() int {
-	oracle, err := node.DialOracle(os.Getenv("AGENT_PEER_TEST_SOCKET"))
+	oracle, err := node.DialOracle(os.Getenv("PEERS_TEST_SOCKET"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "update-status-client:", err)
 		return 1

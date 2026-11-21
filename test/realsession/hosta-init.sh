@@ -4,27 +4,27 @@
 # Broker in the background, and prints the container IP on standard output.
 #
 # The script runs as root inside the container, so the Broker keeps its
-# runtime directory at /run/agent-peer and its data under /root/.agent-peer.
+# runtime directory at /run/peers and its data under /root/.peers.
 set -eu
 
-BROKER_SOCKET=/run/agent-peer/broker.sock
+BROKER_SOCKET=/run/peers/broker.sock
 
-mkdir -p /root/.agent-peer /rs/cfg/sessions /rs/work
+mkdir -p /root/.peers /rs/cfg/sessions /rs/work
 # The Broker refuses a data directory that is accessible by group or other.
-chmod 700 /root/.agent-peer /rs/cfg/sessions
+chmod 700 /root/.peers /rs/cfg/sessions
 
-cat >/root/.agent-peer/config.yaml <<'EOF'
+cat >/root/.peers/config.yaml <<'EOF'
 broker:
   listen: 0.0.0.0:17443
   alias: hostA
 EOF
-chmod 600 /root/.agent-peer/config.yaml
+chmod 600 /root/.peers/config.yaml
 
-cat >/rs/work/.agent-peer.yaml <<'EOF'
+cat >/rs/work/.peers.yaml <<'EOF'
 topics: [rs-probe]
 EOF
 
-agent-peer broker >/rs/broker.log 2>&1 &
+peers broker >/rs/broker.log 2>&1 &
 broker_pid=$!
 
 # The Broker prints its readiness on standard error; the probe only needs the

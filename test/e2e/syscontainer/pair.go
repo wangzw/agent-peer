@@ -17,11 +17,11 @@ import (
 const (
 	// PairRoleEnv carries the role into a container that is part of a pair.
 	// RunPairTest sets it to "A" for hostA and "B" for hostB.
-	PairRoleEnv = "AGENT_PEER_E2E_PAIR_ROLE"
+	PairRoleEnv = "PEERS_E2E_PAIR_ROLE"
 
 	// pairSharedEnv carries the shared directory path into a pair container.
 	// The value is the container path, not the host path.
-	pairSharedEnv = "AGENT_PEER_E2E_PAIR_SHARED"
+	pairSharedEnv = "PEERS_E2E_PAIR_SHARED"
 
 	// PairSharedMount is the container path test/e2e/compose/system/compose.yaml
 	// mounts the pair volume at. The compose file fixes the mount, so

@@ -43,9 +43,9 @@ const (
 	// dxPublicTopic is the topic the expiry case declares publicly.
 	dxPublicTopic = "infra-help"
 
-	// dxClockEnv names the wall-clock offset file the agentpeer_testenv hook
+	// dxClockEnv names the wall-clock offset file the peers_testenv hook
 	// reads.
-	dxClockEnv = "AGENT_PEER_TEST_CLOCK_FILE"
+	dxClockEnv = "PEERS_TEST_CLOCK_FILE"
 
 	// The total-limit case keeps the original cards short-lived so that the
 	// renewals, not the originals, must keep the entries alive past their
@@ -481,7 +481,7 @@ func TestPublicTopicExpiresWithDeclarer(t *testing.T) {
 }
 
 // dxClockFile creates a clock offset file that starts at zero and returns its
-// path. The Broker holding it must run a build with the agentpeer_testenv tag.
+// path. The Broker holding it must run a build with the peers_testenv tag.
 func dxClockFile(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "clock")

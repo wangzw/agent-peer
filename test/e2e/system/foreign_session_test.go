@@ -29,10 +29,10 @@ import (
 )
 
 const (
-	// agentPeerBinaryPath is the peers build in the base image.
-	agentPeerBinaryPath = "/usr/local/bin/peers"
+	// peersBinaryPath is the peers build in the base image.
+	peersBinaryPath = "/usr/local/bin/peers"
 	// registerClientRoleEnv selects the registration client in TestMain.
-	registerClientRoleEnv = "AGENT_PEER_E2E_ROLE"
+	registerClientRoleEnv = "PEERS_E2E_ROLE"
 	// registerClientRole is the role that opens a Register stream directly.
 	registerClientRole = "register-client"
 	// registerClientBound is the wait before the registration client gives up.
@@ -191,7 +191,7 @@ func foreignSessionRejected(t *testing.T, readableRecord bool) {
 func startForeignMCPSession(t *testing.T, account string, env []string) *mcp.ClientSession {
 	t.Helper()
 
-	cmd := syscontainer.Command(account, env, agentPeerBinaryPath, "mcp")
+	cmd := syscontainer.Command(account, env, peersBinaryPath, "mcp")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -245,7 +245,7 @@ func runRegisterClient(t *testing.T, account, inboxSocket, configDir string) reg
 	exe := copyTestBinary(t)
 	base := syscontainer.Command(account, []string{
 		registerClientRoleEnv + "=" + registerClientRole,
-		"AGENT_PEER_TEST_SOCKET=" + e2eSystemSocketPath,
+		"PEERS_TEST_SOCKET=" + e2eSystemSocketPath,
 		"E2E_SOCKET=" + inboxSocket,
 		"E2E_CONFIG_DIR=" + configDir,
 	}, exe)
@@ -304,7 +304,7 @@ func copyTestBinary(t *testing.T) string {
 // the register-client role. It opens a Register stream, writes the first
 // downstream event as one JSON line and exits.
 func runRegisterClientRole() int {
-	socket := os.Getenv("AGENT_PEER_TEST_SOCKET")
+	socket := os.Getenv("PEERS_TEST_SOCKET")
 	inboxSocket := os.Getenv("E2E_SOCKET")
 	configDir := os.Getenv("E2E_CONFIG_DIR")
 

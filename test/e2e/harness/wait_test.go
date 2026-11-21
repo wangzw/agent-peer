@@ -410,7 +410,7 @@ func TestWaitConnectedAgainstStartingMCPServer(t *testing.T) {
 		Name:        "operator",
 		StartMCP:    true,
 		NoSocketEnv: true,
-		Env:         map[string]string{"AGENT_PEER_TEST_SOCKET": socket},
+		Env:         map[string]string{"PEERS_TEST_SOCKET": socket},
 	})
 	defer session.End(t)
 

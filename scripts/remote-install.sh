@@ -31,7 +31,7 @@
 #                  with no installable release package fails with
 #                  "version <version> not found".
 #
-# AGENT_PEER_TEST_RELEASE_BASE replaces the release URL prefix. It exists for
+# PEERS_TEST_RELEASE_BASE replaces the release URL prefix. It exists for
 # the end-to-end tests only, and it may point at a plain HTTP server. After it
 # is exported, every run in that same shell uses it until it is unset, so a
 # user who sets it by hand changes only his own runs. sudo's default env_reset
@@ -43,7 +43,7 @@ default_release_base=https://github.com/wangzw/peers/releases
 
 # The test hook may point at a local HTTP server, so the scheme of the base
 # decides which transport restriction is applied below.
-release_base=${AGENT_PEER_TEST_RELEASE_BASE:-$default_release_base}
+release_base=${PEERS_TEST_RELEASE_BASE:-$default_release_base}
 release_base=${release_base%/}
 
 fail() {

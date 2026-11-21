@@ -289,7 +289,7 @@ if [[ "${RS_SOURCE_ONLY:-}" == "1" ]]; then
 fi
 
 # Start the Broker explicitly so its structured send log is kept as evidence.
-"$R/run" agent-peer broker >>"$OUT/broker.log" 2>&1 &
+"$R/run" peers broker >>"$OUT/broker.log" 2>&1 &
 rl_wait_broker 15
 rs_obs "broker started; its send log is $OUT/broker.log"
 

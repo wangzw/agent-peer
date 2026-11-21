@@ -259,7 +259,7 @@ func termAdminHostB(t *testing.T) {
 	defer syscontainer.PairGuard(t)()
 
 	syscontainer.StartUserBroker(t, "peer", "--listen", termAdminPeerListen)
-	peerEnv := []string{"AGENT_PEER_TEST_SOCKET=" + syscontainer.UserSocketPath(t, "peer")}
+	peerEnv := []string{"PEERS_TEST_SOCKET=" + syscontainer.UserSocketPath(t, "peer")}
 
 	// Host B lists no peer yet, which also checks the empty listing.
 	termAdminRequireNoBrokers(t, "peer", peerEnv, "host B")

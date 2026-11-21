@@ -22,18 +22,18 @@ import (
 // processTimeout bounds every wait on a real child process.
 const processTimeout = 3 * time.Second
 
-// testRoleEnv returns the parent environment with AGENT_PEER_TEST_HELPER_ROLE
+// testRoleEnv returns the parent environment with PEERS_TEST_HELPER_ROLE
 // set to role, so the re-executed test binary takes the matching branch in
 // TestMain.
 func testRoleEnv(role string) []string {
 	env := make([]string, 0, len(os.Environ())+1)
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, "AGENT_PEER_TEST_HELPER_ROLE=") {
+		if strings.HasPrefix(kv, "PEERS_TEST_HELPER_ROLE=") {
 			continue
 		}
 		env = append(env, kv)
 	}
-	return append(env, "AGENT_PEER_TEST_HELPER_ROLE="+role)
+	return append(env, "PEERS_TEST_HELPER_ROLE="+role)
 }
 
 // testRoleProcess is one real child running a helper role.

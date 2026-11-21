@@ -39,7 +39,7 @@ const (
 
 	// roleEnv selects an internal helper role of the test binary. The role runs
 	// before the build step, so it also works when sudo re-executes the binary.
-	roleEnv = "AGENT_PEER_DARWIN_E2E_ROLE"
+	roleEnv = "PEERS_DARWIN_E2E_ROLE"
 	// systemPairKeyRole creates a one-time pairing key on the system Broker and
 	// prints it. It runs as root, where the system configuration file grants
 	// write permission without changing the file mode.
@@ -87,8 +87,8 @@ func TestMain(m *testing.M) {
 	// These tests uninstall the real io.github.wangzw.peers services. A
 	// developer machine may have them installed for everyday use, so refuse to
 	// run outside CI unless the caller opts in explicitly.
-	if os.Getenv("CI") == "" && os.Getenv("AGENT_PEER_E2E_ALLOW_SERVICE_RESET") != "1" {
-		fmt.Fprintln(os.Stderr, "darwinservice: refusing to uninstall a possibly real service outside CI; set AGENT_PEER_E2E_ALLOW_SERVICE_RESET=1 to allow it")
+	if os.Getenv("CI") == "" && os.Getenv("PEERS_E2E_ALLOW_SERVICE_RESET") != "1" {
+		fmt.Fprintln(os.Stderr, "darwinservice: refusing to uninstall a possibly real service outside CI; set PEERS_E2E_ALLOW_SERVICE_RESET=1 to allow it")
 		os.Exit(1)
 	}
 	if err := buildAndInstallBinary(); err != nil {

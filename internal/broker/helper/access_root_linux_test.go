@@ -324,8 +324,8 @@ func runKillProbe(t *testing.T, exe string, pid int, acct Account) {
 
 	cmd := exec.Command(exe)
 	cmd.Env = replaceEnv(os.Environ(),
-		"AGENT_PEER_TEST_HELPER_ROLE="+killProbeRole,
-		"AGENT_PEER_TEST_KILL_PID="+strconv.Itoa(pid),
+		"PEERS_TEST_HELPER_ROLE="+killProbeRole,
+		"PEERS_TEST_KILL_PID="+strconv.Itoa(pid),
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{
 		Uid:    acct.UID,
@@ -358,7 +358,7 @@ func replaceEnv(env []string, kv ...string) []string {
 
 // runKillProbeRole is the TestMain body of the kill-probe role.
 func runKillProbeRole() int {
-	pid, err := strconv.Atoi(os.Getenv("AGENT_PEER_TEST_KILL_PID"))
+	pid, err := strconv.Atoi(os.Getenv("PEERS_TEST_KILL_PID"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "kill probe: bad pid: %v\n", err)
 		return 2

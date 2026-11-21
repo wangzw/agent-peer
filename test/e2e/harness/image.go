@@ -28,14 +28,14 @@ var (
 // Image builds the container image defined by test/e2e/compose/Dockerfile once
 // per test process and returns its tag. The tag names the image content, the
 // peer account's uid and gid, and the owner of this test process, as
-// agent-peer-e2e:ape2e-<pid>-<start>-u<uid>-g<gid>-<hash>. The owner marker
+// peers-e2e:ape2e-<pid>-<start>-u<uid>-g<gid>-<hash>. The owner marker
 // lets a cleanup remove only images of runs that are gone, so two suites on
-// one host never delete each other's image. The image holds an agent-peer test
-// build, so a container scenario can name a Broker socket through
-// AGENT_PEER_TEST_SOCKET, and the e2e-node build. The test build carries hooks,
-// and each one acts only when its variable is set: AGENT_PEER_TEST_SOCKET names
-// the Broker socket, AGENT_PEER_TEST_UPDATE_API points the updater at a fake
-// API, and AGENT_PEER_TEST_RUNTIME_ROOT and AGENT_PEER_TEST_HOME relocate the
+// one host never delete each other's image. The image holds a test build of
+// peers, so a container scenario can name a Broker socket through
+// PEERS_TEST_SOCKET, and the e2e-node build. The test build carries hooks,
+// and each one acts only when its variable is set: PEERS_TEST_SOCKET names
+// the Broker socket, PEERS_TEST_UPDATE_API points the updater at a fake
+// API, and PEERS_TEST_RUNTIME_ROOT and PEERS_TEST_HOME relocate the
 // runtime directory and the home directory. With none of them set, the test
 // build behaves like the release build. The system Broker and service
 // installation unit derives its image from it.
@@ -45,11 +45,11 @@ func Image(tb testing.TB) string {
 	// Build the two binaries outside the once, so a failing go build ends this
 	// test with its own message instead of caching an empty tag for the rest
 	// of the process.
-	agentPeer := BuildBinary(tb, "linux", runtime.GOARCH, "agentpeer_testenv")
+	peersBinary := BuildBinary(tb, "linux", runtime.GOARCH, "peers_testenv")
 	e2eNode := BuildPackage(tb, "./test/e2e/cmd/e2e-node", "linux", runtime.GOARCH)
 
 	imageOnce.Do(func() {
-		imageTag, imageErr = buildImage(agentPeer, e2eNode)
+		imageTag, imageErr = buildImage(peersBinary, e2eNode)
 	})
 	if imageErr != nil {
 		tb.Fatalf("harness: %v", imageErr)
@@ -60,7 +60,7 @@ func Image(tb testing.TB) string {
 // buildImage copies the Dockerfile and the binaries into a fresh build
 // context, derives the tag from their contents, and builds the image when it
 // does not exist yet.
-func buildImage(agentPeer, e2eNode string) (string, error) {
+func buildImage(peersBinary, e2eNode string) (string, error) {
 	if err := checkDocker(); err != nil {
 		return "", fmt.Errorf("docker is required for container scenarios: %w", err)
 	}
@@ -86,7 +86,7 @@ func buildImage(agentPeer, e2eNode string) (string, error) {
 		return "", fmt.Errorf("writing the Dockerfile: %w", err)
 	}
 	for _, file := range []struct{ source, name string }{
-		{agentPeer, "agent-peer"},
+		{peersBinary, "peers"},
 		{e2eNode, "e2e-node"},
 	} {
 		data, err := os.ReadFile(file.source)
@@ -125,7 +125,7 @@ func buildImage(agentPeer, e2eNode string) (string, error) {
 // component starts with "ape2e-" so the same owner parser the project and
 // runtime-root names use reads it back.
 func imageReference(digest string, uid, gid int, o owner) string {
-	return fmt.Sprintf("agent-peer-e2e:ape2e-%s-u%d-g%d-%s", o.String(), uid, gid, digest)
+	return fmt.Sprintf("peers-e2e:ape2e-%s-u%d-g%d-%s", o.String(), uid, gid, digest)
 }
 
 // imageTagOwnerGone reports whether ref carries an owner marker whose process

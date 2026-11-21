@@ -146,7 +146,7 @@ account_home="$(getent passwd "$(id -un)" | cut -d: -f6)"
 if [[ -z "$account_home" ]]; then
 	account_home="$HOME"
 fi
-config_file="$account_home/.agent-peer/config.yaml"
+config_file="$account_home/.peers/config.yaml"
 {
 	printf 'config_file=%s\n' "$config_file"
 	if [[ -f "$config_file" ]]; then

@@ -30,7 +30,7 @@ const (
 	selfUpdateSystemSocket = "/run/peers/broker.sock"
 	// selfUpdateAdminGroup is the group the admin-group unit will grant. Until
 	// that unit is merged, the test performs the same chgrp and chmod itself.
-	selfUpdateAdminGroup = "agentpeer-admins"
+	selfUpdateAdminGroup = "peers-admins"
 	// selfUpdateUserListen is the user-level Broker's address when the system
 	// Broker is also running. The configuration template would otherwise give
 	// both the same port and the second Broker would refuse to start.
@@ -381,7 +381,7 @@ func TestREQUpdate007_TerminalBrokerWithInheritedServiceEnvironmentIsRefused(t *
 
 	syscontainer.StartSystemBrokerEnv(t, "broker:\n  alias: sys\n", []string{
 		"INVOCATION_ID=" + selfUpdateInheritedInvocationID,
-		"AGENT_PEER_TEST_UPDATE_API=" + fake.URL(),
+		"PEERS_TEST_UPDATE_API=" + fake.URL(),
 	})
 	downloadsBefore := fake.Downloads()
 
@@ -609,7 +609,7 @@ func selfUpdateStageHostAssets(t *testing.T, withInstallScript bool) {
 // selfUpdateAPIEnv returns the environment the old release reads the fake
 // GitHub API base from.
 func selfUpdateAPIEnv(fake *harness.FakeGitHub) []string {
-	return []string{"AGENT_PEER_TEST_UPDATE_API=" + fake.URL()}
+	return []string{"PEERS_TEST_UPDATE_API=" + fake.URL()}
 }
 
 // selfUpdatePrepareArchive assembles a release-shaped directory holding the old
@@ -708,7 +708,7 @@ func selfUpdateSetSystemUnitEnv(t *testing.T, apiURL string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("creating %s: %v", dir, err)
 	}
-	content := fmt.Sprintf("[Service]\nEnvironment=AGENT_PEER_TEST_UPDATE_API=%s\n", apiURL)
+	content := fmt.Sprintf("[Service]\nEnvironment=PEERS_TEST_UPDATE_API=%s\n", apiURL)
 	path := filepath.Join(dir, "e2e-update-api.conf")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("writing %s: %v", path, err)
@@ -731,7 +731,7 @@ func selfUpdateSetUserUnitEnv(t *testing.T, account string, userEnv []string, ap
 	if err := os.Chown(dir, int(uid), int(gid)); err != nil {
 		t.Fatalf("chown %s: %v", dir, err)
 	}
-	content := fmt.Sprintf("[Service]\nEnvironment=AGENT_PEER_TEST_UPDATE_API=%s\n", apiURL)
+	content := fmt.Sprintf("[Service]\nEnvironment=PEERS_TEST_UPDATE_API=%s\n", apiURL)
 	path := filepath.Join(dir, "e2e-update-api.conf")
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("writing %s: %v", path, err)
@@ -893,7 +893,7 @@ func selfUpdateUnitState(t *testing.T, account string, env []string, unit string
 func selfUpdateRunSudo(t *testing.T, account, apiURL string, args ...string) syscontainer.Result {
 	t.Helper()
 
-	argv := append([]string{"-n", "env", "AGENT_PEER_TEST_UPDATE_API=" + apiURL, selfUpdateBinary}, args...)
+	argv := append([]string{"-n", "env", "PEERS_TEST_UPDATE_API=" + apiURL, selfUpdateBinary}, args...)
 	return runWithEnv(t, account, nil, "sudo", argv...)
 }
 

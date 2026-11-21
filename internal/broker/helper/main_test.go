@@ -12,7 +12,7 @@ import (
 var testRoleHooks = map[string]func() int{}
 
 // TestMain lets this test binary act as a real helper child. Tests that need a
-// child either spawn os.Args[0] with AGENT_PEER_TEST_HELPER_ROLE set (see
+// child either spawn os.Args[0] with PEERS_TEST_HELPER_ROLE set (see
 // testExecStart), or let the default derivation function run it with the real
 // "internal account-helper" / "internal access-check" arguments so that the
 // credential change in accountCommand is exercised too.
@@ -20,7 +20,7 @@ func TestMain(m *testing.M) {
 	if role, extra, ok := helperRoleFromArgs(os.Args); ok {
 		os.Exit(runHelperRole(role, extra))
 	}
-	switch role := os.Getenv("AGENT_PEER_TEST_HELPER_ROLE"); role {
+	switch role := os.Getenv("PEERS_TEST_HELPER_ROLE"); role {
 	case "account-helper", "access-check":
 		os.Exit(runHelperRole(role, nil))
 	case "":
@@ -78,7 +78,7 @@ func testExecStart(t *testing.T, role string) func(ctx context.Context, acct Acc
 	return func(ctx context.Context, acct Account) (*Process, error) {
 		cmd := exec.Command(os.Args[0])
 		cmd.Env = []string{
-			"AGENT_PEER_TEST_HELPER_ROLE=" + role,
+			"PEERS_TEST_HELPER_ROLE=" + role,
 			"HOME=" + home,
 			"PATH=" + path,
 		}

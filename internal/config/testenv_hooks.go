@@ -1,4 +1,4 @@
-//go:build agentpeer_testenv
+//go:build peers_testenv
 
 package config
 
@@ -18,18 +18,18 @@ func testRuntimeRoot(root string, euid int) string {
 }
 
 // init installs the test hooks when the environment selects them. The hooks
-// exist only in builds with the agentpeer_testenv tag, so a release build can
+// exist only in builds with the peers_testenv tag, so a release build can
 // never be redirected away from the real runtime and home directories.
 func init() {
-	if root := os.Getenv("AGENT_PEER_TEST_RUNTIME_ROOT"); root != "" {
+	if root := os.Getenv("PEERS_TEST_RUNTIME_ROOT"); root != "" {
 		if !filepath.IsAbs(root) {
-			panic("AGENT_PEER_TEST_RUNTIME_ROOT must be absolute")
+			panic("PEERS_TEST_RUNTIME_ROOT must be absolute")
 		}
 		runtimeRoot = func(euid int) string { return testRuntimeRoot(root, euid) }
 	}
-	if home := os.Getenv("AGENT_PEER_TEST_HOME"); home != "" {
+	if home := os.Getenv("PEERS_TEST_HOME"); home != "" {
 		if !filepath.IsAbs(home) {
-			panic("AGENT_PEER_TEST_HOME must be absolute")
+			panic("PEERS_TEST_HOME must be absolute")
 		}
 		homeDirSource = func() (string, error) { return home, nil }
 	}

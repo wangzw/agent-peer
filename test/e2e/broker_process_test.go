@@ -109,7 +109,7 @@ func TestBrokerProcessLocal(t *testing.T) {
 
 		// Five terminal starts race for the account lock. One keeps running and
 		// the other four exit with the already-running code.
-		bin := harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "agentpeer_testenv")
+		bin := harness.BuildBinary(t, runtime.GOOS, runtime.GOARCH, "peers_testenv")
 		out := t.TempDir()
 		host.Exec(t, []string{"sh", "-c", bpConcurrentStartScript, "sh", bin, listen, out}, nil)
 
@@ -454,14 +454,14 @@ type bpProc struct {
 
 // bpLocalProcs returns the processes of the local node of the given kind:
 // "broker", "mcp" or "all". A process belongs to the node when its environment
-// carries the node's AGENT_PEER_TEST_HOME, which every process the node starts
+// carries the node's PEERS_TEST_HOME, which every process the node starts
 // inherits, including Brokers started from a terminal.
 func bpLocalProcs(t *testing.T, host *harness.Node, kind string) []bpProc {
 	t.Helper()
 
 	home := host.AccountHome()
 	procs, err := node.ListProcs(func(p node.Proc) bool {
-		if p.Env["AGENT_PEER_TEST_HOME"] != home {
+		if p.Env["PEERS_TEST_HOME"] != home {
 			return false
 		}
 		return bpHasSubcommand(p.Args, kind)

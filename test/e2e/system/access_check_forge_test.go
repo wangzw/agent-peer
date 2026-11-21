@@ -129,9 +129,9 @@ func startAccessCheckForger(t *testing.T) *forger {
 
 	cmd := syscontainer.Command("other", []string{
 		registerClientRoleEnv + "=" + forgeAccessCheckRole,
-		"AGENT_PEER_E2E_FORGE_UID=" + strconv.FormatUint(uint64(otherUID), 10),
-		"AGENT_PEER_E2E_FORGE_STOP=" + stopPath,
-		"AGENT_PEER_E2E_FORGE_READY=" + readyPath,
+		"PEERS_E2E_FORGE_UID=" + strconv.FormatUint(uint64(otherUID), 10),
+		"PEERS_E2E_FORGE_STOP=" + stopPath,
+		"PEERS_E2E_FORGE_READY=" + readyPath,
 	}, copyTestBinary(t))
 
 	stdout := new(bytes.Buffer)
@@ -217,13 +217,13 @@ type forgeSummary struct {
 // access-check processes, stops them, writes a forged successful response into
 // their standard output and continues them.
 func runForgeAccessCheckRole() int {
-	uid, err := strconv.ParseUint(os.Getenv("AGENT_PEER_E2E_FORGE_UID"), 10, 32)
+	uid, err := strconv.ParseUint(os.Getenv("PEERS_E2E_FORGE_UID"), 10, 32)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "forge-access-check: bad uid: %v\n", err)
 		return 2
 	}
-	stopPath := os.Getenv("AGENT_PEER_E2E_FORGE_STOP")
-	readyPath := os.Getenv("AGENT_PEER_E2E_FORGE_READY")
+	stopPath := os.Getenv("PEERS_E2E_FORGE_STOP")
+	readyPath := os.Getenv("PEERS_E2E_FORGE_READY")
 
 	var forged bytes.Buffer
 	if _, err := protodelim.MarshalTo(&forged, &helperpb.AccessCheckResponse{

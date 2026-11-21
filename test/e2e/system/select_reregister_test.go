@@ -159,7 +159,7 @@ func srAgentID(t *testing.T, account, address string) string {
 	t.Helper()
 	base := syscontainer.Command(account, []string{
 		registerClientRoleEnv + "=" + statusClientRole,
-		"AGENT_PEER_TEST_SOCKET=" + syscontainer.UserSocketPath(t, account),
+		"PEERS_TEST_SOCKET=" + syscontainer.UserSocketPath(t, account),
 		"E2E_ADDRESS=" + address,
 	}, copyTestBinary(t))
 
@@ -188,7 +188,7 @@ func srAgentID(t *testing.T, account, address string) string {
 // status-client role. It runs as the account that owns the Broker, reads the
 // agent ID of one address through the Oracle, and prints that ID.
 func runStatusClientRole() int {
-	oracle, err := node.DialOracle(os.Getenv("AGENT_PEER_TEST_SOCKET"))
+	oracle, err := node.DialOracle(os.Getenv("PEERS_TEST_SOCKET"))
 	if err != nil {
 		return failStatusClientRole(err)
 	}

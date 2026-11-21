@@ -109,7 +109,7 @@ type agentServer struct {
 }
 
 // runAgentRun implements "rsprobe agent run": it registers a session record,
-// listens on an inbox socket, starts a real "agent-peer mcp" process for the
+// listens on an inbox socket, starts a real "peers mcp" process for the
 // tools and serves the control socket until ctx is cancelled.
 func runAgentRun(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("agent run", flag.ContinueOnError)
@@ -119,7 +119,7 @@ func runAgentRun(ctx context.Context, args []string) error {
 	cwd := fs.String("cwd", "", "working directory of the MCP process")
 	ctl := fs.String("ctl", "", "control socket path")
 	recvLog := fs.String("recv-log", "", "append-only log of received frames")
-	bin := fs.String("agent-peer", "", "agent-peer binary (default: from PATH)")
+	bin := fs.String("peers", "", "peers binary (default: from PATH)")
 	socketPath := fs.String("socket-path", "", "inbox socket path (default: next to the control socket)")
 	status := fs.String("status", "idle", "state recorded in the session record")
 	if err := fs.Parse(args); err != nil {
@@ -132,13 +132,13 @@ func runAgentRun(ctx context.Context, args []string) error {
 		return errors.New("agent run needs --config-dir, --name, --cwd, --ctl and --recv-log")
 	}
 
-	agentPeer := *bin
-	if agentPeer == "" {
-		resolved, err := exec.LookPath("agent-peer")
+	peersBin := *bin
+	if peersBin == "" {
+		resolved, err := exec.LookPath("peers")
 		if err != nil {
-			return fmt.Errorf("agent-peer not found on PATH: %v", err)
+			return fmt.Errorf("peers not found on PATH: %v", err)
 		}
-		agentPeer = resolved
+		peersBin = resolved
 	}
 	if *socketPath == "" {
 		*socketPath = filepath.Join(filepath.Dir(*ctl), fmt.Sprintf("%d.inbox.sock", os.Getpid()))
@@ -178,13 +178,13 @@ func runAgentRun(ctx context.Context, args []string) error {
 	server.wg.Add(1)
 	go server.acceptInbox()
 
-	cmd := exec.Command(agentPeer, "mcp")
+	cmd := exec.Command(peersBin, "mcp")
 	cmd.Dir = *cwd
 	cmd.Env = agentChildEnv(*socketPath, *configDir)
 	client := mcp.NewClient(&mcp.Implementation{Name: "rsprobe-agent", Version: "0"}, nil)
 	session, err := client.Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
 	if err != nil {
-		return fmt.Errorf("starting %s mcp: %v", agentPeer, err)
+		return fmt.Errorf("starting %s mcp: %v", peersBin, err)
 	}
 	server.mcp = session
 

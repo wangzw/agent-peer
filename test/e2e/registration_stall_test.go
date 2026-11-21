@@ -191,7 +191,7 @@ func registrationStalledSession(t *testing.T, srv *fakelocal.Server, name, agent
 	s := host.StartSession(t, harness.SessionSpec{
 		Name:     name,
 		StartMCP: true,
-		Env:      map[string]string{"AGENT_PEER_TEST_SOCKET": srv.Path()},
+		Env:      map[string]string{"PEERS_TEST_SOCKET": srv.Path()},
 	})
 	t.Cleanup(func() { s.End(t) })
 

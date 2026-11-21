@@ -84,7 +84,7 @@ rs_status_runner() {
 # would look under /tmp instead.
 rs_status_hosta() {
 	docker compose -f "$RS_COMPOSE" exec -T hosta \
-		/usr/local/bin/rsprobe status --socket /run/agent-peer/broker.sock
+		/usr/local/bin/rsprobe status --socket /run/peers/broker.sock
 }
 
 # rs_wait_status_names polls a Broker table until every "fragment:count" appears

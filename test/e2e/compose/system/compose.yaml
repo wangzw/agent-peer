@@ -1,6 +1,6 @@
 services:
   plain:
-    image: ${AGENT_PEER_E2E_SYSTEM_IMAGE:?}
+    image: ${PEERS_E2E_SYSTEM_IMAGE:?}
     init: true
     user: root
     # The no-egress check installs an OUTPUT DROP rule inside this container
@@ -10,25 +10,25 @@ services:
     entrypoint: []
     command: ["sleep", "infinity"]
     environment:
-      AGENT_PEER_E2E_IN_CONTAINER: "1"
+      PEERS_E2E_IN_CONTAINER: "1"
     volumes:
-      - ${AGENT_PEER_E2E_BIN:?}:/opt/agent-peer-test:ro
+      - ${PEERS_E2E_BIN:?}:/opt/peers-test:ro
     networks:
       - system
   # The first host of a pair. The service keeps its historical name so Run and
   # every existing test start it unchanged; hostA is the network name the other
   # host dials.
   systemd:
-    image: ${AGENT_PEER_E2E_SYSTEM_IMAGE:?}
+    image: ${PEERS_E2E_SYSTEM_IMAGE:?}
     privileged: true
     cgroup: host
     tmpfs:
       - /run
       - /run/lock
     environment:
-      AGENT_PEER_E2E_IN_CONTAINER: "1"
+      PEERS_E2E_IN_CONTAINER: "1"
     volumes:
-      - ${AGENT_PEER_E2E_BIN:?}:/opt/agent-peer-test:ro
+      - ${PEERS_E2E_BIN:?}:/opt/peers-test:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
       # The two hosts of a pair exchange pairing files and completion markers
       # here. A named volume is mounted at the same path in both services.
@@ -41,16 +41,16 @@ services:
   # the extrausers accounts from the image, so either side can run a system or
   # user-level Broker. It is started only by syscontainer.RunPairTest.
   hostB:
-    image: ${AGENT_PEER_E2E_SYSTEM_IMAGE:?}
+    image: ${PEERS_E2E_SYSTEM_IMAGE:?}
     privileged: true
     cgroup: host
     tmpfs:
       - /run
       - /run/lock
     environment:
-      AGENT_PEER_E2E_IN_CONTAINER: "1"
+      PEERS_E2E_IN_CONTAINER: "1"
     volumes:
-      - ${AGENT_PEER_E2E_BIN:?}:/opt/agent-peer-test:ro
+      - ${PEERS_E2E_BIN:?}:/opt/peers-test:ro
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
       - pair-shared:/shared
     networks:
@@ -74,4 +74,4 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: ${AGENT_PEER_E2E_SYSTEM_SUBNET:-198.19.240.0/24}
+        - subnet: ${PEERS_E2E_SYSTEM_SUBNET:-198.19.240.0/24}

@@ -213,7 +213,7 @@ reg_call_error() {
 reg_broker_pid() {
 	if [[ "$REG_OS" == Darwin ]]; then
 		local pid
-		pid="$(pgrep -f -- "$R/bin/agent-peer broker" 2>/dev/null | sed -n '1p')" || true
+		pid="$(pgrep -f -- "$R/bin/peers broker" 2>/dev/null | sed -n '1p')" || true
 		[[ -n "$pid" ]] || return 1
 		printf '%s\n' "$pid"
 		return 0
@@ -221,7 +221,7 @@ reg_broker_pid() {
 	local proc exe second
 	for proc in /proc/[0-9]*; do
 		exe="$(readlink "$proc/exe" 2>/dev/null)" || continue
-		[[ "$exe" == "$R/bin/agent-peer" ]] || continue
+		[[ "$exe" == "$R/bin/peers" ]] || continue
 		[[ -r "$proc/cmdline" ]] || continue
 		second="$(tr '\0' '\n' <"$proc/cmdline" | sed -n '2p')"
 		if [[ "$second" == broker ]]; then

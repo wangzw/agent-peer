@@ -91,7 +91,7 @@ is_descendant() {
 	return 1
 }
 
-# mcp_pids_under prints the agent-peer mcp processes below a session process.
+# mcp_pids_under prints the peers mcp processes below a session process.
 mcp_pids_under() {
 	local ancestor="$1" dir pid cmd
 	for dir in /proc/[0-9]*; do
@@ -99,7 +99,7 @@ mcp_pids_under() {
 		[[ -r "$dir/cmdline" ]] || continue
 		cmd="$(tr '\0' ' ' <"$dir/cmdline" 2>/dev/null || true)"
 		case "$cmd" in
-		*"$R/bin/agent-peer mcp"*) ;;
+		*"$R/bin/peers mcp"*) ;;
 		*) continue ;;
 		esac
 		if is_descendant "$pid" "$ancestor"; then
@@ -250,7 +250,7 @@ description: Sends one message through an inline peer server
 tools: mcp__peer__send_message
 mcpServers:
   - peer:
-      command: $R/bin/agent-peer
+      command: $R/bin/peers
       args: [mcp]
 ---
 Use the inline peer server to send exactly one message, then finish.
@@ -270,7 +270,7 @@ wait_status_entry sub-main 30 || {
 	exit 1
 }
 
-wait_mcp_count "$main_pid" 1 60 || rs_obs "step 2: no main agent-peer mcp process appeared"
+wait_mcp_count "$main_pid" 1 60 || rs_obs "step 2: no main peers mcp process appeared"
 mcp_pids_under "$main_pid" | sort -n >"$OUT/step2-baseline-mcp-pids.txt"
 baseline_file="$OUT/step2-baseline-mcp-pids.txt"
 main_socket="$(rs_socket_of sub-main || true)"
@@ -321,7 +321,7 @@ while ((SECONDS < deadline)); do
 	sleep 0.5
 done
 if [[ -z "$new_pid" ]]; then
-	rs_obs "step 2: no second agent-peer mcp process appeared under sub-main"
+	rs_obs "step 2: no second peers mcp process appeared under sub-main"
 fi
 if ((inline_msg == 0)); then
 	rs_obs "step 2: no from-inline frame within the timeout"

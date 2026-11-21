@@ -1,10 +1,10 @@
 # Container image for the system-level Broker end-to-end tests.
 #
 # It derives from the image built by test/e2e/compose/Dockerfile, which provides
-# the release builds of agent-peer and e2e-node and the peer and other accounts.
+# the release builds of peers and e2e-node and the peer and other accounts.
 # This image adds systemd and the two groups the permission tests use:
-#   agentpeer-users (gid 2001) holds peer and restricts use of the system socket
-#   agentpeer-admins (gid 2002) starts empty; a test adds members at run time
+#   peers-users (gid 2001) holds peer and restricts use of the system socket
+#   peers-admins (gid 2002) starts empty; a test adds members at run time
 ARG BASE
 FROM ${BASE}
 
@@ -26,9 +26,9 @@ RUN apt-get update \
         curl \
  && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd --gid 2001 agentpeer-users \
- && groupadd --gid 2002 agentpeer-admins \
- && usermod -aG agentpeer-users peer
+RUN groupadd --gid 2001 peers-users \
+ && groupadd --gid 2002 peers-admins \
+ && usermod -aG peers-users peer
 
 # diruser and dirgroup exist only in the extrausers source, not in /etc/passwd
 # or /etc/group. A static Go binary that reads those files directly cannot see

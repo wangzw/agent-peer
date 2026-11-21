@@ -206,7 +206,7 @@ func TestRunSystemAppliesSocketPerms(t *testing.T) {
 }
 
 func TestRunSystemUnknownGroupFails(t *testing.T) {
-	name := "agent-peer-no-such-group-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	name := "peers-no-such-group-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	rt := newRunTest(t, func(rt *runTest) {
 		rt.opts.System = true
 		rt.opts.Deps.Geteuid = func() int { return 0 }
@@ -284,7 +284,7 @@ func TestValidateSocketGroup(t *testing.T) {
 	if err := validateSocketGroup(config.Value{}, config.Value{Kind: config.KindString, String: group.Name}); err != nil {
 		t.Errorf("validateSocketGroup(%q) = %v, want nil", group.Name, err)
 	}
-	if err := validateSocketGroup(config.Value{}, config.Value{Kind: config.KindString, String: "agent-peer-no-such-group"}); err == nil {
+	if err := validateSocketGroup(config.Value{}, config.Value{Kind: config.KindString, String: "peers-no-such-group"}); err == nil {
 		t.Fatal("validateSocketGroup accepted a group that does not exist")
 	}
 }
@@ -296,7 +296,7 @@ func TestSocketGroupTransientLookupFailureIsAFailedCheck(t *testing.T) {
 		return 0, errors.New("account database unavailable")
 	}
 
-	err := validateSocketGroup(config.Value{}, config.Value{Kind: config.KindString, String: "agentpeer-users"})
+	err := validateSocketGroup(config.Value{}, config.Value{Kind: config.KindString, String: "peers-users"})
 	if err == nil {
 		t.Fatal("validateSocketGroup succeeded while the account database failed")
 	}
@@ -311,7 +311,7 @@ func TestSocketGroupTransientLookupFailureIsAFailedCheck(t *testing.T) {
 	}
 	defer func() { _ = ln.Close() }()
 
-	permErr := applyLocalSocketPerms(path, filepath.Dir(path), "agentpeer-users", "0660")
+	permErr := applyLocalSocketPerms(path, filepath.Dir(path), "peers-users", "0660")
 	if permErr == nil {
 		t.Fatal("applyLocalSocketPerms succeeded while the account database failed")
 	}

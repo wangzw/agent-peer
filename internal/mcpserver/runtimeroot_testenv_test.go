@@ -1,4 +1,4 @@
-//go:build agentpeer_testenv
+//go:build peers_testenv
 
 package mcpserver
 
@@ -12,9 +12,9 @@ import (
 // socket path at the same root the config test hook uses: root/<euid> for an
 // ordinary account and root/root for the superuser.
 func TestRuntimeDirFromTestEnv(t *testing.T) {
-	root := os.Getenv("AGENT_PEER_TEST_RUNTIME_ROOT")
+	root := os.Getenv("PEERS_TEST_RUNTIME_ROOT")
 	if root == "" {
-		t.Skip("AGENT_PEER_TEST_RUNTIME_ROOT is not set")
+		t.Skip("PEERS_TEST_RUNTIME_ROOT is not set")
 	}
 	if got, want := userSocketPath(1000), filepath.Join(root, "1000", "broker.sock"); got != want {
 		t.Errorf("userSocketPath(1000) = %q, want %q", got, want)

@@ -1,4 +1,4 @@
-//go:build !agentpeer_testenv
+//go:build !peers_testenv
 
 package main
 
@@ -13,10 +13,10 @@ import (
 // variables that ask for protocol overrides are set before the child starts, so
 // its release seam sees them from process start rather than through t.Setenv in
 // the test process.
-const releaseOverrideChildEnv = "AGENT_PEER_TEST_PROTOCOL_OVERRIDE_CHILD"
+const releaseOverrideChildEnv = "PEERS_TEST_PROTOCOL_OVERRIDE_CHILD"
 
 // TestProtocolOverridesIgnoredInReleaseBuild checks that a build without the
-// agentpeer_testenv tag keeps the production seam. The check runs in a child
+// peers_testenv tag keeps the production seam. The check runs in a child
 // process of the same test binary so the environment is fixed before the
 // process starts and the test process keeps its own environment.
 func TestProtocolOverridesIgnoredInReleaseBuild(t *testing.T) {
@@ -41,8 +41,8 @@ func TestProtocolOverridesIgnoredInReleaseBuild(t *testing.T) {
 func releaseChildEnv() []string {
 	dropped := []string{
 		releaseOverrideChildEnv + "=",
-		"AGENT_PEER_TEST_LOCAL_PROTOCOL_VERSION=",
-		"AGENT_PEER_TEST_LINK_PROTOCOL_VERSION=",
+		"PEERS_TEST_LOCAL_PROTOCOL_VERSION=",
+		"PEERS_TEST_LINK_PROTOCOL_VERSION=",
 	}
 	env := make([]string, 0, len(os.Environ())+3)
 	for _, entry := range os.Environ() {
@@ -59,7 +59,7 @@ func releaseChildEnv() []string {
 	}
 	return append(env,
 		releaseOverrideChildEnv+"=1",
-		"AGENT_PEER_TEST_LOCAL_PROTOCOL_VERSION=7",
-		"AGENT_PEER_TEST_LINK_PROTOCOL_VERSION=7",
+		"PEERS_TEST_LOCAL_PROTOCOL_VERSION=7",
+		"PEERS_TEST_LINK_PROTOCOL_VERSION=7",
 	)
 }

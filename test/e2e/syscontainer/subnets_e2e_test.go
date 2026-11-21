@@ -15,7 +15,7 @@ import (
 
 // subnetChildEnv marks the child copy of this test binary that allocates one
 // system subnet and holds it while the parent reads the other child's answer.
-const subnetChildEnv = "AGENT_PEER_E2E_SUBNET_CHILD"
+const subnetChildEnv = "PEERS_E2E_SUBNET_CHILD"
 
 // TestAllocSystemSubnetCrossProcess starts two copies of this test binary, has
 // each reserve a system subnet, and requires the two answers to differ. The

@@ -144,7 +144,7 @@ func startTestAgent(t *testing.T) *testAgent {
 			"--cwd", dir,
 			"--ctl", agent.ctl,
 			"--recv-log", agent.recv,
-			"--agent-peer", executable,
+			"--peers", executable,
 		})
 	}()
 

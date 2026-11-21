@@ -26,7 +26,7 @@ const (
 	externalProbeAddress = externalProbeIP + ":443"
 	// systemSubnetEnv carries the internal network's subnet into the container.
 	// syscontainer.Run sets it from the subnet it reserved for the project.
-	systemSubnetEnv = "AGENT_PEER_E2E_SYSTEM_SUBNET"
+	systemSubnetEnv = "PEERS_E2E_SYSTEM_SUBNET"
 	// egressProbeBound bounds one probe of the internal network's gateway.
 	egressProbeBound = 2 * time.Second
 )
@@ -294,7 +294,7 @@ func TestHarnessInnerFailurePropagates(t *testing.T) {
 	}
 
 	cmd := exec.Command("go", "test", "-tags", "e2e", "-count=1", "-run", "^TestHarnessAlwaysFails$", ".")
-	cmd.Env = append(os.Environ(), "AGENT_PEER_E2E_EXPECT_FAIL=1")
+	cmd.Env = append(os.Environ(), "PEERS_E2E_EXPECT_FAIL=1")
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		t.Fatalf("the inner container failure was not propagated; output:\n%s", out)
@@ -308,7 +308,7 @@ func TestHarnessInnerFailurePropagates(t *testing.T) {
 // TestHarnessAlwaysFails fails inside the container when the propagation smoke
 // test asks for it and skips otherwise.
 func TestHarnessAlwaysFails(t *testing.T) {
-	if os.Getenv("AGENT_PEER_E2E_EXPECT_FAIL") != "1" {
+	if os.Getenv("PEERS_E2E_EXPECT_FAIL") != "1" {
 		t.Skip("only run by TestHarnessInnerFailurePropagates")
 	}
 	if !syscontainer.InContainer() {

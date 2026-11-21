@@ -18,7 +18,7 @@ import (
 
 // The updater addresses one fixed repository and requires one archive name and
 // one checksum asset. The fake mirrors those names so a test can hand its URL to
-// a Broker through AGENT_PEER_TEST_UPDATE_API.
+// a Broker through PEERS_TEST_UPDATE_API.
 const (
 	// ChecksumsAsset is the release asset holding the sha256sum lines.
 	ChecksumsAsset = "checksums.txt"
@@ -120,7 +120,7 @@ func StartFakeGitHub(tb testing.TB, release Release) *FakeGitHub {
 }
 
 // URL is the API base the update code receives through
-// AGENT_PEER_TEST_UPDATE_API.
+// PEERS_TEST_UPDATE_API.
 func (f *FakeGitHub) URL() string { return f.server.URL }
 
 // SetRelease replaces the release the next requests see.

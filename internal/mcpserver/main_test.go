@@ -11,7 +11,7 @@ import (
 var testRoles = map[string]func() int{}
 
 func TestMain(m *testing.M) {
-	if role := os.Getenv("AGENT_PEER_TEST_ROLE"); role != "" {
+	if role := os.Getenv("PEERS_TEST_ROLE"); role != "" {
 		run, ok := testRoles[role]
 		if !ok {
 			os.Exit(2)

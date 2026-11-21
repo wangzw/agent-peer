@@ -33,7 +33,7 @@ func NewSelfSignedCert() (tls.Certificate, error) {
 	now := time.Now()
 	template := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "agent-peer-e2e"},
+		Subject:               pkix.Name{CommonName: "peers-e2e"},
 		NotBefore:             now.Add(-time.Minute),
 		NotAfter:              now.Add(certValidity),
 		KeyUsage:              x509.KeyUsageDigitalSignature,

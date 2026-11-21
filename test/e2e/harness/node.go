@@ -97,7 +97,7 @@ type BrokerSpec struct {
 	ConfigYAML string
 
 	// Env adds to or overrides the node's base environment, for example
-	// {"AGENT_PEER_TEST_CLOCK_FILE": path}. A value of "" removes the key.
+	// {"PEERS_TEST_CLOCK_FILE": path}. A value of "" removes the key.
 	Env map[string]string
 
 	// Bound bounds the readiness wait. Zero means 13s, the ten-second readiness

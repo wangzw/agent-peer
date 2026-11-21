@@ -25,7 +25,7 @@ const (
 	updateNewVersion = "0.1.2"
 	// updateAPIEnv is the test-build hook that points the Broker at the fake
 	// GitHub API instead of api.github.com.
-	updateAPIEnv = "AGENT_PEER_TEST_UPDATE_API"
+	updateAPIEnv = "PEERS_TEST_UPDATE_API"
 
 	// updateRestartBound bounds the wait for launchd to start the restarted
 	// Broker and for the test to read the new version. launchd applies its
@@ -47,7 +47,7 @@ const (
 // ApplyUpdate, launchd starts the new binary under KeepAlive, the binary keeps
 // its root ownership and permissions, and the restarted Broker still serves.
 //
-// The old release is built with the agentpeer_testenv tag and installed over
+// The old release is built with the peers_testenv tag and installed over
 // the shared test binary, so the Broker reads the fake API base from its plist.
 // The test restores the shared binary from a backup in t.Cleanup.
 func TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate(t *testing.T) {
@@ -63,7 +63,7 @@ func TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate(t *testing.T) {
 		}
 	})
 
-	old := harness.BuildBinaryVersion(t, updateOldVersion, "darwin", runtime.GOARCH, "agentpeer_testenv")
+	old := harness.BuildBinaryVersion(t, updateOldVersion, "darwin", runtime.GOARCH, "peers_testenv")
 	installRootBinary(t, old, installedBinary)
 
 	newBinary := harness.BuildBinaryVersion(t, updateNewVersion, "darwin", runtime.GOARCH)

@@ -186,7 +186,7 @@ type Agent struct {
 func NewAgent(tb *TB, env BaseEnv, binary, logDir string) *Agent {
 	uid := strconv.Itoa(os.Geteuid())
 	socket := filepath.Join("/tmp", "peers-"+uid, "broker.sock")
-	if root := env.Extra["AGENT_PEER_TEST_RUNTIME_ROOT"]; root != "" {
+	if root := env.Extra["PEERS_TEST_RUNTIME_ROOT"]; root != "" {
 		socket = filepath.Join(root, uid, "broker.sock")
 	}
 	return &Agent{
@@ -967,7 +967,7 @@ func (a *Agent) pathRoots() []string {
 	if a.env.Home != "" {
 		roots = append(roots, a.env.Home)
 	}
-	if home := a.env.Extra["AGENT_PEER_TEST_HOME"]; home != "" {
+	if home := a.env.Extra["PEERS_TEST_HOME"]; home != "" {
 		roots = append(roots, home)
 	}
 	abs := make([]string, 0, len(roots))
@@ -1224,7 +1224,7 @@ func (s *agentSession) extra(n int) *MCPProc {
 
 // accountHome returns the account home the Broker configuration lives in.
 func (a *Agent) accountHome() string {
-	if home := a.env.Extra["AGENT_PEER_TEST_HOME"]; home != "" {
+	if home := a.env.Extra["PEERS_TEST_HOME"]; home != "" {
 		return home
 	}
 	return a.env.Home

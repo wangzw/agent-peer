@@ -72,9 +72,9 @@ func envAccountHome() (string, error) {
 	return os.UserHomeDir()
 }
 
-// envDefaultAgentPeerHome is the Broker data directory the probes use when
-// --agent-peer-home is not given.
-func envDefaultAgentPeerHome() (string, error) {
+// envDefaultPeersHome is the Broker data directory the probes use when
+// --peers-home is not given.
+func envDefaultPeersHome() (string, error) {
 	home, err := envAccountHome()
 	if err != nil {
 		return "", fmt.Errorf("cannot determine the home directory: %w", err)
@@ -82,7 +82,7 @@ func envDefaultAgentPeerHome() (string, error) {
 	if home == "" {
 		return "", errors.New("the account has no home directory")
 	}
-	return filepath.Join(home, ".agent-peer"), nil
+	return filepath.Join(home, ".peers"), nil
 }
 
 // envCurrentUser returns the account name the run wrapper exports.
@@ -97,14 +97,14 @@ func envCurrentUser() string {
 }
 
 // runEnvInit implements "rsprobe env init --root R --claude-bin B
-// --agent-peer-bin A [--agent-peer-home H]".
+// --peers-bin A [--peers-home H]".
 func runEnvInit(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("env init", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	root := fs.String("root", "", "probe root directory")
 	claudeBin := fs.String("claude-bin", "", "Claude Code executable to install into the probe")
-	agentPeerBin := fs.String("agent-peer-bin", "", "agent-peer executable to install into the probe")
-	agentPeerHome := fs.String("agent-peer-home", "", "Broker data directory (default: the account's ~/.agent-peer)")
+	peersBin := fs.String("peers-bin", "", "peers executable to install into the probe")
+	peersHome := fs.String("peers-home", "", "Broker data directory (default: the account's ~/.peers)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -117,16 +117,16 @@ func runEnvInit(args []string, stdout io.Writer) error {
 	if *claudeBin == "" {
 		return errors.New("--claude-bin is required")
 	}
-	if *agentPeerBin == "" {
-		return errors.New("--agent-peer-bin is required")
+	if *peersBin == "" {
+		return errors.New("--peers-bin is required")
 	}
 	rootPath, err := filepath.Abs(*root)
 	if err != nil {
 		return err
 	}
-	homePath := *agentPeerHome
+	homePath := *peersHome
 	if homePath == "" {
-		homePath, err = envDefaultAgentPeerHome()
+		homePath, err = envDefaultPeersHome()
 		if err != nil {
 			return err
 		}
@@ -175,7 +175,7 @@ func runEnvInit(args []string, stdout io.Writer) error {
 	if err := envCopyExecutable(*claudeBin, claudePath); err != nil {
 		return err
 	}
-	if err := envCopyExecutable(*agentPeerBin, filepath.Join(rootPath, "bin", "agent-peer")); err != nil {
+	if err := envCopyExecutable(*peersBin, filepath.Join(rootPath, "bin", "peers")); err != nil {
 		return err
 	}
 	self, err := os.Executable()
@@ -220,7 +220,7 @@ func runEnvInit(args []string, stdout io.Writer) error {
 	}
 
 	for _, name := range probeNames {
-		projectConfig := filepath.Join(rootPath, "work", name, ".agent-peer.yaml")
+		projectConfig := filepath.Join(rootPath, "work", name, ".peers.yaml")
 		if err := os.WriteFile(projectConfig, []byte("topics: [rs-probe]\n"), 0o644); err != nil {
 			return err
 		}
@@ -447,11 +447,11 @@ func envWrappedEnvNames(root string) (map[string]bool, error) {
 // envBrokerLockPath names the account's Broker lock. It is a seam so tests can
 // run the check against a temporary lock instead of the runtime directory.
 var envBrokerLockPath = func() string {
-	return filepath.Join(fmt.Sprintf("/tmp/agent-peer-%d", os.Getuid()), "broker.lock")
+	return filepath.Join(fmt.Sprintf("/tmp/peers-%d", os.Getuid()), "broker.lock")
 }
 
 // envBrokerLockFree tests the account's Broker lock. It returns false with a
-// reason when a process other than this probe's own agent-peer holds it.
+// reason when a process other than this probe's own peers holds it.
 func envBrokerLockFree(root string) (bool, string) {
 	lockPath := envBrokerLockPath()
 	f, err := os.OpenFile(lockPath, os.O_RDWR, 0)
@@ -471,7 +471,7 @@ func envBrokerLockFree(root string) (bool, string) {
 		if len(pids) == 0 {
 			return false, "broker.lock is held by an unknown process"
 		}
-		own := filepath.Join(root, "bin", "agent-peer")
+		own := filepath.Join(root, "bin", "peers")
 		for _, pid := range pids {
 			exe := envProcessExe(pid)
 			if !envSameExecutable(exe, own) {
@@ -700,12 +700,12 @@ func envCollectUsage(root string, since time.Time) ([]envUsageRow, int, error) {
 	return rows, len(global), nil
 }
 
-// runEnvClean implements "rsprobe env clean --root R [--agent-peer-home H]".
+// runEnvClean implements "rsprobe env clean --root R [--peers-home H]".
 func runEnvClean(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("env clean", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	root := fs.String("root", "", "probe root directory")
-	agentPeerHome := fs.String("agent-peer-home", "", "Broker data directory (default: the account's ~/.agent-peer)")
+	peersHome := fs.String("peers-home", "", "Broker data directory (default: the account's ~/.peers)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -719,9 +719,9 @@ func runEnvClean(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	homePath := *agentPeerHome
+	homePath := *peersHome
 	if homePath == "" {
-		homePath, err = envDefaultAgentPeerHome()
+		homePath, err = envDefaultPeersHome()
 		if err != nil {
 			return err
 		}
@@ -734,7 +734,7 @@ func runEnvClean(args []string, stdout io.Writer) error {
 	if _, err := exec.LookPath("tmux"); err != nil {
 		_, _ = fmt.Fprintln(stdout, "tmux: not found, skipping")
 	} else {
-		_ = exec.Command("tmux", "-L", "agent-peer-rs", "kill-server").Run()
+		_ = exec.Command("tmux", "-L", "peers-rs", "kill-server").Run()
 	}
 
 	envKillProbeProcesses(rootPath, stdout)

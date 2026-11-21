@@ -49,7 +49,7 @@ const (
 
 	// remoteInstallReleasePath is the path prefix the fake service serves. The
 	// remote script replaces https://github.com/wangzw/peers/releases with
-	// AGENT_PEER_TEST_RELEASE_BASE, so the value ends at this prefix.
+	// PEERS_TEST_RELEASE_BASE, so the value ends at this prefix.
 	remoteInstallReleasePath = "/releases"
 
 	// remoteInstallScriptPath is where the inner test writes the fetched remote
@@ -76,7 +76,7 @@ const (
 	// remoteInstallReleasePortEnv carries the fake release service's host port
 	// into the container. The host takes the port the kernel assigns and
 	// forwards it, so the two sides never derive a port independently.
-	remoteInstallReleasePortEnv = "AGENT_PEER_E2E_SYSTEM_RELEASE_PORT"
+	remoteInstallReleasePortEnv = "PEERS_E2E_SYSTEM_RELEASE_PORT"
 )
 
 // TestRemoteInstallUser installs through the remote script as an ordinary
@@ -136,7 +136,7 @@ func TestREQBrokerConfig042_RemoteInstallSystem(t *testing.T) {
 	remoteInstallWriteFakeClaude(t)
 	remoteInstallGrantSudo(t)
 	env := []string{
-		"AGENT_PEER_TEST_RELEASE_BASE=" + base,
+		"PEERS_TEST_RELEASE_BASE=" + base,
 		"PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
 	}
 	script := remoteInstallDownloadScript(t, base)
@@ -357,7 +357,7 @@ func remoteInstallServe(t *testing.T, opts remoteInstallReleaseOptions) int {
 		releases = append(releases, &remoteInstallRelease{
 			version: version,
 			tarball: remoteInstallTarGz(t, version,
-				remoteInstallBuildAgentPeer(t, root, version),
+				remoteInstallBuildPeers(t, root, version),
 				inPackageScript, readme, license),
 		})
 	}
@@ -537,9 +537,9 @@ func remoteInstallModuleRoot(t *testing.T) string {
 	return filepath.Dir(gomod)
 }
 
-// remoteInstallBuildAgentPeer builds ./cmd/peers for linux with the
+// remoteInstallBuildPeers builds ./cmd/peers for linux with the
 // release version in it.
-func remoteInstallBuildAgentPeer(t *testing.T, root, version string) []byte {
+func remoteInstallBuildPeers(t *testing.T, root, version string) []byte {
 	t.Helper()
 	out := filepath.Join(t.TempDir(), "peers")
 	cmd := exec.Command("go", "build", "-trimpath",
@@ -629,7 +629,7 @@ func remoteInstallPort(t *testing.T) int {
 	return port
 }
 
-// remoteInstallBaseURL is the value of AGENT_PEER_TEST_RELEASE_BASE inside the
+// remoteInstallBaseURL is the value of PEERS_TEST_RELEASE_BASE inside the
 // container: the bridge gateway and the port passed to this test.
 func remoteInstallBaseURL(t *testing.T) string {
 	t.Helper()
@@ -641,7 +641,7 @@ func remoteInstallBaseURL(t *testing.T) string {
 // absent, the address on eth0 gives the same subnet.
 func remoteInstallGateway(t *testing.T) string {
 	t.Helper()
-	if subnet := os.Getenv("AGENT_PEER_E2E_SYSTEM_SUBNET"); subnet != "" {
+	if subnet := os.Getenv("PEERS_E2E_SYSTEM_SUBNET"); subnet != "" {
 		if prefix, err := netip.ParsePrefix(subnet); err == nil {
 			return prefix.Masked().Addr().Next().String()
 		}
@@ -681,7 +681,7 @@ func remoteInstallHome(t *testing.T) string {
 func remoteInstallPeerEnv(uid uint32, base string) []string {
 	user := strconv.FormatUint(uint64(uid), 10)
 	return []string{
-		"AGENT_PEER_TEST_RELEASE_BASE=" + base,
+		"PEERS_TEST_RELEASE_BASE=" + base,
 		"XDG_RUNTIME_DIR=/run/user/" + user,
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/" + user + "/bus",
 		"PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -713,7 +713,7 @@ func remoteInstallGrantSudo(t *testing.T) {
 	t.Helper()
 	path := "/etc/sudoers.d/peers-e2e"
 	content := strings.Join([]string{
-		`Defaults env_keep += "AGENT_PEER_TEST_RELEASE_BASE"`,
+		`Defaults env_keep += "PEERS_TEST_RELEASE_BASE"`,
 		"Defaults !use_pty",
 		remoteInstallAccount + " ALL=(ALL:ALL) NOPASSWD: ALL",
 		"",

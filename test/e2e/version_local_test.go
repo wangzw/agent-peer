@@ -34,7 +34,7 @@ const (
 func versionLocalBrokerProcs(n *harness.Node) ([]node.Proc, error) {
 	home := n.AccountHome()
 	return node.ListProcs(func(p node.Proc) bool {
-		if p.Env["AGENT_PEER_TEST_HOME"] != home {
+		if p.Env["PEERS_TEST_HOME"] != home {
 			return false
 		}
 		return len(p.Args) >= 2 && p.Args[1] == "broker"
@@ -59,7 +59,7 @@ func versionLocalMCPPIDs(t *testing.T, n *harness.Node) []int {
 	t.Helper()
 	home := n.AccountHome()
 	procs, err := node.ListProcs(func(p node.Proc) bool {
-		if p.Env["AGENT_PEER_TEST_HOME"] != home {
+		if p.Env["PEERS_TEST_HOME"] != home {
 			return false
 		}
 		return len(p.Args) >= 2 && p.Args[1] == "mcp"
@@ -134,7 +134,7 @@ func versionLocalSetup(t *testing.T) (*harness.Node, harness.BrokerStart, *harne
 	b := n.StartSession(t, harness.SessionSpec{
 		Name:     "b",
 		StartMCP: true,
-		Env:      map[string]string{"AGENT_PEER_TEST_LOCAL_PROTOCOL_VERSION": "2"},
+		Env:      map[string]string{"PEERS_TEST_LOCAL_PROTOCOL_VERSION": "2"},
 	})
 
 	harness.EventuallyPoll(t, 3*time.Second, "b reports the local protocol version mismatch", func(deadline time.Time) (bool, string) {
@@ -244,7 +244,7 @@ func TestLocalVersionMismatchRecoveryReq016(t *testing.T) {
 		return true, ""
 	})
 
-	fresh := n.StartBroker(t, harness.BrokerSpec{Env: map[string]string{"AGENT_PEER_TEST_LOCAL_PROTOCOL_VERSION": "2"}})
+	fresh := n.StartBroker(t, harness.BrokerSpec{Env: map[string]string{"PEERS_TEST_LOCAL_PROTOCOL_VERSION": "2"}})
 	if !fresh.Running {
 		t.Fatalf("the replacement Broker did not start: exit code %d: %s", fresh.ExitCode, strings.TrimSpace(fresh.StderrLast))
 	}

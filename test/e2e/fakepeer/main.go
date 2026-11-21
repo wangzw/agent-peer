@@ -222,9 +222,9 @@ func run() error {
 // prepareHome creates the data directory and, when absent, a config file that
 // keeps the fake peer from listening on the default port.
 func prepareHome() error {
-	home := os.Getenv("AGENT_PEER_TEST_HOME")
+	home := os.Getenv("PEERS_TEST_HOME")
 	if home == "" {
-		return errors.New("AGENT_PEER_TEST_HOME is not set")
+		return errors.New("PEERS_TEST_HOME is not set")
 	}
 	dir := filepath.Join(home, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
