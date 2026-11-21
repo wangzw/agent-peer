@@ -2,6 +2,38 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-21
+
+### Changed
+
+- The command line has been rebuilt on cobra with a noun-and-verb command tree, a breaking change; the old command names have been removed with no aliases. The commands map as follows:
+
+  | v0.4.0 | v0.5.0 |
+  | --- | --- |
+  | `peers broker` | `peers service run` |
+  | `peers status` | `peers service status` |
+  | `peers audit` | `peers service audit` |
+  | `peers offline` and `peers online` | `peers service offline` and `peers service online` |
+  | `peers config get` with no key | `peers config list` |
+  | `peers pairing-key create` | `peers key create` |
+  | `peers peer list`, `peers peer connect` and `peers peer disconnect` | `peers broker list`, `peers broker connect` and `peers broker disconnect` |
+  | `peers service uninstall` | `peers service remove` |
+
+  Help groups the commands as Pairing, Local Broker and Installation. A usage error, including an unknown command, an unknown option and the wrong number of arguments, exits with code 2. Updating a v0.4.0 installation to v0.5.0 rewrites the service definition in the new command's format before the Broker restarts, so users do not need to reinstall it.
+- Every `service` subcommand accepts the mutually exclusive `--system` and `--user` flags. With neither, root acts on the system service and every other account on its user service, which is the rule the install script uses; `service install --admin-group` requires `--system`. `service start`, `stop` and `restart` now accept `--system` instead of rejecting it, and every command that selects a level honors it and names the level when the service is unavailable.
+- `peers update` and `peers uninstall` ask for confirmation only when standard input is a terminal, and fail with a message telling the user to pass `--yes` when it is not. `--yes` skips the questions and keeps the data; `--purge` removes the data without asking about the data, and still needs `--yes` when standard input is not a terminal. A non-root account whose host has only the system installation is shown the complete `sudo peers uninstall [--purge] --yes` command when it cannot be prompted, and at a terminal it is still asked whether to rerun the command through sudo.
+- The install script reports how the installed version relates to the binary it replaced, before the service summary: `Upgraded from <version>.`, `Downgraded from <version>.`, `Reinstalled peers <version>.` or `Replaced peers <version>.`. Declining `Upgrade the system installation? [Y/n]` leaves the system installation unchanged, exits 0 and no longer suggests a user install.
+- Tool errors from the MCP server end with `(code: <name>; reported by Broker <fingerprint>)` when the Broker reported them; an error without a reporting Broker keeps `(code: <name>)`.
+
+### Added
+
+- Shell completion for bash, zsh, fish and powershell: `peers completion <shell>` prints a script, and the commands complete Broker aliases and fingerprints, configuration keys and shell names dynamically. The install script installs the bash and fish completions, and the zsh completion in a system install; a system install writes them under `/usr/local/share`, and a user install writes the bash and fish completions under `$HOME` and prints how to enable the zsh completion manually. The fish completion is installed only when fish is present. If a completion cannot be written, the script prints a warning and continues, and `peers uninstall` removes the completions the install script wrote.
+- Man pages. Every release archive contains them under `man/`, a system install copies them into `/usr/local/share/man/man1`, and `peers uninstall` removes the `peers.1` and `peers-*.1` pages it wrote.
+
+### Fixed
+
+- On macOS, the account-helper for an account in more than 16 groups failed to start, because Darwin caps `setgroups` at 16 groups, and every session of that account saw `not_registered`. The helper now starts as root and switches to the account's identity in the child with `setgid`, `initgroups` and `setuid`, as the access check already does, and the session registry watch recovers with it. A helper that fails to start or stops responding now reports its own reason, `the Broker's helper for this account failed to start or stopped responding; ask the administrator to check the Broker log`, instead of the message that no Claude Code session record matches the session's inbox socket.
+
 ## [0.4.0] - 2026-11-21
 
 ### Changed
