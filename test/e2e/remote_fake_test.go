@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
-	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
+	"github.com/wangzw/peers/test/e2e/harness"
 )
 
 // containerFakeBound bounds each event wait for the fake proxy. The waits are

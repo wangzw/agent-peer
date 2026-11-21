@@ -21,7 +21,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protodelim"
 
-	"github.com/wangzw/agent-peer/internal/broker/helperpb"
+	"github.com/wangzw/peers/internal/broker/helperpb"
 )
 
 // switchErrRole is a test-only child role whose identity switch fails with

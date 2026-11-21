@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // recordedWatch is one Watch call seen by recordingWatchRouter.

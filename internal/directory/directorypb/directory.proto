@@ -4,7 +4,7 @@ package internal.directory.directorypb;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/wangzw/agent-peer/internal/directory/directorypb;directorypb";
+option go_package = "github.com/wangzw/peers/internal/directory/directorypb;directorypb";
 
 message RecordList {
   repeated RecordVersion records = 1;

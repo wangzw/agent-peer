@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/link"
 )
 
 // listenOnceRunner is both the link a configuration change reaches and the

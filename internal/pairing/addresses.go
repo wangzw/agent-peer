@@ -3,7 +3,7 @@ package pairing
 import (
 	"log/slog"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // maxCandidatesPerSource is the cap on one acceptor or card address list. The

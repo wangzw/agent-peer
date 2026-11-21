@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // TestSetConfigAlias covers REQ-broker-config-002 and REQ-broker-config-006:

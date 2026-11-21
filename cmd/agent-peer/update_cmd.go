@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/service"
-	"github.com/wangzw/agent-peer/internal/broker/update"
+	"github.com/wangzw/peers/internal/broker/service"
+	"github.com/wangzw/peers/internal/broker/update"
 )
 
 const updateUsage = "usage: agent-peer update [--yes]\n"

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/topic"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/topic"
 )
 
 // topicAssembler builds the topic registry over the link that the pairing and

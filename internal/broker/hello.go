@@ -3,7 +3,7 @@ package broker
 import (
 	"context"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // Hello performs the Local protocol version handshake. The request's version

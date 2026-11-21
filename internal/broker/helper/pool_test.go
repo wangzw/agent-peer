@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/helperpb"
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/broker/helperpb"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // poolSyncTimeout bounds waits for the pool's background work. Three seconds

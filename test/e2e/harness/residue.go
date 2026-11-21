@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/node"
+	"github.com/wangzw/peers/test/e2e/node"
 )
 
 // runtimeRootPrefix is the directory prefix NewLocalHost gives every runtime

@@ -16,7 +16,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // dirTestNow is the fixed instant most tests run at.

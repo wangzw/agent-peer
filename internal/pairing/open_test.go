@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 func TestOpenRejectsNilTransport(t *testing.T) {

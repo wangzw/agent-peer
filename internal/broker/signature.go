@@ -3,8 +3,8 @@ package broker
 import (
 	"strings"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // maxInboxFrameBytes is the encoded frame size a send may not exceed. A message

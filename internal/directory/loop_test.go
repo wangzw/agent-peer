@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // loopFixture is one Directory driven by a fake clock, ready to start. The

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // *pairing.Pairing is the production identitySource implementation.

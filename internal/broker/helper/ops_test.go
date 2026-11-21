@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // Compile-time checks that the inbox functions still have the signatures the

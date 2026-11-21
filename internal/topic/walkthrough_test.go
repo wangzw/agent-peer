@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/topic/topicpb"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/topic/topicpb"
 )
 
 // wlEndpoint is one side of a walkthrough: a Registry on its own fakeLink.

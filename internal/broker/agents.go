@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // agent is one local agent. The socket path is its identity; every registration

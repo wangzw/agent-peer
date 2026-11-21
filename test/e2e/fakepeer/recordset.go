@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // recordSet holds the directory records the fake peer serves. The records

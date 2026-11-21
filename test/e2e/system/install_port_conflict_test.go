@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
+	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
 
 // TestSystemServiceInstallListenPortConflict covers the field report behind

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/peers/internal/inbox"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
 )
 
 // fakeAgents is a localAgents fake backed by a map of agentViews. Its Reread

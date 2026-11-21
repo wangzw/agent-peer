@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/ctl"
+	"github.com/wangzw/peers/test/e2e/ctl"
 )
 
 // inboxFrame is one frame the test writes into a session's inbox socket.

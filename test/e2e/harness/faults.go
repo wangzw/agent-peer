@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/ctl"
+	"github.com/wangzw/peers/test/e2e/ctl"
 )
 
 // Direction selects the netfilter chain a counter watches.

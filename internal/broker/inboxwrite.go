@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // writeOutcome is the result of writing one message into a session's inbox.

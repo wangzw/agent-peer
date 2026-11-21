@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // configSettings is the Settings view over the process-wide configuration.

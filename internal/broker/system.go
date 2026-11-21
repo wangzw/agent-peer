@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/wangzw/agent-peer/internal/accountdb"
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/accountdb"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // Event names for the system local socket permission changes. They are not in

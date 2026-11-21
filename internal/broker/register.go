@@ -9,8 +9,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // registrationWait is how long a waiting registration stays silent before it

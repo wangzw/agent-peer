@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
+	"github.com/wangzw/peers/internal/testkit/fakelocal"
 )
 
 // TestReleaseBuildIgnoresSocketEnvironment proves that a release build reads

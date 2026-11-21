@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package internal.link.linkpb;
 
-option go_package = "github.com/wangzw/agent-peer/internal/link/linkpb;linkpb";
+option go_package = "github.com/wangzw/peers/internal/link/linkpb;linkpb";
 
 service Link {
   // buf:lint:ignore RPC_REQUEST_STANDARD_NAME

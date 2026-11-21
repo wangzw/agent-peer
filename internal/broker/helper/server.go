@@ -8,8 +8,8 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/wangzw/agent-peer/internal/broker/helperpb"
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/broker/helperpb"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // Identity is the credential the helper process runs with, reported in Ready.

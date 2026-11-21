@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/protobuf/encoding/protowire"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // scenarioUnknownFieldCard signs a card whose raw bytes carry an extra field

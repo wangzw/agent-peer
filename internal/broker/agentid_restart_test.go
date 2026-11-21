@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
 )
 
 // TestAgentIDStableAcrossRestartReq037 checks REQ-broker-config-037: when the

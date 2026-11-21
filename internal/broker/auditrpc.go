@@ -5,7 +5,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // Audit streams audit records in time order and then returns; it does not

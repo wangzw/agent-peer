@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // SessionOps is the set of inbox operations the account helper runs as its account.

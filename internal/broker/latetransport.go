@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // transportTarget is the part of link that pairing's Transport forwards to.

@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // This file holds the doubles for peer management: the pairing surface, the

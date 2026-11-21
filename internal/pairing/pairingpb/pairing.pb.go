@@ -410,7 +410,7 @@ const file_internal_pairing_pairingpb_pairing_proto_rawDesc = "" +
 	"!PAIRING_REJECT_REASON_KEY_INVALID\x10\x01\x12-\n" +
 	")PAIRING_REJECT_REASON_VERIFICATION_FAILED\x10\x02\x12#\n" +
 	"\x1fPAIRING_REJECT_REASON_TRY_LATER\x10\x03\x12%\n" +
-	"!PAIRING_REJECT_REASON_KEY_EXPIRED\x10\x04BCZAgithub.com/wangzw/agent-peer/internal/pairing/pairingpb;pairingpbb\x06proto3"
+	"!PAIRING_REJECT_REASON_KEY_EXPIRED\x10\x04B>Z<github.com/wangzw/peers/internal/pairing/pairingpb;pairingpbb\x06proto3"
 
 var (
 	file_internal_pairing_pairingpb_pairing_proto_rawDescOnce sync.Once

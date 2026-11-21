@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // oversizedRecord builds and signs an announcement whose encoded raw exceeds

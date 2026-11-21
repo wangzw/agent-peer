@@ -13,9 +13,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
-	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/testkit/fakelocal"
+	"github.com/wangzw/peers/test/e2e/harness"
 )
 
 // registrationStallSetupBound bounds the setup of the stall cases that is not a

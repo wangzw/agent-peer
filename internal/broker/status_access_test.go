@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 	"google.golang.org/protobuf/proto"
 )
 

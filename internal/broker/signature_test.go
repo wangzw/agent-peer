@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // TestSignatureUniqueCleanName pins the plain form: a unique Agent with a clean

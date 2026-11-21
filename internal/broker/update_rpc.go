@@ -8,10 +8,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/broker/service"
-	"github.com/wangzw/agent-peer/internal/broker/update"
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/service"
+	"github.com/wangzw/peers/internal/broker/update"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // updateShutdownGrace is how long the Broker waits after answering ApplyUpdate

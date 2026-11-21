@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/wangzw/agent-peer/internal/broker/helper"
+	"github.com/wangzw/peers/internal/broker/helper"
 )
 
 // The test seams replace the helper entry points so the command tests can check

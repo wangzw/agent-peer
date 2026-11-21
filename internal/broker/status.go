@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // Status returns the local part of the process status: every local agent with

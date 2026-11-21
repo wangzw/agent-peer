@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // errNoDataDir reports that config did not yield a data directory. Open wraps

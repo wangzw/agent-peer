@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/link/linkpb"
 )
 
 // New creates a Link. It starts no goroutines, binds no port and does not read

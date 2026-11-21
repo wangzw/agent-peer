@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // Oracle is a direct client of a Broker's local interface. Tests use it to

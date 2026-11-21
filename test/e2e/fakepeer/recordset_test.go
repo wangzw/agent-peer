@@ -9,8 +9,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
-	"github.com/wangzw/agent-peer/test/e2e/fakepeer/fakerec"
+	"github.com/wangzw/peers/internal/directory/directorypb"
+	"github.com/wangzw/peers/test/e2e/fakepeer/fakerec"
 )
 
 // testNow fixes the expiration time of every record the tests build.

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // TestListenProbeCheckRejectsBusyPort covers REQ-broker-config-034: an address

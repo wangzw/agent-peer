@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // TestConnectErrorMapping covers REQ-broker-pairing-004 (a local alias must be

@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/link/linkpb"
 )
 
 // linkTestServer is an in-process stand-in for a Broker's Link service. It

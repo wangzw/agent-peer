@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/test/e2e/node"
+	"github.com/wangzw/peers/test/e2e/node"
 )
 
 // Result is the outcome of one MCP tool call on a harness Session.

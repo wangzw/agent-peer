@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 func aliasTestFingerprint(seed byte) Fingerprint {

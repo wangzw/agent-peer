@@ -7,9 +7,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // Errors returned by record signing and parsing. They are matched with

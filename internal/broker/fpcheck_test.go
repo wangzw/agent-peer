@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // cardMap is the cardLookup test double. Like the directory it canonicalizes

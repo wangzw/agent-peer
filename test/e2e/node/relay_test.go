@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/link/linkpb"
 )
 
 // openRelayClient opens a Link stream to addr with a fresh certificate and

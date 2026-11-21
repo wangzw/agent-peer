@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // Send runs one send for caller. The returned error is nil or a *Error.

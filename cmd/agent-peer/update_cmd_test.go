@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/update"
+	"github.com/wangzw/peers/internal/broker/update"
 )
 
 // countingTransport fails a test if the command reaches the network. The

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // linkWaitLiveness bounds how long a test waits for an event that must happen.

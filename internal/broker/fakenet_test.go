@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/link"
 )
 
 // linkPair is an ordered pair of peers. The first element is the sender or the

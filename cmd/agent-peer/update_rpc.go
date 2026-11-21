@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wangzw/agent-peer/internal/mcpserver"
-	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
+	"github.com/wangzw/peers/internal/mcpserver"
+	"github.com/wangzw/peers/internal/mcpserver/termcmd"
 )
 
 // errUserLevelUpdateUnsupported reports that the selected Broker is this

@@ -14,7 +14,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
+	"github.com/wangzw/peers/internal/testkit/fakelocal"
 )
 
 func init() {

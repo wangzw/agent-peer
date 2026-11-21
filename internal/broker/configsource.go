@@ -3,7 +3,7 @@ package broker
 import (
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // ConfigSource is the broker's injection point for configuration. Its method

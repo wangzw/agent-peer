@@ -3,9 +3,9 @@ package broker
 import (
 	"sync"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/directory"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/directory"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // discoveryDir is the directoryOps test double, plus the lifecycle methods the

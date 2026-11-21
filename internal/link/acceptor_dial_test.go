@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/pairing"
-	"github.com/wangzw/agent-peer/internal/testkit/linktest"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/pairing"
+	"github.com/wangzw/peers/internal/testkit/linktest"
 )
 
 // TestREQBrokerPairing027_AcceptorNeverDialsWithCandidates checks that the

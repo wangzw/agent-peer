@@ -8,9 +8,9 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/wangzw/agent-peer/internal/broker/deliverpb"
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/broker/deliverpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/link"
 )
 
 const testDeliverMessageID = "3f2c1a4b-5d6e-4f70-8a9b-0c1d2e3f4a5b"

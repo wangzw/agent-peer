@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wangzw/agent-peer/test/e2e/ctl"
-	"github.com/wangzw/agent-peer/test/e2e/node"
+	"github.com/wangzw/peers/test/e2e/ctl"
+	"github.com/wangzw/peers/test/e2e/node"
 )
 
 // TestMain turns the test binary into the MCP stand-in that

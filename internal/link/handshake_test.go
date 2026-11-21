@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
-	"github.com/wangzw/agent-peer/internal/pairing/pairingpb"
-	"github.com/wangzw/agent-peer/internal/testkit/linktest"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/pairing"
+	"github.com/wangzw/peers/internal/pairing/pairingpb"
+	"github.com/wangzw/peers/internal/testkit/linktest"
 )
 
 // hsEvent is one link up or down notification recorded by the harness.

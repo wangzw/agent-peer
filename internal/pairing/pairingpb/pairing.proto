@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package internal.pairing.pairingpb;
 
-option go_package = "github.com/wangzw/agent-peer/internal/pairing/pairingpb;pairingpb";
+option go_package = "github.com/wangzw/peers/internal/pairing/pairingpb;pairingpb";
 
 message PairRequest {
   bytes initiator_nonce = 1;

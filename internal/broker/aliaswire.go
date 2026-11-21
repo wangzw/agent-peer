@@ -3,7 +3,7 @@ package broker
 import (
 	"fmt"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // aliasConflictCheck returns the validation function for broker.alias. The

@@ -185,7 +185,7 @@ func (f *FakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 			} `json:"assets"`
 		}{
 			TagName: "v" + release.Version,
-			HTMLURL: "https://github.com/wangzw/agent-peer/releases/tag/v" + release.Version,
+			HTMLURL: "https://github.com/wangzw/peers/releases/tag/v" + release.Version,
 			Assets: []struct {
 				Name               string `json:"name"`
 				BrowserDownloadURL string `json:"browser_download_url"`

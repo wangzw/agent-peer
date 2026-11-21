@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/helperpb"
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/broker/helperpb"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // scriptedChild plays the helper process on the other end of a Client's

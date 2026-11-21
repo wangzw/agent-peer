@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/harness"
-	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
+	"github.com/wangzw/peers/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
 
 // helperLifecycleBound bounds the wait for an account helper to exit and for a

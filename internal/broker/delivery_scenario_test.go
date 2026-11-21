@@ -11,10 +11,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/pairing"
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/pairing"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
 )
 
 // scenarioWait bounds every wait in these tests. A scenario waits for a frame

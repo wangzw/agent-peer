@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // GetConfig returns configuration values. An empty key returns every key in

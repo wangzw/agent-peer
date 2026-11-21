@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/harness"
 )
 
 // pollDecode calls tool from inside a wait and decodes its structured result

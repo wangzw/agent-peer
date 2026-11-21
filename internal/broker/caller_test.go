@@ -16,8 +16,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	"github.com/wangzw/agent-peer/internal/accountdb"
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/accountdb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // resetUsernameCache replaces the cache and its seams for one test.

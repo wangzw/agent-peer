@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // pubFixture is one open Directory backed by a fake clock, fake settings and a

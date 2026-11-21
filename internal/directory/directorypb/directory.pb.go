@@ -773,7 +773,7 @@ const file_internal_directory_directorypb_directory_proto_rawDesc = "" +
 	"RecordKind\x12\x1b\n" +
 	"\x17RECORD_KIND_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17RECORD_KIND_BROKER_CARD\x10\x01\x12\"\n" +
-	"\x1eRECORD_KIND_TOPIC_ANNOUNCEMENT\x10\x02BIZGgithub.com/wangzw/agent-peer/internal/directory/directorypb;directorypbb\x06proto3"
+	"\x1eRECORD_KIND_TOPIC_ANNOUNCEMENT\x10\x02BDZBgithub.com/wangzw/peers/internal/directory/directorypb;directorypbb\x06proto3"
 
 var (
 	file_internal_directory_directorypb_directory_proto_rawDescOnce sync.Once

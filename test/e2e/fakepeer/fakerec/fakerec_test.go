@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/pairing"
 	"google.golang.org/protobuf/proto"
 )
 

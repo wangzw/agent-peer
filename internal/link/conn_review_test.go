@@ -3,7 +3,7 @@ package link
 import (
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/link/linkpb"
 )
 
 // TestPreAuthBacklogAtMostOneFrame checks that a connection that never

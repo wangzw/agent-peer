@@ -8,8 +8,8 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // OnCard registers a callback invoked whenever a card published by another

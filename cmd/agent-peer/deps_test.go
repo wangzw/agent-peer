@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker/update"
+	"github.com/wangzw/peers/internal/broker/update"
 )
 
 // stubStatusCall records one call to runStatus.

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/testkit/fakelocal"
 )
 
 // AGENT_PEER_TEST_SOCKET names the socket to use, ahead of account selection.

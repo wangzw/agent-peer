@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // writeInstalledUnit writes the unit file or plist opts names, so Installed

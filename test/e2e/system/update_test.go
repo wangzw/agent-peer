@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/harness"
-	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
+	"github.com/wangzw/peers/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
 
 // updateFrameBound is the project-wide bound for a local message to reach the

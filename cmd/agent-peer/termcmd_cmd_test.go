@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
+	"github.com/wangzw/peers/internal/mcpserver/termcmd"
 )
 
 // configGetCall records one runConfigGet call.

@@ -3,7 +3,7 @@ package directory
 import (
 	"context"
 
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/link"
 )
 
 // linkAPI is the part of *link.Link that the adapter uses.

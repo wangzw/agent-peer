@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/harness"
 )
 
 // logRecorder captures what pollCallWithin logs, so a test can check that a

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // Fingerprint identifies a peer by the SHA-256 digest of its certificate's

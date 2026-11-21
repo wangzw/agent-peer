@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
-	"github.com/wangzw/agent-peer/internal/testkit/linktest"
+	"github.com/wangzw/peers/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/testkit/linktest"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/peer"

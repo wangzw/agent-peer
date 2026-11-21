@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/topic/topicpb"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/topic/topicpb"
 )
 
 // Compile-time check that the fake link satisfies the interface the registry

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package internal.topic.topicpb;
 
-option go_package = "github.com/wangzw/agent-peer/internal/topic/topicpb;topicpb";
+option go_package = "github.com/wangzw/peers/internal/topic/topicpb;topicpb";
 
 message TopicDigests {
   repeated bytes digests = 1;

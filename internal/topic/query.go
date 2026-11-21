@@ -5,7 +5,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/link"
 )
 
 // visible reports the local topic names that local and other share, ascending.

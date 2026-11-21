@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // limits holds the three record count limits enforced by the store. The

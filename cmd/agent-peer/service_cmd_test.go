@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker/service"
+	"github.com/wangzw/peers/internal/broker/service"
 )
 
 // setServiceSeams installs the option and operation seams for one test. A nil

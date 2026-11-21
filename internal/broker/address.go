@@ -8,8 +8,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // MaxAddressRunes is the rune limit of a formatted agent address.

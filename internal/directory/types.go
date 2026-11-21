@@ -1,8 +1,8 @@
 package directory
 
 import (
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // Fingerprint identifies a Broker. It is the SHA-256 over the certificate's DER

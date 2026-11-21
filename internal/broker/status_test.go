@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
 )
 
 // statusRegisterAgent registers a fake session and returns its agent ID. The

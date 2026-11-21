@@ -10,8 +10,8 @@ import (
 
 	"google.golang.org/grpc/peer"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
 )
 
 // setAgentState replaces an agent's name, status and previous name without

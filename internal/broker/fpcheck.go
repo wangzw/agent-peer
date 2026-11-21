@@ -3,8 +3,8 @@ package broker
 import (
 	"fmt"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // cardLookup resolves an address to the fingerprints of every publisher whose

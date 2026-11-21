@@ -10,9 +10,9 @@ import (
 
 	"google.golang.org/grpc/status"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/pairing"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
 )
 
 // rpcTestMsgID is the message id the RPC delivery fixture injects.

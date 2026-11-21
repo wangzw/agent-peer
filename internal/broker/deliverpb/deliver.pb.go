@@ -7,7 +7,7 @@
 package deliverpb
 
 import (
-	localpb "github.com/wangzw/agent-peer/internal/broker/localpb"
+	localpb "github.com/wangzw/peers/internal/broker/localpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
@@ -446,7 +446,7 @@ const file_internal_broker_deliverpb_deliver_proto_rawDesc = "" +
 	"\x10ROLE_UNSPECIFIED\x10\x00\x12\r\n" +
 	"\tROLE_USER\x10\x01\x12\x0e\n" +
 	"\n" +
-	"ROLE_AGENT\x10\x02BBZ@github.com/wangzw/agent-peer/internal/broker/deliverpb;deliverpbb\x06proto3"
+	"ROLE_AGENT\x10\x02B=Z;github.com/wangzw/peers/internal/broker/deliverpb;deliverpbb\x06proto3"
 
 var (
 	file_internal_broker_deliverpb_deliver_proto_rawDescOnce sync.Once

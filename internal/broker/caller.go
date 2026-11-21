@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 
-	"github.com/wangzw/agent-peer/internal/accountdb"
+	"github.com/wangzw/peers/internal/accountdb"
 )
 
 // Caller is the account and process on the other end of a local connection.

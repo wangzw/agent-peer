@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/directory"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/directory"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // directoryHandle is the directory's lifecycle on top of the operations the

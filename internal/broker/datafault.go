@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // dataKind names the data-directory file whose failure put the Broker into

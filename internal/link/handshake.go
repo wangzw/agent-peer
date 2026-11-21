@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
-	"github.com/wangzw/agent-peer/internal/pairing/pairingpb"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/pairing"
+	"github.com/wangzw/peers/internal/pairing/pairingpb"
 )
 
 // nonce returns a fresh random value of nonceSize bytes. The handshake mixes it

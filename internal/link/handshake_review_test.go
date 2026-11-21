@@ -3,9 +3,9 @@ package link
 import (
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // TestKnownAcceptorNonHelloFirstFrameClosesSilently checks that a known peer

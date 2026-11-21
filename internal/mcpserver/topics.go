@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 const (

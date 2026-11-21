@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/harness"
 )
 
 // egressProbeBound bounds one probe that must find no way out of the topology.

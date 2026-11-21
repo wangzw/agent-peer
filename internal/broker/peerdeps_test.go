@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // TestPairingSatisfiesPeerStore carries no body: the compile-time assertions in

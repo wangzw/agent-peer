@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/node"
+	"github.com/wangzw/peers/test/e2e/node"
 )
 
 // localNode runs a node's processes directly on the test host.

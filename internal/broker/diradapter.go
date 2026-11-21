@@ -3,10 +3,10 @@ package broker
 import (
 	"errors"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/directory"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/directory"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // directoryOps is the part of *directory.Directory the adapter uses. It keeps

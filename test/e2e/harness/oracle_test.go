@@ -12,8 +12,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/test/e2e/node"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/test/e2e/node"
 )
 
 // fakeLocalServer answers the two local-interface calls OracleClient exercises

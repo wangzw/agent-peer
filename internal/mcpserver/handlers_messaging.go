@@ -3,7 +3,7 @@ package mcpserver
 import (
 	"context"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // agentStatusName maps a registered agent status to the word shown to the

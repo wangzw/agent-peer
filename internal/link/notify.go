@@ -3,7 +3,7 @@ package link
 import (
 	"sync"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // subscription is one pair of link up and down callbacks.

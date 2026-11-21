@@ -12,9 +12,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
-	"github.com/wangzw/agent-peer/test/e2e/node"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/testkit/fakelocal"
+	"github.com/wangzw/peers/test/e2e/node"
 )
 
 // recordTB captures Fatalf calls so a test can inspect the failure message

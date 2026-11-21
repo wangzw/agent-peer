@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/helperpb"
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/broker/helperpb"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // Process is one started helper child.

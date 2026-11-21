@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
-	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
+	"github.com/wangzw/peers/test/e2e/harness"
 )
 
 // mcpHandshakeBound is the upper bound for the MCP server handshake.

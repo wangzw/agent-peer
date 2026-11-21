@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // assembleTest drives a peerAssembler whose three construction seams are

@@ -10,9 +10,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/pairing"
-	"github.com/wangzw/agent-peer/internal/pairing/pairingpb"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/pairing"
+	"github.com/wangzw/peers/internal/pairing/pairingpb"
 )
 
 // kindHello is the link protocol's first frame. pairing recognises it and link

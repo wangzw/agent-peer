@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // record is the link state for one peer. Every field is guarded by Link.mu.

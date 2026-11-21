@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/mcpserver"
-	"github.com/wangzw/agent-peer/test/e2e/harness"
-	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
+	"github.com/wangzw/peers/internal/mcpserver"
+	"github.com/wangzw/peers/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
 
 // e2eSystemSocketPath is the system-level Broker's local socket.

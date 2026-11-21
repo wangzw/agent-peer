@@ -8,9 +8,9 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/wangzw/agent-peer/internal/broker/deliverpb"
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/broker/deliverpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/link"
 )
 
 // deliverRequest is the broker-level form of a kind-400 delivery frame. It is

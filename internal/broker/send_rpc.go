@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // Send serves the Local Send RPC. The caller must be a registered Agent of its

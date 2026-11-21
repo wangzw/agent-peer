@@ -7,8 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // frameStream is the part of a gRPC bidirectional stream that conn needs.

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"sort"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/topic/topicpb"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/topic/topicpb"
 )
 
 // publishSortedPeers returns the fingerprints that have link state, ascending

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker/service"
+	"github.com/wangzw/peers/internal/broker/service"
 )
 
 // controlSeams replaces the start, stop and restart operations, the level

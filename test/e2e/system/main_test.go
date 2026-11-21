@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
+	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
 
 // TestMain forwards every test to a container through syscontainer.RunPair. A

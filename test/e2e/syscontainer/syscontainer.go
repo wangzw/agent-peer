@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/harness"
 )
 
 // Service names the compose service a test runs in.

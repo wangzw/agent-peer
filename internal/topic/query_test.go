@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/link"
 )
 
 // localSpec describes one agent for buildLocal.

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/harness"
 )
 
 // TestSystemSubnetsDisjointFromRoutedAllocator checks that the /24s the system

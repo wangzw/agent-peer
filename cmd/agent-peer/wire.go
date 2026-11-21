@@ -5,10 +5,10 @@ import (
 	"errors"
 	"io"
 
-	"github.com/wangzw/agent-peer/internal/broker"
-	"github.com/wangzw/agent-peer/internal/broker/update"
-	"github.com/wangzw/agent-peer/internal/mcpserver"
-	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
+	"github.com/wangzw/peers/internal/broker"
+	"github.com/wangzw/peers/internal/broker/update"
+	"github.com/wangzw/peers/internal/mcpserver"
+	"github.com/wangzw/peers/internal/mcpserver/termcmd"
 )
 
 // protocolOverrides returns the local and link protocol versions sent in the

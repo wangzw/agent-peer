@@ -3840,7 +3840,7 @@ const file_internal_broker_localpb_local_proto_rawDesc = "" +
 	"\x06Status\x12&.internal.broker.localpb.StatusRequest\x1a'.internal.broker.localpb.StatusResponse\x12k\n" +
 	"\fUpdateStatus\x12,.internal.broker.localpb.UpdateStatusRequest\x1a-.internal.broker.localpb.UpdateStatusResponse\x12h\n" +
 	"\vApplyUpdate\x12+.internal.broker.localpb.ApplyUpdateRequest\x1a,.internal.broker.localpb.ApplyUpdateResponse\x12U\n" +
-	"\x05Audit\x12%.internal.broker.localpb.AuditRequest\x1a#.internal.broker.localpb.AuditEvent0\x01B>Z<github.com/wangzw/agent-peer/internal/broker/localpb;localpbb\x06proto3"
+	"\x05Audit\x12%.internal.broker.localpb.AuditRequest\x1a#.internal.broker.localpb.AuditEvent0\x01B9Z7github.com/wangzw/peers/internal/broker/localpb;localpbb\x06proto3"
 
 var (
 	file_internal_broker_localpb_local_proto_rawDescOnce sync.Once

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // auditTestSettings records the events pairing hands to the audit log.

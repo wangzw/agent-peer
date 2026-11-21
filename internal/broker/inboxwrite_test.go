@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // newWriteInboxDelivery builds a delivery for the writeInbox tests and returns

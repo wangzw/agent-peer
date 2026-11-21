@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/link/linkpb"
 )
 
 // ProbeHello dials addr over TLS with a fresh certificate, sends a Hello as

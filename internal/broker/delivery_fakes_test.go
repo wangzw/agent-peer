@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/inbox"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // deliveryRemoteEntry is one member entry a fake visibility reports for a peer,

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // Identity is a self-signed Ed25519 identity for one fake Broker. Its

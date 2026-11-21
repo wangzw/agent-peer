@@ -10,8 +10,8 @@ import (
 
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/wangzw/agent-peer/internal/broker/helperpb"
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/broker/helperpb"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 var (

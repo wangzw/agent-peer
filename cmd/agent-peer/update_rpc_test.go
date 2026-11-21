@@ -8,8 +8,8 @@ import (
 
 	"google.golang.org/grpc/codes"
 
-	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
-	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
+	"github.com/wangzw/peers/internal/mcpserver/termcmd"
+	"github.com/wangzw/peers/internal/testkit/fakelocal"
 )
 
 // startApplyUpdateBroker serves one ApplyUpdate answer at a fresh socket and

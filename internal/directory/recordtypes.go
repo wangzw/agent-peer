@@ -3,7 +3,7 @@ package directory
 import (
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // recordID identifies one directory record within the network. A revocation

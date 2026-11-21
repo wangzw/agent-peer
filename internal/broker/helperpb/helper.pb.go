@@ -1374,7 +1374,7 @@ const file_internal_broker_helperpb_helper_proto_rawDesc = "" +
 	"\x06Access\x12\x16\n" +
 	"\x12ACCESS_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vACCESS_READ\x10\x01\x12\x10\n" +
-	"\fACCESS_WRITE\x10\x02B@Z>github.com/wangzw/agent-peer/internal/broker/helperpb;helperpbb\x06proto3"
+	"\fACCESS_WRITE\x10\x02B;Z9github.com/wangzw/peers/internal/broker/helperpb;helperpbb\x06proto3"
 
 var (
 	file_internal_broker_helperpb_helper_proto_rawDescOnce sync.Once

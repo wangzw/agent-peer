@@ -6,7 +6,7 @@ package ctl
 import (
 	"encoding/json"
 
-	"github.com/wangzw/agent-peer/test/e2e/node"
+	"github.com/wangzw/peers/test/e2e/node"
 )
 
 // Envelope is the answer of every control request. A product failure, such as

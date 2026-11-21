@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // Runtime log event names for the peer management calls.

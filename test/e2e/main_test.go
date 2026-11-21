@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/harness"
 )
 
 // TestMain runs the end-to-end tests. The container image is built lazily by

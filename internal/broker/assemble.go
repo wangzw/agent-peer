@@ -3,8 +3,8 @@ package broker
 import (
 	"context"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // Assembly carries the concrete upstream instances built by earlier

@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/wangzw/agent-peer/internal/broker/update"
+	"github.com/wangzw/peers/internal/broker/update"
 )
 
 // brokerOptions is the subset of the Broker's run options that the command

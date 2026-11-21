@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
-	"github.com/wangzw/agent-peer/internal/testkit/linktest"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/pairing"
+	"github.com/wangzw/peers/internal/testkit/linktest"
 )
 
 // dispatchHarness is a Link with a started notifier and the fakes it needs.

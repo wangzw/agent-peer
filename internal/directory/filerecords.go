@@ -3,7 +3,7 @@ package directory
 import (
 	"encoding/hex"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // toFileRecords converts stored records to their file form. The records are

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/peers/internal/inbox"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
 )
 
 // blockingAfterLookupBackend blocks after the record of the first Lookup has

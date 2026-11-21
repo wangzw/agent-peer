@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/wangzw/agent-peer/internal/broker/service"
-	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
+	"github.com/wangzw/peers/internal/broker/service"
+	"github.com/wangzw/peers/internal/mcpserver/termcmd"
 )
 
 const serviceUsage = "usage: agent-peer service install [--system] [--admin-group <name>]\n" +

@@ -16,8 +16,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/wangzw/agent-peer/test/e2e/harness"
-	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
+	"github.com/wangzw/peers/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
 
 // REQ-broker-config-040: installing a service writes a configuration file that

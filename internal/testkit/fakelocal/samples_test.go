@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
+	"github.com/wangzw/peers/internal/mcpserver/termcmd"
 )
 
 // TestSamplesMatchTermcmdFormat freezes the two sample texts used by the cmd

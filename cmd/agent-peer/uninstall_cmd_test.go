@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker/service"
+	"github.com/wangzw/peers/internal/broker/service"
 )
 
 // uninstallSeams holds the replacements for one test. A nil field keeps the

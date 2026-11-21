@@ -4,7 +4,7 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/link"
 )
 
 // AgentID is the broker's agent ID: lowercase hex SHA-256 of "session:" + socket path.

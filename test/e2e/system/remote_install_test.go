@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/harness"
-	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
+	"github.com/wangzw/peers/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
 
 const (
@@ -48,7 +48,7 @@ const (
 	remoteInstallAccount = "peer"
 
 	// remoteInstallReleasePath is the path prefix the fake service serves. The
-	// remote script replaces https://github.com/wangzw/agent-peer/releases with
+	// remote script replaces https://github.com/wangzw/peers/releases with
 	// AGENT_PEER_TEST_RELEASE_BASE, so the value ends at this prefix.
 	remoteInstallReleasePath = "/releases"
 

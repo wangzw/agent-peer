@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/ctl"
+	"github.com/wangzw/peers/test/e2e/ctl"
 	"gopkg.in/yaml.v3"
 )
 

@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/peers/test/e2e/harness"
 )
 
 // TestInfraSingleNode starts one container node and checks the properties the

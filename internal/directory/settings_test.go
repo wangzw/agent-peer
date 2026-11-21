@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // TestConfigSettingsDefaultsWhenNotLoaded checks that every setting falls back

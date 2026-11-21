@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
+	"github.com/wangzw/peers/internal/testkit/fakelocal"
 )
 
 // lineWriter is a concurrency-safe io.Writer for a child's standard error that

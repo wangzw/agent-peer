@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // newAssemblerLink returns a link that is built but never started, which is

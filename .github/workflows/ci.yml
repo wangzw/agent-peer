@@ -120,7 +120,7 @@ jobs:
       # PATH keeps the setup-go toolchain visible and HOME keeps the Go caches
       # in the same place the non-root step used.
       - name: Run the tests that need root
-        run: sudo --preserve-env=PATH,HOME make test-root JOBS=2 ROOT_TEST_PKGS="./internal/pairing ./internal/config" ROOT_TEST_RUN='^(TestIdentityRejectsForeignOwner|TestConfigFileRootOnlyWritableDarwin)$$' ROOT_TEST_CASES="github.com/wangzw/agent-peer/internal/pairing:TestIdentityRejectsForeignOwner github.com/wangzw/agent-peer/internal/config:TestConfigFileRootOnlyWritableDarwin"
+        run: sudo --preserve-env=PATH,HOME make test-root JOBS=2 ROOT_TEST_PKGS="./internal/pairing ./internal/config" ROOT_TEST_RUN='^(TestIdentityRejectsForeignOwner|TestConfigFileRootOnlyWritableDarwin)$$' ROOT_TEST_CASES="github.com/wangzw/peers/internal/pairing:TestIdentityRejectsForeignOwner github.com/wangzw/peers/internal/config:TestConfigFileRootOnlyWritableDarwin"
 
   macos-service:
     name: service end-to-end
@@ -213,7 +213,7 @@ jobs:
       - name: Regenerate the licenses and compare them with the committed copy
         run: |
           d="$RUNNER_TEMP/licenses"
-          go tool go-licenses save ./cmd/agent-peer --save_path="$d" --force --ignore github.com/wangzw/agent-peer
+          go tool go-licenses save ./cmd/agent-peer --save_path="$d" --force --ignore github.com/wangzw/peers
           if [ ! -d "$d" ]; then
             echo "::error::go-licenses did not create $d; no license inventory was generated to compare" >&2
             exit 1

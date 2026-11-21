@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // TestPublisherLimitExcludesCard checks that a Broker card does not count

@@ -3,7 +3,7 @@ package broker
 import (
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/link"
 )
 
 func TestMapLinkPhase(t *testing.T) {

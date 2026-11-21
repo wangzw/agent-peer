@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
-	"github.com/wangzw/agent-peer/internal/mcpserver"
-	"github.com/wangzw/agent-peer/internal/pairing"
-	"github.com/wangzw/agent-peer/test/e2e/fakepeer/fakerec"
-	"github.com/wangzw/agent-peer/test/e2e/harness"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/mcpserver"
+	"github.com/wangzw/peers/internal/pairing"
+	"github.com/wangzw/peers/test/e2e/fakepeer/fakerec"
+	"github.com/wangzw/peers/test/e2e/harness"
 )
 
 // hostileRecordTTL is comfortably inside the directory's seven-day lifetime,

@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/deliverpb"
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/broker/deliverpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // maxDedupeEntries bounds the table. A full table refuses a new message with a

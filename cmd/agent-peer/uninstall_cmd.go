@@ -13,7 +13,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/wangzw/agent-peer/internal/broker/service"
+	"github.com/wangzw/peers/internal/broker/service"
 )
 
 const uninstallUsage = "usage: agent-peer uninstall [--purge]\n"

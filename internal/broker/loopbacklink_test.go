@@ -12,8 +12,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/link/linkpb"
 )
 
 // maxLoopbackMessageSize is the gRPC message limit of the loopback link. It is

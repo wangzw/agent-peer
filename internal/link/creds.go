@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/pairing"
 	"google.golang.org/grpc/credentials"
 )
 

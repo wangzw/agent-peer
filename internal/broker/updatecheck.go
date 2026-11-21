@@ -7,9 +7,9 @@ import (
 
 	"golang.org/x/mod/semver"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/broker/update"
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/update"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // The periodic update check. A Broker that runs a formal release waits

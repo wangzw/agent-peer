@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker"
+	"github.com/wangzw/peers/internal/broker"
 )
 
 // dialBroker fails the test when the address is not accepting connections.

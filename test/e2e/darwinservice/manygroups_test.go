@@ -19,9 +19,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protodelim"
 
-	"github.com/wangzw/agent-peer/internal/broker/helper"
-	"github.com/wangzw/agent-peer/internal/broker/helperpb"
-	"github.com/wangzw/agent-peer/test/e2e/node"
+	"github.com/wangzw/peers/internal/broker/helper"
+	"github.com/wangzw/peers/internal/broker/helperpb"
+	"github.com/wangzw/peers/test/e2e/node"
 )
 
 const (

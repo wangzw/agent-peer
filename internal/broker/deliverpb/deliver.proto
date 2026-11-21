@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package internal.broker.deliverpb;
 
-option go_package = "github.com/wangzw/agent-peer/internal/broker/deliverpb;deliverpb";
+option go_package = "github.com/wangzw/peers/internal/broker/deliverpb;deliverpb";
 
 import "google/protobuf/duration.proto";
 import "internal/broker/localpb/local.proto";

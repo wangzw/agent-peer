@@ -10,9 +10,9 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
-	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/mcpserver/termcmd"
+	"github.com/wangzw/peers/internal/testkit/fakelocal"
 )
 
 // The terminal commands connect through the checked dialer, so a socket taken

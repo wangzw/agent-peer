@@ -1,4 +1,4 @@
-module github.com/wangzw/agent-peer
+module github.com/wangzw/peers
 
 go 1.27
 

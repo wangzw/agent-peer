@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // peerLinkAdapter adapts the real link to the interfaces the broker's peer

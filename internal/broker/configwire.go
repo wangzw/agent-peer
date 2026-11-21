@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"sync/atomic"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/link"
 )
 
 // linkControl is the part of the link package that configuration changes

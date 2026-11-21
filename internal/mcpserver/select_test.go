@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
+	"github.com/wangzw/peers/internal/testkit/fakelocal"
 )
 
 // recordingAfter returns an after function that records each requested wait and

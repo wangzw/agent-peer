@@ -1,7 +1,7 @@
 package topic
 
 import (
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/link"
 	"google.golang.org/protobuf/proto"
 )
 

@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/wangzw/agent-peer/internal/broker/helperpb"
+	"github.com/wangzw/peers/internal/broker/helperpb"
 )
 
 // The access-check process execs as root and receives the identity it must

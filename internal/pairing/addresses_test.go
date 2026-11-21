@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 func direct(addr string) config.AdvertisedAddr {

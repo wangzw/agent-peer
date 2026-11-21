@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // storeFP builds a Fingerprint whose first byte is b, so tests can name

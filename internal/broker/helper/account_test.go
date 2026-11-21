@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/accountdb"
+	"github.com/wangzw/peers/internal/accountdb"
 )
 
 func TestLookupAccountTemporaryFailureIsNotMissing(t *testing.T) {

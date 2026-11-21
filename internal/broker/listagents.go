@@ -6,8 +6,8 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // listAgentEntry is one candidate entry together with the fields the request

@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // viewCardAddressMax is the number of advertised addresses a card contributes

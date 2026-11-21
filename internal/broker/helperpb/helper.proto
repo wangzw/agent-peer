@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package internal.broker.helperpb;
 
-option go_package = "github.com/wangzw/agent-peer/internal/broker/helperpb;helperpb";
+option go_package = "github.com/wangzw/peers/internal/broker/helperpb;helperpb";
 
 import "google/protobuf/duration.proto";
 

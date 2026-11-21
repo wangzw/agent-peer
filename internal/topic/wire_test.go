@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/topic/topicpb"
+	"github.com/wangzw/peers/internal/topic/topicpb"
 )
 
 func TestStatusMapping(t *testing.T) {

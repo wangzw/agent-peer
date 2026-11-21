@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/link"
 )
 
 // fakeLinkAPI records the calls the adapter makes and lets tests drive the

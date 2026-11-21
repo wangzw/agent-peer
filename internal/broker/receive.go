@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/deliverpb"
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/inbox"
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/broker/deliverpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/inbox"
+	"github.com/wangzw/peers/internal/link"
 )
 
 // EvDeliver is the runtime log event recorded for every delivery request this

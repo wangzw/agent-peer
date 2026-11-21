@@ -18,8 +18,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/ctl"
-	"github.com/wangzw/agent-peer/test/e2e/node"
+	"github.com/wangzw/peers/test/e2e/ctl"
+	"github.com/wangzw/peers/test/e2e/node"
 )
 
 // shutdownBound bounds the HTTP server shutdown.

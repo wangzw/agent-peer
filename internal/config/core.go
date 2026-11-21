@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/accountdb"
+	"github.com/wangzw/peers/internal/accountdb"
 )
 
 // ticker is the small part of time.Ticker this package uses.

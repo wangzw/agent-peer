@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
-	"github.com/wangzw/agent-peer/test/e2e/internal/pathcmp"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
+	"github.com/wangzw/peers/test/e2e/internal/pathcmp"
 )
 
 // sessionTestEnv returns a BaseEnv isolated from the test process.

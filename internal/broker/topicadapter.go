@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/topic"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/topic"
 )
 
 // topicTable adapts *topic.Registry to TopicTable. Every method forwards

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
-	"github.com/wangzw/agent-peer/test/e2e/node"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
+	"github.com/wangzw/peers/test/e2e/node"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 

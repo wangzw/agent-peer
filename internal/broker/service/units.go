@@ -17,7 +17,7 @@ const (
 
 const systemdUserTemplate = `[Unit]
 Description=agent-peer Broker for this account
-Documentation=https://github.com/wangzw/agent-peer
+Documentation=https://github.com/wangzw/peers
 
 [Service]
 Type=simple
@@ -32,7 +32,7 @@ WantedBy=default.target
 
 const systemdSystemTemplate = `[Unit]
 Description=agent-peer system Broker
-Documentation=https://github.com/wangzw/agent-peer
+Documentation=https://github.com/wangzw/peers
 Wants=network-online.target
 After=network-online.target
 

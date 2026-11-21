@@ -7,7 +7,7 @@ import (
 	"slices"
 	"unicode"
 
-	"github.com/wangzw/agent-peer/internal/topic/topicpb"
+	"github.com/wangzw/peers/internal/topic/topicpb"
 )
 
 // statusToWire maps a Member.Status to its wire value. Only the four known

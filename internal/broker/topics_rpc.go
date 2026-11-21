@@ -5,8 +5,8 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/topic"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/topic"
 )
 
 // invalidTopicNameMessage is the client-facing reason for a rejected topic

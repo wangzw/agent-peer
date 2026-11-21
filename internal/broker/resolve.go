@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // parsedAddress is a target address split into its parts. Name is normalized;

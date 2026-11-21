@@ -9,7 +9,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/wangzw/agent-peer/internal/mcpserver/termcmd"
+	"github.com/wangzw/peers/internal/mcpserver/termcmd"
 )
 
 func init() {

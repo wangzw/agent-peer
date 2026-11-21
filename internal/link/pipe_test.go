@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/link/linkpb"
 )
 
 // errPipeClosed reports a frame stream whose both ends have been closed.

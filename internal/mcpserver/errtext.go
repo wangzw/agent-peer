@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/grpc/status"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // callKind selects the opening phrase of the text shown to the model.

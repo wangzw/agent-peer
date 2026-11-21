@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // sessionCallTimeout bounds one call into a SessionBackend. In the system form

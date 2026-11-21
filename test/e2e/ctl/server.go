@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/node"
+	"github.com/wangzw/peers/test/e2e/node"
 )
 
 // maxRequestBody caps the size of one control request. Writing a file through

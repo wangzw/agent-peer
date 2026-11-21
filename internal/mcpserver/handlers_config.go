@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // GetConfig forwards get_config to the Broker and renders every returned value

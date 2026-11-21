@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/localpb"
+	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
 // Texts added to a create_pairing_key result or error.

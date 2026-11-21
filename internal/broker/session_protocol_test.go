@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
-	"github.com/wangzw/agent-peer/internal/testkit/fakesession"
+	"github.com/wangzw/peers/internal/inbox"
+	"github.com/wangzw/peers/internal/testkit/fakesession"
 )
 
 // The Broker warns about the session registry's frame protocol version, which

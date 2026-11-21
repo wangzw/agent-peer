@@ -3,7 +3,7 @@ package directory
 import (
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // TestRetirePublicTopicPushesRevocationImmediately pins the push half of

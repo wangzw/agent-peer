@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/pairing"
-	"github.com/wangzw/agent-peer/internal/testkit/linktest"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/pairing"
+	"github.com/wangzw/peers/internal/testkit/linktest"
 )
 
 // integrationWait bounds every wait in these tests. It matches the limit the

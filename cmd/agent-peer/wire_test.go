@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker"
-	"github.com/wangzw/agent-peer/internal/testkit/fakelocal"
+	"github.com/wangzw/peers/internal/broker"
+	"github.com/wangzw/peers/internal/testkit/fakelocal"
 )
 
 func TestRealDepsAllWired(t *testing.T) {

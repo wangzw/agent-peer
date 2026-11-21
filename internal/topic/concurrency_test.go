@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/link"
-	"github.com/wangzw/agent-peer/internal/topic/topicpb"
+	"github.com/wangzw/peers/internal/link"
+	"github.com/wangzw/peers/internal/topic/topicpb"
 )
 
 // TestSendHappensUnderLock checks lock rule three: every frame is handed to

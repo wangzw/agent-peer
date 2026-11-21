@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/wangzw/agent-peer/internal/accountdb"
+	"github.com/wangzw/peers/internal/accountdb"
 )
 
 // Account is one entry of the account database.

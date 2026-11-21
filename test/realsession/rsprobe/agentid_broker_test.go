@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/broker"
+	"github.com/wangzw/peers/internal/broker"
 )
 
 // TestAgentIDMatchesBroker compares rsprobe's identifier with the Broker's for

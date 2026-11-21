@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/test/e2e/syscontainer"
+	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
 
 // inboxWriteBound bounds the wait for the account helper's connection to the

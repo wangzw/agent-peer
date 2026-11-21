@@ -15,10 +15,10 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
-	"github.com/wangzw/agent-peer/internal/testkit/linktest"
-	"github.com/wangzw/agent-peer/test/e2e/fakepeer/fakerec"
+	"github.com/wangzw/peers/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/testkit/linktest"
+	"github.com/wangzw/peers/test/e2e/fakepeer/fakerec"
 )
 
 // stubWait bounds every wait in these tests.

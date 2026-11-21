@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // recordingTarget is the minimal forwarding target these tests need: it

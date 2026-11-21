@@ -3,8 +3,8 @@ package link
 import (
 	"context"
 
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 // pairConn adapts a conn to the interface pairing speaks during a handshake.

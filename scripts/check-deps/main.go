@@ -23,7 +23,7 @@ import (
 	"strings"
 )
 
-const modulePath = "github.com/wangzw/agent-peer"
+const modulePath = "github.com/wangzw/peers"
 
 // testkitNode is the graph node of internal/testkit, the shared test support
 // package. It is not part of the dependency graph and may only be imported

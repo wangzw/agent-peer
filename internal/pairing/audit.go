@@ -4,7 +4,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 // Audit reasons. Detail carries only the reason; it never carries a key, an

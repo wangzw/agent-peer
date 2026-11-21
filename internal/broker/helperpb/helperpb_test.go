@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/encoding/protodelim"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/broker/helperpb"
+	"github.com/wangzw/peers/internal/broker/helperpb"
 )
 
 func TestDelimitedRoundTrip(t *testing.T) {

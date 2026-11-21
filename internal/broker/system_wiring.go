@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/broker/helper"
+	"github.com/wangzw/peers/internal/broker/helper"
 )
 
 // helperPool is the part of *helper.Pool used by the system Broker.

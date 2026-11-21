@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/config"
+	"github.com/wangzw/peers/internal/config"
 )
 
 const (

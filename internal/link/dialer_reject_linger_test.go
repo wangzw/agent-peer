@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/link/linkpb"
 )
 
 // bufferedSendStream models the gRPC client transport on a dialed connection.

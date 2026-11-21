@@ -433,7 +433,7 @@ const file_internal_link_linkpb_link_proto_rawDesc = "" +
 	"\x18REJECT_REASON_NOT_A_PEER\x10\x02\x12\x1f\n" +
 	"\x1bREJECT_REASON_ROLE_MISMATCH\x10\x032O\n" +
 	"\x04Link\x12G\n" +
-	"\aConnect\x12\x1b.internal.link.linkpb.Frame\x1a\x1b.internal.link.linkpb.Frame(\x010\x01B:Z8github.com/wangzw/agent-peer/internal/link/linkpb;linkpbb\x06proto3"
+	"\aConnect\x12\x1b.internal.link.linkpb.Frame\x1a\x1b.internal.link.linkpb.Frame(\x010\x01B5Z3github.com/wangzw/peers/internal/link/linkpb;linkpbb\x06proto3"
 
 var (
 	file_internal_link_linkpb_link_proto_rawDescOnce sync.Once

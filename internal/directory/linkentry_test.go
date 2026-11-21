@@ -3,7 +3,7 @@ package directory
 import (
 	"testing"
 
-	"github.com/wangzw/agent-peer/internal/link"
+	"github.com/wangzw/peers/internal/link"
 )
 
 // The link package must keep the method set the adapter relies on. A change

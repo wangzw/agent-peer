@@ -3,7 +3,7 @@ package pairing
 import (
 	"context"
 
-	"github.com/wangzw/agent-peer/internal/pairing/pairingpb"
+	"github.com/wangzw/peers/internal/pairing/pairingpb"
 )
 
 // PairConn is one TLS connection handed to pairing. Frames are passed raw;

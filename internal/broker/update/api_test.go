@@ -14,7 +14,7 @@ func TestLatestReturnsNewestRelease(t *testing.T) {
 		if want := "/repos/wangzw/agent-peer/releases/latest"; r.URL.Path != want {
 			t.Errorf("path = %q, want %q", r.URL.Path, want)
 		}
-		_, _ = io.WriteString(w, `{"tag_name":"v0.2.0","html_url":"https://github.com/wangzw/agent-peer/releases/tag/v0.2.0"}`)
+		_, _ = io.WriteString(w, `{"tag_name":"v0.2.0","html_url":"https://github.com/wangzw/peers/releases/tag/v0.2.0"}`)
 	}))
 	t.Cleanup(srv.Close)
 
@@ -25,7 +25,7 @@ func TestLatestReturnsNewestRelease(t *testing.T) {
 	if got.Version != "0.2.0" {
 		t.Errorf("Latest().Version = %q, want %q", got.Version, "0.2.0")
 	}
-	if want := "https://github.com/wangzw/agent-peer/releases/tag/v0.2.0"; got.URL != want {
+	if want := "https://github.com/wangzw/peers/releases/tag/v0.2.0"; got.URL != want {
 		t.Errorf("Latest().URL = %q, want %q", got.URL, want)
 	}
 }

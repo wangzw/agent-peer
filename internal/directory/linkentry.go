@@ -1,6 +1,6 @@
 package directory
 
-import "github.com/wangzw/agent-peer/internal/link"
+import "github.com/wangzw/peers/internal/link"
 
 // NewLinkTransport adapts the link package to the directory's Links
 // interface. The directory assembly calls it with the process-wide

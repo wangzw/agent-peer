@@ -7,8 +7,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/link/linkpb"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/link/linkpb"
 )
 
 func TestHelloRoundTrip(t *testing.T) {

@@ -13,8 +13,8 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/directory/directorypb"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/directory/directorypb"
 )
 
 // reconcileNode is one Directory wired to a fake network endpoint. The helpers

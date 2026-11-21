@@ -389,7 +389,7 @@ const file_internal_topic_topicpb_topic_proto_rawDesc = "" +
 	"\x11AGENT_STATUS_IDLE\x10\x01\x12\x15\n" +
 	"\x11AGENT_STATUS_BUSY\x10\x02\x12\x18\n" +
 	"\x14AGENT_STATUS_WAITING\x10\x03\x12\x16\n" +
-	"\x12AGENT_STATUS_SHELL\x10\x04B=Z;github.com/wangzw/agent-peer/internal/topic/topicpb;topicpbb\x06proto3"
+	"\x12AGENT_STATUS_SHELL\x10\x04B8Z6github.com/wangzw/peers/internal/topic/topicpb;topicpbb\x06proto3"
 
 var (
 	file_internal_topic_topicpb_topic_proto_rawDescOnce sync.Once

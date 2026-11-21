@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/wangzw/agent-peer/internal/config"
-	"github.com/wangzw/agent-peer/internal/pairing"
+	"github.com/wangzw/peers/internal/config"
+	"github.com/wangzw/peers/internal/pairing"
 )
 
 var _ pairing.Transport = (*Link)(nil)

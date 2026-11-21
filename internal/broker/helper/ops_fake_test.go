@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wangzw/agent-peer/internal/inbox"
+	"github.com/wangzw/peers/internal/inbox"
 )
 
 // deliverCall is one recorded call to fakeOps.Deliver.
