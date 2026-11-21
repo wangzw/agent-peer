@@ -527,6 +527,34 @@ func TestLaunchdReloadWaitsForTheCallerThenBootsOutAndBootstraps(t *testing.T) {
 	}
 }
 
+// TestLaunchdReloadSkipsTheWaitWhenTheCallerIsAlreadyGone checks the case the
+// helper's own parent pid reaches: os.Getppid returns 1 once the Broker exits
+// and the helper is reparented to init. Pid 1 is init, not the Broker, so
+// waiting on it would time out; the reload must proceed at once.
+func TestLaunchdReloadSkipsTheWaitWhenTheCallerIsAlreadyGone(t *testing.T) {
+	opts, fake, plistPath, id := launchdReloadFixture(t)
+	fake.loaded = true
+	fake.pid = 111
+	opts.WaitProcessExit = func(pid int, _ time.Duration) error {
+		t.Errorf("waited for pid %d, want no wait when the caller is already gone", pid)
+		return errors.New("process is still running")
+	}
+
+	auditPath := filepath.Join(t.TempDir(), "audit.log")
+	if err := LaunchdReload(opts, "system", plistPath, 1, id, auditPath); err != nil {
+		t.Fatalf("LaunchdReload: %v", err)
+	}
+
+	want := []string{
+		"launchctl bootout system/" + Label,
+		"launchctl print system/" + Label,
+		"launchctl bootstrap system " + plistPath,
+	}
+	if !slices.Equal(fake.cmds, want) {
+		t.Errorf("commands = %q, want %q", fake.cmds, want)
+	}
+}
+
 // TestLaunchdReloadAbandonsTheReloadWhenTheBrokerDoesNotExit checks that a
 // Broker which does not exit within the bound leaves the service loaded. The
 // update may have been rolled back, and booting the job out would stop the

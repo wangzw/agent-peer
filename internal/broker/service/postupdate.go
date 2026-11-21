@@ -335,8 +335,13 @@ func RelaunchOptions(system bool) Options {
 // A failure here comes after the caller received the success response, so it is
 // recorded in the audit log and on standard error, which is the post-update
 // log, instead of being returned to a caller.
+//
+// callerPID must name the Broker, not init. A pid at or below 1 means there is
+// no Broker left to wait for: the helper was already reparented to init, so
+// os.Getppid returned 1, and waiting on init would only time out. Pid 1 is
+// never signalled either way; procsig.SendSignal refuses it.
 func LaunchdReload(opts Options, domain, plistPath string, callerPID int, expected ExecutableID, auditPath string) error {
-	if callerPID > 0 {
+	if callerPID > 1 {
 		if err := waitProcessExit(opts, callerPID, launchdHelperWaitBound); err != nil {
 			return abandonLaunchdReload(opts, auditPath, fmt.Sprintf(
 				"the Broker process %d did not exit within %s, so the service definition was not reloaded: %v",
