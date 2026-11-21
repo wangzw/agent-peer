@@ -589,8 +589,9 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 服务定义的格式随版本变化，例如启动 Broker 的子命令与参数不同。执行升级的是正在运行的旧二进制，它只认识旧格式，因此重写服务定义这一步交给新二进制：旧二进制在换完二进制之后调用新二进制的一个固定子命令，由新二进制按自己的格式重写（[ADR-post-update-contract](../../adr/adr-post-update-contract.md)、[ADR-launchd-detached-reload](../../adr/adr-launchd-detached-reload.md)）。子命令名与参数是跨版本的契约，一经发布不再更改：
 
 - 命令是隐藏的子命令 `peers internal post-update --level system|user`，处理 `--level` 指定的级别。调用时还可以带 `--pid`，值是回答这次更新的 Broker 的 PID；辅助进程用它确定要等哪个进程。
-- 后续版本只能给这个调用新增可选参数，不能新增必填参数，也不能改变已有参数的含义。新二进制必须忽略它不认识的选项，不能让更早的调用方失败；采用 cobra 的命令树在解析该子命令时必须允许未知选项（`FParseErrWhitelist.UnknownFlags`）。
+- 后续版本只能给这个调用新增可选参数，不能新增必填参数，也不能改变已有参数的含义。新二进制必须忽略它不认识的选项，不能让更早的调用方失败；采用 cobra 的命令树在解析该子命令时必须允许未知选项（`FParseErrWhitelist.UnknownFlags`）。新增的选项必须写成 `--name=value`，不能写成 `--name value`：解析时先丢弃不认识的选项名，分开写法里的值会留下来，被当成意外的位置参数而使这次调用失败。
 - 新二进制按自己的格式重写该级别的主单元，写入是原子的。Linux 只替换主单元，drop-in 不动；macOS 没有 drop-in，重写时保留原 plist 里的 `EnvironmentVariables`，只替换本项目生成的键。
+- 主单元的路径与文件名同属这份契约，后续版本不得更改；确实需要更改时，必须先修订这份契约。旧二进制兜底保存与恢复主单元时，用的是它自己解析出的路径；路径一改，回滚只会恢复旧路径，新二进制写入新路径的文件会留下来，成为孤儿文件。
 - 成功时退出码为 0；用法错误与运行失败返回 1，标准错误写明原因；只有“不认识这个子命令”返回 2，调用方据此视为不需要更新后步骤。入口把 panic 转成 1，运行期崩溃不会被当成 2。
 - 子命令不启动、不重启 Broker，重启仍由“委托升级”的流程负责。
 

@@ -94,7 +94,7 @@ Broker 必须按配置的间隔检查本项目在 GitHub 上是否有比当前�
 
 Broker 替换二进制之后、重启之前，必须用新二进制按新版本的格式重写本级别的服务定义，并让服务管理器加载它。
 
-- **验收**：在系统级安装上从当前版本自更新到一个启动方式不同的下一版本。更新结束后，服务管理器实际加载的定义带有只有新版本才会写入的一项设置，用户此前加入的代理等环境设置仍然有效，Broker 以新版本正常运行。Linux 与 macOS 分别验收；服务管理器没有加载新定义时，更新命令报告失败。
+- **验收**：在系统级安装上从当前版本自更新到一个启动方式不同的下一版本。更新结束后，服务管理器实际加载的定义带有只有新版本才会写入的一项设置，用户此前加入的代理等环境设置仍然有效，Broker 以新版本正常运行。Linux 与 macOS 分别验收。Linux 上重新读取在更新命令收到应答之前完成，服务管理器没有加载新定义时更新命令报告失败。macOS 上重新读取由应答之后脱离任务的辅助进程执行，失败不影响已经返回的成功应答，只在审计记录与 `post-update.log` 中报告。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/update_post_install_test.go` 的 `TestREQUpdate009_UpdateRewritesServiceUnitInNewFormat`；`test/e2e/darwinservice/update_test.go` 的 `TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate`
 
