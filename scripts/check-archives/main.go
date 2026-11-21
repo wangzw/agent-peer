@@ -1,9 +1,9 @@
 // Command check-archives builds a goreleaser snapshot and checks that every
 // release archive contains exactly the files a release ships: the binary, the
-// install script, the archive README, the project licenses and the third-party
-// license inventory. The binary's test hook string is covered by the goreleaser
-// build hook, which fails the build before an archive is written, so this
-// command does not repeat that check.
+// install script, the archive README, the man pages, the project licenses and
+// the third-party license inventory. The binary's test hook string is covered
+// by the goreleaser build hook, which fails the build before an archive is
+// written, so this command does not repeat that check.
 package main
 
 import (
@@ -150,8 +150,9 @@ func writeConfig(source, path, distDir string) error {
 }
 
 // expectedFiles returns the archive-relative paths every release archive must
-// contain. The third-party license inventory is read from the repository so a
-// module added to the inventory joins the expectation automatically.
+// contain. The third-party license inventory and the man pages are read from
+// the repository, so a module added to the inventory or a command added to the
+// man/ set joins the expectation automatically.
 func expectedFiles(root string) (map[string]struct{}, error) {
 	want := map[string]struct{}{
 		"peers":      {},
@@ -183,6 +184,20 @@ func expectedFiles(root string) (map[string]struct{}, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("reading the third-party license inventory: %w", err)
+	}
+
+	// .goreleaser.yaml ships man/*.1, so the expectation is every such page in
+	// the committed man/ directory.
+	manDir := filepath.Join(root, "man")
+	entries, err := os.ReadDir(manDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading the man pages: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".1") {
+			continue
+		}
+		want["man/"+entry.Name()] = struct{}{}
 	}
 	return want, nil
 }

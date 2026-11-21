@@ -38,6 +38,7 @@ archives:
           mode: 0755
       - third_party/claude-code-socket-transport/LICENSE
       - THIRD_PARTY_LICENSES/**/*
+      - man/*.1
 
 checksum:
   name_template: checksums.txt

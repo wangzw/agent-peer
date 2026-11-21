@@ -133,4 +133,13 @@ if [ "$status" -ne 0 ]; then
 	exit "$status"
 fi
 
+# The man pages are the other committed generated artifact. scripts/gen-man.sh
+# --check regenerates them into a temporary directory and diffs them against
+# man/, so a command or flag change that was not followed by 'make gen' fails
+# here as well.
+if ! bash "$script_dir/gen-man.sh" --check; then
+	printf '%s\n' "gen-check: generated man pages do not match the command tree" >&2
+	exit 1
+fi
+
 printf '%s\n' "gen-check: generated code matches the protos under internal/"

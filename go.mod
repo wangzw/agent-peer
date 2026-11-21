@@ -16,6 +16,7 @@ require (
 )
 
 require (
+	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
 	github.com/emirpasic/gods v1.12.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
@@ -27,6 +28,7 @@ require (
 	github.com/kevinburke/ssh_config v0.0.0-20190725054713-01f96b0aa0cd // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/otiai10/copy v1.6.0 // indirect
+	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/sergi/go-diff v1.2.0 // indirect
@@ -35,6 +37,7 @@ require (
 	github.com/xanzy/ssh-agent v0.2.1 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opencensus.io v0.23.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect

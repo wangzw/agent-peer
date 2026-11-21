@@ -25,16 +25,17 @@ func testInventory(t *testing.T) (map[string]struct{}, []byte) {
 	root := t.TempDir()
 	scripts := filepath.Join(root, "scripts")
 	thirdParty := filepath.Join(root, "THIRD_PARTY_LICENSES", "claude-code-socket-transport")
-	if err := os.MkdirAll(scripts, 0o755); err != nil {
-		t.Fatalf("creating %s: %v", scripts, err)
-	}
-	if err := os.MkdirAll(thirdParty, 0o755); err != nil {
-		t.Fatalf("creating %s: %v", thirdParty, err)
+	man := filepath.Join(root, "man")
+	for _, dir := range []string{scripts, thirdParty, man} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("creating %s: %v", dir, err)
+		}
 	}
 	for path, data := range map[string][]byte{
 		filepath.Join(scripts, "install.sh"):        []byte("script"),
 		filepath.Join(scripts, "archive-README.md"): testReadme,
 		filepath.Join(thirdParty, "LICENSE"):        []byte("license"),
+		filepath.Join(man, "peers.1"):               []byte("man page"),
 	} {
 		if err := os.WriteFile(path, data, 0o644); err != nil {
 			t.Fatalf("writing %s: %v", path, err)
@@ -69,6 +70,7 @@ func goodEntries() []testEntry {
 		{name: "LICENSE", mode: 0o644, data: []byte("license")},
 		{name: "third_party/claude-code-socket-transport/LICENSE", mode: 0o644, data: []byte("license")},
 		{name: "THIRD_PARTY_LICENSES/claude-code-socket-transport/LICENSE", mode: 0o644, data: []byte("license")},
+		{name: "man/peers.1", mode: 0o644, data: []byte("man page")},
 	}
 }
 

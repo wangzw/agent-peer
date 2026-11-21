@@ -33,13 +33,16 @@ RELEASE_NOTES_VERSION ?= v0.4.0
 
 .PHONY: gen gen-check lint release-notes-check archive-check proto-lint test test-root e2e e2e-darwin docs-check check site site-check
 
-# Regenerate the protobuf code with buf. Generated Go code is committed next to
-# its .proto file, so this target is expected to leave the tree unchanged when
-# the protos and the generated code agree.
+# Regenerate the committed generated artifacts: the protobuf code with buf and
+# the man pages from the cobra command tree. Generated Go code is committed next
+# to its .proto file, and the man pages under man/. This target is expected to
+# leave the tree unchanged when the protos and the command tree agree with the
+# committed output.
 gen:
 	buf generate
+	bash scripts/gen-man.sh
 
-# Regenerate the protobuf code and fail when the working tree does not already
+# Regenerate the artifacts and fail when the working tree does not already
 # contain exactly that output. scripts/gen-check.sh owns the comparison: it
 # generates into a temporary directory and diffs the result against the
 # committed code, so uncommitted hand-written Go files do not affect it.

@@ -80,6 +80,11 @@ func (a *app) run(ctx context.Context, args []string) int {
 	return exitFailure
 }
 
+// addGenManCommand, when non-nil, adds the hidden man-page generator. Only the
+// peers_genman build sets it, so the release binary does not carry cobra's doc
+// package.
+var addGenManCommand func(root *cobra.Command, a *app)
+
 // newRootCommand builds the cobra command tree. A fresh tree is built for every
 // invocation, so no parsed state carries over between calls.
 func (a *app) newRootCommand() *cobra.Command {
@@ -164,6 +169,9 @@ func (a *app) newRootCommand() *cobra.Command {
 	addInstallationCommands(root, a)
 	a.addMCPCommand(root)
 	a.addInternalCommands(root)
+	if addGenManCommand != nil {
+		addGenManCommand(root, a)
+	}
 
 	// Add the built-in completion command (bash, zsh, fish, powershell).
 	root.InitDefaultCompletionCmd()
