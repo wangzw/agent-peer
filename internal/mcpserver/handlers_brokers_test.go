@@ -328,10 +328,10 @@ func TestConnectBrokerErrors(t *testing.T) {
 			if tc.name == "needs local alias" && !strings.Contains(err.Error(), "needs_local_alias") {
 				t.Errorf("error = %q, want needs_local_alias", err)
 			}
-			if tc.name == "needs local alias" && !strings.Contains(err.Error(), "local_alias set to a new name") {
+			if tc.name == "needs local alias" && !strings.Contains(err.Error(), "`local_alias` set to a new name") {
 				t.Errorf("error = %q, want the local_alias hint", err)
 			}
-			if tc.name == "lost contact" && !strings.Contains(err.Error(), "the pairing may still have completed") {
+			if tc.name == "lost contact" && !strings.Contains(err.Error(), "The pairing may still have completed") {
 				t.Errorf("error = %q, want the pairing-may-have-completed note", err)
 			}
 		})
@@ -492,7 +492,7 @@ func TestCreatePairingKeyNotListening(t *testing.T) {
 	if err == nil {
 		t.Fatal("CreatePairingKey returned no error")
 	}
-	if !strings.Contains(err.Error(), "Ask the other side to create the pairing key") {
+	if !strings.Contains(err.Error(), "Ask the other side to create a pairing key") {
 		t.Errorf("error = %q, want the connect-from-the-other-side hint", err)
 	}
 	if !strings.Contains(err.Error(), "(code: invalid_argument)") {

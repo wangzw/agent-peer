@@ -16,7 +16,8 @@ import (
 // The optional agent_id only fills the audit record's actor; resolution comes
 // before any side effect, so a bad agent leaves no valid key behind. A Broker
 // that does not listen cannot accept a dial, so key creation fails there with
-// invalid_argument and tells the caller to create the key on the other side.
+// invalid_argument and tells the caller to create a pairing key on the other
+// side.
 func (b *Broker) CreatePairingKey(ctx context.Context, req *localpb.CreatePairingKeyRequest) (*localpb.CreatePairingKeyResponse, error) {
 	if degraded := b.degradedState(); degraded != nil &&
 		degraded.Level == localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY {

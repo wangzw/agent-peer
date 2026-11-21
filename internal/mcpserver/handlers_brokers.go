@@ -13,8 +13,8 @@ import (
 const (
 	textPairingNoAddress = "This Broker has no address to show; tell the other side this host's address yourself."
 	textPairingShare     = "Share the key and one of the addresses with the other side; the addresses are not part of the key."
-	textPairingNotListen = "This Broker is not listening for incoming connections; ask the other side to create the pairing key and connect from this side with connect_broker."
-	textNeedsLocalAlias  = "Retry with local_alias set to a new name for it."
+	textPairingNotListen = "Ask the other side to create a pairing key and connect from this side with connect_broker."
+	textNeedsLocalAlias  = "Retry with `local_alias` set to a new name for it."
 	textNoPeerBroker     = "list_brokers shows the paired Brokers."
 )
 
