@@ -1,4 +1,4 @@
-// Package update checks the latest release of agent-peer on GitHub, compares
+// Package update checks the latest release of peers on GitHub, compares
 // versions, and downloads, verifies and atomically installs a release archive.
 // It never installs without the caller's explicit request.
 package update
@@ -20,7 +20,7 @@ const (
 	// owner and name are fixed so a caller cannot redirect the check or the
 	// download to another project.
 	repositoryOwner = "wangzw"
-	repositoryName  = "agent-peer"
+	repositoryName  = "peers"
 
 	checksumsAsset = "checksums.txt"
 

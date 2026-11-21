@@ -26,7 +26,7 @@ const (
 	maxDownloadSize int64 = 100 * 1024 * 1024
 
 	// binaryName is the only archive entry that is ever extracted.
-	binaryName = "agent-peer"
+	binaryName = "peers"
 
 	// precheckTimeout bounds the staged binary's --version run.
 	precheckTimeout = 30 * time.Second
@@ -131,7 +131,7 @@ func Apply(ctx context.Context, o ApplyOptions) error {
 	// Stage the binary next to the target. The file that runs for the version
 	// check is the same file that is renamed into place, so a noexec system
 	// temporary directory cannot break the preflight.
-	tmp, err := os.CreateTemp(filepath.Dir(o.Target), ".agent-peer-update-*")
+	tmp, err := os.CreateTemp(filepath.Dir(o.Target), ".peers-update-*")
 	if err != nil {
 		return fmt.Errorf("creating a temporary file next to %s: %w", o.Target, err)
 	}
@@ -248,7 +248,7 @@ func expectedChecksum(checksums []byte, name string) ([]byte, error) {
 	return found, nil
 }
 
-// extractBinary returns the regular file named agent-peer from the archive.
+// extractBinary returns the regular file named peers from the archive.
 // Path traversal, symbolic links and hard links reject the whole archive.
 func extractBinary(archive []byte) ([]byte, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(archive))
@@ -322,7 +322,7 @@ func checkVersion(ctx context.Context, binary, version string) error {
 	}
 	got := strings.TrimSuffix(stdout.String(), "\n")
 	got = strings.TrimSuffix(got, "\r")
-	if want := "agent-peer " + version; got != want {
+	if want := "peers " + version; got != want {
 		return fmt.Errorf("downloaded binary reported %q, want %q", got, want)
 	}
 	return nil

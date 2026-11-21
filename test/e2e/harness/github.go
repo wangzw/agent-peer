@@ -23,18 +23,18 @@ const (
 	// ChecksumsAsset is the release asset holding the sha256sum lines.
 	ChecksumsAsset = "checksums.txt"
 
-	latestReleasePath = "/repos/wangzw/agent-peer/releases/latest"
-	tagReleasePrefix  = "/repos/wangzw/agent-peer/releases/tags/"
+	latestReleasePath = "/repos/wangzw/peers/releases/latest"
+	tagReleasePrefix  = "/repos/wangzw/peers/releases/tags/"
 )
 
 // ReleaseAssetName returns the archive name the updater requires for version on
 // goos/goarch. The name is part of the update protocol and must match
 // internal/broker/update.
 func ReleaseAssetName(version, goos, goarch string) string {
-	return fmt.Sprintf("agent-peer_%s_%s_%s.tar.gz", strings.TrimPrefix(version, "v"), goos, goarch)
+	return fmt.Sprintf("peers_%s_%s_%s.tar.gz", strings.TrimPrefix(version, "v"), goos, goarch)
 }
 
-// ReleaseTarGz packages the binary at path as agent-peer in a gzip-compressed
+// ReleaseTarGz packages the binary at path as peers in a gzip-compressed
 // tar archive, the shape the updater extracts.
 func ReleaseTarGz(tb testing.TB, binary string) []byte {
 	tb.Helper()
@@ -47,7 +47,7 @@ func ReleaseTarGz(tb testing.TB, binary string) []byte {
 	zw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(zw)
 	if err := tw.WriteHeader(&tar.Header{
-		Name:     "agent-peer",
+		Name:     "peers",
 		Mode:     0o755,
 		Size:     int64(len(data)),
 		Typeflag: tar.TypeReg,

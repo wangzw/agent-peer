@@ -20,7 +20,7 @@ func TestAPIBaseUsesTestOverride(t *testing.T) {
 // API in a test build.
 func TestReleaseURLUsesTestOverrideWhenAPIEmpty(t *testing.T) {
 	t.Setenv(testAPIEnv, "http://127.0.0.1:18123")
-	want := "http://127.0.0.1:18123/repos/wangzw/agent-peer/releases/latest"
+	want := "http://127.0.0.1:18123/repos/wangzw/peers/releases/latest"
 	if got := releaseURL("", "latest"); got != want {
 		t.Fatalf("releaseURL with an empty base = %q, want the test base %q", got, want)
 	}

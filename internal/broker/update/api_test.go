@@ -11,7 +11,7 @@ import (
 
 func TestLatestReturnsNewestRelease(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if want := "/repos/wangzw/agent-peer/releases/latest"; r.URL.Path != want {
+		if want := "/repos/wangzw/peers/releases/latest"; r.URL.Path != want {
 			t.Errorf("path = %q, want %q", r.URL.Path, want)
 		}
 		_, _ = io.WriteString(w, `{"tag_name":"v0.2.0","html_url":"https://github.com/wangzw/peers/releases/tag/v0.2.0"}`)

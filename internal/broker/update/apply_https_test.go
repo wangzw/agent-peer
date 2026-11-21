@@ -20,7 +20,7 @@ func TestApplyRejectsHTTPAssetURL(t *testing.T) {
 
 	var srv *httptest.Server
 	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if want := "/repos/wangzw/agent-peer/releases/tags/v" + version; r.URL.Path != want {
+		if want := "/repos/wangzw/peers/releases/tags/v" + version; r.URL.Path != want {
 			http.NotFound(w, r)
 			return
 		}
@@ -61,7 +61,7 @@ func TestApplyRejectsRedirectToHTTP(t *testing.T) {
 
 	var tlsSrv *httptest.Server
 	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/wangzw/agent-peer/releases/tags/v"+version, func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/repos/wangzw/peers/releases/tags/v"+version, func(w http.ResponseWriter, _ *http.Request) {
 		payload := map[string]any{
 			"tag_name": "v" + version,
 			"assets": []map[string]string{

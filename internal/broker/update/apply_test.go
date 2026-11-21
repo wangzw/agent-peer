@@ -25,7 +25,7 @@ func TestApplyReplacesBinary(t *testing.T) {
 
 	archive := releaseArchive(t, version)
 	// A checksums file lists every platform; only the matching line counts.
-	checksums := checksumsFor([]byte("another platform"), "agent-peer_0.2.0_darwin_arm64.tar.gz") +
+	checksums := checksumsFor([]byte("another platform"), "peers_0.2.0_darwin_arm64.tar.gz") +
 		checksumsFor(archive, testArchiveName(version))
 	srv := newApplyServer(t, version, writeBytes(archive), checksums)
 
@@ -54,7 +54,7 @@ func TestApplyReplacesBinary(t *testing.T) {
 		t.Fatalf("reading the target directory: %v", err)
 	}
 	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), ".agent-peer-update-") {
+		if strings.HasPrefix(entry.Name(), ".peers-update-") {
 			t.Errorf("temporary file %q was left behind", entry.Name())
 		}
 	}
@@ -67,18 +67,18 @@ func TestApplyFailureLeavesTargetUnchanged(t *testing.T) {
 	good := releaseArchive(t, version)
 	corrupt := []byte("this is not a gzip archive")
 	traversal := releaseArchive(t, version, tarEntry{name: "../escape", body: []byte("x")})
-	// Both link archives also carry a valid agent-peer, so the failure can
+	// Both link archives also carry a valid peers, so the failure can
 	// only come from the link entry.
 	symlink := tarGz(t,
 		tarEntry{name: binaryName, body: versionScript(version), mode: 0o755},
-		tarEntry{name: "agent-peer-link", typeflag: tar.TypeSymlink, linkname: binaryName})
+		tarEntry{name: "peers-link", typeflag: tar.TypeSymlink, linkname: binaryName})
 	hardlink := tarGz(t,
 		tarEntry{name: binaryName, body: versionScript(version), mode: 0o755},
-		tarEntry{name: "agent-peer-link", typeflag: tar.TypeLink, linkname: binaryName})
+		tarEntry{name: "peers-link", typeflag: tar.TypeLink, linkname: binaryName})
 	duplicateBinary := tarGz(t,
 		tarEntry{name: binaryName, body: versionScript(version), mode: 0o755},
 		tarEntry{name: binaryName, body: versionScript(version), mode: 0o755})
-	wrongName := tarGz(t, tarEntry{name: "agent-peer-other", body: versionScript(version), mode: 0o755})
+	wrongName := tarGz(t, tarEntry{name: "peers-other", body: versionScript(version), mode: 0o755})
 	wrongVersion := releaseArchive(t, "9.9.9")
 
 	tests := []struct {
@@ -93,7 +93,7 @@ func TestApplyFailureLeavesTargetUnchanged(t *testing.T) {
 		{"symbolic link", writeBytes(symlink), checksumsFor(symlink, testArchiveName(version)), "link"},
 		{"hard link", writeBytes(hardlink), checksumsFor(hardlink, testArchiveName(version)), "link"},
 		{"duplicate binary", writeBytes(duplicateBinary), checksumsFor(duplicateBinary, testArchiveName(version)), "more than one"},
-		{"wrong package name", writeBytes(wrongName), checksumsFor(wrongName, testArchiveName(version)), "no agent-peer"},
+		{"wrong package name", writeBytes(wrongName), checksumsFor(wrongName, testArchiveName(version)), "no peers"},
 		{"wrong binary version", writeBytes(wrongVersion), checksumsFor(wrongVersion, testArchiveName(version)), "reported"},
 		{"duplicate checksum", writeBytes(good), checksumsFor(good, testArchiveName(version)) + checksumsFor(good, testArchiveName(version)), "more than once"},
 	}
@@ -245,7 +245,7 @@ func TestApplyRejectsNonReleaseVersion(t *testing.T) {
 func TestApplyRejectsSymlinkTarget(t *testing.T) {
 	original := []byte("original binary")
 	dir := t.TempDir()
-	real := filepath.Join(dir, "real-agent-peer")
+	real := filepath.Join(dir, "real-peers")
 	if err := os.WriteFile(real, original, 0o755); err != nil {
 		t.Fatalf("writing the real binary: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestApplyRejectsSymlinkTarget(t *testing.T) {
 	}
 }
 
-// oversizedBinaryArchive builds an archive whose agent-peer header claims one
+// oversizedBinaryArchive builds an archive whose peers header claims one
 // byte over the download limit. The body is streamed through gzip, so the
 // archive itself stays small while the extracted file is too large.
 func oversizedBinaryArchive(t *testing.T) []byte {
@@ -348,7 +348,7 @@ func tarGz(t *testing.T, entries ...tarEntry) []byte {
 // versionScript returns an executable that prints the version line the
 // preflight expects.
 func versionScript(version string) []byte {
-	return []byte("#!/bin/sh\necho \"agent-peer " + version + "\"\n")
+	return []byte("#!/bin/sh\necho \"peers " + version + "\"\n")
 }
 
 // releaseArchive builds a normal release archive whose staged binary reports
@@ -409,7 +409,7 @@ func newFakeReleaseServer(t *testing.T, rel fakeRelease) *httptest.Server {
 	t.Helper()
 	var srv *httptest.Server
 	mux := http.NewServeMux()
-	mux.HandleFunc("/repos/wangzw/agent-peer/releases/tags/v"+rel.version, func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/repos/wangzw/peers/releases/tags/v"+rel.version, func(w http.ResponseWriter, _ *http.Request) {
 		payload := map[string]any{
 			"tag_name":   rel.tagName,
 			"draft":      rel.draft,
