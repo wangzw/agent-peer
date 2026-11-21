@@ -255,17 +255,28 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 func assertInstallSummary(t *testing.T, stdout, level, start string, wants map[string]string) {
 	t.Helper()
 
-	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
-		t.Fatalf("the install printed no summary:\n%s", stdout)
-	}
-	first := strings.TrimSpace(lines[0])
+	// The install script prints notices, such as the zsh completion hint,
+	// before it runs service install, whose summary is the line with this
+	// suffix. Find that line rather than assuming it is first: the direct
+	// service-install tests print it first and reach the same assertion.
 	suffix := " installed (" + level + ", starts at " + start + ")"
-	if !strings.HasPrefix(first, "peers ") || !strings.HasSuffix(first, suffix) {
-		t.Errorf("summary first line = %q, want %q", first, "peers <version>"+suffix)
+	var first string
+	for _, line := range strings.Split(strings.TrimRight(stdout, "\n"), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "peers ") || !strings.HasSuffix(trimmed, suffix) {
+			continue
+		}
+		if first != "" {
+			t.Errorf("install output has more than one summary line:\n%s", stdout)
+			break
+		}
+		first = trimmed
+	}
+	if first == "" {
+		t.Fatalf("the install printed no line ending in %q:\n%s", suffix, stdout)
 	}
 	if version := strings.TrimSuffix(strings.TrimPrefix(first, "peers "), suffix); strings.TrimSpace(version) == "" || strings.Contains(version, " ") {
-		t.Errorf("summary first line = %q, want one version word", first)
+		t.Errorf("summary line = %q, want one version word", first)
 	}
 
 	for label, want := range wants {
