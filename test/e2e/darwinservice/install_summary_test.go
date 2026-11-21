@@ -77,16 +77,25 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 		"config:": configPath + " (kept)",
 	})
 
-	// The commands the summary printed must run as printed, in order, as the
+	// The commands the summary printed must exist and run, in order, as the
 	// account that installed the service. The binary name resolves to the test
 	// copy because it is not installed under the printed name.
-	t.Run("the printed commands run as printed", func(t *testing.T) {
+	t.Run("the printed commands exist and run", func(t *testing.T) {
 		for _, label := range []string{"start:", "stop:", "restart:", "uninstall:"} {
 			args := printedCommandArgs(t, summaryValue(t, again.stdout, label))
+			// The summary prints "peers uninstall" for a person at a terminal.
+			// The test has no terminal, and without one the confirmation needs
+			// --yes, so the test passes it; the printed summary keeps its form
+			// without --yes.
+			note := ""
+			if label == "uninstall:" {
+				args = append(args, "--yes")
+				note = " (with --yes, since the test has no terminal)"
+			}
 			res := run(t, installedBinary, args...)
 			if res.exitCode != 0 {
-				t.Fatalf("%s command from the summary: exit %d\nstdout: %s\nstderr: %s",
-					strings.TrimSuffix(label, ":"), res.exitCode, res.stdout, res.stderr)
+				t.Fatalf("%s command from the summary%s: exit %d\nstdout: %s\nstderr: %s",
+					strings.TrimSuffix(label, ":"), note, res.exitCode, res.stdout, res.stderr)
 			}
 		}
 	})
@@ -137,17 +146,26 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 		"config:": systemConfigPath + " (kept)",
 	})
 
-	// The commands the summary printed must run as printed, in order. The
+	// The commands the summary printed must exist and run, in order. The
 	// printed sudo prefix is applied through runSudo, and the binary name
 	// resolves to the test copy because it is not installed under the printed
 	// name.
-	t.Run("the printed commands run as printed", func(t *testing.T) {
+	t.Run("the printed commands exist and run", func(t *testing.T) {
 		for _, label := range []string{"start:", "stop:", "restart:", "uninstall:"} {
 			args := printedCommandArgs(t, summaryValue(t, again.stdout, label))
+			// The summary prints "peers uninstall" for a person at a terminal.
+			// The test has no terminal, and without one the confirmation needs
+			// --yes, so the test passes it; the printed summary keeps its form
+			// without --yes.
+			note := ""
+			if label == "uninstall:" {
+				args = append(args, "--yes")
+				note = " (with --yes, since the test has no terminal)"
+			}
 			res := runSudo(t, installedBinary, args...)
 			if res.exitCode != 0 {
-				t.Fatalf("%s command from the summary: exit %d\nstdout: %s\nstderr: %s",
-					strings.TrimSuffix(label, ":"), res.exitCode, res.stdout, res.stderr)
+				t.Fatalf("%s command from the summary%s: exit %d\nstdout: %s\nstderr: %s",
+					strings.TrimSuffix(label, ":"), note, res.exitCode, res.stdout, res.stderr)
 			}
 		}
 	})
