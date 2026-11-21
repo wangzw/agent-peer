@@ -14,6 +14,21 @@ import (
 // type so -ldflags "-X main.version=<version>" keeps working.
 var _ string = version
 
+// TestRunGuardedTurnsAPanicIntoExitFailure keeps a crash out of exit code 2:
+// the update contract reads 2 as "this binary has no post-update command" and
+// would continue an update whose step crashed. The Go runtime's own panic exit
+// status is 2, so the entry point must recover first.
+func TestRunGuardedTurnsAPanicIntoExitFailure(t *testing.T) {
+	var stderr bytes.Buffer
+	code := runGuarded(&stderr, func() int { panic("boom") })
+	if code != exitFailure {
+		t.Fatalf("runGuarded(panic) = %d, want %d", code, exitFailure)
+	}
+	if got, want := stderr.String(), "peers: internal error: boom\n"; got != want {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
+}
+
 func newDispatchApp(ver string) (*app, *bytes.Buffer, *bytes.Buffer, *stubDeps) {
 	stub := &stubDeps{}
 	stdout := new(bytes.Buffer)

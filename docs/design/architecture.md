@@ -75,6 +75,7 @@ graph TD
     broker --> pairing
     broker --> config
     broker --> accountdb
+    broker --> procsig
     topic --> link
     directory --> link
     directory --> pairing
@@ -83,7 +84,6 @@ graph TD
     link --> config
     pairing --> config
     config --> accountdb
-    procsig
 ```
 
 箭头从使用方指向被使用方。本项目自己的包之间只沿箭头引用；标准库、外部依赖和 `third_party` 下纳入的源码不在此列。`inbox` 不引用本项目自己的任何其他包；`config` 只引用 `accountdb`，用于取当前账户的家目录。`internal/testkit` 下的包只由 `_test.go` 文件引用；非测试文件引用它会被依赖检查拒绝。`link` 只提供带身份认证的帧通道，不解析 topic 和名录的帧；`topic` 与 `directory` 各自在 `link` 上注册自己的帧类型。

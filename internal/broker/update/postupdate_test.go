@@ -87,7 +87,7 @@ func TestInstallRunsPostUpdate(t *testing.T) {
 		t.Fatalf("Install() error = %v", err)
 	}
 
-	if got, want := postUpdateArgs(t, marker), "internal post-update --level user"; got != want {
+	if got, want := postUpdateArgs(t, marker), fmt.Sprintf("internal post-update --level user --pid %d", os.Getpid()); got != want {
 		t.Errorf("post-update arguments = %q, want %q", got, want)
 	}
 	got, err := os.ReadFile(target)
@@ -112,7 +112,7 @@ func TestInstallPostUpdateNotNeeded(t *testing.T) {
 	}
 
 	// The step ran; only its exit code says there was nothing to do.
-	if got, want := postUpdateArgs(t, marker), "internal post-update --level user"; got != want {
+	if got, want := postUpdateArgs(t, marker), fmt.Sprintf("internal post-update --level user --pid %d", os.Getpid()); got != want {
 		t.Errorf("post-update arguments = %q, want %q", got, want)
 	}
 	got, err := os.ReadFile(target)
@@ -150,6 +150,73 @@ func TestInstallPostUpdateFailureRollsBack(t *testing.T) {
 	}
 	assertUnchanged(t, target, original, before)
 	assertNoRollbackFiles(t, filepath.Dir(target))
+}
+
+// TestInstallRunsPostUpdateFromTheRootDirectory checks the step's working
+// directory: a system service has no meaningful working directory, so the
+// binary must not depend on one that an account may have removed.
+func TestInstallRunsPostUpdateFromTheRootDirectory(t *testing.T) {
+	const version = "0.2.0"
+	original := []byte("original binary")
+	target, _ := newTarget(t, original, 0o750)
+	marker := filepath.Join(filepath.Dir(target), "post-update-pwd")
+	script := []byte(fmt.Sprintf(`#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "peers %s"
+  exit 0
+fi
+pwd > '%s'
+exit 0
+`, version, marker))
+
+	if err := Install(context.Background(), serveScript(t, target, version, script), "user"); err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("read the working directory: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "/" {
+		t.Errorf("the post-update working directory = %q, want /", got)
+	}
+}
+
+// TestRunPostUpdateUsesItsOwnBoundWithoutADeadline checks the production bound
+// when the caller's context has no deadline: the step must still be stopped,
+// because a hung binary cannot keep the previous version from coming back. The
+// short injected bound keeps the test quick.
+func TestRunPostUpdateUsesItsOwnBoundWithoutADeadline(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "peers")
+	if err := os.WriteFile(path, postUpdateHangScript("0.2.0"), 0o755); err != nil {
+		t.Fatalf("write the hanging binary: %v", err)
+	}
+	start := time.Now()
+	err := RunPostUpdate(context.Background(), PostUpdateOptions{
+		Binary:  path,
+		Level:   "system",
+		Timeout: 150 * time.Millisecond,
+	})
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("RunPostUpdate() = nil, want a timeout error")
+	}
+	if !strings.Contains(err.Error(), "timed out") {
+		t.Errorf("error %q does not report a timeout", err)
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("RunPostUpdate took %s, want it to stop near the injected bound", elapsed)
+	}
+}
+
+// TestPostUpdateBoundIsTheDocumentedThirtySeconds checks the default bound the
+// design names. A change to the constant without a design change fails here.
+func TestPostUpdateBoundIsTheDocumentedThirtySeconds(t *testing.T) {
+	if got := postUpdateBound(PostUpdateOptions{}); got != 30*time.Second {
+		t.Errorf("the default post-update bound = %s, want 30s", got)
+	}
+	if got := postUpdateBound(PostUpdateOptions{Timeout: time.Minute}); got != time.Minute {
+		t.Errorf("an injected post-update bound = %s, want 1m", got)
+	}
 }
 
 func TestInstallPostUpdateTimeoutRollsBack(t *testing.T) {

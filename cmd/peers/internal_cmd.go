@@ -8,6 +8,7 @@ import (
 	"io"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/wangzw/peers/internal/broker/helper"
 	"github.com/wangzw/peers/internal/broker/service"
@@ -72,18 +73,19 @@ func (a *app) postUpdateCmd(_ context.Context, args []string) int {
 	fs := flag.NewFlagSet("internal post-update", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	level := fs.String("level", "", "service level to rewrite: system or user")
-	if err := fs.Parse(args); err != nil {
+	pidText := fs.String("pid", "", "pid of the Broker that answered the update; optional")
+	if err := fs.Parse(postUpdateKnownArgs(args)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitOK
 		}
-		return a.postUpdateUsageError(err.Error())
+		return a.postUpdateError(err.Error())
 	}
 	if fs.NArg() > 0 {
-		return a.postUpdateUsageError(fmt.Sprintf("unexpected argument %q", fs.Arg(0)))
+		return a.postUpdateError(fmt.Sprintf("unexpected argument %q", fs.Arg(0)))
 	}
 	system, err := postUpdateLevel(*level)
 	if err != nil {
-		return a.postUpdateUsageError(err.Error())
+		return a.postUpdateError(err.Error())
 	}
 
 	opts, err := postUpdateOptionsFn(system)
@@ -91,11 +93,43 @@ func (a *app) postUpdateCmd(_ context.Context, args []string) int {
 		_, _ = fmt.Fprintf(a.stderr, "peers internal post-update: %s\n", err)
 		return exitFailure
 	}
+	if *pidText != "" {
+		pid, err := strconv.Atoi(*pidText)
+		if err != nil || pid <= 0 {
+			return a.postUpdateError(fmt.Sprintf("invalid --pid %q", *pidText))
+		}
+		opts.PPID = func() int { return pid }
+	}
 	if err := postUpdateFn(opts); err != nil {
 		_, _ = fmt.Fprintf(a.stderr, "peers internal post-update: %s\n", err)
 		return exitFailure
 	}
 	return exitOK
+}
+
+// postUpdateKnownArgs keeps the options this version understands and drops any
+// other option. A later release may add optional parameters to the call, and a
+// binary that does not know one must still run the step instead of failing on
+// it. An option carried as a separate value ("--name value") cannot be told
+// apart from an unexpected positional argument once its name is dropped, so a
+// parameter this version does not know has to use the "--name=value" form.
+func postUpdateKnownArgs(args []string) []string {
+	kept := make([]string, 0, len(args))
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			kept = append(kept, arg)
+			continue
+		}
+		name := arg
+		if i := strings.IndexByte(name, '='); i >= 0 {
+			name = name[:i]
+		}
+		switch name {
+		case "--level", "-level", "--pid", "-pid", "--help", "-help", "-h", "--":
+			kept = append(kept, arg)
+		}
+	}
+	return kept
 }
 
 // launchdReloadCmd is the body of the hidden "internal launchd-reload"
@@ -111,6 +145,8 @@ func (a *app) launchdReloadCmd(_ context.Context, args []string) int {
 	domain := fs.String("domain", "", "launchd domain")
 	plist := fs.String("plist", "", "path of the rewritten plist")
 	pidText := fs.String("pid", "", "pid of the Broker that answered the update")
+	exeDev := fs.String("exe-dev", "", "device of the binary that started the helper")
+	exeIno := fs.String("exe-ino", "", "inode of the binary that started the helper")
 	audit := fs.String("audit", "", "path of the level's audit log")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -135,9 +171,17 @@ func (a *app) launchdReloadCmd(_ context.Context, args []string) int {
 	if err != nil || pid <= 0 {
 		return a.launchdReloadUsageError(fmt.Sprintf("invalid --pid %q", *pidText))
 	}
+	dev, err := strconv.ParseUint(*exeDev, 10, 64)
+	if err != nil {
+		return a.launchdReloadUsageError(fmt.Sprintf("invalid --exe-dev %q", *exeDev))
+	}
+	ino, err := strconv.ParseUint(*exeIno, 10, 64)
+	if err != nil {
+		return a.launchdReloadUsageError(fmt.Sprintf("invalid --exe-ino %q", *exeIno))
+	}
 
 	opts := relaunchOptionsFn(system)
-	if err := launchdReloadFn(opts, *domain, *plist, pid, *audit); err != nil {
+	if err := launchdReloadFn(opts, *domain, *plist, pid, service.ExecutableID{Dev: dev, Ino: ino}, *audit); err != nil {
 		_, _ = fmt.Fprintf(a.stderr, "peers internal launchd-reload: %s\n", err)
 		return exitFailure
 	}
@@ -165,9 +209,13 @@ func postUpdateLevel(name string) (bool, error) {
 	}
 }
 
-// postUpdateUsageError reports a usage problem without printing the top-level
-// usage: the whole internal group stays hidden.
-func (a *app) postUpdateUsageError(reason string) int {
+// postUpdateError reports a problem with the post-update call and returns the
+// general failure code. Exit code 2 is reserved for "this binary has no such
+// subcommand": the previous binary reads it as "no post-update step" and
+// continues the update. A usage error of this command must not be mistaken for
+// that, so it is a failure. The top-level usage is not printed: the whole
+// internal group stays hidden.
+func (a *app) postUpdateError(reason string) int {
 	_, _ = fmt.Fprintf(a.stderr, "peers internal post-update: %s\n", reason)
-	return exitUsage
+	return exitFailure
 }

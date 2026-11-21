@@ -190,7 +190,7 @@ func TestInternalHelpersRejectArguments(t *testing.T) {
 }
 
 // setLaunchdReload installs fn as the launchd-reload seam for one test.
-func setLaunchdReload(t *testing.T, fn func(service.Options, string, string, int, string) error) {
+func setLaunchdReload(t *testing.T, fn func(service.Options, string, string, int, service.ExecutableID, string) error) {
 	t.Helper()
 	previous := launchdReloadFn
 	launchdReloadFn = fn
@@ -206,10 +206,11 @@ func TestLaunchdReloadPassesItsArguments(t *testing.T) {
 		gotDomain string
 		gotPlist  string
 		gotPID    int
+		gotID     service.ExecutableID
 		gotAudit  string
 	)
-	setLaunchdReload(t, func(opts service.Options, domain, plist string, pid int, audit string) error {
-		gotOpts, gotDomain, gotPlist, gotPID, gotAudit = opts, domain, plist, pid, audit
+	setLaunchdReload(t, func(opts service.Options, domain, plist string, pid int, id service.ExecutableID, audit string) error {
+		gotOpts, gotDomain, gotPlist, gotPID, gotID, gotAudit = opts, domain, plist, pid, id, audit
 		return nil
 	})
 
@@ -220,6 +221,8 @@ func TestLaunchdReloadPassesItsArguments(t *testing.T) {
 		"--domain", "system",
 		"--plist", "/Library/LaunchDaemons/io.github.wangzw.peers.plist",
 		"--pid", "4242",
+		"--exe-dev", "16777233",
+		"--exe-ino", "987654321",
 		"--audit", "/var/log/peers/audit.log",
 	}
 	if got := a.run(context.Background(), args); got != exitOK {
@@ -237,6 +240,9 @@ func TestLaunchdReloadPassesItsArguments(t *testing.T) {
 	if gotPID != 4242 {
 		t.Errorf("pid = %d, want 4242", gotPID)
 	}
+	if want := (service.ExecutableID{Dev: 16777233, Ino: 987654321}); gotID != want {
+		t.Errorf("executable id = %+v, want %+v", gotID, want)
+	}
 	if gotAudit != "/var/log/peers/audit.log" {
 		t.Errorf("audit = %q", gotAudit)
 	}
@@ -249,7 +255,7 @@ func TestLaunchdReloadPassesItsArguments(t *testing.T) {
 // non-zero exit and is written to standard error, which the detached helper
 // redirects to the post-update log.
 func TestLaunchdReloadReportsFailure(t *testing.T) {
-	setLaunchdReload(t, func(service.Options, string, string, int, string) error {
+	setLaunchdReload(t, func(service.Options, string, string, int, service.ExecutableID, string) error {
 		return errors.New("bootstrap failed")
 	})
 
@@ -260,6 +266,8 @@ func TestLaunchdReloadReportsFailure(t *testing.T) {
 		"--domain", "gui/501",
 		"--plist", "/Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist",
 		"--pid", "4242",
+		"--exe-dev", "1",
+		"--exe-ino", "2",
 	}
 	if got := a.run(context.Background(), args); got != exitFailure {
 		t.Fatalf("run(%q) = %d, want %d", args, got, exitFailure)
@@ -277,17 +285,20 @@ func TestLaunchdReloadReportsFailure(t *testing.T) {
 func TestLaunchdReloadRejectsBadArguments(t *testing.T) {
 	cases := [][]string{
 		{"internal", "launchd-reload"},
-		{"internal", "launchd-reload", "--level", "internet", "--domain", "system", "--plist", "/x", "--pid", "1"},
-		{"internal", "launchd-reload", "--level", "system", "--domain", "", "--plist", "/x", "--pid", "1"},
-		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "relative", "--pid", "1"},
-		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "zero"},
-		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "0"},
-		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "1", "extra"},
+		{"internal", "launchd-reload", "--level", "internet", "--domain", "system", "--plist", "/x", "--pid", "1", "--exe-dev", "1", "--exe-ino", "2"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "", "--plist", "/x", "--pid", "1", "--exe-dev", "1", "--exe-ino", "2"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "relative", "--pid", "1", "--exe-dev", "1", "--exe-ino", "2"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "zero", "--exe-dev", "1", "--exe-ino", "2"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "0", "--exe-dev", "1", "--exe-ino", "2"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "1", "extra", "--exe-dev", "1", "--exe-ino", "2"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "1", "--exe-dev", "device", "--exe-ino", "2"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "1", "--exe-dev", "1", "--exe-ino", "inode"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "1", "--exe-dev", "1"},
 	}
 	for _, args := range cases {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			called := false
-			setLaunchdReload(t, func(service.Options, string, string, int, string) error {
+			setLaunchdReload(t, func(service.Options, string, string, int, service.ExecutableID, string) error {
 				called = true
 				return nil
 			})

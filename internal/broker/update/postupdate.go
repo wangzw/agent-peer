@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,11 +26,15 @@ const (
 	postUpdateExitNotNeeded = 2
 )
 
-// PostUpdateOptions names the installed binary whose post-update step runs and
-// the service level whose unit it rewrites.
+// PostUpdateOptions names the installed binary whose post-update step runs, the
+// service level whose unit it rewrites and the bound on the step. A zero
+// Timeout keeps postUpdateTimeout; a test shortens it instead of waiting for
+// the production bound. The caller passes its own pid to the step, which needs
+// it to start the detached macOS helper.
 type PostUpdateOptions struct {
-	Binary string
-	Level  string
+	Binary  string
+	Level   string
+	Timeout time.Duration
 }
 
 // Install installs o's release and then runs the new binary's hidden
@@ -68,9 +73,19 @@ func Install(ctx context.Context, o ApplyOptions, level string) error {
 	return nil
 }
 
+// postUpdateBound returns the bound on the post-update step: the caller's
+// Timeout when it set one, postUpdateTimeout otherwise.
+func postUpdateBound(o PostUpdateOptions) time.Duration {
+	if o.Timeout > 0 {
+		return o.Timeout
+	}
+	return postUpdateTimeout
+}
+
 // RunPostUpdate runs binary's "internal post-update --level level", bounded by
-// postUpdateTimeout and ctx. Exit code 2 means the binary has no post-update
-// command, which is not an error.
+// the configured timeout and ctx. Exit code 2 means the binary has no
+// post-update command, which is not an error; every other non-zero code is a
+// failure.
 func RunPostUpdate(ctx context.Context, o PostUpdateOptions) error {
 	if o.Binary == "" {
 		return errors.New("no binary to run the post-update step")
@@ -79,13 +94,15 @@ func RunPostUpdate(ctx context.Context, o PostUpdateOptions) error {
 		return fmt.Errorf("service level %q is not system or user", o.Level)
 	}
 
-	runCtx, cancel := context.WithTimeout(ctx, postUpdateTimeout)
+	runCtx, cancel := context.WithTimeout(ctx, postUpdateBound(o))
 	defer cancel()
 	var stderr bytes.Buffer
-	cmd := exec.CommandContext(runCtx, o.Binary, "internal", "post-update", "--level", o.Level)
+	cmd := exec.CommandContext(runCtx, o.Binary, "internal", "post-update", "--level", o.Level, "--pid", strconv.Itoa(os.Getpid()))
 	// The step runs the service manager commands itself, so it inherits this
 	// process's environment: a user-level Broker carries the session bus and
-	// runtime directory those commands need.
+	// runtime directory those commands need. Its working directory is "/" so a
+	// system service does not depend on a directory that may be removed.
+	cmd.Dir = "/"
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err == nil {

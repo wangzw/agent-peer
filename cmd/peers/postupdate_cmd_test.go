@@ -136,6 +136,51 @@ func TestPostUpdateCmdUserNeedsHome(t *testing.T) {
 	}
 }
 
+// TestPostUpdateCmdIgnoresUnknownOptions keeps the frozen contract usable from
+// a later caller: a binary that does not know an option must still run the
+// step instead of failing on it.
+func TestPostUpdateCmdIgnoresUnknownOptions(t *testing.T) {
+	var called bool
+	setPostUpdateSeams(t, nil, func(service.Options) error {
+		called = true
+		return nil
+	})
+
+	a, stdout, stderr, _ := newDispatchApp("dev")
+	args := []string{"internal", "post-update", "--level", "user", "--future-option", "--future=value"}
+	if got := a.run(context.Background(), args); got != exitOK {
+		t.Fatalf("run(%q) = %d, want %d (stderr %q)", args, got, exitOK, stderr.String())
+	}
+	if !called {
+		t.Fatal("the unknown options kept the post-update step from running")
+	}
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Errorf("stdout = %q, stderr = %q, want both empty", stdout.String(), stderr.String())
+	}
+}
+
+// TestPostUpdateCmdPassesTheBrokerPID checks the optional --pid the caller adds
+// so the macOS helper waits for the right process instead of guessing from the
+// parent pid.
+func TestPostUpdateCmdPassesTheBrokerPID(t *testing.T) {
+	var gotPPID func() int
+	setPostUpdateSeams(t, nil, func(opts service.Options) error {
+		gotPPID = opts.PPID
+		return nil
+	})
+
+	a, _, stderr, _ := newDispatchApp("dev")
+	if got := a.run(context.Background(), []string{"internal", "post-update", "--level", "system", "--pid", "4242"}); got != exitOK {
+		t.Fatalf("run(internal post-update --pid 4242) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	}
+	if gotPPID == nil {
+		t.Fatal("the command did not pass the Broker pid to the service rewrite")
+	}
+	if got := gotPPID(); got != 4242 {
+		t.Errorf("the Broker pid = %d, want 4242", got)
+	}
+}
+
 func TestPostUpdateCmdRejectsUsage(t *testing.T) {
 	cases := []struct {
 		name string
@@ -167,8 +212,8 @@ func TestPostUpdateCmdRejectsUsage(t *testing.T) {
 			})
 
 			a, stdout, stderr, _ := newDispatchApp("dev")
-			if got := a.run(context.Background(), tc.args); got != exitUsage {
-				t.Fatalf("run(%q) = %d, want %d", tc.args, got, exitUsage)
+			if got := a.run(context.Background(), tc.args); got != exitFailure {
+				t.Fatalf("run(%q) = %d, want %d", tc.args, got, exitFailure)
 			}
 			if called {
 				t.Fatalf("run(%q) reached PostUpdate, want it rejected before dispatch", tc.args)

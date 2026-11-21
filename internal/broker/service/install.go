@@ -1264,6 +1264,16 @@ func writeUnit(opts Options) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// launchd has no drop-in mechanism, so a variable an operator added to the
+	// plist is the only place a proxy setting can live. Keep that dictionary
+	// across a rewrite; this package generates none of its entries.
+	if opts.GOOS == "darwin" {
+		env, err := plistEnvironment(rooted(opts, path))
+		if err != nil {
+			return "", fmt.Errorf("service: read the environment variables of %s: %w", path, err)
+		}
+		content = withPlistEnvironment(content, env)
+	}
 	for _, dir := range dirs {
 		mode := fs.FileMode(0o755)
 		switch {
