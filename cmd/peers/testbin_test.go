@@ -38,6 +38,12 @@ const maxSocketPathBytes = 103
 // os.Environ because go build is a tool here, not the process under test; the
 // process under test gets a clean environment from sandbox.env.
 func TestMain(m *testing.M) {
+	// A child started by TestMainEntryTurnsAPanicIntoExitFailure re-executes
+	// the test binary to reach the real main; it must not run the tests again.
+	if os.Getenv(mainEntryEnv) != "" {
+		runMainEntryForTest()
+	}
+
 	dir, err := os.MkdirTemp("", "peers-bin-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "create binary directory: %v\n", err)
