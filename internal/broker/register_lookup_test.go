@@ -115,7 +115,7 @@ func (s *withholdRecordSessions) Acquire(ctx context.Context, uid uint32) (Sessi
 }
 
 // failingLookupBackend reports a helper failure for every Lookup, the way the
-// system-level backend does when the account's helper process cannot start.
+// system Broker does when the account's helper process cannot start.
 type failingLookupBackend struct {
 	SessionBackend
 	err error
