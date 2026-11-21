@@ -24,7 +24,7 @@ Piping the script to a shell carries the same trust as downloading the archive a
 
 ### Install from the archive
 
-Extract the archive and run the install script from the extracted directory. The script installs the binary, installs the Broker as a service and starts it, and registers the MCP server with Claude Code for your account.
+Extract the archive and run the install script from the extracted directory. The script installs the binary, installs the Broker as a service and starts it, registers the MCP server with Claude Code for your account, and installs shell completions; a system-level install also installs the man pages. A completion or man page that cannot be written only prints a warning and does not fail the installation. The fish completion is installed only when fish is installed.
 
 Run it without a level option and it asks whether to install for every account on the host or for your account only. Pass `--system` or `--user` to skip the question; a system-level install reruns itself through sudo from the account whose Claude Code should use the system Broker:
 
@@ -84,19 +84,21 @@ When the update runs through the Broker, the Broker restarts and open sessions r
 
 ## Uninstall
 
-Remove the service, the binary, the runtime directory and this account's MCP registration:
+Remove the service, the binary, the runtime directory, this account's MCP registration, and the shell completions and man pages the install script wrote:
 
 ```sh
 peers uninstall
 ```
 
-Add `--purge` to remove the configuration, identity, audit log and service logs as well; without it, uninstall asks before deleting them.
+Add `--purge` to remove the configuration, identity, audit log and service logs as well; without it, uninstall asks before deleting them. `--yes` skips every question and keeps the data.
 
-A system-level installation is removed as root, or by answering the question when another account runs the command:
+A system-level installation is removed as root:
 
 ```sh
-sudo peers uninstall
+sudo peers uninstall --yes
 ```
+
+Another account with a terminal is asked whether to run the uninstall through sudo; answering yes reruns the command. With `--yes` it reruns through sudo directly. Without a terminal and without `--yes` it prints that sudo command and exits with status 1, changing nothing.
 
 ## Documentation
 

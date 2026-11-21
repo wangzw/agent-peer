@@ -93,6 +93,7 @@ func newFixture(t *testing.T) *fixture {
 
 	writeExecutable(t, filepath.Join(f.fakes, "claude"), fakeClaude)
 	writeExecutable(t, filepath.Join(f.fakes, "peers"), fakePathPeers)
+	writeExecutable(t, filepath.Join(f.fakes, "fish"), fakeFish)
 	writeExecutable(t, filepath.Join(f.fakes, "stat"), fakeStat)
 	writeExecutable(t, filepath.Join(f.fakes, "id"), strings.ReplaceAll(fakeID, "@REAL_ID@", shellQuote(realID)))
 	writeExecutable(t, filepath.Join(f.fakes, "uname"), strings.ReplaceAll(fakeUname, "@REAL_UNAME@", shellQuote(realUname)))
@@ -419,6 +420,11 @@ func TestInstallScriptUserInstall(t *testing.T) {
 	if got := countLines(agent, "status"); got != 0 {
 		t.Errorf("status calls = %d, want 0; the service summary reports the state; calls: %q", got, agent)
 	}
+	// The completions run after the service, so a failure there cannot undo an
+	// installed service.
+	if serviceAt, bashAt := indexOf(agent, "service install"), indexOf(agent, "completion bash"); serviceAt < 0 || bashAt < 0 || bashAt < serviceAt {
+		t.Errorf("completion calls do not follow service install: %q", agent)
+	}
 
 	claude := readLines(t, f.claudeLog)
 	if got := countLines(claude, "mcp get peer"); got != 1 {
@@ -484,6 +490,32 @@ func TestInstallScriptUserCompletions(t *testing.T) {
 	}
 }
 
+// TestInstallScriptSkipsFishWhenFishIsMissing checks that the fish completion
+// and the fish configuration directory are not created when fish is absent.
+func TestInstallScriptSkipsFishWhenFishIsMissing(t *testing.T) {
+	f := newFixture(t)
+	stdout, stderr, code := f.run(map[string]string{"PATH": f.pathWithout(t, "fish")},
+		"--no-service", "--no-mcp")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	fish := f.pathUnderHome(t, ".config", "fish", "completions", "peers.fish")
+	if _, err := os.Stat(fish); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the fish completion %s exists although fish is missing: %v", fish, err)
+	}
+	if _, err := os.Stat(f.pathUnderHome(t, ".config")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the fish configuration directory was created although fish is missing")
+	}
+	if got := countLines(readLines(t, f.agentLog), "completion fish"); got != 0 {
+		t.Errorf("completion fish calls = %d, want none; calls: %q", got, readLines(t, f.agentLog))
+	}
+	bash := f.pathUnderHome(t, ".local", "share", "bash-completion", "completions", "peers")
+	if _, err := os.Stat(bash); err != nil {
+		t.Errorf("the bash completion is missing: %v", err)
+	}
+}
+
 func TestInstallScriptSystemCompletionsAndManPages(t *testing.T) {
 	f := newFixture(t)
 	writeArchiveManPages(t, f)
@@ -517,16 +549,40 @@ func TestInstallScriptSystemCompletionsAndManPages(t *testing.T) {
 	mustNotContain(t, "stdout", stdout, "zsh completion was not installed")
 }
 
-func TestInstallScriptReportsCompletionFailure(t *testing.T) {
+// TestInstallScriptWarnsAboutCompletionFailure checks that a completion that
+// cannot be written is a warning: the service is already installed and the
+// script still succeeds.
+func TestInstallScriptWarnsAboutCompletionFailure(t *testing.T) {
 	f := newFixture(t)
-	_, stderr, code := f.run(map[string]string{"FAKE_AGENT_COMPLETION_EXIT": "1"})
-	if code != 1 {
-		t.Fatalf("exit = %d, want 1\nstderr:\n%s", code, stderr)
+	stdout, stderr, code := f.run(map[string]string{"FAKE_AGENT_COMPLETION_EXIT": "1"})
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
-	mustContain(t, "stderr", stderr, "writing the bash completion")
-	if got := countLines(readLines(t, f.agentLog), "service install"); got != 0 {
-		t.Errorf("service install calls = %d, want none after a completion failure", got)
+	mustContain(t, "stderr", stderr, "warning: could not write the bash completion")
+	if got := countLines(readLines(t, f.agentLog), "service install"); got != 1 {
+		t.Errorf("service install calls = %d, want 1; the failure must not undo the install", got)
 	}
+	mustContain(t, "stdout", stdout, "MCP:")
+}
+
+// TestInstallScriptWarnsAboutManPageFailure checks the same for the man pages:
+// a directory that cannot be created only produces a warning.
+func TestInstallScriptWarnsAboutManPageFailure(t *testing.T) {
+	f := newFixture(t)
+	// A regular file where the man directory belongs makes mkdir -p fail.
+	manDir := filepath.Join(f.destdir, "usr", "local", "share", "man", "man1")
+	if err := os.MkdirAll(filepath.Dir(manDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manDir, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prefix := f.systemPrefix(t)
+	stdout, stderr, code := f.run(f.systemInstallEnv(""), systemInstallArgs(prefix, "--no-service")...)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	mustContain(t, "stderr", stderr, "warning: could not create the man directory")
 }
 
 // writeArchiveManPages adds the man pages a release archive carries to the
@@ -942,12 +998,12 @@ func TestInstallScriptPassesThroughSudoDegradedExit(t *testing.T) {
 	}
 }
 
-// pathWithoutSudo builds a search path with every fake command except sudo,
-// plus the real tools the script needs outside the fake set. The host's real
-// sudo is then invisible, so a test can check the missing-sudo error.
-func (f *fixture) pathWithoutSudo(t *testing.T) string {
+// pathWithout builds a search path with every fake command except name, plus
+// the real tools the script needs outside the fake set. The host's real command
+// is then invisible, so a test can check the behavior for its absence.
+func (f *fixture) pathWithout(t *testing.T, name string) string {
 	t.Helper()
-	dir := filepath.Join(f.base, "nosudobin")
+	dir := filepath.Join(f.base, "no"+name+"bin")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("creating %s: %v", dir, err)
 	}
@@ -956,19 +1012,25 @@ func (f *fixture) pathWithoutSudo(t *testing.T) string {
 		t.Fatalf("reading %s: %v", f.fakes, err)
 	}
 	for _, entry := range entries {
-		if entry.Name() == "sudo" {
+		if entry.Name() == name {
 			continue
 		}
 		if err := os.Symlink(filepath.Join(f.fakes, entry.Name()), filepath.Join(dir, entry.Name())); err != nil {
 			t.Fatalf("linking %s: %v", entry.Name(), err)
 		}
 	}
-	for _, name := range []string{"grep", "dirname"} {
-		if err := os.Symlink(mustLookPath(t, name), filepath.Join(dir, name)); err != nil {
-			t.Fatalf("linking the real %s: %v", name, err)
+	for _, tool := range []string{"grep", "dirname", "mkdir"} {
+		if err := os.Symlink(mustLookPath(t, tool), filepath.Join(dir, tool)); err != nil {
+			t.Fatalf("linking the real %s: %v", tool, err)
 		}
 	}
 	return dir
+}
+
+// pathWithoutSudo is the search path used to test a missing sudo.
+func (f *fixture) pathWithoutSudo(t *testing.T) string {
+	t.Helper()
+	return f.pathWithout(t, "sudo")
 }
 
 // skipWithoutTTYForwarding skips the prompt tests on the platforms whose
@@ -1841,6 +1903,10 @@ printf '%s\n' "$*" >> "$FAKE_PATH_AGENT_LOG"
 exit 0
 `
 
+const fakeFish = `#!/bin/sh
+exit 0
+`
+
 const fakeClaude = `#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE_CLAUDE_LOG"
 case "$1 $2" in
@@ -2065,6 +2131,17 @@ func readFile(t *testing.T, path string) string {
 		t.Fatalf("reading %s: %v", path, err)
 	}
 	return string(data)
+}
+
+// indexOf returns the position of the first line that starts with prefix, or
+// -1 when there is none.
+func indexOf(lines []string, prefix string) int {
+	for i, line := range lines {
+		if strings.HasPrefix(line, prefix) {
+			return i
+		}
+	}
+	return -1
 }
 
 // countLines counts the lines that start with prefix.

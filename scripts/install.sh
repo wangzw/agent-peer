@@ -474,66 +474,13 @@ case $_version_output in
 	*) fail "unexpected output from $prefix/peers --version: $_version_output" ;;
 esac
 
-# 3. Install the shell completions, and at the system level the man pages. The
-# completion scripts come from the installed binary, so they always match it.
-# A user-level install skips the zsh completion, because a user-level file only
-# becomes active after the account adds it to fpath; the caller is told how.
-# DESTDIR prefixes the system-level share directory, for staged installs and
-# tests; production leaves it unset.
-if [ "$system" -eq 1 ]; then
-	_share=${DESTDIR:-}/usr/local/share
-	_completion_bash_dir=$_share/bash-completion/completions
-	_completion_zsh_dir=$_share/zsh/site-functions
-	_completion_fish_dir=$_share/fish/vendor_completions.d
-	_man_dir=$_share/man/man1
-else
-	if [ -z "${HOME:-}" ]; then
-		fail "HOME is not set; cannot install the shell completions"
-	fi
-	_completion_bash_dir=$HOME/.local/share/bash-completion/completions
-	_completion_fish_dir=$HOME/.config/fish/completions
-fi
-
-if ! mkdir -p "$_completion_bash_dir"; then
-	fail "creating the bash completion directory $_completion_bash_dir"
-fi
-if ! "$prefix/peers" completion bash > "$_completion_bash_dir/peers"; then
-	fail "writing the bash completion to $_completion_bash_dir/peers"
-fi
-if ! mkdir -p "$_completion_fish_dir"; then
-	fail "creating the fish completion directory $_completion_fish_dir"
-fi
-if ! "$prefix/peers" completion fish > "$_completion_fish_dir/peers.fish"; then
-	fail "writing the fish completion to $_completion_fish_dir/peers.fish"
-fi
-
-if [ "$system" -eq 1 ]; then
-	if ! mkdir -p "$_completion_zsh_dir"; then
-		fail "creating the zsh completion directory $_completion_zsh_dir"
-	fi
-	if ! "$prefix/peers" completion zsh > "$_completion_zsh_dir/_peers"; then
-		fail "writing the zsh completion to $_completion_zsh_dir/_peers"
-	fi
-	if ! mkdir -p "$_man_dir"; then
-		fail "creating the man directory $_man_dir"
-	fi
-	for _page in "$script_dir"/man/*.1; do
-		[ -e "$_page" ] || continue
-		if ! install -o root -g 0 -m 0644 "$_page" "$_man_dir/"; then
-			fail "installing the man page ${_page##*/}"
-		fi
-	done
-else
-	printf 'install.sh: zsh completion was not installed; enable it with: %s completion zsh > ~/.zfunc/_peers (create ~/.zfunc and add it to fpath).\n' "$prefix/peers"
-fi
-
 # Report the upgrade before the service prints its summary; the service does
 # not know what was installed before.
 if [ -n "$_previous_version" ]; then
 	printf 'upgraded from %s\n' "$_previous_version"
 fi
 
-# 4. Install the service. service install is repeatable: an existing service is
+# 3. Install the service. service install is repeatable: an existing service is
 # restarted with the new binary, so the script does not check first. Exit status
 # 3 means the service is installed and running, but the Broker runs degraded;
 # service install has already printed the summary and the reason, so the script
@@ -557,6 +504,84 @@ if [ "$install_service" -eq 1 ]; then
 		3) _service_degraded=1 ;;
 		*) fail "installing the $_service_level service" ;;
 	esac
+fi
+
+# 4. Install the shell completions, and at the system level the man pages. The
+# completion scripts come from the installed binary, so they always match it.
+# This runs after the service so that a completion or man page that cannot be
+# written does not fail an otherwise complete installation: each failure is a
+# warning and the script keeps its exit status. A user-level install skips the
+# zsh completion, because a user-level file only becomes active after the
+# account adds it to fpath; the caller is told how. The fish completion is
+# installed only when fish itself is installed. New files and directories are
+# group- and world-readable regardless of root's umask. DESTDIR prefixes the
+# system-level share directory, for staged installs and tests; production
+# leaves it unset.
+umask 022
+_share=${DESTDIR:-}/usr/local/share
+_completion_bash_dir=
+_completion_fish_dir=
+if [ "$system" -eq 1 ]; then
+	_completion_bash_dir=$_share/bash-completion/completions
+	_completion_zsh_dir=$_share/zsh/site-functions
+	_completion_fish_dir=$_share/fish/vendor_completions.d
+	_man_dir=$_share/man/man1
+elif [ -n "${HOME:-}" ]; then
+	_completion_bash_dir=$HOME/.local/share/bash-completion/completions
+	_completion_fish_dir=$HOME/.config/fish/completions
+else
+	printf 'install.sh: warning: HOME is not set; the shell completions were not installed\n' >&2
+fi
+
+# install_completion writes one completion script. It returns non-zero when the
+# directory or the file cannot be written, and the caller turns that into a
+# warning.
+install_completion() {
+	_shell=$1
+	_dir=$2
+	_name=$3
+	if ! mkdir -p "$_dir"; then
+		return 1
+	fi
+	if ! "$prefix/peers" completion "$_shell" > "$_dir/$_name"; then
+		# Do not leave a partial file where the completion belongs.
+		rm -f "$_dir/$_name"
+		return 1
+	fi
+	return 0
+}
+
+if [ -n "$_completion_bash_dir" ]; then
+	if ! install_completion bash "$_completion_bash_dir" peers; then
+		printf 'install.sh: warning: could not write the bash completion to %s\n' \
+			"$_completion_bash_dir/peers" >&2
+	fi
+fi
+if [ -n "$_completion_fish_dir" ] && command -v fish >/dev/null 2>&1; then
+	if ! install_completion fish "$_completion_fish_dir" peers.fish; then
+		printf 'install.sh: warning: could not write the fish completion to %s\n' \
+			"$_completion_fish_dir/peers.fish" >&2
+	fi
+fi
+
+if [ "$system" -eq 1 ]; then
+	if ! install_completion zsh "$_completion_zsh_dir" _peers; then
+		printf 'install.sh: warning: could not write the zsh completion to %s\n' \
+			"$_completion_zsh_dir/_peers" >&2
+	fi
+	if ! mkdir -p "$_man_dir"; then
+		printf 'install.sh: warning: could not create the man directory %s\n' "$_man_dir" >&2
+	else
+		for _page in "$script_dir"/man/*.1; do
+			[ -e "$_page" ] || continue
+			if ! install -o root -g 0 -m 0644 "$_page" "$_man_dir/"; then
+				printf 'install.sh: warning: could not install the man page %s\n' \
+					"${_page##*/}" >&2
+			fi
+		done
+	fi
+else
+	printf 'install.sh: zsh completion was not installed; enable it with: %s completion zsh > ~/.zfunc/_peers (create ~/.zfunc and add it to fpath).\n' "$prefix/peers"
 fi
 
 # 5. The system-level service creates the admin group. Put the account that ran
