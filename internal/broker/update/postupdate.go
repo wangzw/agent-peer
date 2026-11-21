@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wangzw/peers/internal/broker/service"
 )
 
 const (
@@ -39,9 +41,11 @@ type PostUpdateOptions struct {
 
 // Install installs o's release and then runs the new binary's hidden
 // post-update command at level, before anything restarts it. The previous
-// binary is kept beside the target until the step succeeds: a failed or
-// timed-out step restores it, so the caller can report the failure and leave
-// the old version in place.
+// binary is kept beside the target and the main unit file is saved before the
+// step runs: a failed, timed-out or canceled step restores both, so the caller
+// can report the failure and leave the old version in place. Restoring the unit
+// here is what covers a step killed by its bound or by a canceled context,
+// because that step never reaches its own restore.
 func Install(ctx context.Context, o ApplyOptions, level string) error {
 	if level != "system" && level != "user" {
 		return fmt.Errorf("service level %q is not system or user", level)
@@ -60,17 +64,60 @@ func Install(ctx context.Context, o ApplyOptions, level string) error {
 		}
 		return err
 	}
+	// The step rewrites the level's main unit in the new binary's format. Save
+	// its bytes first: the step may be killed before its own restore runs, and
+	// a reboot would then load the next version's definition with the previous
+	// binary.
+	serviceOpts, err := service.PostUpdateOptions(level == "system")
+	if err != nil {
+		return restoreAfterStepSetupFailure(
+			fmt.Errorf("saving the service definition before the post-update step: %w", err), backup, o.Target)
+	}
+	savedUnit, err := service.SaveMainUnit(serviceOpts)
+	if err != nil {
+		return restoreAfterStepSetupFailure(
+			fmt.Errorf("saving the service definition before the post-update step: %w", err), backup, o.Target)
+	}
 	if err := RunPostUpdate(ctx, PostUpdateOptions{Binary: o.Target, Level: level}); err != nil {
-		if restoreErr := restoreTarget(backup, o.Target); restoreErr != nil {
-			return fmt.Errorf("%w; restoring the previous binary failed: %v", err, restoreErr)
-		}
-		return fmt.Errorf("%w; the previous binary was restored", err)
+		return rollBackInstall(err, backup, o.Target, serviceOpts, savedUnit)
 	}
 	// The new binary and its rewritten unit are in place; a leftover rollback
 	// name is untidy but harmless, and failing the update over it would report
 	// a failure that did not happen.
 	_ = os.Remove(backup)
 	return nil
+}
+
+// restoreAfterStepSetupFailure restores the previous binary when the unit
+// guard could not be prepared. The post-update step did not run, so the unit
+// file is still the one the guard would have saved.
+func restoreAfterStepSetupFailure(cause error, backup, target string) error {
+	if err := restoreTarget(backup, target); err != nil {
+		return fmt.Errorf("%w; restoring the previous binary failed: %v", cause, err)
+	}
+	return fmt.Errorf("%w; the previous binary was restored", cause)
+}
+
+// rollBackInstall undoes an install whose post-update step failed. The previous
+// binary comes back and the main unit file returns to the bytes read before the
+// step. The step's own restore covers a failure it survives; this restore also
+// covers a step killed by its bound or by a canceled context, which never
+// reaches that code. On Linux the restore reloads the unit database after
+// writing the old definition; macOS's detached helper notices the rolled-back
+// binary by its inode and abandons the reload on its own.
+func rollBackInstall(cause error, backup, target string, opts service.Options, saved service.SavedUnit) error {
+	binaryErr := restoreTarget(backup, target)
+	unitErr := service.RestoreMainUnit(opts, saved)
+	switch {
+	case binaryErr == nil && unitErr == nil:
+		return fmt.Errorf("%w; the previous binary was restored, and so was the service definition", cause)
+	case binaryErr == nil:
+		return fmt.Errorf("%w; the previous binary was restored, but the service definition could not be restored: %v", cause, unitErr)
+	case unitErr == nil:
+		return fmt.Errorf("%w; restoring the previous binary failed: %v; the service definition was restored", cause, binaryErr)
+	default:
+		return fmt.Errorf("%w; restoring the previous binary failed: %v; the service definition could not be restored: %v", cause, binaryErr, unitErr)
+	}
 }
 
 // postUpdateBound returns the bound on the post-update step: the caller's

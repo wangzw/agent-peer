@@ -3,12 +3,17 @@ package update
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wangzw/peers/internal/broker/service"
 )
 
 // postUpdateScript returns a stand-in release binary. It answers the version
@@ -77,6 +82,7 @@ func assertNoRollbackFiles(t *testing.T, dir string) {
 }
 
 func TestInstallRunsPostUpdate(t *testing.T) {
+	unitGuardFixture(t)
 	const version = "0.2.0"
 	original := []byte("original binary")
 	target, _ := newTarget(t, original, 0o750)
@@ -101,6 +107,7 @@ func TestInstallRunsPostUpdate(t *testing.T) {
 }
 
 func TestInstallPostUpdateNotNeeded(t *testing.T) {
+	unitGuardFixture(t)
 	const version = "0.2.0"
 	original := []byte("original binary")
 	target, _ := newTarget(t, original, 0o750)
@@ -126,6 +133,7 @@ func TestInstallPostUpdateNotNeeded(t *testing.T) {
 }
 
 func TestInstallPostUpdateFailureRollsBack(t *testing.T) {
+	unitGuardFixture(t)
 	const version = "0.2.0"
 	original := []byte("original binary")
 	target, before := newTarget(t, original, 0o750)
@@ -156,6 +164,7 @@ func TestInstallPostUpdateFailureRollsBack(t *testing.T) {
 // directory: a system service has no meaningful working directory, so the
 // binary must not depend on one that an account may have removed.
 func TestInstallRunsPostUpdateFromTheRootDirectory(t *testing.T) {
+	unitGuardFixture(t)
 	const version = "0.2.0"
 	original := []byte("original binary")
 	target, _ := newTarget(t, original, 0o750)
@@ -220,6 +229,7 @@ func TestPostUpdateBoundIsTheDocumentedThirtySeconds(t *testing.T) {
 }
 
 func TestInstallPostUpdateTimeoutRollsBack(t *testing.T) {
+	unitGuardFixture(t)
 	const version = "0.2.0"
 	original := []byte("original binary")
 	target, before := newTarget(t, original, 0o750)
@@ -245,4 +255,229 @@ func TestInstallPostUpdateTimeoutRollsBack(t *testing.T) {
 	}
 	assertUnchanged(t, target, original, before)
 	assertNoRollbackFiles(t, filepath.Dir(target))
+}
+
+// postUpdateRewriteScript returns a stand-in release binary whose post-update
+// step writes content to unitPath and records that it ran in marker. hang makes
+// the step run until its bound or context stops it; otherwise it exits with
+// code.
+func postUpdateRewriteScript(version, unitPath, content, marker string, code int, hang bool) []byte {
+	tail := fmt.Sprintf("exit %d\n", code)
+	if hang {
+		tail = "exec sleep 30\n"
+	}
+	return []byte(fmt.Sprintf(`#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "peers %s"
+  exit 0
+fi
+printf '%%s' '%s' > '%s'
+printf 'ran\n' > '%s'
+%s
+`, version, content, unitPath, marker, tail))
+}
+
+// unitGuardFixture points the unit restore at a temporary user level: the
+// account home and the user configuration directory live under one temporary
+// directory, and a stand-in systemctl records the commands a restore runs. It
+// returns the unit path that level's rewrite targets and a function that reads
+// the recorded commands.
+func unitGuardFixture(t *testing.T) (unitPath string, commands func() []string) {
+	t.Helper()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	xdg := filepath.Join(root, "config")
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatalf("create the stand-in binary directory: %v", err)
+	}
+	logPath := filepath.Join(root, "systemctl.log")
+	const systemctl = "#!/bin/sh\nprintf 'systemctl %s\\n' \"$*\" >> \"$PEERS_SYSTEMCTL_LOG\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "systemctl"), []byte(systemctl), 0o755); err != nil {
+		t.Fatalf("write the stand-in systemctl: %v", err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	t.Setenv("PEERS_SYSTEMCTL_LOG", logPath)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	switch runtime.GOOS {
+	case "linux":
+		unitPath = filepath.Join(xdg, "systemd", "user", service.UnitName)
+	case "darwin":
+		unitPath = filepath.Join(home, "Library", "LaunchAgents", service.Label+".plist")
+	default:
+		t.Fatalf("the unit guard fixture supports linux and darwin, not %s", runtime.GOOS)
+	}
+	return unitPath, func() []string {
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			t.Fatalf("read the recorded systemctl commands: %v", err)
+		}
+		return strings.Split(strings.TrimSpace(string(data)), "\n")
+	}
+}
+
+// writeTestUnit writes a main unit file, creating its directory.
+func writeTestUnit(t *testing.T, path string, content []byte) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create the unit directory: %v", err)
+	}
+	if err := os.WriteFile(path, content, 0o644); err != nil {
+		t.Fatalf("write the unit file %s: %v", path, err)
+	}
+}
+
+// assertNoUnitTempFiles checks that the atomic rewrite left no temporary file
+// next to the unit.
+func assertNoUnitTempFiles(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read the unit directory %s: %v", dir, err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".peers-install-") {
+			t.Errorf("temporary unit file %q was left behind", entry.Name())
+		}
+	}
+}
+
+// TestInstallPostUpdateTimeoutRestoresTheUnit checks the backstop the old
+// binary provides: the step is killed by its bound after it rewrote the unit,
+// so its own restore never runs, and the old binary must put the original bytes
+// back before it returns the failure.
+func TestInstallPostUpdateTimeoutRestoresTheUnit(t *testing.T) {
+	const version = "0.2.0"
+	original := []byte("original binary")
+	target, before := newTarget(t, original, 0o750)
+	unit, commands := unitGuardFixture(t)
+	oldUnit := []byte("old unit\n")
+	writeTestUnit(t, unit, oldUnit)
+	marker := filepath.Join(filepath.Dir(target), "post-update-ran")
+	script := postUpdateRewriteScript(version, unit, "new unit\n", marker, 0, true)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	start := time.Now()
+	err := Install(ctx, serveScript(t, target, version, script), "user")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Install() = nil, want a timeout error")
+	}
+	for _, want := range []string{"timed out", "previous binary was restored"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if elapsed > 10*time.Second {
+		t.Errorf("Install() took %s, want it to stop near the deadline", elapsed)
+	}
+	if _, statErr := os.Stat(marker); statErr != nil {
+		t.Fatalf("the post-update step did not run: %v", statErr)
+	}
+	if got, readErr := os.ReadFile(unit); readErr != nil {
+		t.Fatalf("read the unit file after the timeout: %v", readErr)
+	} else if !bytes.Equal(got, oldUnit) {
+		t.Errorf("unit content after the timeout = %q, want the original %q", got, oldUnit)
+	}
+	assertUnchanged(t, target, original, before)
+	assertNoRollbackFiles(t, filepath.Dir(target))
+	assertNoUnitTempFiles(t, filepath.Dir(unit))
+	if runtime.GOOS == "linux" {
+		if got := commands(); !slices.Contains(got, "systemctl --user daemon-reload") {
+			t.Errorf("systemctl commands = %q, want a daemon-reload after the restore", got)
+		}
+	}
+}
+
+// TestInstallPostUpdateFailureRemovesANewUnit checks the file that did not
+// exist before the update: a failed step leaves the new definition behind, and
+// the restore removes it instead of recreating an empty one.
+func TestInstallPostUpdateFailureRemovesANewUnit(t *testing.T) {
+	const version = "0.2.0"
+	original := []byte("original binary")
+	target, before := newTarget(t, original, 0o750)
+	unit, _ := unitGuardFixture(t)
+	if err := os.MkdirAll(filepath.Dir(unit), 0o755); err != nil {
+		t.Fatalf("create the unit directory: %v", err)
+	}
+	marker := filepath.Join(filepath.Dir(target), "post-update-ran")
+	script := postUpdateRewriteScript(version, unit, "new unit\n", marker, 3, false)
+
+	err := Install(context.Background(), serveScript(t, target, version, script), "user")
+	if err == nil {
+		t.Fatal("Install() = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "previous binary was restored") {
+		t.Errorf("error %q does not say the binary was restored", err)
+	}
+	if _, statErr := os.Stat(unit); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("a unit the failed step created was left behind: %v", statErr)
+	}
+	assertUnchanged(t, target, original, before)
+	assertNoRollbackFiles(t, filepath.Dir(target))
+	assertNoUnitTempFiles(t, filepath.Dir(unit))
+}
+
+// TestInstallPostUpdateCancelRestoresTheUnit checks the second way the step
+// never restores itself: its context is canceled while it runs. The old binary
+// must restore the original bytes anyway.
+func TestInstallPostUpdateCancelRestoresTheUnit(t *testing.T) {
+	const version = "0.2.0"
+	original := []byte("original binary")
+	target, before := newTarget(t, original, 0o750)
+	unit, _ := unitGuardFixture(t)
+	oldUnit := []byte("old unit\n")
+	writeTestUnit(t, unit, oldUnit)
+	marker := filepath.Join(filepath.Dir(target), "post-update-ran")
+	script := postUpdateRewriteScript(version, unit, "new unit\n", marker, 0, true)
+	o := serveScript(t, target, version, script)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- Install(ctx, o, "user")
+	}()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, statErr := os.Stat(marker); statErr == nil {
+			break
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatal("the post-update step did not run")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Install() did not return after the context was canceled")
+	}
+	if err == nil {
+		t.Fatal("Install() = nil, want a cancellation error")
+	}
+	for _, want := range []string{"canceled", "previous binary was restored"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if got, readErr := os.ReadFile(unit); readErr != nil {
+		t.Fatalf("read the unit file after the cancellation: %v", readErr)
+	} else if !bytes.Equal(got, oldUnit) {
+		t.Errorf("unit content after the cancellation = %q, want the original %q", got, oldUnit)
+	}
+	assertUnchanged(t, target, original, before)
+	assertNoRollbackFiles(t, filepath.Dir(target))
+	assertNoUnitTempFiles(t, filepath.Dir(unit))
 }

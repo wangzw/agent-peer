@@ -125,6 +125,43 @@ func restoreAfterFailure(opts Options, path string, saved savedUnit, cause error
 	return fmt.Errorf("%w; the previous service definition was restored", cause)
 }
 
+// SavedUnit is the main unit file or plist as it was before a post-update run
+// rewrote it. Content and Mode are meaningful only when Exists is true.
+type SavedUnit struct {
+	Exists  bool
+	Content []byte
+	Mode    fs.FileMode
+}
+
+// SaveMainUnit reads the main unit file or plist of opts' level before the
+// post-update step rewrites it. A missing file is not an error: restoring it
+// then removes the file the step wrote. The old binary calls this so it can
+// undo a rewrite the step's own restore never reaches, because the step was
+// killed by its bound or by a canceled context.
+func SaveMainUnit(opts Options) (SavedUnit, error) {
+	path, err := unitPath(opts)
+	if err != nil {
+		return SavedUnit{}, err
+	}
+	saved, err := saveUnit(opts, path)
+	if err != nil {
+		return SavedUnit{}, err
+	}
+	return SavedUnit{Exists: saved.exists, Content: saved.content, Mode: saved.mode}, nil
+}
+
+// RestoreMainUnit puts the main unit file or plist back as SaveMainUnit read
+// it and, on Linux, reloads the unit database again. macOS needs nothing more:
+// the detached reload helper compares the plist's executable against the new
+// binary and abandons the reload when a rollback changed it.
+func RestoreMainUnit(opts Options, saved SavedUnit) error {
+	path, err := unitPath(opts)
+	if err != nil {
+		return err
+	}
+	return restoreUnit(opts, path, savedUnit{exists: saved.Exists, content: saved.Content, mode: saved.Mode})
+}
+
 // saveUnit reads the main unit file or plist before this run replaces it.
 // A missing file is not an error: restoring it then means removing the file
 // this run wrote.

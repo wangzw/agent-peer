@@ -604,6 +604,8 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 
 第一段失败（退出码非 0 且不是 2，或者超时）时，`ApplyUpdate` 把二进制回滚为旧版本，不重启，写一条 `update_failed` 审计记录，向调用方返回错误，消息写明原因。重新加载失败时，新二进制在报错前先把它替换掉的主单元恢复成调用前的样子，并在 Linux 上再执行一次 `daemon-reload`；恢复本身失败时另记一条 `update_failed`，Detail 写明单元未能恢复，调用方据此知道磁盘与服务管理器可能不一致。新二进制不认识这个子命令时进程以 2 退出，视为不需要更新后步骤，更新继续；将来删掉该子命令的版本因此不会让更早的更新路径卡住。
 
+单元恢复由旧二进制兜底。调用 `internal post-update` 之前，旧二进制先读取并保存该级别主单元的原始字节：Linux 是 systemd 单元，macOS 是 plist。第一段以任何非 0、非 2 的状态结束都算失败，包括触及 `postUpdateTimeout` 上限与上下文取消；旧二进制在回滚二进制的同时把主单元恢复成调用前的样子，原本不存在时删掉本次新写的文件。Linux 在恢复后再执行一次 `daemon-reload`，让 systemd 忘掉新格式；macOS 不需要额外处理，辅助进程在重载前核对 plist 指向的可执行文件的设备号与 inode，二进制已回滚就放弃重载。新二进制与旧二进制的分工是：新二进制在恢复逻辑来得及执行时尽力恢复，覆盖重新加载失败这类它能返回错误的情形；旧二进制的保存与恢复是兜底，覆盖新二进制被上限或上下文取消杀死、自身恢复逻辑没有机会运行的路径。两者都执行时，旧二进制按自己保存的字节再写一遍，结果相同。
+
 第二段是让服务管理器加载新定义。`ApplyUpdate` 写完 `update_applied` 审计记录、发出 `restarting=true` 的应答后退出：Linux 按已经重新读取的单元重启，macOS 由辅助进程重新加载。这一段失败时调用方已经收到成功应答，无法再报错。macOS 的辅助进程把失败写进 `post-update.log` 与审计日志，Detail 以 `second phase:` 开头，`peers update` 等待 Broker 回来的超时提示同时给出 Broker 服务日志与 `post-update.log` 的位置。Linux 这一段由服务管理器执行，本项目拿不到它的结果，因此不写审计；重启失败只出现在 systemd 的日志与单元状态里，`peers update` 的等待超时同样给出服务日志的位置。
 
 `ApplyUpdate` 调用新二进制的上限为 `postUpdateTimeout`（30 秒，具名常量），覆盖第一段的重写与重新读取。上限可以在调用时替换（`update.PostUpdateOptions.Timeout`），测试据此在不带期限的上下文里验证它确实生效。
@@ -615,7 +617,7 @@ Broker 处理 `ApplyUpdate`：
 1. 判定服务管理器：向该级别的服务管理器查询服务的主进程 PID（Linux 上 `systemctl [--user] show --property MainPID --value peers.service`，macOS 上 `launchctl print system/<label>` 或 `launchctl print gui/<uid>/<label>` 中的 `pid`），只有它等于本进程 PID 才算由服务管理器启动；查询失败、服务未安装、PID 不一致都按不是处理。不是时返回 `failed_precondition`，说明需要以服务方式运行，并给出该级别的 `service install` 命令。
 2. 取本项目最新的正式发布版本。当前版本不是正式发布版本时，`update.Newer` 视为不更新，按已是最新处理；否则 `update.Newer` 不为真时返回空的 `to_version`，不做任何改动（`REQ-update-007`、`REQ-update-008`）。
 3. 目标为 `os.Executable()` 解析符号链接后的路径，调用 `update.Install`。失败时写一条 `update_failed` 审计记录，带调用方账户与原因，返回错误；二进制不变，进程不退出。
-4. 换完二进制后按“更新后步骤”执行第一段。它失败或超时时回滚二进制；新二进制已经恢复了它改过的服务定义，恢复失败时另有审计。按上一步的失败处理：写 `update_failed` 审计记录，返回错误，进程不退出。
+4. 换完二进制后按“更新后步骤”执行第一段。调用前旧二进制先保存该级别主单元的原始字节；第一段失败或超时时回滚二进制，并连同主单元一起恢复。单元恢复由旧二进制兜底，新二进制在来得及执行时先尽力恢复，恢复失败时另有审计。按上一步的失败处理：写 `update_failed` 审计记录，返回错误，进程不退出。
 5. 第一段成功后写一条 `update_applied` 审计记录，记录调用方账户与新旧版本，再把带 `restarting=true` 的应答完整发出。应答发出后等 `updateShutdownGrace`（500 毫秒，让应答经本机 socket 送达调用方）再取消运行上下文，走正常关闭流程，退出码为 0；服务管理器按 `Restart=always` 或 `KeepAlive` 用新二进制拉起，macOS 的辅助进程按第 4 步重写的 plist 重新加载服务。
 6. 同一时间只允许一个升级执行；第一个完成之前到达的请求返回 `aborted`。
 
