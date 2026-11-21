@@ -163,7 +163,7 @@ func TestSystemSocketGroupReappliedOnReload(t *testing.T) {
 
 	sgAssertNotPermitted(t, "other", sgSocketPath)
 	if res := syscontainer.RunAs(t, "peer",
-		[]string{"PEERS_TEST_SOCKET=" + sgSocketPath}, "status"); res.ExitCode != 0 {
+		[]string{"PEERS_TEST_SOCKET=" + sgSocketPath}, "service", "status"); res.ExitCode != 0 {
 		t.Errorf("status as peer through the reloaded system socket: exit %d\n%s", res.ExitCode, res.Stderr)
 	}
 }

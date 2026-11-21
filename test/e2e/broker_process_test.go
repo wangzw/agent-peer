@@ -256,7 +256,7 @@ const bpConcurrentStartScript = `
 bin=$1; listen=$2; out=$3
 i=1
 while [ $i -le 5 ]; do
-  ( "$bin" broker --listen "$listen" >/dev/null 2>"$out/$i.err"; echo $? >"$out/$i.code" ) </dev/null >/dev/null 2>&1 &
+  ( "$bin" service run --listen "$listen" >/dev/null 2>"$out/$i.err"; echo $? >"$out/$i.code" ) </dev/null >/dev/null 2>&1 &
   i=$((i+1))
 done
 n=0

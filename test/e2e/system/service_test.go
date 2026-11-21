@@ -42,6 +42,23 @@ func TestServiceInstall(t *testing.T) {
 		return
 	}
 
+	t.Run("root without a level flag installs the system level", func(t *testing.T) {
+		// Neither --system nor --user: root selects the system level, and both
+		// the summary and the written unit must show it.
+		res := runCommandAs(t, "root", releaseBinary, "service", "install")
+		if res.ExitCode != 0 {
+			t.Fatalf("service install as root: exit %d\nstdout: %s\nstderr: %s",
+				res.ExitCode, res.Stdout, res.Stderr)
+		}
+		if want := "installed (system-level, starts at boot)\n"; !strings.Contains(res.Stdout, want) {
+			t.Errorf("summary does not report the system level:\n%s", res.Stdout)
+		}
+		if content := readFile(t, systemUnitPath); !strings.Contains(content,
+			"ExecStart="+releaseBinary+" service run --system --allow-degraded") {
+			t.Errorf("the installed unit is not the system-level one:\n%s", content)
+		}
+	})
+
 	t.Run("system unit is written and enabled", func(t *testing.T) {
 		installSystemService(t)
 
@@ -148,12 +165,14 @@ func TestServiceInstall(t *testing.T) {
 	})
 
 	t.Run("user install as root is refused", func(t *testing.T) {
-		res := runCommandAs(t, "root", releaseBinary, "service", "install")
+		// Without a level flag root installs at the system level, so the
+		// refused request is the explicit --user one.
+		res := runCommandAs(t, "root", releaseBinary, "service", "install", "--user")
 		if res.ExitCode == 0 {
-			t.Fatalf("service install as root without --system succeeded; stdout: %s, stderr: %s", res.Stdout, res.Stderr)
+			t.Fatalf("service install --user as root succeeded; stdout: %s, stderr: %s", res.Stdout, res.Stderr)
 		}
 		if !strings.Contains(res.Stderr, "must not run as root") {
-			t.Errorf("service install as root = exit %d, stderr %q, want a root rejection",
+			t.Errorf("service install --user as root = exit %d, stderr %q, want a root rejection",
 				res.ExitCode, strings.TrimSpace(res.Stderr))
 		}
 	})
