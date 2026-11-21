@@ -222,6 +222,11 @@ func TestConfigUsageErrors(t *testing.T) {
 			wantStderr: usageDiagnostic("peers config", `unknown command "bogus" for "peers config"`),
 		},
 		{
+			name:       "config list extra argument",
+			args:       []string{"config", "list", "x"},
+			wantStderr: usageDiagnostic("peers config list", `unexpected argument "x"`),
+		},
+		{
 			name:       "config get unknown flag",
 			args:       []string{"config", "get", "--bogus"},
 			wantStderr: usageDiagnostic("peers config get", "unknown flag: --bogus"),
@@ -282,6 +287,7 @@ func TestConfigHelp(t *testing.T) {
 	}{
 		{"config -h", []string{"config", "-h"}, "peers config"},
 		{"config --help", []string{"config", "--help"}, "peers config"},
+		{"config list -h", []string{"config", "list", "-h"}, "peers config list"},
 		{"config get -h", []string{"config", "get", "-h"}, "peers config get <key>"},
 		{"config get after key", []string{"config", "get", "broker.alias", "--help"}, "peers config get <key>"},
 		{"config set --help", []string{"config", "set", "--help"}, "peers config set <key> <value>"},

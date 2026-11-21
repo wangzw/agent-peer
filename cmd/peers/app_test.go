@@ -221,11 +221,17 @@ func TestParentCommandsExitWithUsage(t *testing.T) {
 		wantStderr string
 	}{
 		{args: []string{"completion"}},
-		{args: []string{"completion", "bogus"}},
-		{args: []string{"completion", "bash", "x"}},
+		{
+			args:       []string{"completion", "bogus"},
+			wantStderr: usageDiagnostic("peers completion", `unknown command "bogus" for "peers completion"`),
+		},
+		{
+			args:       []string{"completion", "bash", "x"},
+			wantStderr: usageDiagnostic("peers completion bash", `unknown command "x" for "peers completion bash"`),
+		},
 		{
 			args:       []string{"help", "bogus"},
-			wantStderr: "peers help: unknown help topic \"bogus\"\nRun 'peers help --help' for usage.\n",
+			wantStderr: usageDiagnostic("peers help", `unknown help topic "bogus"`),
 		},
 	}
 	for _, tc := range cases {
@@ -268,19 +274,28 @@ func TestCompletionDoesNotOfferHelp(t *testing.T) {
 }
 
 func TestUnknownInternalCommandIsHidden(t *testing.T) {
-	cases := [][]string{
-		{"internal"},
-		{"internal", "nope"},
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{
+			args: []string{"internal"},
+			want: usageDiagnostic("peers internal", `unknown command ""`),
+		},
+		{
+			args: []string{"internal", "nope"},
+			want: usageDiagnostic("peers internal", `unknown command "nope"`),
+		},
 	}
-	for _, args := range cases {
-		t.Run(strings.Join(args, " "), func(t *testing.T) {
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			a, stdout, stderr, _ := newDispatchApp("dev")
 
-			if got := a.run(context.Background(), args); got != exitUsage {
-				t.Fatalf("run(%q) = %d, want %d", args, got, exitUsage)
+			if got := a.run(context.Background(), tc.args); got != exitUsage {
+				t.Fatalf("run(%q) = %d, want %d", tc.args, got, exitUsage)
 			}
-			if strings.Contains(stderr.String(), "usage: peers") {
-				t.Fatalf("stderr = %q, want no top-level usage for the hidden group", stderr.String())
+			if got := stderr.String(); got != tc.want {
+				t.Fatalf("stderr = %q, want %q", got, tc.want)
 			}
 			if stdout.Len() != 0 {
 				t.Fatalf("stdout = %q, want empty", stdout.String())

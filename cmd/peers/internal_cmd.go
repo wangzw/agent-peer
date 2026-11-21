@@ -41,9 +41,9 @@ func (a *app) addInternalCommands(root *cobra.Command) {
 		Hidden: true,
 		RunE: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return usageErrorf("internal: unknown command %q", args[0])
+				return usageErrorf("unknown command %q", args[0])
 			}
-			return usageErrorf(`internal: unknown command ""`)
+			return usageErrorf(`unknown command ""`)
 		},
 	}
 	internal.AddCommand(

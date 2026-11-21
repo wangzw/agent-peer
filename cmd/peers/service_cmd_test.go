@@ -40,11 +40,14 @@ func setServiceSeams(
 func TestServiceInstallMapsSystemFlag(t *testing.T) {
 	cases := []struct {
 		args       []string
+		euid       int
 		wantSystem bool
 	}{
-		{[]string{"service", "install"}, false},
-		{[]string{"service", "install", "--user"}, false},
-		{[]string{"service", "install", "--system"}, true},
+		{[]string{"service", "install"}, 1000, false},
+		{[]string{"service", "install", "--user"}, 1000, false},
+		{[]string{"service", "install", "--system"}, 1000, true},
+		{[]string{"service", "install"}, 0, true},
+		{[]string{"service", "install", "--user"}, 0, false},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
@@ -84,6 +87,7 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 			)
 
 			a, stdout, stderr, _ := newDispatchApp("dev")
+			a.deps.euid = func() int { return tc.euid }
 			if got := a.run(context.Background(), tc.args); got != exitOK {
 				t.Fatalf("run(%q) = %d, want %d (stderr %q)", tc.args, got, exitOK, stderr.String())
 			}
@@ -483,14 +487,38 @@ func TestServiceUsageErrors(t *testing.T) {
 			args:       []string{"service", "bogus"},
 			wantStderr: usageDiagnostic("peers service", `unknown command "bogus" for "peers service"`),
 		},
-		{args: []string{"service", "install", "extra"}, want: `unexpected argument "extra"`},
-		{args: []string{"service", "install", "--bogus"}, want: "unknown flag: --bogus"},
-		{args: []string{"service", "install", "--admin-group", "ops"}, want: "peers service install: --admin-group requires --system"},
-		{args: []string{"service", "install", "--system", "--admin-group", "-ops"}, want: `peers service install: invalid --admin-group "-ops"`},
-		{args: []string{"service", "install", "--system", "--admin-group", "Ops"}, want: `peers service install: invalid --admin-group "Ops"`},
-		{args: []string{"service", "install", "--system", "--user"}, want: "mutually exclusive"},
-		{args: []string{"service", "remove", "extra"}, want: `unexpected argument "extra"`},
-		{args: []string{"service", "remove", "--bogus"}, want: "unknown flag: --bogus"},
+		{
+			args:       []string{"service", "install", "extra"},
+			wantStderr: usageDiagnostic("peers service install", `unexpected argument "extra"`),
+		},
+		{
+			args:       []string{"service", "install", "--bogus"},
+			wantStderr: usageDiagnostic("peers service install", "unknown flag: --bogus"),
+		},
+		{
+			args:       []string{"service", "install", "--admin-group", "ops"},
+			wantStderr: usageDiagnostic("peers service install", "--admin-group requires --system"),
+		},
+		{
+			args:       []string{"service", "install", "--system", "--admin-group", "-ops"},
+			wantStderr: usageDiagnostic("peers service install", `invalid --admin-group "-ops": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens`),
+		},
+		{
+			args:       []string{"service", "install", "--system", "--admin-group", "Ops"},
+			wantStderr: usageDiagnostic("peers service install", `invalid --admin-group "Ops": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens`),
+		},
+		{
+			args:       []string{"service", "install", "--system", "--user"},
+			wantStderr: usageDiagnostic("peers service install", "--system and --user are mutually exclusive"),
+		},
+		{
+			args:       []string{"service", "remove", "extra"},
+			wantStderr: usageDiagnostic("peers service remove", `unexpected argument "extra"`),
+		},
+		{
+			args:       []string{"service", "remove", "--bogus"},
+			wantStderr: usageDiagnostic("peers service remove", "unknown flag: --bogus"),
+		},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {

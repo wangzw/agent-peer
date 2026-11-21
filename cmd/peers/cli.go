@@ -102,6 +102,17 @@ func addYesFlag(cmd *cobra.Command) *bool {
 	return cmd.Flags().BoolP("yes", "y", false, "do not ask for confirmation")
 }
 
+// noPositionalArgs rejects positional arguments as a usage error. Every
+// command that takes none uses it, so the diagnostic is the same everywhere.
+// The framework turns the error's exit code into 2 and prints the command path
+// and help hint.
+func noPositionalArgs(_ *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return usageErrorf("unexpected argument %q", args[0])
+	}
+	return nil
+}
+
 // confirm asks prompt on standard error and returns the answer. yes skips the
 // question and returns true. Without a terminal and without yes, the error
 // wraps errNeedsYes so the caller can detect the missing confirmation flag.

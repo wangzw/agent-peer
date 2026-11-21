@@ -23,14 +23,6 @@ var (
 	installedFn      = service.Installed
 )
 
-// noPositionalArgs rejects positional arguments as a usage error.
-func noPositionalArgs(_ *cobra.Command, args []string) error {
-	if len(args) > 0 {
-		return usageErrorf("unexpected argument %q", args[0])
-	}
-	return nil
-}
-
 // serviceCommand builds the "service" group: everything that acts on the local
 // Broker. The group itself has no body; the tree-wide fallback prints its usage
 // and rejects an unknown verb.

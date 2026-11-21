@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -9,11 +10,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestHelpGroupIDs(t *testing.T) {
-	if groupPairing != "pairing" || groupLocal != "local" || groupInstall != "install" {
-		t.Fatalf("group ids = %q, %q, %q, want pairing, local, install",
-			groupPairing, groupLocal, groupInstall)
-	}
+// withTerminalAnswer makes isTerminal report a terminal for one test, so
+// confirm reads the answer from stdin without a pseudo-terminal. answer is
+// written to a.stdin.
+func withTerminalAnswer(t *testing.T, a *app, answer string) {
+	t.Helper()
+	previous := isTerminal
+	isTerminal = func(io.Reader) bool { return true }
+	t.Cleanup(func() { isTerminal = previous })
+	a.stdin = strings.NewReader(answer)
 }
 
 func TestExitErrorCarriesTheCodeAndCause(t *testing.T) {
@@ -121,7 +126,7 @@ func TestAddYesFlag(t *testing.T) {
 }
 
 func TestConfirmSkipsTheQuestionWithYes(t *testing.T) {
-	a, stdout, _, _ := newDispatchApp("dev")
+	a, stdout, stderr, _ := newDispatchApp("dev")
 
 	confirmed, err := a.confirm("Continue? [y/N] ", true)
 	if err != nil {
@@ -133,18 +138,15 @@ func TestConfirmSkipsTheQuestionWithYes(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want no prompt", stdout.String())
 	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want no prompt", stderr.String())
+	}
 }
 
 func TestConfirmWritesTheQuestionToStderr(t *testing.T) {
 	a, stdout, stderr, _ := newDispatchApp("dev")
-	// os.DevNull is a character device, so it passes the terminal check while
-	// reading end-of-file, which answers the question with an empty line.
-	tty, err := os.Open(os.DevNull)
-	if err != nil {
-		t.Fatalf("open %s: %v", os.DevNull, err)
-	}
-	defer func() { _ = tty.Close() }()
-	a.stdin = tty
+	// An empty answer declines the question.
+	withTerminalAnswer(t, a, "\n")
 
 	confirmed, err := a.confirm("Continue? [y/N] ", false)
 	if err != nil {
@@ -158,6 +160,53 @@ func TestConfirmWritesTheQuestionToStderr(t *testing.T) {
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want no question", stdout.String())
+	}
+}
+
+func TestConfirmAnswersYesFromTheTerminal(t *testing.T) {
+	a, stdout, stderr, _ := newDispatchApp("dev")
+	withTerminalAnswer(t, a, "y\n")
+
+	confirmed, err := a.confirm("Continue? [y/N] ", false)
+	if err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	if !confirmed {
+		t.Fatal("confirm returned false for an answer of y")
+	}
+	if want := "Continue? [y/N] "; stderr.String() != want {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want no question", stdout.String())
+	}
+}
+
+// devNullStdin opens /dev/null, which a character-device check mistakes for a
+// terminal but a real isatty check does not.
+func devNullStdin(t *testing.T, a *app) {
+	t.Helper()
+	f, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatalf("opening %s: %v", os.DevNull, err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	a.stdin = f
+}
+
+func TestConfirmTreatsDevNullAsNoTerminal(t *testing.T) {
+	a, _, _, _ := newDispatchApp("dev")
+	devNullStdin(t, a)
+
+	confirmed, err := a.confirm("Continue? [y/N] ", false)
+	if err == nil {
+		t.Fatal("confirm treated /dev/null as a terminal")
+	}
+	if confirmed {
+		t.Fatal("confirm returned true without an answer")
+	}
+	if !errors.Is(err, errNeedsYes) {
+		t.Fatalf("error = %v, want it to wrap errNeedsYes", err)
 	}
 }
 

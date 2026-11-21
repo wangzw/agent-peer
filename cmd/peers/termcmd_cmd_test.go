@@ -204,8 +204,8 @@ func TestStatusRejectsUnknownFlag(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), "unknown flag: --bogus") {
-		t.Fatalf("stderr = %q, want it to name the unknown flag", stderr.String())
+	if want := usageDiagnostic("peers service status", "unknown flag: --bogus"); stderr.String() != want {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 	}
 }
 
@@ -219,8 +219,8 @@ func TestStatusRejectsArguments(t *testing.T) {
 	if stub.statusCalls != 0 {
 		t.Fatalf("runStatus called %d times, want 0", stub.statusCalls)
 	}
-	if !strings.Contains(stderr.String(), `unexpected argument "x"`) {
-		t.Fatalf("stderr = %q, want the unexpected argument message", stderr.String())
+	if want := usageDiagnostic("peers service status", `unexpected argument "x"`); stderr.String() != want {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 	}
 }
 
@@ -234,8 +234,8 @@ func TestAuditRejectsArguments(t *testing.T) {
 	if stub.auditCalls != 0 {
 		t.Fatalf("runAudit called %d times, want 0", stub.auditCalls)
 	}
-	if !strings.Contains(stderr.String(), `unexpected argument "x"`) {
-		t.Fatalf("stderr = %q, want the unexpected argument message", stderr.String())
+	if want := usageDiagnostic("peers service audit", `unexpected argument "x"`); stderr.String() != want {
+		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 	}
 }
 

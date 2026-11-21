@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
+
 	"github.com/wangzw/peers/internal/broker/service"
 	"github.com/wangzw/peers/internal/broker/update"
 )
@@ -55,22 +57,13 @@ func newUpdateCommand(a *app) *cobra.Command {
 		Use:     "update",
 		Short:   "Install the newest release of peers",
 		GroupID: groupInstall,
-		Args:    noArgs,
+		Args:    noPositionalArgs,
 	}
 	yes := addYesFlag(cmd)
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		return a.updateCmd(cmd.Context(), *yes)
 	}
 	return cmd
-}
-
-// noArgs rejects positional arguments as a usage error. The framework turns the
-// error's exit code into 2 and prints the command path and help hint.
-func noArgs(_ *cobra.Command, args []string) error {
-	if len(args) > 0 {
-		return usageErrorf("unexpected argument %q", args[0])
-	}
-	return nil
 }
 
 // updateCmd implements "peers update [--yes]". It asks the selected
@@ -114,7 +107,9 @@ func (a *app) updateLocal(ctx context.Context, current string) error {
 		return err
 	}
 	if err := checkTargetDirWritable(filepath.Dir(target)); err != nil {
-		return fmt.Errorf("%w; run \"sudo peers update\" to update a system-level installation", err)
+		// The framework prefixes the first line with the command path; the
+		// sudo hint is a separate line, as the design writes it.
+		return fmt.Errorf("%w\nrun \"sudo peers update\" to update a system-level installation", err)
 	}
 
 	api := a.deps.updateAPIBase()
@@ -257,18 +252,14 @@ func checkTargetDirWritable(dir string) error {
 	return nil
 }
 
-// isTerminal reports whether r is a character device, which is how a real
-// terminal reaches the process. A pipe or a redirected file is not one.
-func isTerminal(r io.Reader) bool {
+// isTerminal reports whether r is a terminal. The check is a variable so a
+// test can answer a confirmation question without a pseudo-terminal.
+var isTerminal = func(r io.Reader) bool {
 	f, ok := r.(*os.File)
 	if !ok {
 		return false
 	}
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
+	return term.IsTerminal(int(f.Fd()))
 }
 
 // readAnswer reads one line from r. End of input before a newline is not an

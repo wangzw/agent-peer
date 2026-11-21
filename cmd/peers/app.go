@@ -190,8 +190,10 @@ func (a *app) newRootCommand() *cobra.Command {
 //
 // Option parsing errors are handled by the root command's flag error function,
 // which cobra applies to every command below it. The hidden __complete command
-// is added by cobra's ExecuteC, after this walk, so no fallback is installed
-// for it.
+// is added by cobra's ExecuteC, after this walk, so its own Args check is not
+// wrapped: a malformed completion request therefore exits with code 1 rather
+// than the usage code 2. The completion scripts only call it internally, so
+// that exit code is not part of the command-line contract.
 func (a *app) applyExitCodeContract(cmd *cobra.Command) {
 	if cmd.Args != nil {
 		check := cmd.Args

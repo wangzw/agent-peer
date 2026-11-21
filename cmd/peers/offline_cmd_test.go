@@ -129,8 +129,8 @@ func TestOfflineRejectsArguments(t *testing.T) {
 			if len(stub.setOnlineCalls) != 0 {
 				t.Fatalf("runSetOnline called %d times, want 0", len(stub.setOnlineCalls))
 			}
-			if !strings.Contains(stderr.String(), `unexpected argument "extra"`) {
-				t.Fatalf("stderr = %q, want the usage error", stderr.String())
+			if want := usageDiagnostic("peers service "+command, `unexpected argument "extra"`); stderr.String() != want {
+				t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 			}
 
 			a, stdout, _ := newTermcmdApp(&termcmdStub{})

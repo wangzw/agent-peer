@@ -30,7 +30,7 @@ func (a *app) newConfigListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List every configuration item",
-		Args:  cobra.NoArgs,
+		Args:  noPositionalArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return a.deps.runConfigGet(cmd.Context(), "", a.stdout)
 		},

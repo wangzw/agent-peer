@@ -76,19 +76,6 @@ func newUpdateTestEnv(t *testing.T) *updateTestEnv {
 	return env
 }
 
-// decliningStdin opens /dev/null, which is a character device. confirm treats
-// it as a terminal, prints its prompt and then reads an empty answer, so the
-// real confirmation code takes the decline path without a pseudo-terminal.
-func decliningStdin(t *testing.T) *os.File {
-	t.Helper()
-	f, err := os.Open(os.DevNull)
-	if err != nil {
-		t.Fatalf("opening %s: %v", os.DevNull, err)
-	}
-	t.Cleanup(func() { _ = f.Close() })
-	return f
-}
-
 func assertBinaryUnchanged(t *testing.T, path string) {
 	t.Helper()
 	got, err := os.ReadFile(path)
@@ -156,7 +143,7 @@ func TestUpdateRefusesNonTerminalInputWithoutYes(t *testing.T) {
 func TestUpdateUserDeclines(t *testing.T) {
 	env := newUpdateTestEnv(t)
 	a, stdout, stderr, stub := newDispatchApp("0.1.1")
-	a.stdin = decliningStdin(t)
+	withTerminalAnswer(t, a, "\n")
 
 	if got := a.run(context.Background(), []string{"update"}); got != exitOK {
 		t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
@@ -234,10 +221,41 @@ func TestUpdateFailsBeforeAnyDownloadWithoutWritePermission(t *testing.T) {
 	if env.transport.calls != 0 {
 		t.Fatalf("network requests = %d, want none before the permission check passes", env.transport.calls)
 	}
-	if !strings.Contains(stderr.String(), `run "sudo peers update"`) {
-		t.Fatalf("stderr = %q, want the sudo hint", stderr.String())
+	errOut := stderr.String()
+	hint := "run \"sudo peers update\" to update a system-level installation\n"
+	if !strings.HasPrefix(errOut, "peers update: cannot write to ") {
+		t.Fatalf("stderr = %q, want the error line first", errOut)
+	}
+	if !strings.HasSuffix(errOut, hint) {
+		t.Fatalf("stderr = %q, want the sudo hint on its own line", errOut)
+	}
+	if got := strings.Count(errOut, "\n"); got != 2 {
+		t.Fatalf("stderr has %d lines, want the error line and the sudo hint:\n%s", got, errOut)
 	}
 	assertBinaryUnchanged(t, target)
+}
+
+func TestUpdateAnswersYesFromTheTerminal(t *testing.T) {
+	newUpdateTestEnv(t)
+	stub := &stubDeps{
+		brokerUpdate: brokerUpdateResult{FromVersion: "0.1.1", ToVersion: "0.1.2"},
+	}
+	a, stdout, stderr, _ := newDispatchApp("0.1.1")
+	a.deps = stub.deps()
+	withTerminalAnswer(t, a, "y\n")
+
+	if got := a.run(context.Background(), []string{"update"}); got != exitOK {
+		t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	}
+	if stub.brokerApplyCalls != 1 {
+		t.Fatalf("broker apply calls = %d, want 1 after answering y", stub.brokerApplyCalls)
+	}
+	if !strings.Contains(stderr.String(), "[y/N]") {
+		t.Fatalf("stderr = %q, want the confirmation question", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "Update canceled") {
+		t.Fatalf("stdout = %q, want the update to proceed", stdout.String())
+	}
 }
 
 func TestUpdateFallsBackToLocalForAUserBroker(t *testing.T) {
@@ -357,7 +375,7 @@ func TestUpdateAsksBeforeTheBrokerCall(t *testing.T) {
 	t.Run("declined", func(t *testing.T) {
 		env := newUpdateTestEnv(t)
 		a, stdout, stderr, stub := newDispatchApp("0.1.1")
-		a.stdin = decliningStdin(t)
+		withTerminalAnswer(t, a, "\n")
 		if got := a.run(context.Background(), []string{"update"}); got != exitOK {
 			t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
 		}

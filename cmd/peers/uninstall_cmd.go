@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +19,10 @@ import (
 // uninstallDataPrompt asks whether to delete the configuration, identity and
 // logs. --purge skips it and deletes them; --yes skips it and keeps them.
 const uninstallDataPrompt = "Also remove configuration, identity, audit and service logs? [y/N] "
+
+// uninstallSystemPrompt asks before re-running the command through sudo. It is
+// written to standard error, like every other confirmation question.
+const uninstallSystemPrompt = "Remove the system-level installation through sudo? [y/N] "
 
 // The test seams replace the installation steps so the command can be checked
 // without touching the system.
@@ -39,6 +45,7 @@ var (
 		installed, err := service.Installed(opts)
 		return err == nil && installed
 	}
+	uninstallSudoFn = runSudoUninstall
 )
 
 // newUninstallCommand builds "peers uninstall [--purge] [--yes]".
@@ -47,7 +54,7 @@ func newUninstallCommand(a *app) *cobra.Command {
 		Use:     "uninstall",
 		Short:   "Remove the peers installation",
 		GroupID: groupInstall,
-		Args:    noArgs,
+		Args:    noPositionalArgs,
 	}
 	purge := cmd.Flags().Bool("purge", false, "also remove configuration, identity, audit and service logs")
 	yes := addYesFlag(cmd)
@@ -177,8 +184,9 @@ func (a *app) uninstallAsRoot(ctx context.Context, opts service.Options, purge, 
 }
 
 // uninstallAsAccount removes this account's user-level installation. When only
-// a system-level installation exists, it reports the command that removes it
-// instead of running sudo, so the caller can read it and rerun it verbatim.
+// a system-level installation exists, --yes re-runs the command through sudo;
+// with a terminal the account is asked first; without either the command
+// reports the complete sudo command and fails.
 func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts service.Options, purge, yes bool) error {
 	noServiceBinary := ""
 	installed, err := uninstallInstalledFn(userOpts)
@@ -214,7 +222,62 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 		return nil
 	}
 
+	// Only a system-level installation is present. --yes skips the question
+	// and re-runs the command through sudo. An account with a terminal is
+	// asked first; without a terminal and without --yes the command reports
+	// the complete sudo command and exits with failure.
+	if yes {
+		return a.sudoUninstall(ctx, purge)
+	}
+	if isTerminal(a.stdin) {
+		confirmed, err := a.confirm(uninstallSystemPrompt, false)
+		if err != nil {
+			return uninstallError("confirm the system-level uninstall", err)
+		}
+		if confirmed {
+			return a.sudoUninstall(ctx, purge)
+		}
+		_, _ = fmt.Fprintf(a.stdout, "Run: %s\n", sudoUninstallCommand(purge))
+		return nil
+	}
 	return fmt.Errorf("only a system-level installation is present; run: %s", sudoUninstallCommand(purge))
+}
+
+// sudoUninstall re-runs this command as root with --yes, so the child does not
+// ask again. The executable path is the running binary, not the name on PATH,
+// because sudo's secure_path may not contain it.
+func (a *app) sudoUninstall(ctx context.Context, purge bool) error {
+	exe, err := uninstallExecutableFn()
+	if err != nil {
+		return uninstallError("locate the executable", err)
+	}
+	args := []string{"uninstall"}
+	if purge {
+		args = append(args, "--purge")
+	}
+	args = append(args, "--yes")
+	if err := uninstallSudoFn(ctx, exe, args, a.stdin, a.stdout, a.stderr); err != nil {
+		return uninstallError("run sudo", err)
+	}
+	return nil
+}
+
+// runSudoUninstall runs sudo exe args with the caller's streams and returns the
+// child's exit code as an exitError.
+func runSudoUninstall(ctx context.Context, exe string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	cmd := exec.CommandContext(ctx, "sudo", append([]string{exe}, args...)...)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	err := cmd.Run()
+	if err == nil {
+		return nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return &exitError{code: exitErr.ExitCode()}
+	}
+	return err
 }
 
 // sudoUninstallCommand is the complete command that removes the system-level
@@ -241,20 +304,22 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 	}
 
 	// Confirmation comes after the level is known but before anything is
-	// read or removed. --purge does not ask, and --yes skips the question
-	// without deleting the data. Without a terminal, confirm reports
-	// errNeedsYes and the command exits with failure before touching
-	// anything.
+	// read or removed. --purge deletes the data without asking, and --yes
+	// skips the question without deleting it. Without a terminal, a command
+	// that would remove data needs --yes: that covers both --purge and the
+	// data question. It exits with failure before touching anything.
 	purgeData := purge
-	if !purgeData && !yes {
-		confirmed, err := a.confirm(uninstallDataPrompt, false)
-		if err != nil {
-			if errors.Is(err, errNeedsYes) {
-				return err
-			}
-			return uninstallError("confirm the data removal", err)
+	if !yes {
+		if !isTerminal(a.stdin) {
+			return errNeedsYes
 		}
-		purgeData = confirmed
+		if !purgeData {
+			confirmed, err := a.confirm(uninstallDataPrompt, false)
+			if err != nil {
+				return uninstallError("confirm the data removal", err)
+			}
+			purgeData = confirmed
+		}
 	}
 
 	if binary == "" {
@@ -366,28 +431,100 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 }
 
 // removeInstallationFiles deletes the shell completion files the install
-// script created for the level, and the system-level man pages. Files that are
-// already gone are not an error; every removed path is reported.
+// script created for the level, and the system-level man pages. A completion
+// file is removed only when its content carries the marker cobra generates for
+// this program; anything else at that path is kept and reported. A directory
+// with an installation file's name is never removed. Files that are already
+// gone are not an error; every removed path is reported.
 func (a *app) removeInstallationFiles(opts service.Options, system bool) error {
-	paths := completionFiles(opts, system)
+	for _, path := range completionFiles(opts, system) {
+		if err := a.removeCompletion(path); err != nil {
+			return err
+		}
+	}
 	if system {
-		pattern := filepath.Join(rootedPath(opts, "/usr/local/share/man/man1"), "peers*.1")
-		pages, err := filepath.Glob(pattern)
-		if err != nil {
-			return fmt.Errorf("list %s: %w", pattern, err)
-		}
-		paths = append(paths, pages...)
-	}
-	for _, path := range paths {
-		err := os.Remove(path)
-		switch {
-		case err == nil:
-			_, _ = fmt.Fprintf(a.stdout, "removed %s\n", path)
-		case errors.Is(err, os.ErrNotExist):
-		default:
-			return fmt.Errorf("remove %s: %w", path, err)
+		// The narrow patterns keep another program's man page, such as
+		// peerstat.1, even though it starts with "peer".
+		for _, pattern := range []string{"peers.1", "peers-*.1"} {
+			glob := filepath.Join(rootedPath(opts, "/usr/local/share/man/man1"), pattern)
+			pages, err := filepath.Glob(glob)
+			if err != nil {
+				return fmt.Errorf("list %s: %w", glob, err)
+			}
+			for _, path := range pages {
+				if err := a.removeInstallationFile(path); err != nil {
+					return err
+				}
+			}
 		}
 	}
+	return nil
+}
+
+// removeCompletion removes one completion file after checking it was generated
+// by this program. A file without the marker is kept, and so is a directory.
+func (a *app) removeCompletion(path string) error {
+	info, err := os.Lstat(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return nil
+	case err != nil:
+		return fmt.Errorf("inspect %s: %w", path, err)
+	}
+	if info.IsDir() {
+		_, _ = fmt.Fprintf(a.stdout, "kept %s: it is a directory\n", path)
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+	if !generatedCompletion(data) {
+		_, _ = fmt.Fprintf(a.stdout, "kept %s: it was not written by peers\n", path)
+		return nil
+	}
+	return a.removeInstallationFile(path)
+}
+
+// generatedCompletion reports whether data carries the marker cobra writes at
+// the top of the completion script for this program.
+func generatedCompletion(data []byte) bool {
+	for _, marker := range []string{
+		"# bash completion V2 for peers",
+		"#compdef peers",
+		"# fish completion for peers",
+	} {
+		if bytes.Contains(data, []byte(marker)) {
+			return true
+		}
+	}
+	return false
+}
+
+// removeInstallationFile removes a regular file. A missing path is not an
+// error; a directory is kept and reported.
+func (a *app) removeInstallationFile(path string) error {
+	info, err := os.Lstat(path)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return nil
+	case err != nil:
+		return fmt.Errorf("inspect %s: %w", path, err)
+	}
+	if info.IsDir() {
+		_, _ = fmt.Fprintf(a.stdout, "kept %s: it is a directory\n", path)
+		return nil
+	}
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("remove %s: %w", path, err)
+	}
+	_, _ = fmt.Fprintf(a.stdout, "removed %s\n", path)
 	return nil
 }
 

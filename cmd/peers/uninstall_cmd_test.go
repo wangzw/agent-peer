@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,6 +31,7 @@ type uninstallSeams struct {
 	fileOwner       func(string) (uint32, error)
 	removeFile      func(string) error
 	systemInstalled func(service.Options) bool
+	sudo            func(context.Context, string, []string, io.Reader, io.Writer, io.Writer) error
 }
 
 func withUninstallSeams(t *testing.T, s uninstallSeams) {
@@ -50,6 +52,7 @@ func withUninstallSeams(t *testing.T, s uninstallSeams) {
 		fileOwner:       uninstallFileOwnerFn,
 		removeFile:      uninstallRemoveFileFn,
 		systemInstalled: uninstallSystemInstalledCheck,
+		sudo:            uninstallSudoFn,
 	}
 	t.Cleanup(func() {
 		uninstallOptionsFn = previous.options
@@ -67,6 +70,7 @@ func withUninstallSeams(t *testing.T, s uninstallSeams) {
 		uninstallFileOwnerFn = previous.fileOwner
 		uninstallRemoveFileFn = previous.removeFile
 		uninstallSystemInstalledCheck = previous.systemInstalled
+		uninstallSudoFn = previous.sudo
 	})
 
 	if s.options != nil {
@@ -113,6 +117,9 @@ func withUninstallSeams(t *testing.T, s uninstallSeams) {
 	}
 	if s.systemInstalled != nil {
 		uninstallSystemInstalledCheck = s.systemInstalled
+	}
+	if s.sudo != nil {
+		uninstallSudoFn = s.sudo
 	}
 }
 
@@ -243,8 +250,8 @@ func TestUninstallRootSystemLevel(t *testing.T) {
 	if rec.mcpFor != "bob" || rec.mcpBinary != binary {
 		t.Errorf("MCP registration %q of %q, want bob of %s", rec.mcpFor, rec.mcpBinary, binary)
 	}
-	if strings.Contains(stdout.String(), uninstallDataPrompt) {
-		t.Errorf("stdout = %q, want no data question with --purge", stdout)
+	if strings.Contains(stderr.String(), uninstallDataPrompt) {
+		t.Errorf("stderr = %q, want no data question with --purge", stderr)
 	}
 	for _, want := range []string{
 		"stopped and removed the service /etc/systemd/system/peers.service",
@@ -292,13 +299,13 @@ func TestUninstallRootPurgeSkipsDataQuestion(t *testing.T) {
 		evalSymlinks:  func(path string) (string, error) { return path, nil },
 	})
 
-	a, stdout, stderr, _ := newDispatchApp("dev")
+	a, _, stderr, _ := newDispatchApp("dev")
 	a.deps.euid = func() int { return 0 }
 	if got := a.run(context.Background(), []string{"uninstall", "--purge", "--yes"}); got != exitOK {
 		t.Fatalf("run(uninstall --purge) = %d, want %d (stderr %s)", got, exitOK, stderr)
 	}
-	if strings.Contains(stdout.String(), uninstallDataPrompt) {
-		t.Errorf("stdout = %q, want no data question with --purge", stdout)
+	if strings.Contains(stderr.String(), uninstallDataPrompt) {
+		t.Errorf("stderr = %q, want no data question with --purge", stderr)
 	}
 	if !purged {
 		t.Error("PurgeData was not called with --purge")
@@ -628,8 +635,8 @@ func TestUninstallAccountUserLevelKeepsData(t *testing.T) {
 	if !strings.Contains(stdout.String(), "kept configuration, data and logs: /home/alice/.peers") {
 		t.Errorf("stdout = %q, want the kept paths", stdout)
 	}
-	if strings.Contains(stdout.String(), uninstallDataPrompt) {
-		t.Errorf("stdout = %q, want no data question with --yes", stdout)
+	if strings.Contains(stderr.String(), uninstallDataPrompt) {
+		t.Errorf("stderr = %q, want no data question with --yes", stderr)
 	}
 }
 
@@ -755,25 +762,99 @@ func TestUninstallAccountOnlySystemDoesNotRunSudo(t *testing.T) {
 	}
 }
 
-func TestUninstallAccountOnlySystemWithoutSudo(t *testing.T) {
-	// --yes cannot elevate an account; the refusal still names the sudo
-	// command rather than attempting it.
+// onlySystemSudoSeams installs the seams for an account whose only
+// installation is a system-level one. sudo records the call it receives.
+func onlySystemSudoSeams(t *testing.T, exe string, sudo func(context.Context, string, []string, io.Reader, io.Writer, io.Writer) error) {
+	t.Helper()
 	withUninstallSeams(t, uninstallSeams{
 		options: func(system bool) (service.Options, error) {
 			return uninstallOptions(t.TempDir(), system, 1000), nil
 		},
 		installed:  func(opts service.Options) (bool, error) { return opts.System, nil },
 		mcpLookup:  func(string) mcpRegistration { return mcpRegistration{} },
-		executable: func() (string, error) { return "/usr/local/bin/peers", nil },
+		executable: func() (string, error) { return exe, nil },
+		sudo:       sudo,
 	})
+}
 
-	a, _, stderr, _ := newDispatchApp("dev")
+func TestUninstallAccountOnlySystemYesRunsSudo(t *testing.T) {
+	var (
+		gotExe  string
+		gotArgs []string
+		calls   int
+	)
+	onlySystemSudoSeams(t, "/usr/local/bin/peers",
+		func(_ context.Context, exe string, args []string, _ io.Reader, _, _ io.Writer) error {
+			calls++
+			gotExe, gotArgs = exe, args
+			return nil
+		})
+
+	a, stdout, stderr, _ := newDispatchApp("dev")
 	a.deps.euid = func() int { return 1000 }
-	if got := a.run(context.Background(), []string{"uninstall", "--yes"}); got != exitFailure {
-		t.Fatalf("run(uninstall --yes) = %d, want %d", got, exitFailure)
+	if got := a.run(context.Background(), []string{"uninstall", "--yes"}); got != exitOK {
+		t.Fatalf("run(uninstall --yes) = %d, want %d (stderr %q)", got, exitOK, stderr)
 	}
-	if !strings.Contains(stderr.String(), "sudo peers uninstall --yes") {
-		t.Errorf("stderr = %q, want the rerunnable sudo command", stderr)
+	if calls != 1 {
+		t.Fatalf("sudo calls = %d, want 1", calls)
+	}
+	if gotExe != "/usr/local/bin/peers" {
+		t.Errorf("sudo executable = %q, want the running binary", gotExe)
+	}
+	if want := []string{"uninstall", "--yes"}; !slices.Equal(gotArgs, want) {
+		t.Errorf("sudo args = %q, want %q", gotArgs, want)
+	}
+	if strings.Contains(stderr.String(), uninstallSystemPrompt) {
+		t.Errorf("stderr = %q, want no question with --yes", stderr)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout)
+	}
+}
+
+func TestUninstallAccountOnlySystemTerminalAnswersYesRunsSudo(t *testing.T) {
+	var gotArgs []string
+	onlySystemSudoSeams(t, "/usr/local/bin/peers",
+		func(_ context.Context, _ string, args []string, _ io.Reader, _, _ io.Writer) error {
+			gotArgs = args
+			return nil
+		})
+
+	a, stdout, stderr, _ := newDispatchApp("dev")
+	a.deps.euid = func() int { return 1000 }
+	withTerminalAnswer(t, a, "y\n")
+	if got := a.run(context.Background(), []string{"uninstall", "--purge"}); got != exitOK {
+		t.Fatalf("run(uninstall --purge) = %d, want %d (stderr %q)", got, exitOK, stderr)
+	}
+	if want := []string{"uninstall", "--purge", "--yes"}; !slices.Equal(gotArgs, want) {
+		t.Errorf("sudo args = %q, want %q", gotArgs, want)
+	}
+	if !strings.Contains(stderr.String(), uninstallSystemPrompt) {
+		t.Errorf("stderr = %q, want the system-level question", stderr)
+	}
+	if strings.Contains(stdout.String(), "Run: sudo") {
+		t.Errorf("stdout = %q, want the command to run instead of being printed", stdout)
+	}
+}
+
+func TestUninstallAccountOnlySystemTerminalDeclines(t *testing.T) {
+	onlySystemSudoSeams(t, "/usr/local/bin/peers",
+		func(context.Context, string, []string, io.Reader, io.Writer, io.Writer) error {
+			t.Fatal("sudo ran after the question was declined")
+			return nil
+		})
+
+	a, stdout, stderr, _ := newDispatchApp("dev")
+	a.deps.euid = func() int { return 1000 }
+	withTerminalAnswer(t, a, "\n")
+	if got := a.run(context.Background(), []string{"uninstall"}); got != exitOK {
+		t.Fatalf("run(uninstall) = %d, want %d (stderr %q)", got, exitOK, stderr)
+	}
+	if !strings.Contains(stdout.String(), "Run: sudo peers uninstall --yes") {
+		t.Errorf("stdout = %q, want the rerunnable command", stdout)
+	}
+	if !strings.Contains(stderr.String(), uninstallSystemPrompt) {
+		t.Errorf("stderr = %q, want the system-level question", stderr)
 	}
 }
 
@@ -1178,12 +1259,30 @@ func TestUninstallRemovesTheServiceBinary(t *testing.T) {
 // writeUnderRoot creates a file at path beneath root.
 func writeUnderRoot(t *testing.T, root, path string) {
 	t.Helper()
+	writeUnderRootWith(t, root, path, "content\n")
+}
+
+// writeUnderRootWith creates a file at path beneath root with content.
+func writeUnderRootWith(t *testing.T, root, path, content string) {
+	t.Helper()
 	full := filepath.Join(root, path)
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatalf("creating %s: %v", filepath.Dir(full), err)
 	}
-	if err := os.WriteFile(full, []byte("content\n"), 0o644); err != nil {
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
 		t.Fatalf("writing %s: %v", full, err)
+	}
+}
+
+// completionMarker returns content carrying the marker cobra writes for path.
+func completionMarker(path string) string {
+	switch {
+	case strings.HasSuffix(path, "_peers"):
+		return "#compdef peers\n# zsh completion for peers\n"
+	case strings.HasSuffix(path, ".fish"):
+		return "# fish completion for peers\n"
+	default:
+		return "# bash completion V2 for peers\n"
 	}
 }
 
@@ -1244,6 +1343,111 @@ func TestUninstallWithoutTerminalNeedsYes(t *testing.T) {
 	}
 }
 
+// TestUninstallPurgeWithoutTerminalNeedsYes checks that --purge is not a
+// substitute for --yes when there is no terminal: the command fails before
+// removing anything.
+func TestUninstallPurgeWithoutTerminalNeedsYes(t *testing.T) {
+	cases := []struct {
+		name   string
+		system bool
+		euid   int
+	}{
+		{"root system level", true, 0},
+		{"account user level", false, 1000},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			rec := &uninstallRecorder{}
+			withUninstallSeams(t, uninstallSeams{
+				options: func(system bool) (service.Options, error) {
+					return uninstallOptions(root, system, tc.euid), nil
+				},
+				installed: func(opts service.Options) (bool, error) { return opts.System == tc.system, nil },
+				serviceBinary: func(service.Options) (string, bool, error) {
+					return "/usr/local/bin/peers", true, nil
+				},
+				uninstallSvc: func(service.Options) (service.Result, error) {
+					rec.steps = append(rec.steps, "service")
+					return service.Result{}, nil
+				},
+				removeMCP: func(string, string) (string, error) {
+					rec.steps = append(rec.steps, "mcp")
+					return "removed", nil
+				},
+				mcpLookup:     func(string) mcpRegistration { return mcpRegistration{} },
+				removeRuntime: func(service.Options) ([]string, error) { return nil, nil },
+				purgeData: func(service.Options) ([]string, error) {
+					rec.steps = append(rec.steps, "purge")
+					return nil, nil
+				},
+				otherAccounts:   func(service.Options) ([]string, error) { return nil, nil },
+				getenv:          func(string) string { return "" },
+				systemInstalled: func(service.Options) bool { return false },
+			})
+
+			a, stdout, stderr, _ := newDispatchApp("dev")
+			a.deps.euid = func() int { return tc.euid }
+			// The default stdin is a strings.Reader, not a terminal.
+			if got := a.run(context.Background(), []string{"uninstall", "--purge"}); got != exitFailure {
+				t.Fatalf("run(uninstall --purge) = %d, want %d (stdout %q, stderr %q)", got, exitFailure, stdout, stderr)
+			}
+			if !strings.Contains(stderr.String(), "--yes") {
+				t.Errorf("stderr = %q, want it to name --yes", stderr)
+			}
+			if len(rec.steps) != 0 {
+				t.Errorf("steps = %q, want nothing removed without --yes", rec.steps)
+			}
+		})
+	}
+}
+
+// TestUninstallAnswersYesToTheDataQuestion checks the terminal branch: the
+// question is asked on standard error, and an answer of y deletes the data.
+func TestUninstallAnswersYesToTheDataQuestion(t *testing.T) {
+	root := t.TempDir()
+	purged := false
+	withUninstallSeams(t, uninstallSeams{
+		options: func(system bool) (service.Options, error) {
+			return uninstallOptions(root, system, 1000), nil
+		},
+		installed: func(opts service.Options) (bool, error) { return !opts.System, nil },
+		serviceBinary: func(service.Options) (string, bool, error) {
+			return "/home/alice/bin/peers", true, nil
+		},
+		uninstallSvc:  func(service.Options) (service.Result, error) { return service.Result{}, nil },
+		removeMCP:     func(string, string) (string, error) { return "removed", nil },
+		mcpLookup:     func(string) mcpRegistration { return mcpRegistration{} },
+		removeRuntime: func(service.Options) ([]string, error) { return nil, nil },
+		purgeData: func(service.Options) ([]string, error) {
+			purged = true
+			return nil, nil
+		},
+		otherAccounts: func(service.Options) ([]string, error) { return nil, nil },
+		getenv:        func(string) string { return "" },
+		fileOwner:     func(string) (uint32, error) { return 1000, nil },
+		removeFile:    func(string) error { return nil },
+		executable:    func() (string, error) { return "/home/alice/bin/peers", nil },
+		evalSymlinks:  func(path string) (string, error) { return path, nil },
+		systemInstalled: func(service.Options) bool {
+			return false
+		},
+	})
+
+	a, _, stderr, _ := newDispatchApp("dev")
+	a.deps.euid = func() int { return 1000 }
+	withTerminalAnswer(t, a, "y\n")
+	if got := a.run(context.Background(), []string{"uninstall"}); got != exitOK {
+		t.Fatalf("run(uninstall) = %d, want %d (stderr %q)", got, exitOK, stderr)
+	}
+	if !strings.Contains(stderr.String(), uninstallDataPrompt) {
+		t.Errorf("stderr = %q, want the data question", stderr)
+	}
+	if !purged {
+		t.Error("PurgeData was not called after answering y")
+	}
+}
+
 func TestUninstallRemovesCompletionsAndManPages(t *testing.T) {
 	t.Run("system level", func(t *testing.T) {
 		root := t.TempDir()
@@ -1255,10 +1459,21 @@ func TestUninstallRemovesCompletionsAndManPages(t *testing.T) {
 			"/usr/local/share/man/man1/peers-update.1",
 		}
 		for _, path := range installed {
+			if strings.Contains(path, "completion") || strings.HasSuffix(path, "_peers") || strings.HasSuffix(path, ".fish") {
+				writeUnderRootWith(t, root, path, completionMarker(path))
+				continue
+			}
 			writeUnderRoot(t, root, path)
 		}
-		unrelated := "/usr/local/share/man/man1/other.1"
-		writeUnderRoot(t, root, unrelated)
+		// Neither starts with "peers" followed by a dot or a hyphen, so the
+		// narrow man-page patterns must leave both alone.
+		unrelated := []string{
+			"/usr/local/share/man/man1/other.1",
+			"/usr/local/share/man/man1/peerstat.1",
+		}
+		for _, path := range unrelated {
+			writeUnderRoot(t, root, path)
+		}
 
 		withUninstallSeams(t, uninstallSeams{
 			options: func(system bool) (service.Options, error) {
@@ -1290,8 +1505,10 @@ func TestUninstallRemovesCompletionsAndManPages(t *testing.T) {
 				t.Errorf("stdout does not report removing %s:\n%s", path, stdout)
 			}
 		}
-		if _, err := os.Stat(filepath.Join(root, unrelated)); err != nil {
-			t.Errorf("removed an unrelated man page: %v", err)
+		for _, path := range unrelated {
+			if _, err := os.Stat(filepath.Join(root, path)); err != nil {
+				t.Errorf("removed an unrelated man page %s: %v", path, err)
+			}
 		}
 	})
 
@@ -1302,7 +1519,7 @@ func TestUninstallRemovesCompletionsAndManPages(t *testing.T) {
 			"/home/alice/.config/fish/completions/peers.fish",
 		}
 		for _, path := range installed {
-			writeUnderRoot(t, root, path)
+			writeUnderRootWith(t, root, path, completionMarker(path))
 		}
 		// The install script never writes the user-level zsh completion, so
 		// uninstall must leave a file at that path alone.
@@ -1342,4 +1559,52 @@ func TestUninstallRemovesCompletionsAndManPages(t *testing.T) {
 			t.Errorf("removed the user-level zsh completion: %v", err)
 		}
 	})
+}
+
+// TestUninstallKeepsForeignFilesAtInstallationPaths checks that a file without
+// cobra's marker and a directory with an installation file's name are kept and
+// reported instead of deleted.
+func TestUninstallKeepsForeignFilesAtInstallationPaths(t *testing.T) {
+	root := t.TempDir()
+	foreign := "/usr/local/share/bash-completion/completions/peers"
+	writeUnderRoot(t, root, foreign)
+	directory := "/usr/local/share/man/man1/peers-extra.1"
+	if err := os.MkdirAll(filepath.Join(root, directory), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	withUninstallSeams(t, uninstallSeams{
+		options: func(system bool) (service.Options, error) {
+			return uninstallOptions(root, system, 0), nil
+		},
+		installed: func(opts service.Options) (bool, error) { return opts.System, nil },
+		serviceBinary: func(service.Options) (string, bool, error) {
+			return "/usr/local/bin/peers", true, nil
+		},
+		uninstallSvc:  func(service.Options) (service.Result, error) { return service.Result{}, nil },
+		removeMCP:     func(string, string) (string, error) { return "removed", nil },
+		mcpLookup:     func(string) mcpRegistration { return mcpRegistration{} },
+		removeRuntime: func(service.Options) ([]string, error) { return nil, nil },
+		purgeData:     func(service.Options) ([]string, error) { return nil, nil },
+		otherAccounts: func(service.Options) ([]string, error) { return nil, nil },
+		getenv:        func(string) string { return "" },
+	})
+
+	a, stdout, stderr, _ := newDispatchApp("dev")
+	a.deps.euid = func() int { return 0 }
+	if got := a.run(context.Background(), []string{"uninstall", "--purge", "--yes"}); got != exitOK {
+		t.Fatalf("run(uninstall --purge --yes) = %d, want %d (stderr %q)", got, exitOK, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(root, foreign)); err != nil {
+		t.Errorf("removed a completion file that was not written by peers: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "kept "+filepath.Join(root, foreign)+": it was not written by peers") {
+		t.Errorf("stdout does not report keeping the foreign completion file:\n%s", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(root, directory)); err != nil {
+		t.Errorf("removed a directory named like a man page: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "kept "+filepath.Join(root, directory)+": it is a directory") {
+		t.Errorf("stdout does not report keeping the directory:\n%s", stdout)
+	}
 }
