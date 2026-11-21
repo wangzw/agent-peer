@@ -312,6 +312,53 @@ func TestUninstallRootPurgeSkipsDataQuestion(t *testing.T) {
 	}
 }
 
+func TestUninstallRootPurgeWithTerminalSkipsDataQuestion(t *testing.T) {
+	root := t.TempDir()
+	purged := false
+	withUninstallSeams(t, uninstallSeams{
+		options: func(system bool) (service.Options, error) {
+			return uninstallOptions(root, system, 0), nil
+		},
+		installed: func(opts service.Options) (bool, error) { return opts.System, nil },
+		serviceBinary: func(service.Options) (string, bool, error) {
+			return "/usr/local/bin/peers", true, nil
+		},
+		uninstallSvc: func(service.Options) (service.Result, error) {
+			return service.Result{UnitPath: "/etc/systemd/system/peers.service", Removed: true}, nil
+		},
+		removeMCP: func(string, string) (string, error) { return "removed", nil },
+		mcpLookup: func(string) mcpRegistration { return mcpRegistration{} },
+		removeRuntime: func(service.Options) ([]string, error) {
+			return []string{"/run/peers"}, nil
+		},
+		purgeData: func(service.Options) ([]string, error) {
+			purged = true
+			return []string{"/etc/peers"}, nil
+		},
+		otherAccounts: func(service.Options) ([]string, error) { return nil, nil },
+		getenv:        func(string) string { return "" },
+		fileOwner:     func(string) (uint32, error) { return 0, nil },
+		removeFile:    func(string) error { return nil },
+		executable:    func() (string, error) { return "/usr/local/bin/peers", nil },
+		evalSymlinks:  func(path string) (string, error) { return path, nil },
+	})
+
+	a, _, stderr, _ := newDispatchApp("dev")
+	a.deps.euid = func() int { return 0 }
+	// --purge deletes the data without asking, so a terminal must not turn it
+	// into the data question. Answering n would keep the data if it did.
+	withTerminalAnswer(t, a, "n\n")
+	if got := a.run(context.Background(), []string{"uninstall", "--purge"}); got != exitOK {
+		t.Fatalf("run(uninstall --purge) = %d, want %d (stderr %s)", got, exitOK, stderr)
+	}
+	if strings.Contains(stderr.String(), uninstallDataPrompt) {
+		t.Errorf("stderr = %q, want no data question with --purge", stderr)
+	}
+	if !purged {
+		t.Error("PurgeData was not called with --purge")
+	}
+}
+
 func TestUninstallRootNotInstalled(t *testing.T) {
 	rec := &uninstallRecorder{}
 	withUninstallSeams(t, uninstallSeams{
@@ -813,27 +860,50 @@ func TestUninstallAccountOnlySystemYesRunsSudo(t *testing.T) {
 }
 
 func TestUninstallAccountOnlySystemTerminalAnswersYesRunsSudo(t *testing.T) {
-	var gotArgs []string
-	onlySystemSudoSeams(t, "/usr/local/bin/peers",
-		func(_ context.Context, _ string, args []string, _ io.Reader, _, _ io.Writer) error {
-			gotArgs = args
-			return nil
-		})
+	cases := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			// The terminal answer approves only the sudo rerun. The child
+			// inherits the terminal and asks the data question itself, so
+			// --yes must not be added (REQ-053).
+			name: "leaves the data question to the child",
+			args: []string{"uninstall"},
+			want: []string{"uninstall"},
+		},
+		{
+			name: "forwards --purge without --yes",
+			args: []string{"uninstall", "--purge"},
+			want: []string{"uninstall", "--purge"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotArgs []string
+			onlySystemSudoSeams(t, "/usr/local/bin/peers",
+				func(_ context.Context, _ string, args []string, _ io.Reader, _, _ io.Writer) error {
+					gotArgs = args
+					return nil
+				})
 
-	a, stdout, stderr, _ := newDispatchApp("dev")
-	a.deps.euid = func() int { return 1000 }
-	withTerminalAnswer(t, a, "y\n")
-	if got := a.run(context.Background(), []string{"uninstall", "--purge"}); got != exitOK {
-		t.Fatalf("run(uninstall --purge) = %d, want %d (stderr %q)", got, exitOK, stderr)
-	}
-	if want := []string{"uninstall", "--purge", "--yes"}; !slices.Equal(gotArgs, want) {
-		t.Errorf("sudo args = %q, want %q", gotArgs, want)
-	}
-	if !strings.Contains(stderr.String(), uninstallSystemPrompt) {
-		t.Errorf("stderr = %q, want the system-level question", stderr)
-	}
-	if strings.Contains(stdout.String(), "Run: sudo") {
-		t.Errorf("stdout = %q, want the command to run instead of being printed", stdout)
+			a, stdout, stderr, _ := newDispatchApp("dev")
+			a.deps.euid = func() int { return 1000 }
+			withTerminalAnswer(t, a, "y\n")
+			if got := a.run(context.Background(), tc.args); got != exitOK {
+				t.Fatalf("run(%q) = %d, want %d (stderr %q)", tc.args, got, exitOK, stderr)
+			}
+			if !slices.Equal(gotArgs, tc.want) {
+				t.Errorf("sudo args = %q, want %q", gotArgs, tc.want)
+			}
+			if !strings.Contains(stderr.String(), uninstallSystemPrompt) {
+				t.Errorf("stderr = %q, want the system-level question", stderr)
+			}
+			if strings.Contains(stdout.String(), "Run: sudo") {
+				t.Errorf("stdout = %q, want the command to run instead of being printed", stdout)
+			}
+		})
 	}
 }
 

@@ -227,7 +227,7 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 	// asked first; without a terminal and without --yes the command reports
 	// the complete sudo command and exits with failure.
 	if yes {
-		return a.sudoUninstall(ctx, purge)
+		return a.sudoUninstall(ctx, purge, true)
 	}
 	if isTerminal(a.stdin) {
 		confirmed, err := a.confirm(uninstallSystemPrompt, false)
@@ -235,7 +235,10 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 			return uninstallError("confirm the system-level uninstall", err)
 		}
 		if confirmed {
-			return a.sudoUninstall(ctx, purge)
+			// The answer only approves the sudo rerun. It is not a
+			// confirmation for the data question, so the child asks that on
+			// the terminal the caller is using.
+			return a.sudoUninstall(ctx, purge, false)
 		}
 		_, _ = fmt.Fprintf(a.stdout, "Run: %s\n", sudoUninstallCommand(purge))
 		return nil
@@ -243,10 +246,12 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 	return fmt.Errorf("only a system-level installation is present; run: %s", sudoUninstallCommand(purge))
 }
 
-// sudoUninstall re-runs this command as root with --yes, so the child does not
-// ask again. The executable path is the running binary, not the name on PATH,
-// because sudo's secure_path may not contain it.
-func (a *app) sudoUninstall(ctx context.Context, purge bool) error {
+// sudoUninstall re-runs this command as root. --yes is forwarded only when the
+// caller gave it; a terminal confirmation approves the sudo rerun alone, so the
+// child still asks the data question on the terminal (REQ-053). The executable
+// path is the running binary, not the name on PATH, because sudo's secure_path
+// may not contain it.
+func (a *app) sudoUninstall(ctx context.Context, purge, yes bool) error {
 	exe, err := uninstallExecutableFn()
 	if err != nil {
 		return uninstallError("locate the executable", err)
@@ -255,7 +260,9 @@ func (a *app) sudoUninstall(ctx context.Context, purge bool) error {
 	if purge {
 		args = append(args, "--purge")
 	}
-	args = append(args, "--yes")
+	if yes {
+		args = append(args, "--yes")
+	}
 	if err := uninstallSudoFn(ctx, exe, args, a.stdin, a.stdout, a.stderr); err != nil {
 		return uninstallError("run sudo", err)
 	}
