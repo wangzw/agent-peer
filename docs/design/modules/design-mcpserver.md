@@ -37,7 +37,7 @@ MCP 服务的名字是 `peer`，模型看到的工具全名是 `mcp__peer__<工�
 | `list_topics` | 无 | 是 | 无 | 已加入的 topic；已知的公开 topic 及简介 | `REQ-topics-013` |
 | `join_topic` | `name?`、`public?`、`description?` | 否 | 无 | 加入后的 topic 列表；`name` 为空时加入本会话的默认 topic | `REQ-topics-001`、`REQ-topics-010`、`REQ-topics-023`、`REQ-topics-026` |
 | `leave_topic` | `name?` | 否 | 无 | 退出后的 topic 列表；`name` 为空时退出本会话的默认 topic | `REQ-topics-003`、`REQ-topics-027` |
-| `list_brokers` | 无 | 是 | 无 | 每个已知 Broker 的别名、指纹、对外地址列表、是否对端、状态；对端另标明本方是它的拨号方还是接受方；另带 `local`：本 Broker 的 `offline` 与 `degraded` | `REQ-broker-discovery-012` 至 `REQ-broker-discovery-014`、`REQ-broker-config-068` |
+| `list_brokers` | 无 | 是 | 无 | 每个已知 Broker 的别名、指纹、对外地址列表、是否对端、状态；对端另标明本方是它的拨号方还是接受方；另带 `local`：本 Broker 的 `offline` 与 `degraded`。应答缺少 `local` 时返回错误 | `REQ-broker-discovery-012` 至 `REQ-broker-discovery-014`、`REQ-broker-config-068` |
 | `connect_broker` | `address`，对方的连接地址，写作 `地址:端口` 或 `主机名(地址:端口)`；`key`，配对密钥；`local_alias?` | 否 | 写 | 对方的别名与指纹，`address` 带主机名时一并给出，可能附带警告；或以 `Not connected` 开头的错误 | `REQ-broker-pairing-010`、`REQ-broker-config-021` |
 | `disconnect_broker` | `broker`，对端的别名或 64 位十六进制指纹 | 否 | 写 | 解除配对的结果 | `REQ-broker-pairing-021`、`REQ-broker-config-021` |
 | `create_pairing_key` | 无 | 否 | 写 | 一次性配对密钥及其失效时间；另行展示本机 Broker 的地址，写作 `主机名(地址:端口)`，对外地址列表有多项时一并列出，为空时说明没有可展示的地址、需要用户自行告知对方连接地址；本 Broker 不监听时返回错误，提示由对方生成密钥、本方发起配对 | `REQ-broker-pairing-005`、`REQ-broker-pairing-025`、`REQ-broker-pairing-028`、`REQ-broker-pairing-036`、`REQ-broker-config-021` |
@@ -166,7 +166,7 @@ Broker 不可用、登记未完成或登记失败期间，本进程不退出，�
 
 ### 更新提示
 
-`mcpserver` 用 MCP SDK 的接收中间件拦截 `tools/call`。每个进程在第一次工具调用时向 Broker 调用一次 `UpdateStatus`，此后最多每 10 分钟查询一次，间隔由常量 `updateRecheckInterval` 决定。`available_version` 非空且不同于本进程已经提示过的版本时，在该次工具结果的 `Content` 末尾追加一段文本，同一进程对同一版本只追加一次。工具调用本身失败的结果同样追加；查询失败、超时，或 Broker 返回 `Unimplemented` 时跳过提示，工具结果不变。
+`mcpserver` 用 MCP SDK 的接收中间件拦截 `tools/call`。每个进程在第一次工具调用时向 Broker 调用一次 `UpdateStatus`，此后最多每 10 分钟查询一次，间隔由常量 `updateRecheckInterval` 决定。`available_version` 非空且不同于本进程已经提示过的版本时，在该次工具结果的 `Content` 末尾追加一段文本，同一进程对同一版本只追加一次。工具调用本身失败的结果同样追加；查询返回任何错误（包括 `Unimplemented`）或超时，都跳过提示，不记为已查询，下次工具调用照常重试；只有成功的应答才计入查询间隔。
 
 追加的文本为：
 

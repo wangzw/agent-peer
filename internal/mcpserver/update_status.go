@@ -27,8 +27,8 @@ func brokerUpdateStatus(st *statusStore) updateStatusSource {
 }
 
 // queryUpdateStatus calls UpdateStatus on the Broker through the generated
-// local client. An older Broker answers Unimplemented, which the hint treats
-// like any other failure and skips.
+// local client. Every peers Broker implements UpdateStatus; any error,
+// including Unimplemented, is a failed query that the hint skips.
 func queryUpdateStatus(ctx context.Context, conn *grpc.ClientConn) (updateStatus, error) {
 	resp, err := localpb.NewLocalClient(conn).UpdateStatus(ctx, &localpb.UpdateStatusRequest{})
 	if err != nil {

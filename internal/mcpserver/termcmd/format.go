@@ -2,6 +2,7 @@ package termcmd
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -222,10 +223,14 @@ func WritePairingKey(w io.Writer, resp *localpb.CreatePairingKeyResponse) error 
 // alias. A Broker shows whether it is a peer, its status, which side dialed and
 // its advertised addresses. With no Brokers it writes "Brokers: none".
 //
-// local is the state of the Broker that answered; a nil value reads as online
-// and not degraded, which is what an older Broker reports. The status lines it
-// produces come before the table, exactly as WriteStatus writes them.
+// local is the state of the Broker that answered; every peers Broker reports
+// it, so a nil value is a protocol violation and the command fails without
+// writing anything. The status lines it produces come before the table, exactly
+// as WriteStatus writes them.
 func WriteBrokerList(w io.Writer, brokers []*localpb.BrokerInfo, local *localpb.LocalBrokerState) error {
+	if local == nil {
+		return errors.New("the Broker did not report its local state")
+	}
 	if degraded := local.GetDegraded(); degraded != nil {
 		if err := WriteDegraded(w, degraded.GetLevel(), degraded.GetReason(), degraded.GetFix()); err != nil {
 			return err

@@ -30,9 +30,13 @@ func (h *handlers) ListBrokers(ctx context.Context, in NoArgs) (ListBrokersOut, 
 		return ListBrokersOut{}, rpcError("list_brokers", callGeneric, permNone, err)
 	}
 
+	local, err := localBrokerOut(resp.GetLocal())
+	if err != nil {
+		return ListBrokersOut{}, err
+	}
 	out := ListBrokersOut{
 		Brokers: make([]BrokerOut, 0, len(resp.GetBrokers())),
-		Local:   localBrokerOut(resp.GetLocal()),
+		Local:   local,
 	}
 	for _, b := range resp.GetBrokers() {
 		out.Brokers = append(out.Brokers, brokerOut(b))
@@ -41,8 +45,13 @@ func (h *handlers) ListBrokers(ctx context.Context, in NoArgs) (ListBrokersOut, 
 }
 
 // localBrokerOut turns the answering Broker's state into the tool result shape.
-// An older Broker leaves local unset, which reads as online and not degraded.
-func localBrokerOut(local *localpb.LocalBrokerState) *LocalBrokerOut {
+// A response without local state violates the protocol: every peers Broker
+// reports it.
+func localBrokerOut(local *localpb.LocalBrokerState) (*LocalBrokerOut, error) {
+	if local == nil {
+		return nil, toolError(openingPhrase("list_brokers", callGeneric),
+			"the Broker did not report its local state", localpb.ErrorCode_ERROR_CODE_INTERNAL)
+	}
 	out := &LocalBrokerOut{Offline: local.GetOffline()}
 	if degraded := local.GetDegraded(); degraded != nil {
 		out.Degraded = &DegradedStateOut{
@@ -51,7 +60,7 @@ func localBrokerOut(local *localpb.LocalBrokerState) *LocalBrokerOut {
 			Fix:    degraded.GetFix(),
 		}
 	}
-	return out
+	return out, nil
 }
 
 // brokerOut turns one BrokerInfo into the tool result shape.

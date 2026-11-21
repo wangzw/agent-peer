@@ -30,10 +30,7 @@ var (
 	ErrInvalidConfig     = errors.New("the configuration is invalid")
 	ErrInvalidListen     = errors.New("the --listen address is invalid")
 	ErrListenUnavailable = errors.New("the listen address is unavailable")
-	// ErrSystemModeUnavailable is no longer returned by Run; kept for callers
-	// that map exit codes.
-	ErrSystemModeUnavailable = errors.New("the system Broker is not available in this build")
-	ErrLockLost              = errors.New("the account lock file was replaced; exiting so that only one Broker runs")
+	ErrLockLost          = errors.New("the account lock file was replaced; exiting so that only one Broker runs")
 )
 
 // evLocalServeFailed records an error returned by the local gRPC server. It is

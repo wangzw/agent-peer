@@ -141,11 +141,13 @@ func TestUpdateHintNoAvailableVersion(t *testing.T) {
 	}
 }
 
-func TestUpdateHintUnimplementedIsSkipped(t *testing.T) {
+// TestUpdateHintUnimplementedIsAFailedQuery checks that Unimplemented is an
+// ordinary query failure: no hint, the tool result is untouched, and the process
+// is not marked as queried, so the next tool call retries.
+func TestUpdateHintUnimplementedIsAFailedQuery(t *testing.T) {
 	var calls atomic.Int32
 	source := func(context.Context) (updateStatus, error) {
 		calls.Add(1)
-		// An older Broker answers the new RPC with Unimplemented.
 		return updateStatus{}, status.Error(codes.Unimplemented, "unknown method")
 	}
 	ts := &stubToolSet{
@@ -155,19 +157,21 @@ func TestUpdateHintUnimplementedIsSkipped(t *testing.T) {
 	}
 	cs := connectHintClient(t, ts, source, updateStatusTimeout)
 
-	res := callTool(t, cs, "list_agents", nil)
-	texts := contentTexts(res)
-	if len(texts) != 1 {
-		t.Errorf("content = %q, want only the tool text", texts)
+	for i := 0; i < 2; i++ {
+		res := callTool(t, cs, "list_agents", nil)
+		texts := contentTexts(res)
+		if len(texts) != 1 {
+			t.Errorf("call %d content = %q, want only the tool text", i+1, texts)
+		}
+		if hasHint(res) {
+			t.Errorf("call %d carries a hint after Unimplemented: %q", i+1, texts)
+		}
+		if res.IsError {
+			t.Errorf("call %d turned the tool result into an error: %q", i+1, texts)
+		}
 	}
-	if hasHint(res) {
-		t.Errorf("result carries a hint after Unimplemented: %q", texts)
-	}
-	if res.IsError {
-		t.Errorf("tool result was turned into an error: %q", texts)
-	}
-	if got := calls.Load(); got != 1 {
-		t.Errorf("UpdateStatus called %d times, want 1", got)
+	if got := calls.Load(); got != 2 {
+		t.Errorf("UpdateStatus called %d times, want 2 (each tool call retries after a failure)", got)
 	}
 }
 

@@ -54,7 +54,7 @@ func statusUnavailable() error {
 func TestListBrokers(t *testing.T) {
 	h, _ := newBrokerHandlersForTest(t, "", fakelocal.Handlers{
 		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
-			return &localpb.ListBrokersResponse{Brokers: []*localpb.BrokerInfo{
+			return &localpb.ListBrokersResponse{Local: &localpb.LocalBrokerState{}, Brokers: []*localpb.BrokerInfo{
 				{
 					Alias:       "peer1",
 					Fingerprint: []byte{0xab, 0xcd, 0x01},
@@ -138,15 +138,15 @@ func TestListBrokers(t *testing.T) {
 }
 
 // TestListBrokersLocalState checks the local field: the answering Broker's own
-// offline and degraded state, with an older Broker that leaves it unset read as
-// online and not degraded.
+// offline and degraded state, and an error when a response omits it.
 func TestListBrokersLocalState(t *testing.T) {
 	const reason = "listen address :17443 is unavailable"
 	const fix = "agent-peer config set broker.listen <free address>"
 	cases := []struct {
-		name  string
-		local *localpb.LocalBrokerState
-		want  LocalBrokerOut
+		name    string
+		local   *localpb.LocalBrokerState
+		want    LocalBrokerOut
+		wantErr bool
 	}{
 		{
 			name:  "online",
@@ -173,10 +173,10 @@ func TestListBrokersLocalState(t *testing.T) {
 			}},
 		},
 		{
-			// An older Broker does not know the field at all.
-			name:  "older Broker without local state",
-			local: nil,
-			want:  LocalBrokerOut{},
+			// A response without local state violates the protocol.
+			name:    "missing local state",
+			local:   nil,
+			wantErr: true,
 		},
 	}
 	for _, tc := range cases {
@@ -188,6 +188,16 @@ func TestListBrokersLocalState(t *testing.T) {
 			})
 
 			out, err := h.ListBrokers(context.Background(), NoArgs{})
+			if tc.wantErr {
+				const want = "list_brokers failed: the Broker did not report its local state (code: internal)"
+				if err == nil {
+					t.Fatal("ListBrokers returned no error without local state")
+				}
+				if err.Error() != want {
+					t.Errorf("error = %q, want %q", err, want)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("ListBrokers: %v", err)
 			}
@@ -214,7 +224,7 @@ func TestListBrokersLocalState(t *testing.T) {
 func TestListBrokersBeforeRegistration(t *testing.T) {
 	h, srv := newBrokerHandlersForTest(t, "", fakelocal.Handlers{
 		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
-			return &localpb.ListBrokersResponse{}, nil
+			return &localpb.ListBrokersResponse{Local: &localpb.LocalBrokerState{}}, nil
 		},
 	})
 

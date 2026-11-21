@@ -33,7 +33,6 @@ const (
 	failNotRoot
 	failRuntimeDir
 	failInvalidListen
-	failSystemUnavailable
 )
 
 // Process exit codes. They are split by cause so a service manager and the
@@ -56,8 +55,8 @@ const (
 )
 
 // exitCodeFor maps a Broker startup failure to the process exit code. A usage
-// problem in the listen address shares the generic usage code; a system-mode
-// failure and any unclassified failure use the generic failure code.
+// problem in the listen address shares the generic usage code; any unclassified
+// failure uses the generic failure code.
 func exitCodeFor(f startFailure) int {
 	switch f {
 	case failAlreadyRunning:
@@ -74,7 +73,7 @@ func exitCodeFor(f startFailure) int {
 		return exitRuntimeDir
 	case failInvalidListen:
 		return exitUsage
-	case failOther, failSystemUnavailable:
+	case failOther:
 		return exitFailure
 	default:
 		return exitFailure

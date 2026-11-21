@@ -398,7 +398,7 @@ func TestWaitConnectedAgainstStartingMCPServer(t *testing.T) {
 			return &localpb.HelloResponse{ProtocolVersion: localpb.ProtocolVersion}, nil
 		},
 		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
-			return &localpb.ListBrokersResponse{}, nil
+			return &localpb.ListBrokersResponse{Local: &localpb.LocalBrokerState{}}, nil
 		},
 		CreatePairingKey: func(context.Context, *localpb.CreatePairingKeyRequest) (*localpb.CreatePairingKeyResponse, error) {
 			return &localpb.CreatePairingKeyResponse{Key: "test-key"}, nil

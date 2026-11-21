@@ -100,7 +100,7 @@ func AdminHandlers() Handlers {
 			return &localpb.CreatePairingKeyResponse{Key: "one-time-key"}, nil
 		},
 		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
-			return &localpb.ListBrokersResponse{}, nil
+			return &localpb.ListBrokersResponse{Local: &localpb.LocalBrokerState{}}, nil
 		},
 		Connect: func(context.Context, *localpb.ConnectRequest) (*localpb.ConnectResponse, error) {
 			return &localpb.ConnectResponse{Alias: "hostB", Fingerprint: bytes.Repeat([]byte{0xcd}, 32)}, nil

@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -35,7 +33,7 @@ type updateStatus struct {
 }
 
 // updateStatusSource queries the Broker for the update state. The hint skips
-// itself on any error, including an Unimplemented RPC from an older Broker.
+// itself on any error.
 type updateStatusSource func(ctx context.Context) (updateStatus, error)
 
 // updateHint appends a release notice to a tool result. The Broker is queried
@@ -83,10 +81,10 @@ func (u *updateHint) middleware(next mcp.MethodHandler) mcp.MethodHandler {
 
 // take returns the notice to append, if any. A query runs when no query is in
 // flight and either the process has never had an answer or the recheck
-// interval has passed. Only an answer from the Broker, including Unimplemented,
-// counts as a query; a connection that is not ready or a timeout leaves the
-// process unchecked so the next tool call retries. A query error, an empty
-// available version, or a version already notified all yield false.
+// interval has passed. Only an answer from the Broker counts as a query; any
+// query error, including Unimplemented, leaves the process unchecked so the
+// next tool call retries. An empty available version or a version already
+// notified yields false.
 func (u *updateHint) take(ctx context.Context) (string, bool) {
 	now := u.now
 	if now == nil {
@@ -103,11 +101,10 @@ func (u *updateHint) take(ctx context.Context) (string, bool) {
 	u.mu.Unlock()
 
 	st, err := u.query(ctx)
-	answered := err == nil || status.Code(err) == codes.Unimplemented
 
 	u.mu.Lock()
 	u.checking = false
-	if answered {
+	if err == nil {
 		u.queried = true
 		u.lastQuery = at
 	}

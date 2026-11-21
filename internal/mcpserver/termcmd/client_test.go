@@ -610,7 +610,7 @@ func TestRunPairingKeyCreate(t *testing.T) {
 
 func TestRunPeerList(t *testing.T) {
 	path := fakelocal.SocketPath(t)
-	resp := &localpb.ListBrokersResponse{Brokers: []*localpb.BrokerInfo{
+	resp := &localpb.ListBrokersResponse{Local: &localpb.LocalBrokerState{}, Brokers: []*localpb.BrokerInfo{
 		{
 			Alias:       "hostB",
 			Fingerprint: bytes.Repeat([]byte{0xcd}, 32),
@@ -655,7 +655,7 @@ func TestRunPeerListEmpty(t *testing.T) {
 	path := fakelocal.SocketPath(t)
 	fakelocal.Start(t, path, fakelocal.Handlers{
 		ListBrokers: func(context.Context, *localpb.ListBrokersRequest) (*localpb.ListBrokersResponse, error) {
-			return &localpb.ListBrokersResponse{}, nil
+			return &localpb.ListBrokersResponse{Local: &localpb.LocalBrokerState{}}, nil
 		},
 	})
 

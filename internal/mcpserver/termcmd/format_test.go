@@ -423,7 +423,7 @@ func TestWriteBrokerList(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := WriteBrokerList(&buf, brokers, nil); err != nil {
+	if err := WriteBrokerList(&buf, brokers, &localpb.LocalBrokerState{}); err != nil {
 		t.Fatalf("WriteBrokerList: %v", err)
 	}
 
@@ -438,7 +438,7 @@ func TestWriteBrokerList(t *testing.T) {
 
 func TestWriteBrokerListEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WriteBrokerList(&buf, nil, nil); err != nil {
+	if err := WriteBrokerList(&buf, nil, &localpb.LocalBrokerState{}); err != nil {
 		t.Fatalf("WriteBrokerList: %v", err)
 	}
 	if got, want := buf.String(), "Brokers: none\n"; got != want {
@@ -446,9 +446,24 @@ func TestWriteBrokerListEmpty(t *testing.T) {
 	}
 }
 
+// TestWriteBrokerListWithoutLocalState checks that a response without local
+// state is rejected before anything is written: every peers Broker reports it.
+func TestWriteBrokerListWithoutLocalState(t *testing.T) {
+	var buf bytes.Buffer
+	err := WriteBrokerList(&buf, nil, nil)
+	if err == nil {
+		t.Fatal("WriteBrokerList returned no error without local state")
+	}
+	if !strings.Contains(err.Error(), "the Broker did not report its local state") {
+		t.Errorf("error = %q, want the missing-local-state text", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("WriteBrokerList wrote %q, want nothing", buf.String())
+	}
+}
+
 // TestWriteBrokerListBrokerState covers the local state peer list shows before
-// the table: a nil local state from an older Broker, local only degradation,
-// offline, and both together.
+// the table: local only degradation, offline, and both together.
 func TestWriteBrokerListBrokerState(t *testing.T) {
 	const reason = "listen address :17443 is unavailable: address already in use"
 	const fix = "agent-peer config set broker.listen <free address>"
@@ -461,7 +476,6 @@ func TestWriteBrokerListBrokerState(t *testing.T) {
 		local *localpb.LocalBrokerState
 		want  string
 	}{
-		{name: "older Broker without local state", local: nil, want: table},
 		{name: "online and not degraded", local: &localpb.LocalBrokerState{}, want: table},
 		{
 			name: "local only",

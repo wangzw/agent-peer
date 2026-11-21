@@ -96,7 +96,6 @@ func TestBrokerStartupFailureExitCodes(t *testing.T) {
 		{failNotRoot, exitNotRoot},
 		{failRuntimeDir, exitRuntimeDir},
 		{failInvalidListen, exitUsage},
-		{failSystemUnavailable, exitFailure},
 		{failOther, exitFailure},
 	}
 	for _, tc := range cases {
@@ -119,8 +118,8 @@ func TestBrokerStartupFailureExitCodes(t *testing.T) {
 
 func TestBrokerPassesSystemFlag(t *testing.T) {
 	stub := &stubDeps{
-		brokerErr:      errors.New("system mode unavailable"),
-		classifyResult: failSystemUnavailable,
+		brokerErr:      errors.New("startup failed"),
+		classifyResult: failOther,
 	}
 	a, _, _ := newBrokerCmdApp(stub)
 

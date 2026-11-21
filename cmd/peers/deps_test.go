@@ -202,7 +202,6 @@ func TestExitCodeForTable(t *testing.T) {
 		{failNotRoot, 7},
 		{failRuntimeDir, 8},
 		{failInvalidListen, 2},
-		{failSystemUnavailable, 1},
 		{startFailure(99), 1},
 	}
 	for _, tt := range tests {
@@ -235,7 +234,7 @@ func TestExitServiceDegraded(t *testing.T) {
 	}
 	// Only failAlreadyRunning reaches the shared value; no other broker start
 	// failure may report a degraded service command's code.
-	for f := failOther; f <= failSystemUnavailable; f++ {
+	for f := failOther; f <= failInvalidListen; f++ {
 		if got := exitCodeFor(f); got == exitServiceDegraded && f != failAlreadyRunning {
 			t.Errorf("exitCodeFor(%d) = %d, want only failAlreadyRunning to share %d", f, got, exitServiceDegraded)
 		}

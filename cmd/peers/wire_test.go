@@ -84,7 +84,6 @@ func TestClassifyBrokerErr(t *testing.T) {
 		{broker.ErrNotRoot, failNotRoot},
 		{broker.ErrRuntimeDir, failRuntimeDir},
 		{broker.ErrInvalidListen, failInvalidListen},
-		{broker.ErrSystemModeUnavailable, failSystemUnavailable},
 		{broker.ErrLockLost, failOther},
 	}
 	for _, tt := range tests {

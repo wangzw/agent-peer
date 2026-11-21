@@ -113,8 +113,6 @@ func classifyBrokerErr(err error) startFailure {
 		return failRuntimeDir
 	case errors.Is(err, broker.ErrInvalidListen):
 		return failInvalidListen
-	case errors.Is(err, broker.ErrSystemModeUnavailable):
-		return failSystemUnavailable
 	default:
 		return failOther
 	}

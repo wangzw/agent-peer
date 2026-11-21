@@ -60,7 +60,7 @@ service Local {
 }
 ```
 
-本机接口只新增字段与错误码，不提升本机协议版本，与 `UpdateStatus` 的引入方式相同。`ErrorCode` 新增 `broker_offline` 与 `broker_degraded`，两者都映射为 gRPC `FailedPrecondition`。`NotRegisteredReason` 新增 `broker_degraded`，登记流事件的 `detail` 写故障原因。`StatusResponse` 新增 `offline`（布尔；仅诊断时为假，配置不生效）与 `degraded`（档位取 `local_only` 或 `diagnostics_only`，另有步骤、原因与修复提示）。`ListBrokersResponse` 新增 `local`，含 `offline` 与 `degraded`（后者含 level、step、reason 与 fix），给 `list_brokers` 与 `peer list` 显示本 Broker 的离线与降级状态。旧版本的 MCP 服务进程收到不认识的错误码时按 `internal` 处理，文字仍含 Broker 给出的说明。
+本机接口只新增字段与错误码，不提升本机协议版本，与 `UpdateStatus` 的引入方式相同。`ErrorCode` 新增 `broker_offline` 与 `broker_degraded`，两者都映射为 gRPC `FailedPrecondition`。`NotRegisteredReason` 新增 `broker_degraded`，登记流事件的 `detail` 写故障原因。`StatusResponse` 新增 `offline`（布尔；仅诊断时为假，配置不生效）与 `degraded`（档位取 `local_only` 或 `diagnostics_only`，另有步骤、原因与修复提示）。`ListBrokersResponse` 带 `local`，含 `offline` 与 `degraded`（后者含 level、step、reason 与 fix），给 `list_brokers` 与 `peer list` 显示本 Broker 的离线与降级状态。应答必须带 `local`：缺少它属于违反协议的响应，`list_brokers` 返回错误，`peer list` 报错并以非零码退出。
 
 仅诊断降级时，本机接口只照常应答 `Hello`；`Status` 返回只含 `current_version` 与 `degraded` 的应答；`Register` 在下行流上发出 `not_registered` 及原因 `broker_degraded`，流保持打开；其余调用返回 `broker_degraded`，说明为 `degraded.reason`。离开仅诊断时，降级服务关闭全部本机连接，同一 socket 路径上换成完整服务，客户端按现有规则重连。
 
@@ -87,7 +87,7 @@ service Local {
 
 需要 Agent 身份的调用携带登记时得到的 Agent 标识，标识无效或不属于调用方账户时返回 `not_registered`。权限不足时返回 `permission_denied`，不改变任何状态。Claude Code 对工具调用的权限确认发生在调用到达本机接口之前，与本表的判定各自独立。
 
-`UpdateStatus` 不需要 Agent 身份，也不需要对配置文件的权限，与 `ListBrokers` 同一类。应答带 `current_version`、`available_version` 与 `release_url`；没有可用版本时 `available_version` 为空。`StatusResponse` 另带 `available_version`，字段号取下一个空号。只新增调用与字段，不提升本机协议版本；旧版本的 Broker 对 `UpdateStatus` 返回 `Unimplemented` 时，MCP 服务进程按没有可用版本处理。
+`UpdateStatus` 不需要 Agent 身份，也不需要对配置文件的权限，与 `ListBrokers` 同一类。应答带 `current_version`、`available_version` 与 `release_url`；没有可用版本时 `available_version` 为空。`StatusResponse` 另带 `available_version`，字段号取下一个空号。只新增调用与字段，不提升本机协议版本。`UpdateStatus` 返回错误时，MCP 服务进程按查询失败处理：跳过提示，不记为已查询，下次工具调用重试；以 `Unimplemented` 应答同样按查询失败处理。
 
 `ApplyUpdate` 不带参数与来源：Broker 自己调用 `update.Latest` 取本项目最新的正式发布版本，只有 `update.Newer(current, latest)` 为真时才执行，否则返回空的 `to_version`，不做任何改动。调用方不能指定版本或来源，也不能要求降级。应答带 `from_version`、`to_version` 与 `restarting`；`restarting` 为真表示二进制已替换、Broker 即将退出并由服务管理器重新启动。它要求调用方账户对配置文件有写权限，与 `SetConfig` 同档；用户级 Broker 的检查器恒允许。当前进程不是由服务管理器启动的服务进程时返回 `failed_precondition`：向该级别的服务管理器查询服务的主进程 PID（Linux 上 `systemctl [--user] show --property MainPID --value peers.service`，macOS 上 `launchctl print system/<label>` 或 `launchctl print gui/<uid>/<label>` 中的 `pid`），只有它等于本进程 PID 才算由服务管理器启动，查询失败、服务未安装、PID 不一致都按不是处理，环境变量不作判据。系统级安装的说明给出 `sudo peers service install --system`，用户级安装的说明给出 `peers service install`。同一时间只允许一个 `ApplyUpdate` 执行，并发的请求返回 `aborted`。
 
@@ -160,7 +160,7 @@ service Local {
 - `config get`：每项一行，写成 `<key> = <value>`，按 `key` 排序；密钥类配置项只写 `set` 或 `unset`，不输出取值。带 `key` 时只输出该项。
 - `config set`：一行，写成 `<key>: <old> -> <new>`。
 - `pairing-key create`：依次输出 `Key: <key>`、`Expires: <RFC 3339 UTC>`、`Addresses:`，之后每个对外地址一行，缩进两格；本次运行不监听时，Broker 以 `invalid_argument` 拒绝，命令以退出码 1 结束。
-- `peer list`：表格，列为 ALIAS、FINGERPRINT、PEER（yes 或 no）、STATUS、DIRECTION、ADDRESSES（逗号连接）。按别名排序；没有任何 Broker 时输出 `Brokers: none`。
+- `peer list`：表格，列为 ALIAS、FINGERPRINT、PEER（yes 或 no）、STATUS、DIRECTION、ADDRESSES（逗号连接）。按别名排序；没有任何 Broker 时输出 `Brokers: none`。应答缺少 `local` 时报错并以退出码 1 结束，不输出表格。
 - `peer connect`：一行 `Paired with <alias> (<fingerprint>)`；应答中的 warnings 每条一行写到标准错误，前缀 `warning: `，退出码仍为 0。
 - `peer disconnect`：一行 `Disconnected <broker>`。
 
