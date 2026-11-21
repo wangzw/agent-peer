@@ -56,6 +56,15 @@ func BuildBinaryVersion(tb testing.TB, version, goos, goarch string, tags ...str
 	return build(tb, "./cmd/peers", version, goos, goarch, tags)
 }
 
+// BuildBinaryVersionOverlay is BuildBinaryVersion with a Go build overlay file
+// that substitutes source files for this build only. A test uses it to produce
+// a binary whose behavior differs from the tree without changing the tree; the
+// overlay is a JSON file in the form go build's -overlay flag accepts.
+func BuildBinaryVersionOverlay(tb testing.TB, version, goos, goarch, overlay string, tags ...string) string {
+	tb.Helper()
+	return buildWithOverlay(tb, "./cmd/peers", version, goos, goarch, tags, overlay)
+}
+
 // BuildPackage builds pkg for goos/goarch and returns the path of the result.
 // Like BuildBinary, the same parameters are built only once per test process.
 func BuildPackage(tb testing.TB, pkg, goos, goarch string, tags ...string) string {
@@ -63,8 +72,23 @@ func BuildPackage(tb testing.TB, pkg, goos, goarch string, tags ...string) strin
 	return build(tb, pkg, DefaultVersion, goos, goarch, tags)
 }
 
+// ModuleRoot returns the root directory of the Go module under test. It lets a
+// test name a source file an overlay replaces.
+func ModuleRoot(tb testing.TB) string {
+	tb.Helper()
+	root, err := moduleRoot()
+	if err != nil {
+		tb.Fatalf("harness: %v", err)
+	}
+	return root
+}
+
 func build(tb testing.TB, pkg, version, goos, goarch string, tags []string) string {
-	key := strings.Join([]string{pkg, version, goos, goarch, strings.Join(tags, ",")}, "\x00")
+	return buildWithOverlay(tb, pkg, version, goos, goarch, tags, "")
+}
+
+func buildWithOverlay(tb testing.TB, pkg, version, goos, goarch string, tags []string, overlay string) string {
+	key := strings.Join([]string{pkg, version, goos, goarch, strings.Join(tags, ","), overlay}, "\x00")
 
 	buildMu.Lock()
 	entry, ok := buildCache[key]
@@ -75,7 +99,7 @@ func build(tb testing.TB, pkg, version, goos, goarch string, tags []string) stri
 	buildMu.Unlock()
 
 	entry.once.Do(func() {
-		entry.path, entry.err = goBuild(pkg, version, goos, goarch, tags)
+		entry.path, entry.err = goBuild(pkg, version, goos, goarch, tags, overlay)
 	})
 	if entry.err != nil {
 		tb.Fatalf("harness: building %s for %s/%s: %v", pkg, goos, goarch, entry.err)
@@ -83,7 +107,7 @@ func build(tb testing.TB, pkg, version, goos, goarch string, tags []string) stri
 	return entry.path
 }
 
-func goBuild(pkg, version, goos, goarch string, tags []string) (string, error) {
+func goBuild(pkg, version, goos, goarch string, tags []string, overlay string) (string, error) {
 	dir, err := buildDirectory()
 	if err != nil {
 		return "", err
@@ -101,6 +125,9 @@ func goBuild(pkg, version, goos, goarch string, tags []string) (string, error) {
 	args := []string{"build", "-trimpath", "-ldflags", "-X main.version=" + version}
 	if len(tags) > 0 {
 		args = append(args, "-tags", strings.Join(tags, ","))
+	}
+	if overlay != "" {
+		args = append(args, "-overlay="+overlay)
 	}
 	args = append(args, "-o", out, pkg)
 

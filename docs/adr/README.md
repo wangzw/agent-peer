@@ -69,6 +69,7 @@
 | 决策 |
 |---|
 | [自我更新从本项目 GitHub 正式发布安装](adr-self-update.md) |
+| [更新后由新二进制重写服务定义](adr-post-update-service-rewrite.md) |
 
 ## 外部依赖
 

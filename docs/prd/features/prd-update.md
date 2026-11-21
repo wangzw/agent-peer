@@ -6,7 +6,7 @@
 
 ## 范围
 
-本文档覆盖 Broker 对正式发布版本的周期检查、终端状态输出与会话中的更新提示，以及终端更新命令与会话中的升级工具对正式发布版本的询问、下载、校验、替换与服务重启。系统级安装的替换与重启由 Broker 和服务管理器执行。
+本文档覆盖 Broker 对正式发布版本的周期检查、终端状态输出与会话中的更新提示，以及终端更新命令与会话中的升级工具对正式发布版本的询问、下载、校验、替换与服务重启。系统级安装的替换与重启由 Broker 和服务管理器执行。替换二进制后，由新二进制按自己的格式重写服务定义并让服务管理器重新读取，使新版本要求的启动方式生效。
 
 ### 范围外
 
@@ -89,6 +89,30 @@ Broker 必须按配置的间隔检查本项目在 GitHub 上是否有比当前�
 - **验收**：在安装为服务的用户级与系统级 Broker 上，会话调用该工具：返回升级前的版本与目标版本，Broker 随后以新版本运行，会话不需要重新连接 MCP 服务，下一次列出 Agent 成功；已经是最新版本时返回说明，Broker 不重启；对配置文件没有写权限的账户调用时返回权限不足并给出配置文件路径，且没有发出下载请求；Broker 不在服务管理器下运行时返回错误，并给出终端替代做法；已有一次升级在进行时返回相应的错误。检查工具声明，它不带只读标记，并且与其他工具分开声明，Claude Code 的权限设置可以单独放行或拒绝它。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/self_update_test.go` 的 `TestREQUpdate008_UpdateBrokerUnderUserService`、`TestREQUpdate008_UpdateBrokerUnderSystemService`、`TestREQUpdate008_UpdateBrokerAlreadyLatest`、`TestREQUpdate008_UpdateBrokerRefusedOutsideAdminGroup`；已有升级在进行时返回 `aborted` 由单元测试覆盖（`internal/broker` 的 `TestApplyUpdateConcurrentIsAborted`、`internal/mcpserver` 的 `TestUpdateBroker` 中 aborted 子用例）
+
+### REQ-update-009
+
+Broker 替换二进制之后、重启之前，必须用新二进制按新版本的格式重写本级别的服务定义并让服务管理器重新读取；重写只替换主单元，保留 drop-in。
+
+- **验收**：在系统级安装上从当前版本自更新到服务单元格式不同的下一版本，更新结束后服务单元已是新格式，drop-in 保持原样，Broker 以新版本正常运行。
+- **状态**：已实现
+- **端到端测试**：`test/e2e/system/update_post_install_test.go` 的 `TestREQUpdate009_UpdateRewritesServiceUnitInNewFormat`
+
+### REQ-update-010
+
+新二进制不提供更新后步骤时，Broker 必须把它视为不需要更新后步骤，继续完成更新与重启。
+
+- **验收**：用一个不实现更新后步骤的新版本执行更新，更新成功，Broker 以新版本运行。
+- **状态**：已实现
+- **端到端测试**：未实现；由 `internal/broker` 的 `ApplyUpdate` 单元测试覆盖
+
+### REQ-update-011
+
+更新后步骤返回其他非零退出码或超过时限时，Broker 必须把二进制回滚为旧版本、不重启，并向调用方报错说明原因。
+
+- **验收**：在新版本的更新后步骤会失败或超时的两种情况下执行更新，更新都失败，二进制与运行中的 Broker 保持旧版本，命令输出包含原因。
+- **状态**：已实现
+- **端到端测试**：未实现；由 `internal/broker` 的 `ApplyUpdate` 单元测试覆盖
 
 ## 假设与依赖
 

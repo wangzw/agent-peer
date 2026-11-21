@@ -612,10 +612,10 @@ func selfUpdateAPIEnv(fake *harness.FakeGitHub) []string {
 	return []string{"PEERS_TEST_UPDATE_API=" + fake.URL()}
 }
 
-// selfUpdatePrepareArchive assembles a release-shaped directory holding the old
-// release binary, the install script and the two archive files. It returns the
-// directory.
-func selfUpdatePrepareArchive(t *testing.T) string {
+// selfUpdatePrepareArchive assembles a release-shaped directory around the
+// staged binary named by artifact, with the install script and the two archive
+// files. It returns the directory.
+func selfUpdatePrepareArchive(t *testing.T, artifact string) string {
 	t.Helper()
 
 	if err := os.RemoveAll(selfUpdateArchiveDir); err != nil {
@@ -625,7 +625,7 @@ func selfUpdatePrepareArchive(t *testing.T) string {
 		t.Fatalf("creating the archive directory %s: %v", selfUpdateArchiveDir, err)
 	}
 
-	syscontainer.CopyReleaseArtifact(t, updateOldArtifact, filepath.Join(selfUpdateArchiveDir, "peers"), 0o755)
+	syscontainer.CopyReleaseArtifact(t, artifact, filepath.Join(selfUpdateArchiveDir, "peers"), 0o755)
 	staged := syscontainer.ArtifactPath(stagedArchiveRel(t))
 	for _, file := range []struct {
 		name string
@@ -652,9 +652,17 @@ func selfUpdatePrepareArchive(t *testing.T) string {
 // rejects the flag, so the test performs the same chgrp and chmod itself.
 func selfUpdateInstallSystemService(t *testing.T, fake *harness.FakeGitHub) {
 	t.Helper()
+	selfUpdateInstallSystemServiceFrom(t, fake, updateOldArtifact, updateOldVersion)
+}
+
+// selfUpdateInstallSystemServiceFrom is selfUpdateInstallSystemService for a
+// caller that installs another built binary and expects it to run as
+// oldVersion.
+func selfUpdateInstallSystemServiceFrom(t *testing.T, fake *harness.FakeGitHub, artifact, oldVersion string) {
+	t.Helper()
 
 	configureInstallSudo(t)
-	archive := selfUpdatePrepareArchive(t)
+	archive := selfUpdatePrepareArchive(t, artifact)
 
 	args := []string{"-n", "sh", "./install.sh", "--system", "--no-mcp"}
 	joinAdminGroup := selfUpdateInstallScriptJoinsAdminGroup(t)
@@ -682,7 +690,7 @@ func selfUpdateInstallSystemService(t *testing.T, fake *harness.FakeGitHub) {
 		}
 		return true, ""
 	})
-	selfUpdateWaitBrokerVersion(t, selfUpdateSystemSocket, updateOldVersion)
+	selfUpdateWaitBrokerVersion(t, selfUpdateSystemSocket, oldVersion)
 }
 
 // selfUpdateInstallScriptJoinsAdminGroup reports whether the staged install
@@ -1070,6 +1078,13 @@ func selfUpdateRequireReopenHint(t *testing.T, text string) {
 // update_applied by account with both versions.
 func selfUpdateWaitAuditEvent(t *testing.T, account string) {
 	t.Helper()
+	selfUpdateWaitAuditEventFor(t, account, updateOldVersion, updateNewVersion)
+}
+
+// selfUpdateWaitAuditEventFor waits for update_applied by account between the
+// two named versions.
+func selfUpdateWaitAuditEventFor(t *testing.T, account, from, to string) {
+	t.Helper()
 
 	harness.Eventually(t, selfUpdateAuditBound, "the audit log to record update_applied by "+account, func() (bool, string) {
 		res := syscontainer.RunAs(t, account, nil, "audit")
@@ -1079,8 +1094,8 @@ func selfUpdateWaitAuditEvent(t *testing.T, account string) {
 		for _, line := range strings.Split(res.Stdout, "\n") {
 			if strings.Contains(line, "update_applied") &&
 				strings.Contains(line, account) &&
-				strings.Contains(line, updateOldVersion) &&
-				strings.Contains(line, updateNewVersion) {
+				strings.Contains(line, from) &&
+				strings.Contains(line, to) {
 				return true, line
 			}
 		}

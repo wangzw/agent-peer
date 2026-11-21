@@ -584,6 +584,17 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 
 用户级服务在服务管理器下执行 `ApplyUpdate` 时同理：Linux 用 `systemctl --user edit peers.service`，macOS 改 `~/Library/LaunchAgents/io.github.wangzw.peers.plist`，重装后同样需要重新加入。
 
+#### 更新后步骤
+
+服务定义的格式随版本变化，例如启动 Broker 的子命令与参数不同。执行升级的是正在运行的旧二进制，它只认识旧格式，因此重写服务定义这一步交给新二进制：旧二进制在换完二进制之后调用新二进制的一个固定子命令，由新二进制按自己的格式重写（[ADR-post-update-service-rewrite](../../adr/adr-post-update-service-rewrite.md)）。子命令名与参数是跨版本的契约，一经发布不再更改：
+
+- 命令是隐藏的子命令 `peers internal post-update --level system|user`，处理 `--level` 指定的级别。
+- 新二进制按自己的格式重写该级别的主单元，只替换主单元，drop-in 不动，写入是原子的；然后让服务管理器重新读取：systemd 执行 `daemon-reload`，launchd 对该 label 先 `bootout` 再 `bootstrap`。
+- 成功时退出码为 0；失败时退出码非零，标准错误写明原因。
+- 子命令不启动、不重启 Broker，重启仍由“委托升级”的流程负责。
+
+`ApplyUpdate` 在 `update.Apply` 换完二进制之后、退出之前，以本服务的级别调用新二进制的该子命令，上限为 `updatePostUpdateTimeout`（30 秒，具名常量）。新二进制不认识这个子命令时进程以 2 退出，视为不需要更新后步骤，更新继续；这样将来删掉该子命令的版本不会让更早的更新路径卡住。其他非零退出或超时，`ApplyUpdate` 把二进制回滚为旧版本，不重启，写一条 `update_failed` 审计记录，向调用方返回错误，消息写明原因。
+
 ### 委托升级
 
 Broker 处理 `ApplyUpdate`：
@@ -591,8 +602,9 @@ Broker 处理 `ApplyUpdate`：
 1. 判定服务管理器：向该级别的服务管理器查询服务的主进程 PID（Linux 上 `systemctl [--user] show --property MainPID --value peers.service`，macOS 上 `launchctl print system/<label>` 或 `launchctl print gui/<uid>/<label>` 中的 `pid`），只有它等于本进程 PID 才算由服务管理器启动；查询失败、服务未安装、PID 不一致都按不是处理。不是时返回 `failed_precondition`，说明需要以服务方式运行，并给出该级别的 `service install` 命令。
 2. 取本项目最新的正式发布版本。当前版本不是正式发布版本时，`update.Newer` 视为不更新，按已是最新处理；否则 `update.Newer` 不为真时返回空的 `to_version`，不做任何改动（`REQ-update-007`、`REQ-update-008`）。
 3. 目标为 `os.Executable()` 解析符号链接后的路径，调用 `update.Apply`。失败时写一条 `update_failed` 审计记录，带调用方账户与原因，返回错误；二进制不变，进程不退出。
-4. 成功时先写一条 `update_applied` 审计记录，记录调用方账户与新旧版本，再把带 `restarting=true` 的应答完整发出。应答发出后等 `updateShutdownGrace`（500 毫秒，让应答经本机 socket 送达调用方）再取消运行上下文，走正常关闭流程，退出码为 0；服务管理器按 `Restart=always` 或 `KeepAlive` 用新二进制拉起。
-5. 同一时间只允许一个升级执行；第一个完成之前到达的请求返回 `aborted`。
+4. 换完二进制后按“更新后步骤”调用新二进制。它失败或超时时回滚二进制，按上一步的失败处理：写 `update_failed` 审计记录，返回错误，进程不退出。
+5. 成功时先写一条 `update_applied` 审计记录，记录调用方账户与新旧版本，再把带 `restarting=true` 的应答完整发出。应答发出后等 `updateShutdownGrace`（500 毫秒，让应答经本机 socket 送达调用方）再取消运行上下文，走正常关闭流程，退出码为 0；服务管理器按 `Restart=always` 或 `KeepAlive` 用新二进制拉起。
+6. 同一时间只允许一个升级执行；第一个完成之前到达的请求返回 `aborted`。
 
 `update_applied` 与 `update_failed` 都不记录 URL 以外的敏感内容。
 
