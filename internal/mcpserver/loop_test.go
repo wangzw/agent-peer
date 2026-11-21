@@ -548,7 +548,7 @@ func TestRunLoop(t *testing.T) {
 		if err == nil {
 			t.Fatal("preflight returned nil for a gone user-level Broker")
 		}
-		for _, want := range []string{"no Broker is available", "ask the administrator", "agent-peer service install", "agent-peer broker"} {
+		for _, want := range []string{"no Broker is available", "ask the administrator", "peers service install", "peers broker"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Fatalf("error = %q, want it to contain %q", err, want)
 			}
@@ -578,7 +578,7 @@ func TestRunLoop(t *testing.T) {
 		if status.Detail != textNoSystemBroker {
 			t.Fatalf("Detail = %q, want %q", status.Detail, textNoSystemBroker)
 		}
-		if strings.Contains(status.Detail, "agent-peer service install") {
+		if strings.Contains(status.Detail, "peers service install") {
 			t.Fatalf("Detail = %q, must not send the user to a user-level service", status.Detail)
 		}
 		waits := loopWaitCount(t, clock, 1)
@@ -613,7 +613,7 @@ func TestRunLoop(t *testing.T) {
 		if err == nil {
 			t.Fatal("preflight returned nil for a refused user-level socket")
 		}
-		for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+		for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Fatalf("error = %q, want it to contain %q", err, want)
 			}
@@ -650,7 +650,7 @@ func TestRunLoop(t *testing.T) {
 		if !strings.Contains(status.Remedy, "restart the Broker") {
 			t.Fatalf("Remedy = %q, want it to say restart the Broker", status.Remedy)
 		}
-		if !strings.Contains(status.Remedy, "agent-peer service install") || !strings.Contains(status.Remedy, "agent-peer broker") {
+		if !strings.Contains(status.Remedy, "peers service install") || !strings.Contains(status.Remedy, "peers broker") {
 			t.Fatalf("Remedy = %q, want it to name both ways to start a Broker", status.Remedy)
 		}
 		if !strings.HasPrefix(status.Detail, "the running Broker speaks local protocol version 2") {

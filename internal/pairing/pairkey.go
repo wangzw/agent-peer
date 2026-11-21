@@ -19,9 +19,12 @@ const (
 	oneTimeKeyBytes = 10
 	// crockfordAlphabet is the Crockford Base32 alphabet used for one-time keys.
 	crockfordAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-	// pairHintLabel is the HMAC label for the lookup tag. It has no NUL
-	// terminator.
-	pairHintLabel = "agent-peer pair hint"
+	// The HMAC domain-separation labels of the pairing protocol. Changing one
+	// makes pairing fail against a Broker that still uses the old value, so
+	// they are kept together. None has a NUL terminator.
+	pairHintLabel      = "peers pair hint"
+	pairResponderLabel = "peers pair responder"
+	pairInitiatorLabel = "peers pair initiator"
 	// expiredKeyRetention is how long an expired one-time key is remembered so
 	// the acceptor can answer KEY_EXPIRED instead of KEY_INVALID.
 	expiredKeyRetention = 24 * time.Hour

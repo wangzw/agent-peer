@@ -32,7 +32,7 @@ func newHandlers(st Status) *handlers {
 func TestPreflight(t *testing.T) {
 	const detail = "dial unix /run/agent-peer/broker.sock: no such file or directory"
 	const mismatchDetail = "the running Broker speaks local protocol version 2, this MCP server speaks 1"
-	const remedy = "restart the Broker of this account with the same agent-peer version; this session reconnects by itself"
+	const remedy = "restart the Broker of this account with the same peers version; this session reconnects by itself"
 
 	tests := []struct {
 		name      string
@@ -205,7 +205,7 @@ func TestNoSystemBrokerTextOmitsUserLevelMethods(t *testing.T) {
 	if !strings.Contains(err.Error(), "ask the administrator") {
 		t.Fatalf("error = %q, want it to name the administrator", err)
 	}
-	for _, unwanted := range []string{"agent-peer service install", "agent-peer broker"} {
+	for _, unwanted := range []string{"peers service install", "peers broker"} {
 		if strings.Contains(err.Error(), unwanted) {
 			t.Fatalf("error = %q, must not mention %q", err, unwanted)
 		}
@@ -215,9 +215,9 @@ func TestNoSystemBrokerTextOmitsUserLevelMethods(t *testing.T) {
 func TestPreflightVersionRemedies(t *testing.T) {
 	const (
 		detail = "the running Broker speaks local protocol version 2, this MCP server speaks 1"
-		user   = "restart the Broker of this account with the same agent-peer version; this session reconnects by itself"
-		system = "ask the administrator to restart the Broker system service with the same agent-peer version; this session reconnects by itself"
-		env    = "restart the Broker at /tmp/x/broker.sock with the same agent-peer version; this session reconnects by itself"
+		user   = "restart the Broker of this account with the same peers version; this session reconnects by itself"
+		system = "ask the administrator to restart the Broker system service with the same peers version; this session reconnects by itself"
+		env    = "restart the Broker at /tmp/x/broker.sock with the same peers version; this session reconnects by itself"
 	)
 	for _, remedy := range []string{user, system, env} {
 		h := newHandlers(Status{Phase: PhaseVersionMismatch, Detail: detail, Remedy: remedy})

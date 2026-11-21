@@ -89,7 +89,7 @@ func TestZeroPairingTLSConfigIsNil(t *testing.T) {
 
 func TestPairingSign(t *testing.T) {
 	p := hsNewPairing(t, newHSSettings(t), &hsTransport{}, newHSClock())
-	data := []byte("agent-peer pairing signature")
+	data := []byte("peers pairing signature")
 
 	sig := p.Sign(data)
 	if len(sig) != 64 {
@@ -115,7 +115,7 @@ func TestZeroPairingSignIsNil(t *testing.T) {
 
 func TestPairingPublicKey(t *testing.T) {
 	p := hsNewPairing(t, newHSSettings(t), &hsTransport{}, newHSClock())
-	data := []byte("agent-peer pairing public key")
+	data := []byte("peers pairing public key")
 
 	pub := p.PublicKey()
 	if len(pub) != ed25519.PublicKeySize {

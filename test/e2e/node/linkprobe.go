@@ -131,7 +131,7 @@ func (probeCreds) OverrideServerName(string) error { return nil }
 // itself.
 type probeAuthInfo struct{}
 
-func (probeAuthInfo) AuthType() string { return "agent-peer-tls" }
+func (probeAuthInfo) AuthType() string { return "peers-tls" }
 
 func (probeAuthInfo) GetCommonAuthInfo() credentials.CommonAuthInfo {
 	return credentials.CommonAuthInfo{SecurityLevel: credentials.PrivacyAndIntegrity}

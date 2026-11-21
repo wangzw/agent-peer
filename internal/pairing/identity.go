@@ -179,7 +179,7 @@ func createIdentityCertificate(pub ed25519.PublicKey, priv ed25519.PrivateKey, n
 	issued := now()
 	template := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "agent-peer"},
+		Subject:               pkix.Name{CommonName: "peers"},
 		NotBefore:             issued.Add(-5 * time.Minute),
 		NotAfter:              issued.AddDate(100, 0, 0),
 		KeyUsage:              x509.KeyUsageDigitalSignature,

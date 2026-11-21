@@ -14,7 +14,7 @@ import (
 
 // authType names the credentials in gRPC peer information. It is not the TLS
 // security protocol, which Info reports separately.
-const authType = "agent-peer-tls"
+const authType = "peers-tls"
 
 // identityFromState extracts the authenticated peer identity from a finished
 // TLS handshake. Only TLS 1.3 is accepted and the peer must have presented an

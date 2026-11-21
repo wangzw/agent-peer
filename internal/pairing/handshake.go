@@ -371,7 +371,7 @@ func (p *Pairing) Accept(conn PairConn) error {
 // responderProof computes the acceptor's authentication code.
 func responderProof(key, ni, nr []byte, acceptor, initiatorSeen Fingerprint) []byte {
 	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte("agent-peer pair responder"))
+	mac.Write([]byte(pairResponderLabel))
 	mac.Write(ni)
 	mac.Write(nr)
 	mac.Write(acceptor[:])
@@ -382,7 +382,7 @@ func responderProof(key, ni, nr []byte, acceptor, initiatorSeen Fingerprint) []b
 // initiatorProof computes the initiator's authentication code.
 func initiatorProof(key, ni, nr []byte, initiator, acceptorSeen Fingerprint) []byte {
 	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte("agent-peer pair initiator"))
+	mac.Write([]byte(pairInitiatorLabel))
 	mac.Write(ni)
 	mac.Write(nr)
 	mac.Write(initiator[:])

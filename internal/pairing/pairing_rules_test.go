@@ -25,20 +25,20 @@ import (
 const designLookupTagLength = 8
 
 // designPairHint computes
-// HMAC-SHA256(key, "agent-peer pair hint" || ni)[:8].
+// HMAC-SHA256(key, "peers pair hint" || ni)[:8].
 func designPairHint(key, ni []byte) []byte {
 	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte("agent-peer pair hint"))
+	mac.Write([]byte("peers pair hint"))
 	mac.Write(ni)
 	return mac.Sum(nil)[:designLookupTagLength]
 }
 
 // designResponderProof computes
-// HMAC-SHA256(key, "agent-peer pair responder" || ni || nr ||
+// HMAC-SHA256(key, "peers pair responder" || ni || nr ||
 // acceptor || initiatorSeen).
 func designResponderProof(key, ni, nr []byte, acceptor, initiatorSeen Fingerprint) []byte {
 	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte("agent-peer pair responder"))
+	mac.Write([]byte("peers pair responder"))
 	mac.Write(ni)
 	mac.Write(nr)
 	mac.Write(acceptor[:])
@@ -47,11 +47,11 @@ func designResponderProof(key, ni, nr []byte, acceptor, initiatorSeen Fingerprin
 }
 
 // designInitiatorProof computes
-// HMAC-SHA256(key, "agent-peer pair initiator" || ni || nr ||
+// HMAC-SHA256(key, "peers pair initiator" || ni || nr ||
 // initiator || acceptorSeen).
 func designInitiatorProof(key, ni, nr []byte, initiator, acceptorSeen Fingerprint) []byte {
 	mac := hmac.New(sha256.New, key)
-	mac.Write([]byte("agent-peer pair initiator"))
+	mac.Write([]byte("peers pair initiator"))
 	mac.Write(ni)
 	mac.Write(nr)
 	mac.Write(initiator[:])

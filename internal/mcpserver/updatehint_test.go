@@ -18,8 +18,8 @@ import (
 	"github.com/wangzw/peers/internal/broker/localpb"
 )
 
-const wantHint = "agent-peer 0.1.1 is available (this Broker runs 0.1.0). " +
-	"Ask the agent to call update_broker, or run `agent-peer update` in a terminal."
+const wantHint = "peers 0.1.1 is available (this Broker runs 0.1.0). " +
+	"Ask the agent to call update_broker, or run `peers update` in a terminal."
 
 // connectHintClient starts a server whose only extra behaviour is the update
 // hint over source, and returns a connected client session.

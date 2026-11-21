@@ -271,7 +271,7 @@ func newMCPServer(version string, ts toolSet, log *slog.Logger) *mcp.Server {
 			"Requires write permission on the Broker's config file.",
 		ts.SetBrokerOnline)
 	addDestructiveTool(s, log, "update_broker",
-		"Upgrade this Broker to the latest agent-peer release and restart it; requires write permission on the Broker's config file. "+
+		"Upgrade this Broker to the latest peers release and restart it; requires write permission on the Broker's config file. "+
 			"The connection recovers automatically, and this session's MCP server uses the new version only after the session is reopened.",
 		ts.UpdateBroker)
 	return s

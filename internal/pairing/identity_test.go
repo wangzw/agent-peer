@@ -332,7 +332,7 @@ func TestIdentityCertificateProperties(t *testing.T) {
 	identityMustLoad(t, dir)
 	cert := identityParseCertificate(t, dir)
 
-	if got, want := cert.Subject.CommonName, "agent-peer"; got != want {
+	if got, want := cert.Subject.CommonName, "peers"; got != want {
 		t.Errorf("CommonName = %q, want %q", got, want)
 	}
 	if len(cert.DNSNames) != 0 || len(cert.IPAddresses) != 0 || len(cert.EmailAddresses) != 0 || len(cert.URIs) != 0 {
@@ -413,7 +413,7 @@ func TestIdentitySignAndVerify(t *testing.T) {
 	dir := t.TempDir()
 	id := identityMustLoad(t, dir)
 	cert := identityParseCertificate(t, dir)
-	message := []byte("agent-peer signature test")
+	message := []byte("peers signature test")
 
 	sig := id.sign(message)
 	if got := len(sig); got != ed25519.SignatureSize {
