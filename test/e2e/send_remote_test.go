@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -32,9 +31,18 @@ const (
 	// plan puts on one send in these scenarios.
 	srSendBudget = 2500 * time.Millisecond
 
-	// srReplyBudget is the five-second send budget of the reply-loss case, plus
-	// the same 500ms allowance.
-	srReplyBudget = 5500 * time.Millisecond
+	// srReplyTimeout is the send budget of the reply-loss case, not the
+	// shortened FastTimers value: the fault injection that loses the reply
+	// (Cut, Release, Restore) runs inside this budget, and each of its steps
+	// is a docker compose exec with no product timer behind it. The injection
+	// itself measured 1.4-1.5s, so ten seconds leaves about six times that
+	// measurement, enough to absorb a loaded host. Do not raise it to trade
+	// stability for a longer timeout, and do not grow it further.
+	srReplyTimeout = 10 * time.Second
+
+	// srReplyBudget is srReplyTimeout plus the 500ms allowance the plan puts
+	// on one send.
+	srReplyBudget = srReplyTimeout + 500*time.Millisecond
 
 	// srRelinkBound is reconnect_max (400ms) + dial_timeout (500ms) + 3s.
 	srRelinkBound = 3900 * time.Millisecond
@@ -167,6 +175,7 @@ func TestRemoteSendFaults(t *testing.T) {
 		// being recorded proves the request is in flight. Cutting the link then
 		// loses the reply while the write itself succeeds.
 		a1.Fake().SetMode(fakesession.HoldOpen)
+		t.Cleanup(func() { a1.Fake().SetMode(fakesession.CloseAfterRead) })
 		marker := srMark("unknown-")
 		ch := srSendAsync(t, b1, "a1@hostA.peer", marker)
 		frame := a1.WaitFrame(t, srWaitBound)
@@ -189,20 +198,25 @@ func TestRemoteSendFaults(t *testing.T) {
 		}
 		srWaitConnected(t, bNode, "hostA.peer", srRelinkBound)
 		srWaitConnected(t, aNode, "hostB.peer", srRelinkBound)
-		a1.Fake().SetMode(fakesession.CloseAfterRead)
 	})
 
 	t.Run("REQ-agent-messaging-020 reply lost, one copy", func(t *testing.T) {
-		// The sender's budget decides this case, so B restarts with five seconds.
-		// The config file is replaced first: an MCP server process may start the
-		// Broker before this test does, and it must read the new value.
-		config := srConfig("send:\n  request_timeout: 5s\n")
-		bNode.WriteConfig(t, config)
-		bNode.StopBroker(t, syscall.SIGTERM)
-		srStartBroker(t, bNode, config)
-		srWaitConnected(t, bNode, "hostA.peer", srRelinkBound)
-		srWaitConnected(t, aNode, "hostB.peer", srRelinkBound)
-		srWaitSessionVisible(t, a1, "b1")
+		// The receiver bounds its inbox write by the smaller of the sender's
+		// remaining budget and its own send.request_timeout (design-broker.md),
+		// so both Brokers get the case's ten-second value. Raising only the
+		// sender's value leaves the write on the two-second FastTimers deadline,
+		// and the fault injection below runs inside that deadline.
+		oldA := srSetSendTimeout(t, opA, srReplyTimeout.String())
+		oldB := srSetSendTimeout(t, opB, srReplyTimeout.String())
+		t.Cleanup(func() {
+			srSetSendTimeout(t, opA, oldA)
+			srSetSendTimeout(t, opB, oldB)
+		})
+
+		// A failed send must not leave the hold in place. The later subtests
+		// share a1, and a held connection would turn their writes into an
+		// uncertain result as well.
+		t.Cleanup(func() { a1.Fake().SetMode(fakesession.CloseAfterRead) })
 
 		a1.Fake().SetMode(fakesession.HoldOpen)
 		marker := srMark("reply-lost-")
@@ -327,6 +341,20 @@ func TestRemoteSendFaults(t *testing.T) {
 // srConfig merges the shortened timers with the given fragments.
 func srConfig(parts ...string) string {
 	return harness.ConfigYAML(append([]string{harness.FastTimers}, parts...)...)
+}
+
+// srSetSendTimeout sets send.request_timeout on the running Broker through
+// set_config, which applies to the next send without a restart, and returns the
+// value it replaced so the caller can restore it.
+func srSetSendTimeout(t *testing.T, op *harness.Session, value string) string {
+	t.Helper()
+	r := op.Call(t, "set_config", map[string]any{"key": "send.request_timeout", "value": value})
+	r.MustOK(t)
+	out, err := harness.Decode[mcpserver.SetConfigOut](string(r.Structured))
+	if err != nil {
+		t.Fatalf("decoding set_config send.request_timeout: %v", err)
+	}
+	return out.Old
 }
 
 // srStartBroker starts a Broker and fails when it does not come up.
