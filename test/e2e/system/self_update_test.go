@@ -766,10 +766,17 @@ func selfUpdateSetUserUnitEnv(t *testing.T, account string, userEnv []string, ap
 // manager commands need.
 func selfUpdateSetupUserServiceFor(t *testing.T, account string) (string, []string) {
 	t.Helper()
+	return selfUpdateSetupUserServiceFrom(t, account, updateOldArtifact)
+}
+
+// selfUpdateSetupUserServiceFrom is selfUpdateSetupUserServiceFor for a caller
+// that installs another staged artifact as the account's user-level service.
+func selfUpdateSetupUserServiceFrom(t *testing.T, account, artifact string) (string, []string) {
+	t.Helper()
 
 	uid, gid, home := selfUpdatePasswd(t, account)
 	target := filepath.Join(home, "bin", "peers")
-	syscontainer.CopyReleaseArtifact(t, updateOldArtifact, target, 0o755)
+	syscontainer.CopyReleaseArtifact(t, artifact, target, 0o755)
 	dir := filepath.Dir(target)
 	if err := os.Chown(dir, int(uid), int(gid)); err != nil {
 		t.Fatalf("chown %s: %v", dir, err)
