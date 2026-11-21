@@ -38,6 +38,10 @@ topics:
 
 接收方 Broker 把消息写进目标会话的 inbox socket，并附上接收方视角下的发送方地址。空闲的目标会话无需用户输入就会开始处理。会话可以用 `send_message` 向这个发送方地址发送消息。
 
+## 给所有 Agent 发消息
+
+说“给所有 Agent 发一句 hello。”时，消息只发给本机的会话：模型用 Claude Code 内置的会话工具发送，不经过 peers，发完会提醒你还可以用 peers 通知其他主机上的 Agent。要发到其他主机，就明确说出来：“用 peers 广播 hello。”模型会对 `list_agents` 列出的每个 Agent 各调用一次 `send_message`。会话没有内置会话工具时，不会改用 peers 代发，而是说明这一点，并给出同样的提醒。
+
 ## 没有共同 topic 时
 
 两个工作区的 `origin` 地址不同时，两个 Agent 不会出现在对方的列表里。经 peers 之外的途径从另一位用户那里得知 topic 名，然后说“加入 topic `<topic-name>`。”（模型会调用 `join_topic`）。这个调用不需要任何其他 Agent 或用户批准。

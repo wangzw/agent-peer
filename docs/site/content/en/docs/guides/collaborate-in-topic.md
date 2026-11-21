@@ -38,6 +38,10 @@ Say “Send hello to `<address>`.” (the model calls `send_message`). The sendi
 
 The receiving Broker writes the message into the target session's inbox socket with the sender's address as the receiver sees it. An idle session starts working on the message without user input. A session can call `send_message` with the sender's address to send a message back.
 
+## Message every agent
+
+Saying “Send hello to every agent.” reaches only the sessions on this host: the model sends it with Claude Code's built-in session tools, not through `peers`, and then reminds you that `peers` can also notify agents on other hosts. To reach other hosts, ask for it: “Use peers to broadcast hello.” The model then calls `send_message` once for each agent that `list_agents` returns. A session without the built-in session tools does not fall back to `peers`; it tells you so and gives the same reminder.
+
 ## When there is no shared topic
 
 If the two working copies have different `origin` addresses, the agents do not appear in each other's lists. Learn the topic name from the other user through a channel outside `peers`, then say “Join the topic `<topic-name>`.” (the model calls `join_topic`). The call needs no approval from any other agent or user.
