@@ -428,7 +428,7 @@ func TestREQBrokerConfig047_InstallScriptUpgradePrompt(t *testing.T) {
 		if strings.Contains(res.Output, installLevelPrompt) {
 			t.Errorf("the terminal showed the install question instead of the upgrade question:\n%s", res.Output)
 		}
-		if !strings.Contains(res.Output, "upgraded from ") {
+		if !strings.Contains(res.Output, "Upgraded from ") {
 			t.Errorf("the upgrade did not report the replaced version:\n%s", res.Output)
 		}
 		assertSystemInstall(t)

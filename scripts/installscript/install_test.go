@@ -868,12 +868,14 @@ func TestInstallScriptReportsUpgrade(t *testing.T) {
 		prefix := filepath.Join(f.base, "upbin")
 		writeOldBinary(t, prefix, "0.2.0")
 
-		stdout, stderr, code := f.run(nil, "--prefix", prefix, "--no-service", "--no-mcp")
+		stdout, stderr, code := f.run(
+			map[string]string{"FAKE_AGENT_VERSION": "peers 0.5.0"},
+			"--prefix", prefix, "--no-service", "--no-mcp")
 		if code != 0 {
 			t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 		}
-		mustContain(t, "stdout", stdout, "upgraded from 0.2.0")
-		mustContain(t, "stdout", stdout, "peers test-version installed (no service)")
+		mustContain(t, "stdout", stdout, "Upgraded from 0.2.0.")
+		mustContain(t, "stdout", stdout, "peers 0.5.0 installed (no service)")
 		mustContain(t, "stdout", stdout, "binary:     "+f.userBinary(prefix))
 		if got := countLines(readLines(t, f.agentLog), "--version"); got != 1 {
 			t.Errorf("new binary --version calls = %d, want 1", got)
@@ -885,12 +887,14 @@ func TestInstallScriptReportsUpgrade(t *testing.T) {
 		prefix := filepath.Join(f.base, "upbin")
 		writeOldBinary(t, prefix, "0.1.0")
 
-		stdout, stderr, code := f.run(nil, "--prefix", prefix, "--no-mcp")
+		stdout, stderr, code := f.run(
+			map[string]string{"FAKE_AGENT_VERSION": "peers 0.5.0"},
+			"--prefix", prefix, "--no-mcp")
 		if code != 0 {
 			t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 		}
-		upgraded := strings.Index(stdout, "upgraded from 0.1.0")
-		summary := strings.Index(stdout, "peers test-version installed")
+		upgraded := strings.Index(stdout, "Upgraded from 0.1.0.")
+		summary := strings.Index(stdout, "peers 0.5.0 installed")
 		if upgraded < 0 || summary < 0 || upgraded > summary {
 			t.Errorf("stdout does not report the upgrade before the service summary:\n%s", stdout)
 		}
@@ -908,8 +912,104 @@ func TestInstallScriptReportsUpgrade(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 		}
-		mustNotContain(t, "stdout", stdout, "upgraded from")
+		mustNotContain(t, "stdout", stdout, "Upgraded from")
 	})
+}
+
+// TestInstallScriptReportsVersionChange checks that the line before the
+// summary compares the installed version with the one it replaced: an upgrade,
+// a reinstall and a downgrade each get their own sentence, the comparison is
+// numeric, so 0.10.0 is newer than 0.9.0, and a version whose order cannot be
+// established is reported as a replacement. Two identical version strings are
+// the same version even when they have no release form, so that case is a
+// reinstall too.
+func TestInstallScriptReportsVersionChange(t *testing.T) {
+	cases := []struct {
+		name       string
+		oldVersion string
+		newVersion string
+		want       string
+		unwanted   []string
+	}{
+		{
+			name:       "older version is upgraded",
+			oldVersion: "0.4.0",
+			newVersion: "0.5.0",
+			want:       "Upgraded from 0.4.0.",
+			unwanted:   []string{"Downgraded", "Reinstalled"},
+		},
+		{
+			name:       "same version is reinstalled",
+			oldVersion: "0.4.0",
+			newVersion: "0.4.0",
+			want:       "Reinstalled peers 0.4.0.",
+			unwanted:   []string{"Upgraded", "Downgraded"},
+		},
+		{
+			name:       "identical version without a release form is reinstalled",
+			oldVersion: "e2e",
+			newVersion: "e2e",
+			want:       "Reinstalled peers e2e.",
+			unwanted:   []string{"Upgraded", "Downgraded", "Replaced"},
+		},
+		{
+			name:       "newer version is downgraded",
+			oldVersion: "0.5.0",
+			newVersion: "0.4.0",
+			want:       "Downgraded from 0.5.0.",
+			unwanted:   []string{"Upgraded", "Reinstalled"},
+		},
+		{
+			name:       "0.10.0 is newer than 0.9.0",
+			oldVersion: "0.9.0",
+			newVersion: "0.10.0",
+			want:       "Upgraded from 0.9.0.",
+			unwanted:   []string{"Downgraded", "Reinstalled"},
+		},
+		{
+			name:       "development version is replaced without an order",
+			oldVersion: "0.4.0",
+			newVersion: "dev",
+			want:       "Replaced peers 0.4.0.",
+			unwanted:   []string{"Upgraded", "Downgraded", "Reinstalled"},
+		},
+		{
+			name:       "pre-release version is replaced without an order",
+			oldVersion: "0.5.0-rc1",
+			newVersion: "0.5.0",
+			want:       "Replaced peers 0.5.0-rc1.",
+			unwanted:   []string{"Upgraded", "Downgraded", "Reinstalled"},
+		},
+		{
+			name:       "replaced development version is named as is",
+			oldVersion: "dev",
+			newVersion: "0.5.0",
+			want:       "Replaced peers dev.",
+			unwanted:   []string{"Upgraded", "Downgraded", "Reinstalled"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t)
+			prefix := filepath.Join(f.base, "vbin")
+			if err := os.MkdirAll(prefix, 0o755); err != nil {
+				t.Fatalf("creating %s: %v", prefix, err)
+			}
+			writeExecutable(t, filepath.Join(prefix, "peers"),
+				"#!/bin/sh\nprintf 'peers "+tc.oldVersion+"\\n'\n")
+
+			stdout, stderr, code := f.run(
+				map[string]string{"FAKE_AGENT_VERSION": "peers " + tc.newVersion},
+				"--prefix", prefix, "--no-service", "--no-mcp")
+			if code != 0 {
+				t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+			}
+			mustContain(t, "stdout", stdout, tc.want)
+			for _, unwanted := range tc.unwanted {
+				mustNotContain(t, "stdout", stdout, unwanted)
+			}
+		})
+	}
 }
 
 // hostSystemDefinitionPath is the existence check the script makes for a

@@ -88,6 +88,86 @@ ask_tty() {
 	return 0
 }
 
+# version_parts prints the three numeric fields of a release version of the
+# form MAJOR.MINOR.PATCH, separated by spaces. It returns 1 for any other form,
+# such as the development build "dev" or a pre-release, whose order this script
+# does not try to establish.
+version_parts() {
+	case $1 in
+		''|*[!0-9.]*) return 1 ;;
+		.*|*.|*..*) return 1 ;;
+	esac
+	_rest=${1#*.}
+	[ "$_rest" = "$1" ] && return 1
+	_major=${1%%.*}
+	_minor=${_rest%%.*}
+	_patch=${_rest#*.}
+	[ "$_patch" = "$_rest" ] && return 1
+	case $_minor in
+		''|*.*) return 1 ;;
+	esac
+	case $_patch in
+		''|*.*) return 1 ;;
+	esac
+	printf '%s %s %s\n' "$_major" "$_minor" "$_patch"
+}
+
+# strip_leading_zeros removes the leading zeros from one numeric field, so the
+# integer comparisons below do not depend on how the shell reads a value such
+# as 08.
+strip_leading_zeros() {
+	_value=$1
+	while :; do
+		case $_value in
+			0?*) _value=${_value#0} ;;
+			*) break ;;
+		esac
+	done
+	printf '%s\n' "$_value"
+}
+
+# compare_versions prints "newer" when $1 is a later release than $2, "older"
+# when it is earlier, and "same" when they are equal. Two identical strings name
+# the same version even without the release form, so replacing a development
+# build or a pre-release with itself is a reinstall. Other fields are compared
+# as numbers, so 0.10.0 is newer than 0.9.0. A version that does not have the
+# release form prints "unknown"; the caller then reports a replacement rather
+# than claim an order it cannot establish.
+compare_versions() {
+	if [ "$1" = "$2" ]; then
+		printf 'same\n'
+		return 0
+	fi
+	if ! _left=$(version_parts "$1") || ! _right=$(version_parts "$2"); then
+		printf 'unknown\n'
+		return 0
+	fi
+	_left_major=${_left%% *}
+	_left=${_left#* }
+	_left_minor=${_left%% *}
+	_left_patch=${_left#* }
+	_right_major=${_right%% *}
+	_right=${_right#* }
+	_right_minor=${_right%% *}
+	_right_patch=${_right#* }
+	_left_major=$(strip_leading_zeros "$_left_major")
+	_left_minor=$(strip_leading_zeros "$_left_minor")
+	_left_patch=$(strip_leading_zeros "$_left_patch")
+	_right_major=$(strip_leading_zeros "$_right_major")
+	_right_minor=$(strip_leading_zeros "$_right_minor")
+	_right_patch=$(strip_leading_zeros "$_right_patch")
+
+	_order=same
+	if [ "$_left_major" -ne "$_right_major" ]; then
+		if [ "$_left_major" -gt "$_right_major" ]; then _order=newer; else _order=older; fi
+	elif [ "$_left_minor" -ne "$_right_minor" ]; then
+		if [ "$_left_minor" -gt "$_right_minor" ]; then _order=newer; else _order=older; fi
+	elif [ "$_left_patch" -ne "$_right_patch" ]; then
+		if [ "$_left_patch" -gt "$_right_patch" ]; then _order=newer; else _order=older; fi
+	fi
+	printf '%s\n' "$_order"
+}
+
 usage() {
 	cat <<'EOF'
 usage: sh ./install.sh [--system | --user] [--prefix <dir>] [--no-service]
@@ -474,10 +554,19 @@ case $_version_output in
 	*) fail "unexpected output from $prefix/peers --version: $_version_output" ;;
 esac
 
-# Report the upgrade before the service prints its summary; the service does
-# not know what was installed before.
+# Report the version that was replaced before the service prints its summary;
+# the service does not know what was installed before. The new version comes
+# from the binary just installed, and the comparison decides whether this run
+# upgraded, reinstalled or downgraded; a version whose order cannot be
+# established is reported as a replacement.
+_installed_version=${_version_output#peers }
 if [ -n "$_previous_version" ]; then
-	printf 'upgraded from %s\n' "$_previous_version"
+	case $(compare_versions "$_installed_version" "$_previous_version") in
+		older) printf 'Downgraded from %s.\n' "$_previous_version" ;;
+		same) printf 'Reinstalled peers %s.\n' "$_installed_version" ;;
+		newer) printf 'Upgraded from %s.\n' "$_previous_version" ;;
+		*) printf 'Replaced peers %s.\n' "$_previous_version" ;;
+	esac
 fi
 
 # 3. Install the service. service install is repeatable: an existing service is
