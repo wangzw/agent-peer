@@ -807,6 +807,10 @@ func TestInterruptRemovesTemporaryDirectory(t *testing.T) {
 			if entries := f.tempEntries(); len(entries) == 0 {
 				t.Fatalf("the temporary directory did not exist while the download was running")
 			}
+			if cmd.Process.Pid <= 1 {
+				t.Fatalf("invalid process id %d: negating it would signal init", cmd.Process.Pid)
+			}
+			//procsig:allow signals the whole process group this test started
 			if err := syscall.Kill(-cmd.Process.Pid, tt.signal); err != nil {
 				t.Fatalf("sending SIG%s: %v", tt.name, err)
 			}

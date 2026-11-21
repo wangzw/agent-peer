@@ -363,6 +363,7 @@ func runKillProbeRole() int {
 		fmt.Fprintf(os.Stderr, "kill probe: bad pid: %v\n", err)
 		return 2
 	}
+	//procsig:allow probes that an unprivileged process cannot signal this pid, so EPERM and success must differ
 	err = syscall.Kill(pid, 0)
 	switch {
 	case errors.Is(err, syscall.EPERM):

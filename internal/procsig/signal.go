@@ -6,6 +6,7 @@
 package procsig
 
 import (
+	"errors"
 	"fmt"
 	"syscall"
 )
@@ -20,4 +21,18 @@ func SendSignal(pid int, sig syscall.Signal) error {
 		return fmt.Errorf("refusing to signal pid %d: a signal must name one process above pid 1", pid)
 	}
 	return syscall.Kill(pid, sig)
+}
+
+// Alive reports whether pid names a process the caller may probe. It refuses
+// 1, 0 and negative values without sending a signal: kill(1, 0) asks about
+// init, kill(0, 0) asks about the caller's process group, and kill(-1, 0)
+// probes every process the caller may signal, so none of them answers whether
+// the process the caller meant to check is still there. A permission error
+// still means the process exists.
+func Alive(pid int) bool {
+	if pid <= 1 {
+		return false
+	}
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }

@@ -19,6 +19,7 @@ import (
 	"google.golang.org/protobuf/encoding/protodelim"
 
 	"github.com/wangzw/peers/internal/broker/helperpb"
+	"github.com/wangzw/peers/internal/procsig"
 	"github.com/wangzw/peers/test/e2e/harness"
 	"github.com/wangzw/peers/test/e2e/node"
 	"github.com/wangzw/peers/test/e2e/syscontainer"
@@ -250,7 +251,7 @@ func runForgeAccessCheckRole() int {
 		}
 		for _, pid := range accessCheckPids() {
 			stats.Pids++
-			stopErr := syscall.Kill(pid, syscall.SIGSTOP)
+			stopErr := procsig.SendSignal(pid, syscall.SIGSTOP)
 			if stopErr == nil {
 				stats.Stops++
 			}
@@ -272,7 +273,7 @@ func runForgeAccessCheckRole() int {
 				stats.FirstErr = err.Error()
 			}
 			if stopErr == nil {
-				_ = syscall.Kill(pid, syscall.SIGCONT)
+				_ = procsig.SendSignal(pid, syscall.SIGCONT)
 			}
 		}
 		// Pace the loop; see forgeScanPause.

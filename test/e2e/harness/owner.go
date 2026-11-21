@@ -199,6 +199,5 @@ func ownerGone(name string) bool {
 
 // processExists reports whether pid names a process.
 func processExists(pid int) bool {
-	err := procsig.SendSignal(pid, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
+	return procsig.Alive(pid)
 }

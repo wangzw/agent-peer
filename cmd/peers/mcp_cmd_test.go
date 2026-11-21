@@ -54,6 +54,7 @@ func TestMCPContextCancelledBySignalContext(t *testing.T) {
 		done <- a.run(ctx, []string{"mcp"})
 	}()
 
+	//procsig:allow sends SIGTERM to this test's own process
 	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
 		t.Fatalf("sending SIGTERM to self: %v", err)
 	}

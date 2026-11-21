@@ -28,7 +28,7 @@ A cross-host communication system for agents. A host runs a Broker either as a s
 
 ## Signals
 
-Sending a signal to a real process must go through `procsig.SendSignal` in `internal/procsig/signal.go`. It refuses pids at or below 1, which would otherwise reach init, the caller's process group or every process the account may signal. `make lint` checks every non-test Go file outside `third_party/` and fails on a direct `syscall.Kill` or `unix.Kill` call outside that file.
+Sending a signal to a real process must go through `procsig.SendSignal`, and asking whether a pid names a live process must go through `procsig.Alive`, both in `internal/procsig/signal.go`. They refuse pids at or below 1, which would otherwise reach init, the caller's process group or every process the account may signal. `make lint` checks every Go file outside `third_party/`, test files included, and fails on a direct `syscall.Kill` or `unix.Kill` call outside that file. A direct call that is genuinely intended is exempt only with `//procsig:allow <reason>` on the same line or the line above, and the reason must not be empty. This covers signaling the caller's own process, signaling a process group on purpose with a negative pid, and a signal-0 probe that must distinguish EPERM from success rather than only check liveness.
 
 ## Commit Convention
 

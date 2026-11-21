@@ -850,7 +850,7 @@ func envTerminate(pids []int, stdout io.Writer) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	for _, pid := range pids {
-		if procsig.SendSignal(pid, 0) == nil {
+		if procsig.Alive(pid) {
 			_ = procsig.SendSignal(pid, syscall.SIGKILL)
 		}
 	}
@@ -904,7 +904,7 @@ func envRemoveAll(path string) error {
 
 func envAnyAlive(pids []int) bool {
 	for _, pid := range pids {
-		if procsig.SendSignal(pid, 0) == nil {
+		if procsig.Alive(pid) {
 			return true
 		}
 	}

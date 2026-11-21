@@ -164,6 +164,7 @@ func TestSignalContextCancelsOnSIGTERM(t *testing.T) {
 	ctx, stop := newSignalContext(context.Background())
 	defer stop()
 
+	//procsig:allow sends SIGTERM to this test's own process
 	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
 		t.Fatalf("send SIGTERM: %v", err)
 	}

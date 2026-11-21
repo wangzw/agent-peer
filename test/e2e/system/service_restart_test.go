@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wangzw/peers/internal/procsig"
 	"github.com/wangzw/peers/test/e2e/harness"
 	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
@@ -52,7 +53,7 @@ func TestSystemServiceStartsAndRestarts(t *testing.T) {
 	if !ok || before == 0 {
 		t.Fatalf("systemctl show MainPID after the start = %d (found %v), want a non-zero pid", before, ok)
 	}
-	if err := syscall.Kill(before, syscall.SIGKILL); err != nil {
+	if err := procsig.SendSignal(before, syscall.SIGKILL); err != nil {
 		t.Fatalf("kill -9 the system Broker %d: %v", before, err)
 	}
 	t.Logf("the system Broker started with MainPID %d and was killed", before)

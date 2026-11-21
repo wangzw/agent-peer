@@ -7,11 +7,21 @@
 // is adopted by init. Passing any of those to kill reaches init, the caller's
 // process group or every process the account may signal.
 //
-// Only non-test Go files are checked. Tests send signals to children they
-// started themselves, through an *os.Process handle or a pid read from /proc
-// or ps, and one test deliberately signals a process group with a negative
-// pid, which SendSignal must refuse. third_party/ is vendored source and is
-// left alone, as the other lint gates do.
+// Every Go file is checked, test files included: a test that parses a pid from
+// ps or /proc can hold the same stale value. third_party/ is vendored source
+// and is left alone, as the other lint gates do.
+//
+// A direct call that is genuinely intended is exempt with a comment on the
+// same line or the line above:
+//
+//	//procsig:allow sends SIGTERM to this test's own process
+//	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+//
+// The reason after the marker is required; a bare //procsig:allow is not an
+// exemption. The cases that need one are a signal to the caller's own
+// process, a deliberate signal to a process group with a negative pid, and a
+// signal-0 probe that must tell EPERM from success instead of only asking
+// whether the pid is alive (procsig.Alive answers that question).
 package main
 
 import (
@@ -28,8 +38,12 @@ import (
 	"strings"
 )
 
-// helperFile is the one file allowed to call a signal syscall directly.
-const helperFile = "internal/procsig/signal.go"
+const (
+	// helperFile is the one file allowed to call a signal syscall directly.
+	helperFile = "internal/procsig/signal.go"
+	// allowPrefix marks a comment that exempts one direct call.
+	allowPrefix = "//procsig:allow"
+)
 
 // skipDirs holds directory names that are not project source.
 var skipDirs = map[string]bool{
@@ -69,8 +83,7 @@ func run(root string) error {
 			}
 			return nil
 		}
-		name := d.Name()
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+		if !strings.HasSuffix(d.Name(), ".go") {
 			return nil
 		}
 		rel, err := filepath.Rel(root, p)
@@ -81,7 +94,7 @@ func run(root string) error {
 		if rel == helperFile {
 			return nil
 		}
-		file, err := parser.ParseFile(fset, p, nil, 0)
+		file, err := parser.ParseFile(fset, p, nil, parser.ParseComments)
 		if err != nil {
 			return fmt.Errorf("parse %s: %w", rel, err)
 		}
@@ -97,7 +110,7 @@ func run(root string) error {
 	for _, v := range violations {
 		fmt.Fprintln(os.Stderr, v)
 	}
-	return fmt.Errorf("%d direct signal call(s); send a signal through procsig.SendSignal (%s)", len(violations), helperFile)
+	return fmt.Errorf("%d direct signal call(s); use procsig.SendSignal, or exempt an intended call with //procsig:allow <reason> (%s)", len(violations), helperFile)
 }
 
 // checkFile returns one message for every direct signal call in file.
@@ -131,6 +144,7 @@ func checkFile(fset *token.FileSet, name string, file *ast.File) []string {
 		return nil
 	}
 
+	allowed := allowLines(fset, file)
 	var out []string
 	ast.Inspect(file, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
@@ -142,11 +156,47 @@ func checkFile(fset *token.FileSet, name string, file *ast.File) []string {
 			return true
 		}
 		pos := fset.Position(call.Pos())
-		out = append(out, fmt.Sprintf("%s:%d: direct %s call; send a signal through procsig.SendSignal",
+		if allowed[pos.Line] {
+			return true
+		}
+		out = append(out, fmt.Sprintf("%s:%d: direct %s call; use procsig.SendSignal or exempt it with //procsig:allow <reason>",
 			name, pos.Line, forbidden[pkg]))
 		return true
 	})
 	return out
+}
+
+// allowLines returns the call lines a //procsig:allow comment covers. A
+// comment covers the line it ends on and the line after it, so it may sit
+// beside the call or directly above it. A marker without a reason covers
+// nothing.
+func allowLines(fset *token.FileSet, file *ast.File) map[int]bool {
+	lines := make(map[int]bool)
+	for _, group := range file.Comments {
+		for _, c := range group.List {
+			if !hasAllowReason(c.Text) {
+				continue
+			}
+			end := fset.Position(c.End()).Line
+			lines[end] = true
+			lines[end+1] = true
+		}
+	}
+	return lines
+}
+
+// hasAllowReason reports whether text is a //procsig:allow comment with a
+// non-empty reason. The reason is required, so the marker alone is not an
+// exemption.
+func hasAllowReason(text string) bool {
+	rest, ok := strings.CutPrefix(text, allowPrefix)
+	if !ok {
+		return false
+	}
+	if rest != "" && rest[0] != ' ' && rest[0] != '\t' {
+		return false
+	}
+	return strings.TrimSpace(rest) != ""
 }
 
 // calledKill reports whether call invokes Kill from one of the forbidden

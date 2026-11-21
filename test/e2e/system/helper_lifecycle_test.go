@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wangzw/peers/internal/procsig"
 	"github.com/wangzw/peers/test/e2e/harness"
 	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
@@ -52,7 +53,7 @@ func TestSystemAccountHelperLifecycle(t *testing.T) {
 
 	// SIGKILL must not lose the account's watch. The pool respawns the helper
 	// and restores the watch, so a rename after the crash is still seen.
-	if err := syscall.Kill(killed.PID, syscall.SIGKILL); err != nil {
+	if err := procsig.SendSignal(killed.PID, syscall.SIGKILL); err != nil {
 		t.Fatalf("kill -9 the account helper %d: %v", killed.PID, err)
 	}
 	rebuilt := waitAccountHelper(t, otherUID, killed.PID)

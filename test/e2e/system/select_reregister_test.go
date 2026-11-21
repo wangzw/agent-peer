@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/wangzw/peers/internal/mcpserver"
+	"github.com/wangzw/peers/internal/procsig"
 	"github.com/wangzw/peers/test/e2e/harness"
 	"github.com/wangzw/peers/test/e2e/node"
 	"github.com/wangzw/peers/test/e2e/syscontainer"
@@ -341,7 +342,7 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 	wantAgentID := srAgentID(t, "peer", wantAddress)
 	wantKey := srIdentityHash(t, "peer")
 
-	if err := syscall.Kill(userBroker.PID, syscall.SIGKILL); err != nil {
+	if err := procsig.SendSignal(userBroker.PID, syscall.SIGKILL); err != nil {
 		t.Fatalf("killing peer's user-level Broker %d: %v", userBroker.PID, err)
 	}
 
@@ -435,10 +436,10 @@ func TestReregisterSystemBrokerReq037(t *testing.T) {
 	// Pdeathsig=SIGKILL. SIGKILL to MainPID still exercises what this test
 	// checks, because systemd sees the main process die by signal and restarts
 	// the unit.
-	if err := syscall.Kill(oldPID, 0); err != nil {
-		t.Fatalf("checking the system Broker %d before the kill: %v", oldPID, err)
+	if !procsig.Alive(oldPID) {
+		t.Fatalf("the system Broker %d is not running before the kill", oldPID)
 	}
-	if err := syscall.Kill(oldPID, syscall.SIGKILL); err != nil {
+	if err := procsig.SendSignal(oldPID, syscall.SIGKILL); err != nil {
 		t.Fatalf("killing the system Broker %d: %v", oldPID, err)
 	}
 
