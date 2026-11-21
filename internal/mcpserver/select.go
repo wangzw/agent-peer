@@ -102,6 +102,56 @@ func (s *selector) find(ctx context.Context) (target, bool, error) {
 	return target{}, false, nil
 }
 
+// findAtLevel runs the selection order narrowed to one level. A test build may
+// still name a socket with its hook; otherwise only that level's socket is
+// probed, so --system and --user cannot fall through to each other. Commands
+// that take --system or --user use it, because the design makes the selected
+// level decide which Broker they talk to.
+func (s *selector) findAtLevel(ctx context.Context, system bool) (target, bool, error) {
+	if t, found, err := s.findNamedSocket(ctx); err != nil || found {
+		return t, found, err
+	}
+	if !system {
+		switch r := s.probePath(ctx, s.userSocket, kindUser); r.Outcome {
+		case probeOK:
+			return target{Path: s.userSocket, Kind: kindUser}, true, nil
+		case probeWrongPeer:
+			return target{}, false, peerMismatchError(s.userSocket, kindUser, r.PeerUID)
+		}
+		return target{}, false, nil
+	}
+
+	// For root the user-level and system-level sockets share one path, so the
+	// system-level probe is the only one needed.
+	if s.systemSocket == s.userSocket {
+		switch r := s.probePath(ctx, s.systemSocket, kindSystem); r.Outcome {
+		case probeOK:
+			return target{Path: s.systemSocket, Kind: kindSystem}, true, nil
+		case probeWrongPeer:
+			return target{}, false, peerMismatchError(s.systemSocket, kindSystem, r.PeerUID)
+		}
+		return target{}, false, nil
+	}
+
+	switch r := s.probePath(ctx, s.systemSocket, kindSystem); r.Outcome {
+	case probeOK:
+		return target{Path: s.systemSocket, Kind: kindSystem}, true, nil
+	case probeWrongPeer:
+		return target{}, false, peerMismatchError(s.systemSocket, kindSystem, r.PeerUID)
+	case probeRefused:
+		// A service manager may be restarting the Broker, so the refused
+		// system-level socket is retried before selection gives up.
+		ok, err := s.probeSystemWithRetry(ctx)
+		if err != nil {
+			return target{}, false, err
+		}
+		if ok {
+			return target{Path: s.systemSocket, Kind: kindSystem}, true, nil
+		}
+	}
+	return target{}, false, nil
+}
+
 // probeSystemWithRetry probes the system-level socket. A refused connection is
 // retried for SystemRetryDeadline, because a service manager may be restarting
 // the Broker; a socket the account may not use, a missing socket and any other
@@ -195,20 +245,40 @@ func (s *selector) afterFunc() func(time.Duration) <-chan time.Time {
 	return s.after
 }
 
-// FindBroker applies the Broker selection order and returns the socket path of
-// the first step that holds. It never starts a Broker. The error text is
-// suitable for a terminal user.
-func FindBroker(ctx context.Context) (string, error) {
-	s := &selector{
+// productionSelector builds the selector with the paths and probes of the
+// running process.
+func productionSelector() *selector {
+	return &selector{
 		getenv:       os.Getenv,
 		userSocket:   userSocketPath(os.Geteuid()),
 		systemSocket: systemSocketPath(),
 		probe:        inspectSocket,
 		after:        time.After,
 	}
-	t, err := s.Find(ctx)
+}
+
+// FindBroker applies the Broker selection order and returns the socket path of
+// the first step that holds. It never starts a Broker. The error text is
+// suitable for a terminal user.
+func FindBroker(ctx context.Context) (string, error) {
+	t, err := productionSelector().Find(ctx)
 	if err != nil {
 		return "", err
+	}
+	return t.Path, nil
+}
+
+// FindBrokerForLevel returns the socket path of the running Broker at the
+// selected level. It never starts a Broker and never falls through to the other
+// level, so a command that names a level talks to that level or fails.
+func FindBrokerForLevel(ctx context.Context, system bool) (string, error) {
+	s := productionSelector()
+	t, found, err := s.findAtLevel(ctx, system)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", errNoBroker
 	}
 	return t.Path, nil
 }
@@ -225,6 +295,19 @@ func UserSocketPath() string {
 // taken over by another account after selection is never used.
 func FindBrokerWithDial(ctx context.Context) (string, func() (*grpc.ClientConn, localpb.LocalClient, error), error) {
 	path, err := FindBroker(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	return path, func() (*grpc.ClientConn, localpb.LocalClient, error) {
+		return dialLocal(path)
+	}, nil
+}
+
+// FindBrokerWithDialForLevel is FindBrokerForLevel together with a function
+// that opens a connection to the selected socket. As with FindBrokerWithDial,
+// the dialer checks the peer of every underlying connection.
+func FindBrokerWithDialForLevel(ctx context.Context, system bool) (string, func() (*grpc.ClientConn, localpb.LocalClient, error), error) {
+	path, err := FindBrokerForLevel(ctx, system)
 	if err != nil {
 		return "", nil, err
 	}

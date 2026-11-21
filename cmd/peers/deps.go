@@ -92,16 +92,20 @@ type deps struct {
 	runBroker         func(ctx context.Context, o brokerOptions) error
 	classifyBrokerErr func(err error) startFailure
 	runMCP            func(ctx context.Context) error // MCP over the process's own stdin/stdout
-	runStatus         func(ctx context.Context, stdout io.Writer) error
-	runAudit          func(ctx context.Context, stdout io.Writer, limit uint32) error
 
-	// Broker configuration and pairing commands. The Broker is selected the
-	// same way status and audit select it; warn carries the warnings of a
+	// The three commands below connect to the level the command selected, not
+	// to the Broker of the calling account: their system argument names the
+	// system-level socket when true and the user-level one when false.
+	runStatus    func(ctx context.Context, system bool, stdout io.Writer) error
+	runAudit     func(ctx context.Context, system bool, stdout io.Writer, limit uint32) error
+	runSetOnline func(ctx context.Context, system, online bool, stdout io.Writer) error
+
+	// Broker configuration and pairing commands. The Broker is selected by the
+	// calling account, with no explicit level; warn carries the warnings of a
 	// successful broker connect. peerNames supplies the disconnect completion
 	// candidates: the aliases and fingerprints of the paired Brokers.
 	runConfigGet        func(ctx context.Context, key string, stdout io.Writer) error
 	runConfigSet        func(ctx context.Context, key, value string, stdout io.Writer) error
-	runSetOnline        func(ctx context.Context, online bool, stdout io.Writer) error
 	runPairingKeyCreate func(ctx context.Context, stdout io.Writer) error
 	runPeerList         func(ctx context.Context, stdout io.Writer) error
 	runPeerConnect      func(ctx context.Context, address, key, alias string, stdout, warn io.Writer) error

@@ -37,6 +37,27 @@ func (r *AuditRequests) Limits() []uint32 {
 	return out
 }
 
+// RecordingHandlers returns handlers for the status, audit and config-set RPCs
+// that call record with the method name before answering. A command test can
+// use it to tell which of several fake Brokers received the call without
+// naming the generated types itself.
+func RecordingHandlers(record func(method string)) Handlers {
+	return Handlers{
+		Status: func(context.Context, *localpb.StatusRequest) (*localpb.StatusResponse, error) {
+			record("Status")
+			return SampleStatus(), nil
+		},
+		SetConfig: func(context.Context, *localpb.SetConfigRequest) (*localpb.SetConfigResponse, error) {
+			record("SetConfig")
+			return &localpb.SetConfigResponse{}, nil
+		},
+		Audit: func(*localpb.AuditRequest, localpb.Local_AuditServer) error {
+			record("Audit")
+			return nil
+		},
+	}
+}
+
 // SampleStatus is the status a SampleHandlers server answers with: two
 // registered agents and one peer whose link is backing off.
 func SampleStatus() *localpb.StatusResponse {

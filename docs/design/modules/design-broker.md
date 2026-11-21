@@ -126,7 +126,7 @@ service Local {
 | `peers service remove [--system \| --user]` | — | 停止并卸载服务，保留配置、身份与审计日志 |
 | `peers uninstall [--purge] [--yes]` | — | 卸载本系统，见“卸载”（`REQ-broker-config-051` 至 `REQ-broker-config-054`） |
 
-`service offline` 与 `service online` 按终端命令的选择规则连接 Broker，与 `config set broker.offline <值>` 等价，输出一行 `Broker is now offline` 或 `Broker is now online`，审计记录与 `config set` 相同。service 下的全部子命令接受互斥的 `--system` 与 `--user`，都不给时 root 为系统级服务，其他账户为本账户的用户级服务；服务定义显式写出其中一个。
+`service offline` 与 `service online` 连接所选级别的 Broker，与 `config set broker.offline <值>` 等价，输出一行 `Broker is now offline` 或 `Broker is now online`，审计记录与 `config set` 相同。service 下的全部子命令接受互斥的 `--system` 与 `--user`，都不给时 root 为系统级，其他账户为本账户的用户级；服务定义显式写出其中一个。
 
 `broker connect` 的 `<address>` 与 `connect_broker` 工具相同，写成 `address:port` 或 `hostname(address:port)`；`broker disconnect` 的 `<broker>` 与 `disconnect_broker` 工具相同，写别名或 64 位十六进制指纹。每个终端命令都支持 `-h` 与 `--help`；参数错误时打印该命令的用法，并以用法错误的退出码（2）结束。
 

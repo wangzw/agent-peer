@@ -11,11 +11,13 @@ import (
 
 // stubStatusCall records one call to runStatus.
 type stubStatusCall struct {
+	system bool
 	stdout io.Writer
 }
 
 // stubAuditCall records one call to runAudit.
 type stubAuditCall struct {
+	system bool
 	stdout io.Writer
 	limit  uint32
 }
@@ -32,8 +34,8 @@ type stubDeps struct {
 	runBroker         func(ctx context.Context, o brokerOptions) error
 	classifyBrokerErr func(err error) startFailure
 	runMCP            func(ctx context.Context) error
-	runStatus         func(ctx context.Context, stdout io.Writer) error
-	runAudit          func(ctx context.Context, stdout io.Writer, limit uint32) error
+	runStatus         func(ctx context.Context, system bool, stdout io.Writer) error
+	runAudit          func(ctx context.Context, system bool, stdout io.Writer, limit uint32) error
 
 	// Update command overrides. When nil, the stub records the call and uses
 	// the configured results below.
@@ -109,17 +111,17 @@ func (s *stubDeps) deps() deps {
 			}
 			return s.mcpErr
 		},
-		runStatus: func(ctx context.Context, stdout io.Writer) error {
-			s.statusCalls = append(s.statusCalls, stubStatusCall{stdout: stdout})
+		runStatus: func(ctx context.Context, system bool, stdout io.Writer) error {
+			s.statusCalls = append(s.statusCalls, stubStatusCall{system: system, stdout: stdout})
 			if s.runStatus != nil {
-				return s.runStatus(ctx, stdout)
+				return s.runStatus(ctx, system, stdout)
 			}
 			return s.statusErr
 		},
-		runAudit: func(ctx context.Context, stdout io.Writer, limit uint32) error {
-			s.auditCalls = append(s.auditCalls, stubAuditCall{stdout: stdout, limit: limit})
+		runAudit: func(ctx context.Context, system bool, stdout io.Writer, limit uint32) error {
+			s.auditCalls = append(s.auditCalls, stubAuditCall{system: system, stdout: stdout, limit: limit})
 			if s.runAudit != nil {
-				return s.runAudit(ctx, stdout, limit)
+				return s.runAudit(ctx, system, stdout, limit)
 			}
 			return s.auditErr
 		},

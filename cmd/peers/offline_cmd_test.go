@@ -12,6 +12,7 @@ import (
 
 // setOnlineCall is one recorded runSetOnline call.
 type setOnlineCall struct {
+	system bool
 	online bool
 	out    io.Writer
 }

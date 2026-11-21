@@ -36,14 +36,16 @@ type peerConnectCall struct {
 
 // termcmdStub records the calls the terminal commands make into deps.
 type termcmdStub struct {
-	statusCalls int
-	statusOut   io.Writer
-	statusErr   error
+	statusCalls  int
+	statusSystem bool
+	statusOut    io.Writer
+	statusErr    error
 
-	auditCalls int
-	auditOut   io.Writer
-	auditLimit uint32
-	auditErr   error
+	auditCalls  int
+	auditSystem bool
+	auditOut    io.Writer
+	auditLimit  uint32
+	auditErr    error
 
 	configGetCalls      []configGetCall
 	configGetErr        error
@@ -69,13 +71,15 @@ type termcmdStub struct {
 func (s *termcmdStub) deps() deps {
 	return deps{
 		euid: func() int { return 1000 },
-		runStatus: func(_ context.Context, stdout io.Writer) error {
+		runStatus: func(_ context.Context, system bool, stdout io.Writer) error {
 			s.statusCalls++
+			s.statusSystem = system
 			s.statusOut = stdout
 			return s.statusErr
 		},
-		runAudit: func(_ context.Context, stdout io.Writer, limit uint32) error {
+		runAudit: func(_ context.Context, system bool, stdout io.Writer, limit uint32) error {
 			s.auditCalls++
+			s.auditSystem = system
 			s.auditOut = stdout
 			s.auditLimit = limit
 			return s.auditErr
@@ -88,8 +92,8 @@ func (s *termcmdStub) deps() deps {
 			s.configSetCalls = append(s.configSetCalls, configSetCall{key: key, value: value, out: stdout})
 			return s.configSetErr
 		},
-		runSetOnline: func(_ context.Context, online bool, stdout io.Writer) error {
-			s.setOnlineCalls = append(s.setOnlineCalls, setOnlineCall{online: online, out: stdout})
+		runSetOnline: func(_ context.Context, system, online bool, stdout io.Writer) error {
+			s.setOnlineCalls = append(s.setOnlineCalls, setOnlineCall{system: system, online: online, out: stdout})
 			return s.setOnlineErr
 		},
 		runPairingKeyCreate: func(_ context.Context, stdout io.Writer) error {

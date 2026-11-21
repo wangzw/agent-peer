@@ -34,10 +34,11 @@ func (a *app) serviceStatusCommand() *cobra.Command {
 		Short: "Show the status of the selected Broker",
 		Args:  noPositionalArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if _, err := level.system(a.deps.euid()); err != nil {
+			system, err := level.system(a.deps.euid())
+			if err != nil {
 				return err
 			}
-			if err := a.deps.runStatus(cmd.Context(), a.stdout); err != nil {
+			if err := a.deps.runStatus(cmd.Context(), system, a.stdout); err != nil {
 				// The status already names the cause and the repair; a degraded
 				// Broker that serves diagnostics only makes the command fail
 				// without repeating them on standard error.
@@ -65,7 +66,8 @@ func (a *app) serviceAuditCommand() *cobra.Command {
 		Short: "Read the audit log from the selected Broker",
 		Args:  noPositionalArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if _, err := level.system(a.deps.euid()); err != nil {
+			system, err := level.system(a.deps.euid())
+			if err != nil {
 				return err
 			}
 			// Parse in base 10: a leading zero must not select an octal
@@ -74,7 +76,7 @@ func (a *app) serviceAuditCommand() *cobra.Command {
 			if err != nil {
 				return usageError(err)
 			}
-			return a.deps.runAudit(cmd.Context(), a.stdout, uint32(limit))
+			return a.deps.runAudit(cmd.Context(), system, a.stdout, uint32(limit))
 		},
 	}
 	level = addLevelFlags(cmd)

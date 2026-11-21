@@ -386,3 +386,91 @@ func TestFindSystemRefusedRetries(t *testing.T) {
 		2250*time.Millisecond,
 	)
 }
+
+// REQ-broker-config-055: a command that names a level talks to that level's
+// Broker, so the two explicit levels pick different sockets even when both
+// Brokers answer.
+func TestFindAtLevelSelectsOnlyThatLevel(t *testing.T) {
+	userPath := filepath.Join(t.TempDir(), "user.sock")
+	systemPath := filepath.Join(t.TempDir(), "system.sock")
+
+	s := &selector{
+		getenv:       func(string) string { return "" },
+		userSocket:   userPath,
+		systemSocket: systemPath,
+		probe: func(_ context.Context, path string) probeInfo {
+			return probeInfo{Outcome: probeOK}
+		},
+	}
+
+	userTarget, found, err := s.findAtLevel(context.Background(), false)
+	if err != nil || !found {
+		t.Fatalf("findAtLevel(user) = (%+v, %v, %v), want the user-level socket", userTarget, found, err)
+	}
+	if userTarget.Kind != kindUser || userTarget.Path != userPath {
+		t.Fatalf("findAtLevel(user) = %+v, want {%s kindUser}", userTarget, userPath)
+	}
+
+	systemTarget, found, err := s.findAtLevel(context.Background(), true)
+	if err != nil || !found {
+		t.Fatalf("findAtLevel(system) = (%+v, %v, %v), want the system-level socket", systemTarget, found, err)
+	}
+	if systemTarget.Kind != kindSystem || systemTarget.Path != systemPath {
+		t.Fatalf("findAtLevel(system) = %+v, want {%s kindSystem}", systemTarget, systemPath)
+	}
+}
+
+// REQ-broker-config-055: --user must not fall through to a running system-level
+// Broker; otherwise the option would not decide which Broker the command talks
+// to.
+func TestFindAtLevelUserDoesNotFallThrough(t *testing.T) {
+	userPath := filepath.Join(t.TempDir(), "user.sock")
+	systemPath := filepath.Join(t.TempDir(), "system.sock")
+
+	s := &selector{
+		getenv:       func(string) string { return "" },
+		userSocket:   userPath,
+		systemSocket: systemPath,
+		probe: func(_ context.Context, path string) probeInfo {
+			if path == systemPath {
+				return probeInfo{Outcome: probeOK}
+			}
+			return probeInfo{Outcome: probeMissing}
+		},
+	}
+
+	got, found, err := s.findAtLevel(context.Background(), false)
+	if err != nil {
+		t.Fatalf("findAtLevel(user): %v", err)
+	}
+	if found {
+		t.Fatalf("findAtLevel(user) = %+v, want no target despite the running system-level Broker", got)
+	}
+}
+
+// REQ-broker-config-055: --system must not fall through to a running user-level
+// Broker either.
+func TestFindAtLevelSystemDoesNotFallThrough(t *testing.T) {
+	userPath := filepath.Join(t.TempDir(), "user.sock")
+	systemPath := filepath.Join(t.TempDir(), "system.sock")
+
+	s := &selector{
+		getenv:       func(string) string { return "" },
+		userSocket:   userPath,
+		systemSocket: systemPath,
+		probe: func(_ context.Context, path string) probeInfo {
+			if path == userPath {
+				return probeInfo{Outcome: probeOK}
+			}
+			return probeInfo{Outcome: probeMissing}
+		},
+	}
+
+	got, found, err := s.findAtLevel(context.Background(), true)
+	if err != nil {
+		t.Fatalf("findAtLevel(system): %v", err)
+	}
+	if found {
+		t.Fatalf("findAtLevel(system) = %+v, want no target despite the running user-level Broker", got)
+	}
+}

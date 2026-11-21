@@ -27,10 +27,24 @@ var brokerRun = broker.Run
 // with; the returned dialer checks the peer of the Broker socket.
 var _ termcmd.Selector = mcpserver.FindBrokerWithDial
 
-// findBroker is the selector the terminal commands use. It is a variable so a
-// test can point the real dep closures at a fake Broker while exercising the
-// production wiring.
+// findBroker is the account-based selector the terminal commands use. It is a
+// variable so a test can point the real dep closures at a fake Broker while
+// exercising the production wiring.
 var findBroker termcmd.Selector = mcpserver.FindBrokerWithDial
+
+// findBrokerForLevel is the selector the commands that take --system or --user
+// use. It is a variable for the same reason as findBroker.
+var findBrokerForLevel = mcpserver.FindBrokerWithDialForLevel
+
+var _ func(context.Context, bool) (string, termcmd.Dialer, error) = findBrokerForLevel
+
+// selectorForLevel turns the level-aware selector into the termcmd.Selector the
+// shared runners take.
+func selectorForLevel(system bool) termcmd.Selector {
+	return func(ctx context.Context) (string, termcmd.Dialer, error) {
+		return findBrokerForLevel(ctx, system)
+	}
+}
 
 // realDeps connects the command line to the real Broker and MCP server entry
 // points. It is called once by main before any subcommand runs.
@@ -58,11 +72,11 @@ func realDeps(version string) deps {
 				LocalProtocolVersion: local,
 			})
 		},
-		runStatus: func(ctx context.Context, stdout io.Writer) error {
-			return termcmd.RunStatus(ctx, findBroker, stdout)
+		runStatus: func(ctx context.Context, system bool, stdout io.Writer) error {
+			return termcmd.RunStatus(ctx, selectorForLevel(system), stdout)
 		},
-		runAudit: func(ctx context.Context, stdout io.Writer, limit uint32) error {
-			return termcmd.RunAudit(ctx, findBroker, limit, stdout)
+		runAudit: func(ctx context.Context, system bool, stdout io.Writer, limit uint32) error {
+			return termcmd.RunAudit(ctx, selectorForLevel(system), limit, stdout)
 		},
 		runConfigGet: func(ctx context.Context, key string, stdout io.Writer) error {
 			return termcmd.RunConfigGet(ctx, findBroker, key, stdout)
@@ -70,8 +84,8 @@ func realDeps(version string) deps {
 		runConfigSet: func(ctx context.Context, key, value string, stdout io.Writer) error {
 			return termcmd.RunConfigSet(ctx, findBroker, key, value, stdout)
 		},
-		runSetOnline: func(ctx context.Context, online bool, stdout io.Writer) error {
-			return termcmd.RunSetOnline(ctx, findBroker, online, stdout)
+		runSetOnline: func(ctx context.Context, system, online bool, stdout io.Writer) error {
+			return termcmd.RunSetOnline(ctx, selectorForLevel(system), online, stdout)
 		},
 		runPairingKeyCreate: func(ctx context.Context, stdout io.Writer) error {
 			return termcmd.RunPairingKeyCreate(ctx, findBroker, stdout)

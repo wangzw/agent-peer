@@ -1087,7 +1087,7 @@ func selfUpdateWaitAuditEventFor(t *testing.T, account, from, to string) {
 	t.Helper()
 
 	harness.Eventually(t, selfUpdateAuditBound, "the audit log to record update_applied by "+account, func() (bool, string) {
-		res := syscontainer.RunAs(t, account, nil, "service", "audit")
+		res := syscontainer.RunAs(t, account, nil, "service", "audit", "--system")
 		if res.ExitCode != 0 {
 			return false, fmt.Sprintf("peers service audit exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 		}

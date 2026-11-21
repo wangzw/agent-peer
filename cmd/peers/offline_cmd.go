@@ -25,10 +25,11 @@ func (a *app) serviceSetOnlineCommand(name string, online bool, short string) *c
 		Short: short,
 		Args:  noPositionalArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if _, err := level.system(a.deps.euid()); err != nil {
+			system, err := level.system(a.deps.euid())
+			if err != nil {
 				return err
 			}
-			return a.deps.runSetOnline(cmd.Context(), online, a.stdout)
+			return a.deps.runSetOnline(cmd.Context(), system, online, a.stdout)
 		},
 	}
 	level = addLevelFlags(cmd)
