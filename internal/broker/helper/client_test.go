@@ -449,6 +449,141 @@ func TestClientSecondReadyIsProtocolError(t *testing.T) {
 	}
 }
 
+// TestClientGoneIsUnavailable checks that losing the pipe to the helper wraps
+// ErrUnavailable.
+func TestClientGoneIsUnavailable(t *testing.T) {
+	c, child := newScriptedChild(t)
+	child.die()
+	select {
+	case <-c.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("Done was not closed after the child's pipe closed")
+	}
+	if _, err := c.Lookup(context.Background(), "/c", "/s"); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Lookup error = %v, want it to wrap ErrUnavailable", err)
+	}
+}
+
+// TestClientPermissionErrorIsNotUnavailable checks that an error the helper
+// reports for a record it could not read stays an ordinary error: the helper
+// ran and answered, so it is not the thing that failed.
+func TestClientPermissionErrorIsNotUnavailable(t *testing.T) {
+	c, child := newScriptedChild(t)
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := c.Lookup(context.Background(), "/c", "/s")
+		errCh <- err
+	}()
+	req := child.next(t)
+	child.send(t, errorMessage(req.GetId(), helperpb.HelperErrorCode_HELPER_ERROR_CODE_FAILED,
+		"inbox: reading session registry: permission denied"))
+	err := <-errCh
+	if err == nil {
+		t.Fatal("Lookup succeeded")
+	}
+	if errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Lookup error = %v, want it not to wrap ErrUnavailable", err)
+	}
+}
+
+// TestClientLookupDeadlineIsUnavailable checks that a helper that accepted the
+// request but never answered is reported with ErrUnavailable when the call's
+// deadline expires. The helper is up and the request reached it, so this is the
+// helper failing to answer, not a record that cannot be read.
+func TestClientLookupDeadlineIsUnavailable(t *testing.T) {
+	c, child := newScriptedChild(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := c.Lookup(ctx, "/c", "/s")
+		errCh <- err
+	}()
+
+	// Read the request so the write completes; no response follows.
+	child.next(t)
+	err := <-errCh
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Lookup error = %v, want it to wrap ErrUnavailable", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Lookup error = %v, want it to keep the context deadline", err)
+	}
+}
+
+// TestClientWatchDeadlineIsUnavailable checks the same for the
+// session-directory watch request.
+func TestClientWatchDeadlineIsUnavailable(t *testing.T) {
+	c, child := newScriptedChild(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := c.Watch(ctx, "/c", func(int) {})
+		errCh <- err
+	}()
+
+	child.next(t)
+	err := <-errCh
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Watch error = %v, want it to wrap ErrUnavailable", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Watch error = %v, want it to keep the context deadline", err)
+	}
+}
+
+// TestClientRereadDeadlineIsUnavailable checks that a helper that accepted the
+// reread request but never answered is reported with ErrUnavailable when the
+// call's deadline expires. The helper is up and the request reached it, so this
+// is the helper failing to answer, not a record that cannot be read.
+func TestClientRereadDeadlineIsUnavailable(t *testing.T) {
+	c, child := newScriptedChild(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := c.Reread(ctx, inbox.Session{SocketPath: "/s"})
+		errCh <- err
+	}()
+
+	// Read the request so the write completes; no response follows.
+	child.next(t)
+	err := <-errCh
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Reread error = %v, want it to wrap ErrUnavailable", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Reread error = %v, want it to keep the context deadline", err)
+	}
+}
+
+// TestClientCancelIsNotUnavailable checks that a caller's own cancellation is
+// not reported as a helper failure: the helper is not the thing that ended the
+// call.
+func TestClientCancelIsNotUnavailable(t *testing.T) {
+	c, child := newScriptedChild(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := c.Lookup(ctx, "/c", "/s")
+		errCh <- err
+	}()
+	child.next(t)
+	cancel()
+	err := <-errCh
+	if errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Lookup error = %v, want a caller cancellation not to wrap ErrUnavailable", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Lookup error = %v, want context.Canceled", err)
+	}
+}
+
 func TestClientRereadCancelUnblocksPipeWrite(t *testing.T) {
 	// The scripted child never reads, so the request write blocks on the pipe.
 	// Cancellation must return rather than wait for a reader that is gone.
@@ -466,6 +601,30 @@ func TestClientRereadCancelUnblocksPipeWrite(t *testing.T) {
 	}
 	if elapsed := time.Since(began); elapsed > 3*time.Second {
 		t.Fatalf("Reread took %v, want it to return at the 100ms deadline", elapsed)
+	}
+}
+
+// TestClientWriteCancelIsNotUnavailable checks that a caller's cancellation
+// while the request is still being written is not reported as a helper
+// failure. The child never reads, so the write is blocked on the pipe when the
+// cancellation arrives; the connection is unusable afterwards, but the helper
+// is not what ended the call.
+func TestClientWriteCancelIsNotUnavailable(t *testing.T) {
+	c, _ := newScriptedChild(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := c.Reread(ctx, inbox.Session{SocketPath: "/s"})
+		errCh <- err
+	}()
+
+	cancel()
+	err := <-errCh
+	if errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Reread error = %v, want a caller cancellation not to wrap ErrUnavailable", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Reread error = %v, want context.Canceled", err)
 	}
 }
 

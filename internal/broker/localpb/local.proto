@@ -79,6 +79,12 @@ enum NotRegisteredReason {
   // Broker runs degraded with diagnostics only. detail carries the cause, the
   // same text as StatusResponse.degraded.reason. The stream stays open.
   NOT_REGISTERED_REASON_BROKER_DEGRADED = 5;
+  // NOT_REGISTERED_REASON_ACCOUNT_HELPER_FAILED answers a registration when
+  // the account's helper process could not be started, including a failure to
+  // look up the account before starting it, or stopped answering. This is
+  // distinct from a missing session record. The stream stays open and the
+  // Broker retries like it does for a missing record.
+  NOT_REGISTERED_REASON_ACCOUNT_HELPER_FAILED = 6;
 }
 
 message ListAgentsRequest {

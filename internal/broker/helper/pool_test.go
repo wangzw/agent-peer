@@ -485,6 +485,131 @@ func TestPoolReadyTimeout(t *testing.T) {
 	}
 }
 
+// TestPoolSpawnFailureIsUnavailable checks that a helper that cannot be started
+// is reported with ErrUnavailable. Registration uses that sentinel to tell a
+// helper failure from a session record that exists but cannot be read.
+func TestPoolSpawnFailureIsUnavailable(t *testing.T) {
+	h := newPoolHarness(t)
+	h.setStartErr(errors.New("fork/exec /usr/local/bin/peers: invalid argument"))
+	b, release, err := h.pool.Acquire(context.Background(), 1001)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	defer release()
+
+	_, err = b.Lookup(context.Background(), "/cfg", "/x.sock")
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Lookup error = %v, want it to wrap ErrUnavailable", err)
+	}
+}
+
+// TestPoolAccountLookupFailureIsUnavailable checks that a failure to read the
+// account database is reported with ErrUnavailable. The helper cannot be
+// started without the account, so registration must report a helper failure
+// rather than a missing session record.
+func TestPoolAccountLookupFailureIsUnavailable(t *testing.T) {
+	lookupErr := errors.New("user: lookup uid 1001: temporary failure")
+	h := newPoolHarness(t, func(o *PoolOptions) {
+		o.Lookup = func(uint32) (Account, error) { return Account{}, lookupErr }
+	})
+	b, release, err := h.pool.Acquire(context.Background(), 1001)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	defer release()
+
+	_, err = b.Lookup(context.Background(), "/cfg", "/x.sock")
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Lookup error = %v, want it to wrap ErrUnavailable", err)
+	}
+	if !errors.Is(err, lookupErr) {
+		t.Fatalf("Lookup error = %v, want it to keep the account lookup error", err)
+	}
+	if got := h.startCount(); got != 0 {
+		t.Fatalf("Start calls = %d, want 0", got)
+	}
+}
+
+// TestPoolReadyTimeoutIsUnavailable checks that a helper that never sends its
+// Ready frame is reported with ErrUnavailable. The context is the same one the
+// registration path uses: a short call budget that expires before ReadyTimeout,
+// so the caller's own deadline ends the wait. Without the sentinel the
+// registration reports a missing record instead of a helper that did not start.
+func TestPoolReadyTimeoutIsUnavailable(t *testing.T) {
+	h := newPoolHarness(t)
+	h.setBlocking(true)
+	b, release, err := h.pool.Acquire(context.Background(), 1001)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	defer release()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err = b.Lookup(ctx, "/cfg", "/x.sock")
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Lookup error = %v, want it to wrap ErrUnavailable", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Lookup error = %v, want it to keep the context deadline", err)
+	}
+}
+
+// TestPoolReadyCancelIsNotUnavailable checks that a caller's own cancellation
+// while the helper is still starting up is not reported as a helper failure.
+// The helper is not what ended the call, so registration must not turn the
+// cancellation into account_helper_failed.
+func TestPoolReadyCancelIsNotUnavailable(t *testing.T) {
+	h := newPoolHarness(t)
+	h.setBlocking(true)
+	b, release, err := h.pool.Acquire(context.Background(), 1001)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	defer release()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := b.Lookup(ctx, "/cfg", "/x.sock")
+		errCh <- err
+	}()
+	// Cancel only after the child exists and is being waited for, so the
+	// cancellation ends the Ready handshake rather than the spawn.
+	poolWaitFor(t, "the helper to start", func() bool { return h.startCount() == 1 })
+	cancel()
+
+	err = <-errCh
+	if errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Lookup error = %v, want a caller cancellation not to wrap ErrUnavailable", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Lookup error = %v, want context.Canceled", err)
+	}
+}
+
+// TestPoolWatchTimeoutIsUnavailable checks that the session-directory watch
+// path reports the same sentinel when the helper never becomes ready. The
+// watch is what fails first during registration, and it must not be mistaken
+// for a record that does not exist either.
+func TestPoolWatchTimeoutIsUnavailable(t *testing.T) {
+	h := newPoolHarness(t)
+	h.setBlocking(true)
+	b, release, err := h.pool.Acquire(context.Background(), 1001)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	defer release()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := b.Watch(ctx, "/cfg", func(int) {}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Watch error = %v, want it to wrap ErrUnavailable", err)
+	} else if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Watch error = %v, want it to keep the context deadline", err)
+	}
+}
+
 // TestPoolDiscardsHelperAfterCallTimeout checks that one call timing out marks
 // the helper bad. A helper that ignores a request while its pipe is not full
 // would otherwise make every later call wait for the full timeout.

@@ -15,11 +15,32 @@ import (
 )
 
 var (
+	// ErrUnavailable reports that the account helper could not be started or
+	// that communication with it failed. It marks the failures that belong to
+	// the helper itself, as opposed to a session record that exists but cannot
+	// be read, which stays an ordinary error.
+	ErrUnavailable = errors.New("helper: account helper unavailable")
 	// ErrHelperGone reports that the connection to the account helper is lost.
-	ErrHelperGone = errors.New("the account helper connection was lost")
-	// ErrProtocol reports a violation of the helper pipe protocol.
-	ErrProtocol = errors.New("helper protocol violation")
+	// A lost pipe is a communication failure, so it wraps ErrUnavailable.
+	ErrHelperGone = fmt.Errorf("%w: the account helper connection was lost", ErrUnavailable)
+	// ErrProtocol reports a violation of the helper pipe protocol. The helper
+	// is unusable when it speaks the protocol wrong, so it wraps ErrUnavailable.
+	ErrProtocol = fmt.Errorf("%w: helper protocol violation", ErrUnavailable)
 )
+
+// deadlineUnavailable converts a context that ended at its deadline into a
+// helper failure. A deadline on a helper call bounds how long the helper may
+// take to start or answer, so its expiry means the helper did not respond. The
+// context error stays reachable through errors.Is, because callers discard a
+// stuck helper on a deadline. A cancellation is the caller's own doing and is
+// returned unchanged, so it is not mistaken for a helper failure.
+func deadlineUnavailable(ctx context.Context) error {
+	err := ctx.Err()
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
+	}
+	return err
+}
 
 // cancelWait is how long Deliver waits for the outcome of a request after it
 // has asked the helper to cancel it.
@@ -242,22 +263,33 @@ func (c *Client) send(ctx context.Context, req *helperpb.HelperRequest) error {
 }
 
 // goneError wraps a send failure as ErrHelperGone while keeping the context
-// error, if that is what ended the write, visible to errors.Is.
+// error, if that is what ended the write, visible to errors.Is. A caller's
+// cancellation is returned unchanged: the helper is not what ended the call,
+// so it must not be reported as a helper failure. A deadline does belong to the
+// helper, because it bounds how long the helper may take to accept a request.
 func goneError(err error) error {
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return err
+	case errors.Is(err, context.DeadlineExceeded):
 		return fmt.Errorf("%w: %w", ErrHelperGone, err)
+	default:
+		return fmt.Errorf("%w: %v", ErrHelperGone, err)
 	}
-	return fmt.Errorf("%w: %v", ErrHelperGone, err)
 }
 
 // deliverSendError classifies a failure before the request was on the wire.
 // An oversize frame was never written. A write interrupted by its context may
-// have been read in part or in full, so its outcome is unknown.
+// have been read in part or in full, so its outcome is unknown. A caller's
+// cancellation keeps that uncertain outcome but is not a helper failure; a
+// deadline bounds the helper, so it does wrap ErrHelperGone.
 func deliverSendError(err error) error {
 	switch {
 	case errors.Is(err, errOversize):
 		return fmt.Errorf("%w: %v", inbox.ErrNotWritten, err)
-	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, context.Canceled):
+		return fmt.Errorf("%w: %w", inbox.ErrUncertain, err)
+	case errors.Is(err, context.DeadlineExceeded):
 		return fmt.Errorf("%w: %w: %w", inbox.ErrUncertain, ErrHelperGone, err)
 	default:
 		return fmt.Errorf("%w: %w: %v", inbox.ErrNotWritten, ErrHelperGone, err)
@@ -283,7 +315,7 @@ func (c *Client) WaitReady(ctx context.Context) (*helperpb.Ready, error) {
 		}
 		return nil, fmt.Errorf("%w: %v", ErrHelperGone, err)
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, deadlineUnavailable(ctx)
 	}
 }
 
@@ -311,7 +343,7 @@ func (c *Client) Lookup(ctx context.Context, configDir, socketPath string) (inbo
 		}
 		return clientSessionResult(resp)
 	case <-ctx.Done():
-		return inbox.Session{}, ctx.Err()
+		return inbox.Session{}, deadlineUnavailable(ctx)
 	}
 }
 
@@ -338,7 +370,7 @@ func (c *Client) Reread(ctx context.Context, s inbox.Session) (inbox.Session, er
 		}
 		return clientSessionResult(resp)
 	case <-ctx.Done():
-		return inbox.Session{}, ctx.Err()
+		return inbox.Session{}, deadlineUnavailable(ctx)
 	}
 }
 
@@ -394,7 +426,7 @@ func (c *Client) Watch(ctx context.Context, configDir string, onChange func(pid 
 			delete(c.watches, w.id)
 		}
 		c.mu.Unlock()
-		return nil, ctx.Err()
+		return nil, deadlineUnavailable(ctx)
 	}
 }
 

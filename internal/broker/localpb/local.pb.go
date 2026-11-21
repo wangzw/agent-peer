@@ -35,6 +35,12 @@ const (
 	// Broker runs degraded with diagnostics only. detail carries the cause, the
 	// same text as StatusResponse.degraded.reason. The stream stays open.
 	NotRegisteredReason_NOT_REGISTERED_REASON_BROKER_DEGRADED NotRegisteredReason = 5
+	// NOT_REGISTERED_REASON_ACCOUNT_HELPER_FAILED answers a registration when
+	// the account's helper process could not be started, including a failure to
+	// look up the account before starting it, or stopped answering. This is
+	// distinct from a missing session record. The stream stays open and the
+	// Broker retries like it does for a missing record.
+	NotRegisteredReason_NOT_REGISTERED_REASON_ACCOUNT_HELPER_FAILED NotRegisteredReason = 6
 )
 
 // Enum value maps for NotRegisteredReason.
@@ -46,6 +52,7 @@ var (
 		3: "NOT_REGISTERED_REASON_SOCKET_NOT_OWNED",
 		4: "NOT_REGISTERED_REASON_SOCKET_PATH_MISSING",
 		5: "NOT_REGISTERED_REASON_BROKER_DEGRADED",
+		6: "NOT_REGISTERED_REASON_ACCOUNT_HELPER_FAILED",
 	}
 	NotRegisteredReason_value = map[string]int32{
 		"NOT_REGISTERED_REASON_UNSPECIFIED":              0,
@@ -54,6 +61,7 @@ var (
 		"NOT_REGISTERED_REASON_SOCKET_NOT_OWNED":         3,
 		"NOT_REGISTERED_REASON_SOCKET_PATH_MISSING":      4,
 		"NOT_REGISTERED_REASON_BROKER_DEGRADED":          5,
+		"NOT_REGISTERED_REASON_ACCOUNT_HELPER_FAILED":    6,
 	}
 )
 
@@ -3742,14 +3750,15 @@ const file_internal_broker_localpb_local_proto_rawDesc = "" +
 	"\x1eoriginating_broker_fingerprint\x18\x03 \x01(\fR\x1coriginatingBrokerFingerprint\";\n" +
 	"\x11AdvertisedAddress\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x12\n" +
-	"\x04addr\x18\x02 \x01(\tR\x04addr*\x9f\x02\n" +
+	"\x04addr\x18\x02 \x01(\tR\x04addr*\xd0\x02\n" +
 	"\x13NotRegisteredReason\x12%\n" +
 	"!NOT_REGISTERED_REASON_UNSPECIFIED\x10\x00\x122\n" +
 	".NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND\x10\x01\x12'\n" +
 	"#NOT_REGISTERED_REASON_NAME_UNUSABLE\x10\x02\x12*\n" +
 	"&NOT_REGISTERED_REASON_SOCKET_NOT_OWNED\x10\x03\x12-\n" +
 	")NOT_REGISTERED_REASON_SOCKET_PATH_MISSING\x10\x04\x12)\n" +
-	"%NOT_REGISTERED_REASON_BROKER_DEGRADED\x10\x05*\x8b\x01\n" +
+	"%NOT_REGISTERED_REASON_BROKER_DEGRADED\x10\x05\x12/\n" +
+	"+NOT_REGISTERED_REASON_ACCOUNT_HELPER_FAILED\x10\x06*\x8b\x01\n" +
 	"\vAgentStatus\x12\x1c\n" +
 	"\x18AGENT_STATUS_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11AGENT_STATUS_IDLE\x10\x01\x12\x15\n" +

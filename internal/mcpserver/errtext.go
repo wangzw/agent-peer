@@ -132,6 +132,8 @@ func notRegisteredReason(r localpb.NotRegisteredReason, detail string) string {
 		return "the session had no inbox socket when this MCP server started; reconnect the MCP server with /mcp"
 	case localpb.NotRegisteredReason_NOT_REGISTERED_REASON_BROKER_DEGRADED:
 		return "the Broker is running in a degraded, diagnostics-only mode; it cannot serve this call until the startup failure is fixed"
+	case localpb.NotRegisteredReason_NOT_REGISTERED_REASON_ACCOUNT_HELPER_FAILED:
+		return "the Broker's helper for this account failed to start or stopped responding; ask the administrator to check the Broker log"
 	default:
 		return "registration is still in progress"
 	}

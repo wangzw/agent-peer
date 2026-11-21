@@ -199,6 +199,7 @@ Broker 返回的错误码转成一句以结果开头的文字，随后附上错�
 | `send_message` 的请求发出后连接中断 | `Delivery unknown`，说明消息可能已送达，重发可能使对方收到两份 |
 | `connect_broker` 的请求发出后连接中断 | 以 `Not connected` 开头，说明配对可能已完成，可查看 `list_brokers` |
 | 登记未完成或失败：找不到会话记录，会话名不可用，或 socket 不属于本账户 | 需要 Agent 身份的工具返回 `not_registered` 并说明原因；`list_brokers`、`get_config`、`set_config`、`connect_broker`、`disconnect_broker`、`create_pairing_key` 不需要 Agent 身份，仍按权限执行 |
+| 登记流收到 `not_registered` 且原因为 `account_helper_failed`（Broker 侧 `Lookup` 返回包装了 `helper.ErrUnavailable` 的错误，即辅助进程未能启动、启动前查询账户数据库失败，或已停止响应） | 需要 Agent 身份的工具返回 `not_registered`，说明该账户的辅助进程未能启动或已停止响应，请管理员查看 Broker 日志；非 root 账户通常读不到系统级 Broker 的日志，文字因此指向管理员，而不是让调用方自己去找；文字不写成找不到会话记录；不需要身份的工具照常执行 |
 | 登记流收到 `not_registered` 且原因为 `broker_degraded` | 需要 Agent 身份的工具返回 `broker_degraded`，说明取事件的 `detail`；不需要身份的工具照常调用 Broker，同样得到 `broker_degraded` |
 | `send_message` 得到对端的 `broker_offline` | 以 `Not sent` 开头，附 `(code: broker_offline; reported by Broker <指纹>)`，提示对方 Broker 已下线、重发无用，可以经其他途径告知对方用户 |
 | `create_pairing_key` 在仅本机降级时 | `broker_degraded`，说明含地址、`broker.listen` 与修复命令 |

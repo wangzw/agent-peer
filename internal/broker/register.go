@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/wangzw/peers/internal/broker/helper"
 	"github.com/wangzw/peers/internal/broker/localpb"
 	"github.com/wangzw/peers/internal/inbox"
 )
@@ -239,8 +240,20 @@ func (b *Broker) inspect(c *regConn) (registrationProblem, inbox.Session, string
 	s, err := c.backend.Lookup(callCtx, c.configDir, c.socketPath)
 	cancel()
 	if err != nil {
+		// A missing or partially written record is the ordinary waiting state
+		// and needs no warning. Every other failure does: the wait keeps
+		// retrying, so the log is the only place an administrator can see why
+		// it has not completed.
 		if !errors.Is(err, inbox.ErrNoRecord) && !errors.Is(err, inbox.ErrPartial) {
 			b.log.Warn(EvRegistrationWaiting, "error", err, "uid", c.caller.UID)
+		}
+		if errors.Is(err, helper.ErrUnavailable) {
+			// The account's helper could not be started or stopped answering.
+			// Report that separately from a record that exists but cannot be
+			// read, such as a permission denial, which would send the reader
+			// looking in the wrong place.
+			return registrationProblem{reason: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_ACCOUNT_HELPER_FAILED},
+				inbox.Session{}, "", false
 		}
 		return registrationProblem{reason: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_SESSION_RECORD_NOT_FOUND},
 			inbox.Session{}, "", false

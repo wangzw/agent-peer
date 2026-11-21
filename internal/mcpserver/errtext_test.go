@@ -289,6 +289,10 @@ func TestPreflightNotRegisteredReasons(t *testing.T) {
 			want:   "the session had no inbox socket when this MCP server started; reconnect the MCP server with /mcp",
 		},
 		{
+			reason: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_ACCOUNT_HELPER_FAILED,
+			want:   "the Broker's helper for this account failed to start or stopped responding; ask the administrator to check the Broker log",
+		},
+		{
 			reason: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_UNSPECIFIED,
 			want:   "registration is still in progress",
 		},
@@ -306,6 +310,28 @@ func TestPreflightNotRegisteredReasons(t *testing.T) {
 		if !strings.HasSuffix(got, "(code: not_registered)") {
 			t.Errorf("reason %v: error %q does not end with the code suffix", tt.reason, got)
 		}
+	}
+}
+
+// TestPreflightAccountHelperFailure checks the exact text for a helper the
+// Broker could not start. It must point at the Broker log and must not say the
+// session record is missing, which would send the reader to the wrong place.
+func TestPreflightAccountHelperFailure(t *testing.T) {
+	h := newHandlers(Status{
+		Phase:         PhaseConnected,
+		NotRegistered: localpb.NotRegisteredReason_NOT_REGISTERED_REASON_ACCOUNT_HELPER_FAILED,
+	})
+	_, err := h.preflight("list_agents", callGeneric, true)
+	if err == nil {
+		t.Fatal("preflight returned no error")
+	}
+	want := "list_agents failed: this session is not registered as an agent: " +
+		"the Broker's helper for this account failed to start or stopped responding; ask the administrator to check the Broker log (code: not_registered)"
+	if got := err.Error(); got != want {
+		t.Errorf("preflight error = %q, want %q", got, want)
+	}
+	if strings.Contains(err.Error(), "no Claude Code session record") {
+		t.Errorf("error %q describes a missing session record, want the helper failure", err)
 	}
 }
 

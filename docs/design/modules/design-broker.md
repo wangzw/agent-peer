@@ -99,7 +99,7 @@ service Local {
 
 终端命令的四个写操作 `config set`、`key create`、`broker connect`、`broker disconnect` 发出的调用 `agent_id` 为空；审计记录的 `account` 是执行命令的账户，`actor` 为空。不新增审计字段。
 
-`Register` 的上行首帧带两项：MCP 服务进程环境中的 inbox socket 路径（可以为空）、环境中的 Claude Code 配置目录（可以为空）；Broker 只读取首帧，其后的上行帧被忽略。首帧的 socket 路径为空时，Broker 立即在下行流上发出 `not_registered` 及原因 `socket_path_missing`，流保持打开，这条登记不会自行完成。Broker 按“登记”一节完成登记后，在下行流上发出登记完成，带 Agent 标识、Agent 地址和 `topics.auto_join` 的当前值；10 秒内未能完成时发出 `not_registered` 及原因，流保持打开，此后条件满足时照常发出登记完成。socket 路径不是绝对路径或含 `..` 元素时按找不到记录处理，10 秒后以 `session_record_not_found` 报告。socket 文件的属主不是调用方账户时，与找不到记录、名字不可用一样等待，10 秒后以 `socket_not_owned` 报告，并随注册表的变化继续尝试。已完成的登记因名字变得不可用、记录消失或记录所载 socket 路径改变而撤销时，下行流立即发出 `not_registered` 及原因。之后下行流还用于通知地址变化：`agent_changed` 只在 Agent 的地址或曾用名变化时发出，带当前状态；本机别名变化后，每条登记流都收到带新地址的 `agent_changed`。同一个 socket 路径上的多个登记连接得到同一个 Agent 标识。
+`Register` 的上行首帧带两项：MCP 服务进程环境中的 inbox socket 路径（可以为空）、环境中的 Claude Code 配置目录（可以为空）；Broker 只读取首帧，其后的上行帧被忽略。首帧的 socket 路径为空时，Broker 立即在下行流上发出 `not_registered` 及原因 `socket_path_missing`，流保持打开，这条登记不会自行完成。Broker 按“登记”一节完成登记后，在下行流上发出登记完成，带 Agent 标识、Agent 地址和 `topics.auto_join` 的当前值；10 秒内未能完成时发出 `not_registered` 及原因，流保持打开，此后条件满足时照常发出登记完成。socket 路径不是绝对路径或含 `..` 元素时按找不到记录处理，10 秒后以 `session_record_not_found` 报告。socket 文件的属主不是调用方账户时，与找不到记录、名字不可用一样等待，10 秒后以 `socket_not_owned` 报告，并随注册表的变化继续尝试。系统级形态下查找经辅助进程执行，`Lookup` 返回包装了 `helper.ErrUnavailable` 的错误（辅助进程未能启动或与它的通信失败）时，10 秒后以 `account_helper_failed` 报告，与找不到记录分开，并记一条 Warn 运行日志；记录存在但读不到（例如权限拒绝）不属于这一类，仍按找不到记录处理。已完成的登记因名字变得不可用、记录消失或记录所载 socket 路径改变而撤销时，下行流立即发出 `not_registered` 及原因。之后下行流还用于通知地址变化：`agent_changed` 只在 Agent 的地址或曾用名变化时发出，带当前状态；本机别名变化后，每条登记流都收到带新地址的 `agent_changed`。同一个 socket 路径上的多个登记连接得到同一个 Agent 标识。
 
 命令行：
 
@@ -432,7 +432,8 @@ Linux 上，账户与组经 `getent` 取自系统的账户数据库，来源由 
 3. 核对 socket 文件的属主是调用方账户：路径上必须是 socket 文件，其属主 uid 等于调用方 uid。不符时与找不到记录一样等待，10 秒后在下行流上报告 `socket_not_owned`，随注册表的变化继续尝试。这一步由 Broker 进程自己执行，不交给辅助进程。
 4. 以 `NormalizeName` 规范化记录中的会话名。结果为空、经 `CleanSignature` 清洗后为空或含有 `@` 或 `*` 时名字不可用，没有替代名（`REQ-agent-messaging-030`）。
 5. 找不到记录或名字不可用时，登记处于等待，随注册表目录的变化重新执行第 2 步至第 4 步；10 秒后仍不满足时，在下行流上发出 `not_registered`，说明是哪一种原因，流保持打开，继续等待。事件除原因枚举外带一个可选的 `detail` 说明：名字不可用时它写明具体规则（会话名为空、清洗后没有接收方可见的字符、含 `@` 或含 `*`），不回显会话名本身；其余原因没有更细的信息时留空。
-6. 条件满足后，socket 路径上已有 Agent 的，把这条连接归于它，`Conns` 加一；没有的，以 socket 路径为身份建立 Agent 记录。在下行流上发出登记完成。
+6. 第 2 步由辅助进程执行时，`Lookup` 返回的错误若包装了哨兵 `helper.ErrUnavailable`（用 `errors.Is` 判定，不按错误文本匹配），说明该账户的辅助进程未能启动，或与它的通信失败。派生失败（包括派生之前查询账户数据库失败）、就绪帧超时和管道断开都由辅助进程一侧用 `%w` 包装该哨兵。登记同样等待并重试，10 秒后以 `account_helper_failed` 报告。记录存在但读不到，例如权限拒绝，不包装该哨兵，仍按 `session_record_not_found` 报告。除找不到记录与记录只写了一半之外，`Lookup` 的每次失败都记一条 Warn 运行日志，因此即使原因仍是 `session_record_not_found`，失败也留在 Broker 日志里。报告因此指向辅助进程与 Broker 日志，不会把读者引向一条可能存在的会话记录。本机接口只追加这一个枚举取值，不提升本机协议版本。
+7. 条件满足后，socket 路径上已有 Agent 的，把这条连接归于它，`Conns` 加一；没有的，以 socket 路径为身份建立 Agent 记录。在下行流上发出登记完成。
 
 最后一个登记连接断开时 Agent 注销，`topic` 清除它的全部成员关系。用户在会话中停用本系统的 MCP 服务后，MCP 服务进程被结束，连接断开，Agent 随之注销；重新启用后新的 MCP 服务进程以同一个 socket 路径登记，得到同一个 Agent 标识，地址的消歧标识按当时的 Agent 集合计算（`REQ-agent-messaging-034`）。子代理经主会话的 MCP 服务进程调用工具，以主会话的 Agent 身份行事；子代理定义中自行声明本服务而另起的进程，以同一个 socket 路径登记，归于同一个 Agent（`REQ-agent-messaging-035`）。无界面运行的会话与交互式会话同样有注册表记录并绑定 inbox，登记没有区别（`REQ-agent-messaging-036`）。
 

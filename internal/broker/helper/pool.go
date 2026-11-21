@@ -423,7 +423,7 @@ func (p *Pool) ensureLive(ctx context.Context, st *helperState) (*liveHelper, er
 		return nil, errPoolClosed
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, deadlineUnavailable(ctx)
 	}
 	// Count the child before it exists, not after Ready: Close must wait for a
 	// spawn that is still in progress, and it cancels closeCtx so a well-behaved
@@ -445,20 +445,32 @@ func (p *Pool) ensureLive(ctx context.Context, st *helperState) (*liveHelper, er
 
 	acct, err := p.opts.Lookup(st.uid)
 	if err != nil {
-		return nil, err
+		// The helper cannot be started without the account, so this is a helper
+		// failure for registration, not a session record that is missing.
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	proc, err := p.opts.Start(spawnCtx, acct)
 	if err != nil {
 		if p.closed.Load() {
 			return nil, errPoolClosed
 		}
-		return nil, err
+		if ctx.Err() != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				// The deadline bounds the helper, so a child that did not start
+				// within it is a helper failure. Keep both errors reachable.
+				return nil, fmt.Errorf("%w: %w", ErrUnavailable, errors.Join(ctx.Err(), err))
+			}
+			// The caller cancelled while the child was being started; that is
+			// not the helper failing.
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	conn := p.connect(proc)
 	live := &liveHelper{conn: conn, proc: proc}
 	if conn == nil {
 		live.killAndWait()
-		return nil, errors.New("cannot start the account helper: the helper returned no connection")
+		return nil, fmt.Errorf("%w: cannot start the account helper: the helper returned no connection", ErrUnavailable)
 	}
 
 	readyCtx, cancelReady := context.WithTimeout(spawnCtx, p.opts.ReadyTimeout)
@@ -477,8 +489,18 @@ func (p *Pool) ensureLive(ctx context.Context, st *helperState) (*liveHelper, er
 		}
 	}
 	if err != nil {
-		if p.closed.Load() {
+		switch {
+		case p.closed.Load():
 			err = errPoolClosed
+		case ctx.Err() != nil && !errors.Is(ctx.Err(), context.DeadlineExceeded):
+			// The caller cancelled while the helper was starting up; that is
+			// not the helper failing.
+		default:
+			// A helper that never became ready, spoke a different protocol or
+			// reported the wrong identity could not be put to use. A deadline
+			// that ended the wait belongs here too: it bounds the helper, so
+			// the helper did not start in time.
+			err = fmt.Errorf("%w: %w", ErrUnavailable, err)
 		}
 		live.killAndWait()
 		return nil, err
