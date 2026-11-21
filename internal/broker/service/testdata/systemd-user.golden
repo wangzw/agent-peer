@@ -4,7 +4,7 @@ Documentation=https://github.com/wangzw/peers
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/peers broker --allow-degraded
+ExecStart=/usr/local/bin/peers service run --user --allow-degraded
 Restart=always
 RestartSec=5
 UMask=0077

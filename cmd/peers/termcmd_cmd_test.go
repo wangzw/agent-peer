@@ -68,6 +68,7 @@ type termcmdStub struct {
 
 func (s *termcmdStub) deps() deps {
 	return deps{
+		euid: func() int { return 1000 },
 		runStatus: func(_ context.Context, stdout io.Writer) error {
 			s.statusCalls++
 			s.statusOut = stdout
@@ -126,12 +127,17 @@ func newTermcmdApp(s *termcmdStub) (*app, *bytes.Buffer, *bytes.Buffer) {
 	return &app{stdout: stdout, stderr: stderr, deps: s.deps()}, stdout, stderr
 }
 
+// runService runs "peers service" with args through the command tree.
+func runService(a *app, args ...string) int {
+	return a.run(context.Background(), append([]string{"service"}, args...))
+}
+
 func TestStatusCallsRunner(t *testing.T) {
 	stub := &termcmdStub{}
 	a, stdout, stderr := newTermcmdApp(stub)
 
-	if got := a.statusCmd(context.Background(), nil); got != exitOK {
-		t.Fatalf("statusCmd returned %d, want %d", got, exitOK)
+	if got := runService(a, "status"); got != exitOK {
+		t.Fatalf("service status returned %d, want %d", got, exitOK)
 	}
 	if stub.statusCalls != 1 {
 		t.Fatalf("runStatus called %d times, want 1", stub.statusCalls)
@@ -151,10 +157,10 @@ func TestStatusErrorExitsOne(t *testing.T) {
 	stub := &termcmdStub{statusErr: errors.New("permission_denied: x")}
 	a, stdout, stderr := newTermcmdApp(stub)
 
-	if got := a.statusCmd(context.Background(), nil); got != exitFailure {
-		t.Fatalf("statusCmd returned %d, want %d", got, exitFailure)
+	if got := runService(a, "status"); got != exitFailure {
+		t.Fatalf("service status returned %d, want %d", got, exitFailure)
 	}
-	if want := "peers status: permission_denied: x\n"; stderr.String() != want {
+	if want := "peers service status: permission_denied: x\n"; stderr.String() != want {
 		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 	}
 	if stdout.Len() != 0 {
@@ -168,8 +174,8 @@ func TestStatusDiagnosticsOnlyExitsOne(t *testing.T) {
 	stub := &termcmdStub{statusErr: termcmd.ErrDiagnosticsOnly}
 	a, stdout, stderr := newTermcmdApp(stub)
 
-	if got := a.statusCmd(context.Background(), nil); got != exitFailure {
-		t.Fatalf("statusCmd returned %d, want %d", got, exitFailure)
+	if got := runService(a, "status"); got != exitFailure {
+		t.Fatalf("service status returned %d, want %d", got, exitFailure)
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty; the runner wrote the status itself", stdout.String())
@@ -180,13 +186,13 @@ func TestStatusDiagnosticsOnlyExitsOne(t *testing.T) {
 }
 
 // TestStatusRejectsUnknownFlag checks the usage-error contract on the command
-// line: the usage comes first and the last line is "peers status: <reason>".
+// line: a bad flag exits with the usage code before the runner is reached.
 func TestStatusRejectsUnknownFlag(t *testing.T) {
 	stub := &termcmdStub{}
 	a, stdout, stderr := newTermcmdApp(stub)
 
-	if got := a.statusCmd(context.Background(), []string{"--bogus"}); got != exitUsage {
-		t.Fatalf("statusCmd returned %d, want %d", got, exitUsage)
+	if got := runService(a, "status", "--bogus"); got != exitUsage {
+		t.Fatalf("service status returned %d, want %d", got, exitUsage)
 	}
 	if stub.statusCalls != 0 {
 		t.Fatalf("runStatus called %d times, want 0", stub.statusCalls)
@@ -194,11 +200,8 @@ func TestStatusRejectsUnknownFlag(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
-	if !strings.HasPrefix(stderr.String(), statusUsage) {
-		t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
-	}
-	if got, want := brokerLastLine(stderr.String()), "peers status: flag provided but not defined: -bogus"; got != want {
-		t.Fatalf("last stderr line = %q, want %q", got, want)
+	if !strings.Contains(stderr.String(), "unknown flag: --bogus") {
+		t.Fatalf("stderr = %q, want it to name the unknown flag", stderr.String())
 	}
 }
 
@@ -206,17 +209,14 @@ func TestStatusRejectsArguments(t *testing.T) {
 	stub := &termcmdStub{}
 	a, _, stderr := newTermcmdApp(stub)
 
-	if got := a.statusCmd(context.Background(), []string{"x"}); got != exitUsage {
-		t.Fatalf("statusCmd returned %d, want %d", got, exitUsage)
+	if got := runService(a, "status", "x"); got != exitUsage {
+		t.Fatalf("service status returned %d, want %d", got, exitUsage)
 	}
 	if stub.statusCalls != 0 {
 		t.Fatalf("runStatus called %d times, want 0", stub.statusCalls)
 	}
-	if !strings.HasPrefix(stderr.String(), statusUsage) {
-		t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
-	}
-	if got, want := brokerLastLine(stderr.String()), `peers status: unexpected argument "x"`; got != want {
-		t.Fatalf("last stderr line = %q, want %q", got, want)
+	if !strings.Contains(stderr.String(), `unexpected argument "x"`) {
+		t.Fatalf("stderr = %q, want the unexpected argument message", stderr.String())
 	}
 }
 
@@ -224,17 +224,14 @@ func TestAuditRejectsArguments(t *testing.T) {
 	stub := &termcmdStub{}
 	a, _, stderr := newTermcmdApp(stub)
 
-	if got := a.auditCmd(context.Background(), []string{"x"}); got != exitUsage {
-		t.Fatalf("auditCmd returned %d, want %d", got, exitUsage)
+	if got := runService(a, "audit", "x"); got != exitUsage {
+		t.Fatalf("service audit returned %d, want %d", got, exitUsage)
 	}
 	if stub.auditCalls != 0 {
 		t.Fatalf("runAudit called %d times, want 0", stub.auditCalls)
 	}
-	if !strings.HasPrefix(stderr.String(), auditUsage) {
-		t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
-	}
-	if got, want := brokerLastLine(stderr.String()), `peers audit: unexpected argument "x"`; got != want {
-		t.Fatalf("last stderr line = %q, want %q", got, want)
+	if !strings.Contains(stderr.String(), `unexpected argument "x"`) {
+		t.Fatalf("stderr = %q, want the unexpected argument message", stderr.String())
 	}
 }
 
@@ -247,7 +244,6 @@ func TestAuditLimit(t *testing.T) {
 		{"default is unlimited", nil, 0},
 		{"separate value", []string{"--limit", "5"}, 5},
 		{"equals zero", []string{"--limit=0"}, 0},
-		{"single dash", []string{"-limit", "7"}, 7},
 		{"leading zero is decimal", []string{"--limit", "010"}, 10},
 	}
 	for _, tc := range cases {
@@ -255,8 +251,8 @@ func TestAuditLimit(t *testing.T) {
 			stub := &termcmdStub{}
 			a, _, _ := newTermcmdApp(stub)
 
-			if got := a.auditCmd(context.Background(), tc.args); got != exitOK {
-				t.Fatalf("auditCmd returned %d, want %d", got, exitOK)
+			if got := runService(a, append([]string{"audit"}, tc.args...)...); got != exitOK {
+				t.Fatalf("service audit returned %d, want %d", got, exitOK)
 			}
 			if stub.auditCalls != 1 {
 				t.Fatalf("runAudit called %d times, want 1", stub.auditCalls)
@@ -270,29 +266,33 @@ func TestAuditLimit(t *testing.T) {
 
 func TestAuditLimitRange(t *testing.T) {
 	cases := []struct {
-		name string
-		args []string
+		name   string
+		args   []string
+		prefix string
 	}{
-		{"above uint32", []string{"--limit", "4294967296"}},
-		{"negative", []string{"--limit", "-1"}},
-		{"not a number", []string{"--limit", "x"}},
+		{"above uint32", []string{"--limit", "4294967296"}, "peers service audit: "},
+		{"negative", []string{"--limit", "-1"}, "peers service audit: "},
+		{"not a number", []string{"--limit", "x"}, "peers service audit: "},
+		// Long flags use two dashes; a single dash is not accepted, and the
+		// flag parser rejects it before the command body runs.
+		{"single dash", []string{"-limit", "7"}, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &termcmdStub{}
 			a, _, stderr := newTermcmdApp(stub)
 
-			if got := a.auditCmd(context.Background(), tc.args); got != exitUsage {
-				t.Fatalf("auditCmd returned %d, want %d", got, exitUsage)
+			if got := runService(a, append([]string{"audit"}, tc.args...)...); got != exitUsage {
+				t.Fatalf("service audit returned %d, want %d", got, exitUsage)
 			}
 			if stub.auditCalls != 0 {
 				t.Fatalf("runAudit called %d times, want 0", stub.auditCalls)
 			}
-			if !strings.HasPrefix(stderr.String(), auditUsage) {
-				t.Fatalf("stderr = %q, want the usage before the reason", stderr.String())
+			if tc.prefix != "" && !strings.HasPrefix(stderr.String(), tc.prefix) {
+				t.Fatalf("stderr = %q, want it to start with %q", stderr.String(), tc.prefix)
 			}
-			if got := brokerLastLine(stderr.String()); !strings.HasPrefix(got, "peers audit: ") {
-				t.Fatalf("last stderr line = %q, want it to start with %q", got, "peers audit: ")
+			if stderr.Len() == 0 {
+				t.Fatal("stderr is empty, want the reason")
 			}
 		})
 	}
@@ -302,13 +302,35 @@ func TestAuditErrorExitsOne(t *testing.T) {
 	stub := &termcmdStub{auditErr: errors.New("permission_denied: x")}
 	a, stdout, stderr := newTermcmdApp(stub)
 
-	if got := a.auditCmd(context.Background(), nil); got != exitFailure {
-		t.Fatalf("auditCmd returned %d, want %d", got, exitFailure)
+	if got := runService(a, "audit"); got != exitFailure {
+		t.Fatalf("service audit returned %d, want %d", got, exitFailure)
 	}
-	if want := "peers audit: permission_denied: x\n"; stderr.String() != want {
+	if want := "peers service audit: permission_denied: x\n"; stderr.String() != want {
 		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+}
+
+// TestServiceLevelFlagsAreMutuallyExclusive checks the shared level rule on the
+// commands that act on the Broker: status and audit still reject the conflict
+// before reaching the runner.
+func TestServiceLevelFlagsAreMutuallyExclusive(t *testing.T) {
+	for _, name := range []string{"status", "audit", "online", "offline"} {
+		t.Run(name, func(t *testing.T) {
+			stub := &termcmdStub{}
+			a, _, stderr := newTermcmdApp(stub)
+
+			if got := runService(a, name, "--system", "--user"); got != exitUsage {
+				t.Fatalf("service %s returned %d, want %d", name, got, exitUsage)
+			}
+			if !strings.Contains(stderr.String(), "mutually exclusive") {
+				t.Fatalf("stderr = %q, want the level-flag conflict", stderr.String())
+			}
+			if stub.statusCalls != 0 || stub.auditCalls != 0 || len(stub.setOnlineCalls) != 0 {
+				t.Fatalf("a runner was called for a usage error")
+			}
+		})
 	}
 }

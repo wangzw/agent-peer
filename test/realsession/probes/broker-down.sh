@@ -30,9 +30,9 @@ cleanup() {
 rs_on_exit cleanup
 
 # broker_pids prints the pids whose executable is R/bin/peers and whose
-# first argument is "broker".
+# arguments start with "service run".
 broker_pids() {
-	local dir pid exe arg1
+	local dir pid exe arg1 arg2
 	for dir in /proc/[0-9]*; do
 		pid="${dir#/proc/}"
 		exe="$(readlink "$dir/exe" 2>/dev/null || true)"
@@ -40,7 +40,8 @@ broker_pids() {
 			continue
 		fi
 		arg1="$(tr '\0' '\n' <"$dir/cmdline" 2>/dev/null | sed -n '2p' || true)"
-		if [[ "$arg1" == "broker" ]]; then
+		arg2="$(tr '\0' '\n' <"$dir/cmdline" 2>/dev/null | sed -n '3p' || true)"
+		if [[ "$arg1" == "service" && "$arg2" == "run" ]]; then
 			printf '%s\n' "$pid"
 		fi
 	done
@@ -181,7 +182,7 @@ rs_obs "port $PORT is held by pid $occupier_pid"
 # Step 3: a terminal start must fail on the held address, before any session
 # exists. The config names 127.0.0.1:27443.
 terminal_rc=0
-"$R/run" peers broker >"$OUT/terminal-start.stdout" 2>"$OUT/terminal-start.stderr" || terminal_rc=$?
+"$R/run" peers service run --user >"$OUT/terminal-start.stdout" 2>"$OUT/terminal-start.stderr" || terminal_rc=$?
 printf '%s\n' "$terminal_rc" >"$OUT/terminal-start.exit"
 if ((terminal_rc != 4)); then
 	rs_obs "the terminal Broker start exited $terminal_rc, want 4"
@@ -265,7 +266,7 @@ if ! wait_for_record "$ERROR_MARKER" 120; then
 	exit 1
 fi
 rs_excerpt "$ERROR_MARKER" list-agents-error.jsonl
-for want in 'peers service install' 'peers broker'; do
+for want in 'peers service install' 'peers service run'; do
 	if ! grep -qF -- "$want" "$OUT/list-agents-error.jsonl"; then
 		rs_obs "the first list_agents result does not name $want"
 		rs_snap down timeout-down-first-startup-advice.txt

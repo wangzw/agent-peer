@@ -151,21 +151,21 @@ func TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate(t *testing.T) {
 	// that boots the label out and bootstraps the new definition after the old
 	// Broker exits. The loaded job must therefore hold the ProgramArguments this
 	// binary writes, which is how launchd proves it read the rewritten plist.
-	waitForLaunchdArguments(t, "system", []string{installedBinary, "broker", "--system", "--allow-degraded"})
+	waitForLaunchdArguments(t, "system", []string{installedBinary, "service", "run", "--system", "--allow-degraded"})
 	// The next version's template adds an environment entry of its own, and the
 	// variable the test put in the old plist must survive the rewrite. The old
 	// ProgramArguments are identical to the new ones, so only the environment
 	// proves which plist launchd loaded.
 	waitForLaunchdEnvironment(t, "system", daemonNextEnvName, daemonNextEnvValue)
 	waitForLaunchdEnvironment(t, "system", updateAPIEnv, fake.URL())
-	if status := run(t, "sudo", "-n", installedBinary, "status"); status.exitCode != 0 {
-		t.Fatalf("peers status after the update: exit %d\nstdout: %s\nstderr: %s",
+	if status := run(t, "sudo", "-n", installedBinary, "service", "status"); status.exitCode != 0 {
+		t.Fatalf("peers service status after the update: exit %d\nstdout: %s\nstderr: %s",
 			status.exitCode, status.stdout, status.stderr)
 	}
 
-	audit := run(t, "sudo", "-n", installedBinary, "audit", "--limit", "50")
+	audit := run(t, "sudo", "-n", installedBinary, "service", "audit", "--limit", "50")
 	if audit.exitCode != 0 {
-		t.Fatalf("peers audit after the update: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers service audit after the update: exit %d\nstdout: %s\nstderr: %s",
 			audit.exitCode, audit.stdout, audit.stderr)
 	}
 	if !strings.Contains(audit.stdout, "update_applied") {

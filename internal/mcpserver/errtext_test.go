@@ -205,7 +205,7 @@ func TestNoSystemBrokerTextOmitsUserLevelMethods(t *testing.T) {
 	if !strings.Contains(err.Error(), "ask the administrator") {
 		t.Fatalf("error = %q, want it to name the administrator", err)
 	}
-	for _, unwanted := range []string{"peers service install", "peers broker"} {
+	for _, unwanted := range []string{"peers service install", "peers service run"} {
 		if strings.Contains(err.Error(), unwanted) {
 			t.Fatalf("error = %q, must not mention %q", err, unwanted)
 		}

@@ -1,46 +1,36 @@
 package main
 
 import (
-	"context"
-	"fmt"
+	"github.com/spf13/cobra"
 )
 
-func init() {
-	subcommands["offline"] = (*app).offlineCmd
-	subcommands["online"] = (*app).onlineCmd
+// serviceOnlineCommand builds "service online": it makes the running Broker
+// accept messages from other hosts again.
+func (a *app) serviceOnlineCommand() *cobra.Command {
+	return a.serviceSetOnlineCommand("online", true, "Make the selected Broker accept messages from other hosts")
 }
 
-const (
-	offlineUsage = "usage: peers offline\n"
-	onlineUsage  = "usage: peers online\n"
-)
-
-// offlineCmd implements "peers offline": it makes the running Broker
+// serviceOfflineCommand builds "service offline": it makes the running Broker
 // refuse messages from other hosts while keeping its links.
-func (a *app) offlineCmd(ctx context.Context, args []string) int {
-	return a.setOnlineCmd(ctx, args, false, offlineUsage, "offline")
+func (a *app) serviceOfflineCommand() *cobra.Command {
+	return a.serviceSetOnlineCommand("offline", false, "Make the selected Broker refuse messages from other hosts")
 }
 
-// onlineCmd implements "peers online": it makes the running Broker accept
-// messages from other hosts again.
-func (a *app) onlineCmd(ctx context.Context, args []string) int {
-	return a.setOnlineCmd(ctx, args, true, onlineUsage, "online")
-}
-
-// setOnlineCmd is the shared body of offline and online. Both take no
-// arguments and report a usage error for anything after the command name.
-func (a *app) setOnlineCmd(ctx context.Context, args []string, online bool, usage, command string) int {
-	fs := noFlagSet(command)
-	if code, ok := a.terminalFlags(fs, usage, command, args); !ok {
-		return code
+// serviceSetOnlineCommand is the shared body of online and offline. Both take
+// no arguments and report a usage error for anything after the command name.
+func (a *app) serviceSetOnlineCommand(name string, online bool, short string) *cobra.Command {
+	var level *levelFlags
+	cmd := &cobra.Command{
+		Use:   name,
+		Short: short,
+		Args:  noPositionalArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if _, err := level.system(a.deps.euid()); err != nil {
+				return err
+			}
+			return a.deps.runSetOnline(cmd.Context(), online, a.stdout)
+		},
 	}
-	if fs.NArg() > 0 {
-		return a.terminalUsageError(usage, command, fmt.Sprintf("unexpected argument %q", fs.Arg(0)))
-	}
-
-	if err := a.deps.runSetOnline(ctx, online, a.stdout); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "peers %s: %v\n", command, err)
-		return exitFailure
-	}
-	return exitOK
+	level = addLevelFlags(cmd)
+	return cmd
 }

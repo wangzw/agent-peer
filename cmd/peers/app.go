@@ -23,10 +23,10 @@ type app struct {
 	deps    deps
 }
 
-// subcommands maps a legacy command name to its handler. The four command
-// groups still register here so their existing implementations and tests keep
-// working while the groups are rewritten on top of the cobra tree; the root
-// command no longer dispatches through this map.
+// subcommands maps a legacy command name to its handler. Only the installation
+// group still registers here: update and uninstall keep their pre-cobra
+// implementations and tests until that work item migrates them, so this table
+// goes away with them.
 var subcommands = map[string]func(*app, context.Context, []string) int{}
 
 // signalRestoreHook runs after the first signal has cancelled ctx and the

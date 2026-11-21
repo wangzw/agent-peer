@@ -548,7 +548,7 @@ func TestRunLoop(t *testing.T) {
 		if err == nil {
 			t.Fatal("preflight returned nil for a gone user-level Broker")
 		}
-		for _, want := range []string{"no Broker is available", "ask the administrator", "peers service install", "peers broker"} {
+		for _, want := range []string{"no Broker is available", "ask the administrator", "peers service install", "peers service run"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Fatalf("error = %q, want it to contain %q", err, want)
 			}
@@ -613,7 +613,7 @@ func TestRunLoop(t *testing.T) {
 		if err == nil {
 			t.Fatal("preflight returned nil for a refused user-level socket")
 		}
-		for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
+		for _, want := range []string{"no Broker is available", "peers service install", "peers service run"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Fatalf("error = %q, want it to contain %q", err, want)
 			}
@@ -650,7 +650,7 @@ func TestRunLoop(t *testing.T) {
 		if !strings.Contains(status.Remedy, "restart the Broker") {
 			t.Fatalf("Remedy = %q, want it to say restart the Broker", status.Remedy)
 		}
-		if !strings.Contains(status.Remedy, "peers service install") || !strings.Contains(status.Remedy, "peers broker") {
+		if !strings.Contains(status.Remedy, "peers service install") || !strings.Contains(status.Remedy, "peers service run") {
 			t.Fatalf("Remedy = %q, want it to name both ways to start a Broker", status.Remedy)
 		}
 		if !strings.HasPrefix(status.Detail, "the running Broker speaks local protocol version 2") {

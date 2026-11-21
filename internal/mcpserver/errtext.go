@@ -35,7 +35,7 @@ const (
 const (
 	textStarting        = "the connection to the Broker is still being set up; retry shortly"
 	textUnavailable     = "the Broker is unavailable: %s; retrying in the background"
-	textNoBroker        = "no Broker is available for this account; if a system-level Broker is installed on this host, ask the administrator to start it. Otherwise start a user-level Broker with `peers service install`, or run `peers broker` in a terminal outside the Claude Code session (a Broker started inside the session exits with code 6)"
+	textNoBroker        = "no Broker is available for this account; if a system-level Broker is installed on this host, ask the administrator to start it. Otherwise start a user-level Broker with `peers service install`, or run `peers service run` in a terminal outside the Claude Code session (a Broker started inside the session exits with code 6)"
 	textNoSystemBroker  = "the system-level Broker is unavailable; ask the administrator to start it"
 	textVersionMismatch = "%s. To fix it, %s"
 	textNotRegistered   = "this session is not registered as an agent: %s"

@@ -110,7 +110,7 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 	mustRun(t, "root", nil, "systemctl", "start", "user@"+uid+".service")
 	waitUserManager(t, peerUID)
 	t.Cleanup(func() {
-		_ = runWithEnv(t, "peer", userEnv, releaseBinary, "service", "uninstall")
+		_ = runWithEnv(t, "peer", userEnv, releaseBinary, "service", "remove")
 	})
 
 	res := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "install")
@@ -167,7 +167,7 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 // half of REQ-broker-config-064 on a container: after a successful system
 // installation, making the audit log unusable and reinstalling must keep the
 // installed, running service, name the fault and the repair command, exit 3,
-// print the summary, and leave a Broker that peers status reports as
+// print the summary, and leave a Broker that peers service status reports as
 // degraded. The second half, a listen port that is occupied before the
 // installation, is covered by TestSystemServiceInstallListenPortConflict.
 func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
@@ -239,13 +239,13 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 		t.Errorf("systemctl is-active peers.service = %q after the degraded reinstall, want %q\nstderr: %s",
 			state, "active", strings.TrimSpace(active.Stderr))
 	}
-	status := syscontainer.RunAs(t, "root", nil, "status")
+	status := syscontainer.RunAs(t, "root", nil, "service", "status")
 	if status.ExitCode == 0 {
-		t.Errorf("peers status exited 0 for a diagnostics-only Broker\nstdout: %s\nstderr: %s",
+		t.Errorf("peers service status exited 0 for a diagnostics-only Broker\nstdout: %s\nstderr: %s",
 			strings.TrimSpace(status.Stdout), strings.TrimSpace(status.Stderr))
 	}
 	if combined := status.Stdout + status.Stderr; !strings.Contains(combined, "degraded") {
-		t.Errorf("peers status output = %q, want it to report the degraded run", combined)
+		t.Errorf("peers service status output = %q, want it to report the degraded run", combined)
 	}
 }
 

@@ -176,7 +176,7 @@ func updatePeerEnv(t *testing.T, account string) []string {
 func updateStatus(t *testing.T, exe string) syscontainer.Result {
 	t.Helper()
 	env := append(updatePeerEnv(t, "peer"), "PEERS_TEST_SOCKET="+syscontainer.UserSocketPath(t, "peer"))
-	return runWithEnv(t, "peer", env, exe, "status")
+	return runWithEnv(t, "peer", env, exe, "service", "status")
 }
 
 // updateStatusClientRole is the TestMain role that reads the Broker's running

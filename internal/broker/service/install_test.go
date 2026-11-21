@@ -2567,7 +2567,7 @@ func TestInstallFailsWhenTheStatusCannotBeRead(t *testing.T) {
 	if errors.As(err, &degraded) {
 		t.Fatalf("Install error = %v, want a plain error, not *DegradedError", err)
 	}
-	for _, want := range []string{"service is running", "status could not be read", "peers status", "connection reset"} {
+	for _, want := range []string{"service is running", "status could not be read", "peers service status", "connection reset"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}

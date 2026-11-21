@@ -106,7 +106,7 @@ func TestREQUpdate009_UpdateRewritesServiceUnitInNewFormat(t *testing.T) {
 	if !strings.Contains(afterUnit, postUpdateNextUnitMarker) {
 		t.Fatalf("the unit was not rewritten in the next version's format:\n%s", afterUnit)
 	}
-	if want := "ExecStart=" + selfUpdateBinary + " broker --system --allow-degraded"; !strings.Contains(afterUnit, want) {
+	if want := "ExecStart=" + selfUpdateBinary + " service run --system --allow-degraded"; !strings.Contains(afterUnit, want) {
 		t.Fatalf("the rewritten unit does not contain %q:\n%s", want, afterUnit)
 	}
 	if got := postUpdateReadFile(t, postUpdateDropInPath); got != beforeDropIn {
@@ -127,16 +127,23 @@ func TestREQUpdate009_UpdateRewritesServiceUnitInNewFormat(t *testing.T) {
 	selfUpdateWaitAuditEventFor(t, installAccount, postUpdateOldVersion, postUpdateNewVersion)
 }
 
-// postUpdateNoStepInternalCmd is the registration line the next release of
+// postUpdateNoStepInternalCmd is the registration block the next release of
 // TestREQUpdate010 drops from cmd/peers/internal_cmd.go. Without it the binary
 // answers "peers internal post-update" with the unknown-command exit code 2,
 // the value the update contract reserves for "no post-update step".
-const postUpdateNoStepInternalCmd = "\tsubcommands[\"internal post-update\"] = (*app).postUpdateCmd\n"
+const postUpdateNoStepInternalCmd = "\t\t&cobra.Command{\n" +
+	"\t\t\tUse:                \"post-update\",\n" +
+	"\t\t\tHidden:             true,\n" +
+	"\t\t\tDisableFlagParsing: true,\n" +
+	"\t\t\tRunE: func(cmd *cobra.Command, args []string) error {\n" +
+	"\t\t\t\treturn commandResult(a.postUpdateCmd(cmd.Context(), args))\n" +
+	"\t\t\t},\n" +
+	"\t\t},\n"
 
 // postUpdateFailSystemUnit is the system unit header the next release of
 // TestREQUpdate011 rewrites. The added environment assignment makes the new
 // definition observably different from the installed one.
-const postUpdateFailSystemUnit = "[Service]\nType=simple\nExecStart=%s broker --system"
+const postUpdateFailSystemUnit = "[Service]\nType=simple\nExecStart=%s service run --system --allow-degraded"
 
 // postUpdateFailUnitMarker is the environment assignment only the failing next
 // release's unit carries. After the rollback it must be gone.
@@ -232,7 +239,7 @@ func TestREQUpdate011_FailedPostUpdateRollsBack(t *testing.T) {
 			postUpdateSourceEdit{
 				path:        "internal/broker/service/units.go",
 				original:    postUpdateFailSystemUnit,
-				replacement: "[Service]\nEnvironment=\"" + postUpdateFailUnitMarker + "\"\nType=simple\nExecStart=%s broker --system",
+				replacement: "[Service]\nEnvironment=\"" + postUpdateFailUnitMarker + "\"\nType=simple\nExecStart=%s service run --system --allow-degraded",
 			},
 			postUpdateSourceEdit{
 				path:        "internal/broker/service/postupdate.go",
@@ -344,8 +351,8 @@ func postUpdateBuildNextVersion(t *testing.T) string {
 		t.Fatalf("reading %s: %v", unitsPath, err)
 	}
 
-	const original = "[Service]\nType=simple\nExecStart=%s broker --system"
-	replacement := "[Service]\nEnvironment=\"" + postUpdateNextUnitEnv + "\"\nType=simple\nExecStart=%s broker --system"
+	const original = "[Service]\nType=simple\nExecStart=%s service run --system --allow-degraded"
+	replacement := "[Service]\nEnvironment=\"" + postUpdateNextUnitEnv + "\"\nType=simple\nExecStart=%s service run --system --allow-degraded"
 	if got := strings.Count(string(data), original); got != 1 {
 		t.Fatalf("%s has %d matches of the system unit header, want exactly 1; the next-version build cannot change the unit format", unitsPath, got)
 	}

@@ -47,7 +47,7 @@ func TestServiceInstall(t *testing.T) {
 
 		content := readFile(t, systemUnitPath)
 		for _, want := range []string{
-			"ExecStart=" + releaseBinary + " broker --system",
+			"ExecStart=" + releaseBinary + " service run --system --allow-degraded",
 			"Restart=always",
 			"RestartSec=5",
 			"NoNewPrivileges=yes",
@@ -285,9 +285,9 @@ func TestSystemServiceUninstall(t *testing.T) {
 		return err == nil
 	})
 
-	res := syscontainer.RunAs(t, "root", nil, "service", "uninstall", "--system")
+	res := syscontainer.RunAs(t, "root", nil, "service", "remove", "--system")
 	if res.ExitCode != 0 {
-		t.Fatalf("service uninstall --system: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("service remove --system: exit %d\nstdout: %s\nstderr: %s",
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 
@@ -295,7 +295,7 @@ func TestSystemServiceUninstall(t *testing.T) {
 	if state := strings.TrimSpace(active.Stdout); state != "inactive" && state != "failed" {
 		t.Errorf("systemctl is-active peers.service = %q after uninstall, want inactive or failed", state)
 	}
-	if procs := syscontainer.Pids("peers", "broker", "--system"); len(procs) != 0 {
+	if procs := syscontainer.Pids("peers", "service", "run", "--system"); len(procs) != 0 {
 		t.Errorf("system Broker still runs after uninstall: %v", procs)
 	}
 	if _, err := os.Stat(systemUnitPath); !errors.Is(err, os.ErrNotExist) {
@@ -305,9 +305,9 @@ func TestSystemServiceUninstall(t *testing.T) {
 		t.Errorf("configuration after uninstall = %q, want %q", got, configYAML)
 	}
 
-	again := syscontainer.RunAs(t, "root", nil, "service", "uninstall", "--system")
+	again := syscontainer.RunAs(t, "root", nil, "service", "remove", "--system")
 	if again.ExitCode != 0 {
-		t.Fatalf("second service uninstall --system: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("second service remove --system: exit %d\nstdout: %s\nstderr: %s",
 			again.ExitCode, strings.TrimSpace(again.Stdout), strings.TrimSpace(again.Stderr))
 	}
 	if !strings.Contains(again.Stdout, "not installed") {
@@ -358,18 +358,18 @@ func TestSystemServiceUninstallAfterUnitFileRemoved(t *testing.T) {
 		strings.TrimSpace(enabledAfter.Stdout), enabledAfter.ExitCode,
 		strings.TrimSpace(activeAfter.Stdout), activeAfter.ExitCode)
 
-	if procs := syscontainer.Pids("peers", "broker", "--system"); len(procs) == 0 {
+	if procs := syscontainer.Pids("peers", "service", "run", "--system"); len(procs) == 0 {
 		t.Fatal("system Broker is not running after the unit file was removed; uninstall would have nothing to stop")
 	}
 
-	res := syscontainer.RunAs(t, "root", nil, "service", "uninstall", "--system")
+	res := syscontainer.RunAs(t, "root", nil, "service", "remove", "--system")
 	t.Logf("uninstall: exit=%d stdout=%q stderr=%q", res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	if res.ExitCode != 0 {
-		t.Fatalf("service uninstall --system: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("service remove --system: exit %d\nstdout: %s\nstderr: %s",
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 
-	procs := syscontainer.Pids("peers", "broker", "--system")
+	procs := syscontainer.Pids("peers", "service", "run", "--system")
 	if len(procs) != 0 {
 		t.Errorf("system Broker still runs after uninstall: %v", procs)
 	}
@@ -413,9 +413,9 @@ func TestUserServiceUninstall(t *testing.T) {
 		return err == nil
 	})
 
-	res := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "uninstall")
+	res := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "remove")
 	if res.ExitCode != 0 {
-		t.Fatalf("service uninstall as peer: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("service remove as peer: exit %d\nstdout: %s\nstderr: %s",
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 
@@ -433,9 +433,9 @@ func TestUserServiceUninstall(t *testing.T) {
 		t.Errorf("configuration after uninstall = %q, want %q", got, configYAML)
 	}
 
-	again := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "uninstall")
+	again := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "remove")
 	if again.ExitCode != 0 {
-		t.Fatalf("second service uninstall as peer: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("second service remove as peer: exit %d\nstdout: %s\nstderr: %s",
 			again.ExitCode, strings.TrimSpace(again.Stdout), strings.TrimSpace(again.Stderr))
 	}
 	if !strings.Contains(again.Stdout, "not installed") {

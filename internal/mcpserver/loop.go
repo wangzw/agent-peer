@@ -37,7 +37,7 @@ type loopDeps struct {
 const (
 	loopLostText = "the connection to the Broker was lost; reconnecting"
 
-	loopRemedyUser   = "restart the Broker of this account with the same peers version, starting it with `peers service install` or with `peers broker` in a terminal outside the session; this session reconnects by itself"
+	loopRemedyUser   = "restart the Broker of this account with the same peers version, starting it with `peers service install` or with `peers service run` in a terminal outside the session; this session reconnects by itself"
 	loopRemedySystem = "ask the administrator to restart the Broker system service with the same peers version; this session reconnects by itself"
 	loopRemedyTest   = "restart the Broker at %s with the same peers version; this session reconnects by itself"
 )

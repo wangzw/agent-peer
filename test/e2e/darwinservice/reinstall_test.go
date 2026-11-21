@@ -71,17 +71,17 @@ func reinstallRunningService(t *testing.T, domain, name string, args ...string) 
 	statusArgs := argsForStatus(domain)
 	status := run(t, statusArgs[0], statusArgs[1:]...)
 	if status.exitCode != 0 {
-		t.Fatalf("peers status after the reinstall: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers service status after the reinstall: exit %d\nstdout: %s\nstderr: %s",
 			status.exitCode, status.stdout, status.stderr)
 	}
 }
 
-// argsForStatus returns the arguments that run `peers status` against the
+// argsForStatus returns the arguments that run `peers service status` against the
 // level's Broker: as root for the system-level service, as this account for the
 // user-level one.
 func argsForStatus(domain string) []string {
 	if domain == "system" {
-		return []string{"sudo", "-n", installedBinary, "status"}
+		return []string{"sudo", "-n", installedBinary, "service", "status"}
 	}
-	return []string{installedBinary, "status"}
+	return []string{installedBinary, "service", "status"}
 }

@@ -157,7 +157,7 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 // of REQ-broker-config-064 on macOS, at both levels: after a successful
 // installation, making the audit log unusable and reinstalling must keep the
 // installed, running service, name the fault and the repair command, exit 3,
-// print the summary, and leave a Broker that peers status reports as
+// print the summary, and leave a Broker that peers service status reports as
 // degraded. The listen-port half is covered by
 // TestUserServiceInstallRefusesAnOccupiedListenPort.
 func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
@@ -194,12 +194,12 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 			t.Errorf("the user service did not survive the degraded reinstall; pid before %d, after %d", beforePID, afterPID)
 		}
 
-		status := run(t, installedBinary, "status")
+		status := run(t, installedBinary, "service", "status")
 		if status.exitCode == 0 {
-			t.Errorf("peers status exited 0 for a diagnostics-only Broker\nstdout: %s\nstderr: %s", status.stdout, status.stderr)
+			t.Errorf("peers service status exited 0 for a diagnostics-only Broker\nstdout: %s\nstderr: %s", status.stdout, status.stderr)
 		}
 		if combined := status.stdout + status.stderr; !strings.Contains(combined, "degraded") {
-			t.Errorf("peers status output = %q, want it to report the degraded run", combined)
+			t.Errorf("peers service status output = %q, want it to report the degraded run", combined)
 		}
 	})
 
@@ -232,12 +232,12 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 			t.Errorf("the system service did not survive the degraded reinstall; pid before %d, after %d", beforePID, afterPID)
 		}
 
-		status := runSudo(t, installedBinary, "status")
+		status := runSudo(t, installedBinary, "service", "status")
 		if status.exitCode == 0 {
-			t.Errorf("peers status as root exited 0 for a diagnostics-only Broker\nstdout: %s\nstderr: %s", status.stdout, status.stderr)
+			t.Errorf("peers service status as root exited 0 for a diagnostics-only Broker\nstdout: %s\nstderr: %s", status.stdout, status.stderr)
 		}
 		if combined := status.stdout + status.stderr; !strings.Contains(combined, "degraded") {
-			t.Errorf("peers status output = %q, want it to report the degraded run", combined)
+			t.Errorf("peers service status output = %q, want it to report the degraded run", combined)
 		}
 	})
 }

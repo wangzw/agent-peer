@@ -262,17 +262,18 @@ usage_total() {
 }
 
 # find_broker_pid prints the pid of the user-level Broker rs_start_broker
-# started. It runs as "<exe> broker"; the executable and argv[1] are matched
-# instead of a command-line substring, so another Broker's arguments cannot
-# make the choice ambiguous.
+# started. It runs as "<exe> service run"; the executable and the first two
+# arguments are matched instead of a command-line substring, so another
+# Broker's arguments cannot make the choice ambiguous.
 find_broker_pid() {
-	local proc exe second
+	local proc exe second third
 	for proc in /proc/[0-9]*; do
 		exe="$(readlink "$proc/exe" 2>/dev/null)" || continue
 		[[ "$exe" == "$R/bin/peers" ]] || continue
 		[[ -r "$proc/cmdline" ]] || continue
 		second="$(tr '\0' '\n' <"$proc/cmdline" | sed -n '2p')"
-		if [[ "$second" == broker ]]; then
+		third="$(tr '\0' '\n' <"$proc/cmdline" | sed -n '3p')"
+		if [[ "$second" == service && "$third" == run ]]; then
 			printf '%s\n' "${proc#/proc/}"
 			return 0
 		fi
@@ -387,7 +388,7 @@ rs_excerpt 'inb-first@hostB' step1-list-agents-record.jsonl
 
 broker_pid="$(find_broker_pid || true)"
 if [[ -z "$broker_pid" ]]; then
-	rs_obs "no peers broker process was found after inb-first started"
+	rs_obs "no peers service run process was found after inb-first started"
 	exit 1
 fi
 ps -o pid=,ppid=,sid=,uid=,comm=,args= -p "$broker_pid" >"$OUT/broker-ps.txt" 2>/dev/null || true

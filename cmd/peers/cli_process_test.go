@@ -322,8 +322,8 @@ func TestBinaryUnknownCommandExitCode(t *testing.T) {
 	if res.code != exitUsage {
 		t.Fatalf("service install --bogus exit code = %d, want %d (stderr %q)", res.code, exitUsage, res.stderr)
 	}
-	if !strings.Contains(res.stderr, "usage: peers service install") {
-		t.Fatalf("service install --bogus stderr = %q, want the install usage", res.stderr)
+	if !strings.Contains(res.stderr, "unknown flag: --bogus") {
+		t.Fatalf("service install --bogus stderr = %q, want it to name the bad flag", res.stderr)
 	}
 }
 
@@ -337,7 +337,7 @@ func TestStatusThroughExplicitSocket(t *testing.T) {
 	fakelocal.Start(t, sock, fakelocal.SampleHandlers(nil, nil))
 	sb.extraEnv = append(sb.extraEnv, "PEERS_TEST_SOCKET="+sock)
 
-	res := runCLI(t, sb, 3*time.Second, "status")
+	res := runCLI(t, sb, 3*time.Second, "service", "status")
 	if res.code != exitOK {
 		t.Fatalf("exit code = %d, want 0 (stderr %q)", res.code, res.stderr)
 	}
@@ -364,7 +364,7 @@ func TestStatusExplicitSocketUnavailable(t *testing.T) {
 
 	sb.extraEnv = append(sb.extraEnv, "PEERS_TEST_SOCKET="+missing)
 
-	res := runCLI(t, sb, 3*time.Second, "status")
+	res := runCLI(t, sb, 3*time.Second, "service", "status")
 	if res.code != exitFailure {
 		t.Fatalf("exit code = %d, want %d (stderr %q)", res.code, exitFailure, res.stderr)
 	}
@@ -389,7 +389,7 @@ func TestStatusPrefersUserBroker(t *testing.T) {
 	}
 	fake := fakelocal.Start(t, filepath.Join(dir, "broker.sock"), fakelocal.SampleHandlers(nil, nil))
 
-	res := runCLI(t, sb, 3*time.Second, "status")
+	res := runCLI(t, sb, 3*time.Second, "service", "status")
 	if res.code != exitOK {
 		t.Fatalf("exit code = %d, want 0 (stderr %q)", res.code, res.stderr)
 	}
@@ -406,11 +406,11 @@ func TestStatusDoesNotLaunchBroker(t *testing.T) {
 
 	sb := newSandbox(t)
 
-	res := runCLI(t, sb, 3*time.Second, "status")
+	res := runCLI(t, sb, 3*time.Second, "service", "status")
 	if res.code != exitFailure {
 		t.Fatalf("exit code = %d, want %d (stderr %q)", res.code, exitFailure, res.stderr)
 	}
-	for _, want := range []string{"no Broker is available", "ask the administrator", "peers service install", "peers broker"} {
+	for _, want := range []string{"no Broker is available", "ask the administrator", "peers service install", "peers service run"} {
 		if !strings.Contains(res.stderr, want) {
 			t.Fatalf("stderr = %q, want it to contain %q", res.stderr, want)
 		}
@@ -429,7 +429,7 @@ func TestAuditThroughExplicitSocket(t *testing.T) {
 	fakelocal.Start(t, sock, fakelocal.SampleHandlers(reqs, nil))
 	sb.extraEnv = append(sb.extraEnv, "PEERS_TEST_SOCKET="+sock)
 
-	res := runCLI(t, sb, 3*time.Second, "audit", "--limit", "2")
+	res := runCLI(t, sb, 3*time.Second, "service", "audit", "--limit", "2")
 	if res.code != exitOK {
 		t.Fatalf("exit code = %d, want 0 (stderr %q)", res.code, res.stderr)
 	}
@@ -452,11 +452,11 @@ func TestAuditPermissionDenied(t *testing.T) {
 	fakelocal.Start(t, sock, fakelocal.SampleHandlers(reqs, fakelocal.PermissionDenied("not allowed")))
 	sb.extraEnv = append(sb.extraEnv, "PEERS_TEST_SOCKET="+sock)
 
-	res := runCLI(t, sb, 3*time.Second, "audit")
+	res := runCLI(t, sb, 3*time.Second, "service", "audit")
 	if res.code != exitFailure {
 		t.Fatalf("exit code = %d, want %d (stderr %q)", res.code, exitFailure, res.stderr)
 	}
-	if want := "peers audit: permission_denied: not allowed\n"; res.stderr != want {
+	if want := "peers service audit: permission_denied: not allowed\n"; res.stderr != want {
 		t.Fatalf("stderr = %q, want %q", res.stderr, want)
 	}
 	if res.stdout != "" {

@@ -21,7 +21,7 @@ Documentation=https://github.com/wangzw/peers
 
 [Service]
 Type=simple
-ExecStart=%s broker --allow-degraded
+ExecStart=%s service run --user --allow-degraded
 Restart=always
 RestartSec=5
 UMask=0077
@@ -38,7 +38,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%s broker --system --allow-degraded
+ExecStart=%s service run --system --allow-degraded
 Restart=always
 RestartSec=5
 UMask=0022
@@ -60,7 +60,9 @@ const launchAgentTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
-		<string>broker</string>
+		<string>service</string>
+		<string>run</string>
+		<string>--user</string>
 		<string>--allow-degraded</string>
 	</array>
 	<key>RunAtLoad</key>
@@ -88,7 +90,8 @@ const launchDaemonTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
-		<string>broker</string>
+		<string>service</string>
+		<string>run</string>
 		<string>--system</string>
 		<string>--allow-degraded</string>
 	</array>

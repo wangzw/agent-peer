@@ -710,7 +710,7 @@ func TestServiceBinaryStripsSystemdPrefixes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFileUnder(t, opts.Root, path, "[Service]\nExecStart=-@+/opt/peers broker\n")
+	writeFileUnder(t, opts.Root, path, "[Service]\nExecStart=-@+/opt/peers service run\n")
 	got, ok, err := ServiceBinary(opts)
 	if err != nil {
 		t.Fatalf("ServiceBinary: %v", err)

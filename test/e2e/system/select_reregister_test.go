@@ -113,11 +113,11 @@ func srWaitRegistered(t *testing.T, s *syscontainer.Session, what string) {
 	})
 }
 
-// srMustStatus returns the output of peers status as account and fails
+// srMustStatus returns the output of peers service status as account and fails
 // when the command does not succeed.
 func srMustStatus(t *testing.T, account string) string {
 	t.Helper()
-	res := syscontainer.RunAs(t, account, nil, "status")
+	res := syscontainer.RunAs(t, account, nil, "service", "status")
 	if res.ExitCode != 0 {
 		t.Fatalf("status as %s exited %d: %s", account, res.ExitCode, strings.TrimSpace(res.Stderr))
 	}
@@ -222,7 +222,7 @@ func srBrokerProcs(t *testing.T, account string) []syscontainer.ProcInfo {
 	t.Helper()
 	uid := syscontainer.AccountUID(t, account)
 	var out []syscontainer.ProcInfo
-	for _, proc := range syscontainer.Pids("peers", "broker") {
+	for _, proc := range syscontainer.Pids("peers", "service", "run") {
 		if proc.UID == uid {
 			out = append(out, proc)
 		}
@@ -354,7 +354,7 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 		if !isError {
 			return false, "list_agents succeeded without a Broker"
 		}
-		for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
+		for _, want := range []string{"no Broker is available", "peers service install", "peers service run"} {
 			if !strings.Contains(text, want) {
 				return false, text
 			}

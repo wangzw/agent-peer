@@ -21,10 +21,10 @@ func Uninstall(opts Options) (Result, error) {
 		return res, fmt.Errorf("service: unsupported platform %q", opts.GOOS)
 	}
 	if opts.System && opts.EUID != 0 {
-		return res, errors.New("service uninstall --system must run as root")
+		return res, errors.New("service remove --system must run as root")
 	}
 	if !opts.System && opts.EUID == 0 {
-		return res, errors.New("service uninstall without --system must not run as root; the user-level unit belongs to one account")
+		return res, errors.New("service remove without --system must not run as root; the user-level unit belongs to one account")
 	}
 
 	path, err := unitPath(opts)

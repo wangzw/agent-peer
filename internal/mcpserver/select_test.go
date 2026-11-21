@@ -247,7 +247,7 @@ func TestFindNoBroker(t *testing.T) {
 	if !errors.Is(err, errNoBroker) {
 		t.Fatalf("Find error = %v, want errNoBroker", err)
 	}
-	for _, want := range []string{"ask the administrator", "peers service install", "peers broker", "code 6"} {
+	for _, want := range []string{"ask the administrator", "peers service install", "peers service run", "code 6"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error = %q, want it to contain %q", err, want)
 		}

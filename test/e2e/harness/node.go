@@ -88,7 +88,7 @@ type BaseEnv = node.BaseEnv
 
 // BrokerSpec configures the Broker started by Node.StartBroker.
 type BrokerSpec struct {
-	// Args follow "broker" on the command line, for example
+	// Args follow "service run" on the command line, for example
 	// []string{"--listen", "127.0.0.1:41234"}; nil starts it without arguments.
 	Args []string
 

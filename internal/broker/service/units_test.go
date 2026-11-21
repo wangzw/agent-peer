@@ -55,8 +55,8 @@ func TestSystemdExecStartEscaping(t *testing.T) {
 		exe  string
 		want string
 	}{
-		{"/opt/my apps/agent%peer", `ExecStart="/opt/my apps/agent%%peer" broker --allow-degraded`},
-		{"/opt/a$b/peers", `ExecStart=/opt/a$$b/peers broker --allow-degraded`},
+		{"/opt/my apps/agent%peer", `ExecStart="/opt/my apps/agent%%peer" service run --user --allow-degraded`},
+		{"/opt/a$b/peers", `ExecStart=/opt/a$$b/peers service run --user --allow-degraded`},
 	}
 	for _, tc := range cases {
 		out, err := SystemdUserUnit(tc.exe)

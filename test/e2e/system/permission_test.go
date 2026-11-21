@@ -129,7 +129,7 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 	// The terminal commands that change the offline switch need the same write
 	// permission and no less (REQ-broker-config-066).
 	for _, command := range []string{"offline", "online"} {
-		res := syscontainer.RunAs(t, "other", nil, command)
+		res := syscontainer.RunAs(t, "other", nil, "service", command)
 		if res.ExitCode == 0 {
 			t.Errorf("peers %s as other without write permission succeeded: %s", command, res.Stdout)
 			continue
@@ -210,7 +210,7 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 
 	var audit string
 	harness.Eventually(t, 3*time.Second, "the system Broker's audit log to record the pairing", func() (bool, string) {
-		res := syscontainer.RunAs(t, "root", nil, "audit")
+		res := syscontainer.RunAs(t, "root", nil, "service", "audit")
 		if res.ExitCode != 0 {
 			return false, res.Stderr
 		}
@@ -388,7 +388,7 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 	// root may read the configuration file, so its status lists both agents
 	// with their topics and the paired peer, connected.
 	harness.Eventually(t, 3*time.Second, "the root status to list both agents, their topics and the connected peer", func() (bool, string) {
-		res := syscontainer.RunAs(t, "root", nil, "status")
+		res := syscontainer.RunAs(t, "root", nil, "service", "status")
 		line, found := permStatusPeerLine(res.Stdout, connected.Alias)
 		ok := res.ExitCode == 0 &&
 			strings.Contains(res.Stdout, "peeragent@sys") &&
@@ -409,7 +409,7 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 	// other may not read the configuration file, so its status keeps only its
 	// own agent and topic. The peer and its connection state stay visible.
 	harness.Eventually(t, 3*time.Second, "other's status to show its own agent, its topic and the disconnected peer", func() (bool, string) {
-		res := syscontainer.RunAs(t, "other", nil, "status")
+		res := syscontainer.RunAs(t, "other", nil, "service", "status")
 		if res.ExitCode != 0 {
 			return false, res.Stderr
 		}
@@ -429,7 +429,7 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 	// agent and peer's topic, while the peer row stays and stays disconnected.
 	// Both agents are registered already, so a one-second observation is enough.
 	harness.Consistently(t, time.Second, "other's status never shows peer's agent and keeps the disconnected peer", func() (bool, string) {
-		res := syscontainer.RunAs(t, "other", nil, "status")
+		res := syscontainer.RunAs(t, "other", nil, "service", "status")
 		if res.ExitCode != 0 {
 			return false, res.Stderr
 		}
@@ -448,7 +448,7 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 	// peer, still not connected.
 	permGrantAdmins(t, "0640")
 	harness.Eventually(t, 3*time.Second, "other's status to list both agents, their topics and the disconnected peer", func() (bool, string) {
-		res := syscontainer.RunAs(t, "other", nil, "status")
+		res := syscontainer.RunAs(t, "other", nil, "service", "status")
 		if res.ExitCode != 0 {
 			return false, res.Stderr
 		}
@@ -510,7 +510,7 @@ func TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker(t *testing.T)
 		return ok, fmt.Sprintf("%d records", len(events))
 	})
 
-	denied := syscontainer.RunAs(t, "other", nil, "audit")
+	denied := syscontainer.RunAs(t, "other", nil, "service", "audit")
 	if denied.ExitCode == 0 {
 		t.Errorf("audit as other without read permission succeeded:\n%s", denied.Stdout)
 	}
@@ -520,13 +520,13 @@ func TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker(t *testing.T)
 
 	permGrantAdmins(t, "0640")
 
-	res := syscontainer.RunAs(t, "other", nil, "audit")
+	res := syscontainer.RunAs(t, "other", nil, "service", "audit")
 	if res.ExitCode != 0 {
-		t.Fatalf("peers audit as other exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+		t.Fatalf("peers service audit as other exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 	}
 	lines := permNonEmptyLines(res.Stdout)
 	if len(lines) != len(events) {
-		t.Fatalf("peers audit printed %d lines for %d audit records:\n%s", len(lines), len(events), res.Stdout)
+		t.Fatalf("peers service audit printed %d lines for %d audit records:\n%s", len(lines), len(events), res.Stdout)
 	}
 	for i, event := range events {
 		if name := permAuditKindName(event.GetEvent()); !strings.Contains(lines[i], name) {
@@ -536,7 +536,7 @@ func TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker(t *testing.T)
 
 	// The grant goes to other's account. peer is not a member, so its audit
 	// read is still refused and the reason names the missing permission.
-	peerDenied := syscontainer.RunAs(t, "peer", nil, "audit")
+	peerDenied := syscontainer.RunAs(t, "peer", nil, "service", "audit")
 	if peerDenied.ExitCode == 0 {
 		t.Errorf("audit as peer without read permission succeeded:\n%s", peerDenied.Stdout)
 	}

@@ -1,99 +1,83 @@
 package main
 
 import (
-	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"math"
 	"strconv"
+
+	"github.com/spf13/cobra"
 
 	"github.com/wangzw/peers/internal/mcpserver/termcmd"
 )
 
-func init() {
-	subcommands["status"] = (*app).statusCmd
-	subcommands["audit"] = (*app).auditCmd
+// parseAuditLimit parses the --limit value in base 10 and bounds it to the
+// uint32 the local interface accepts. pflag's Uint64 would read a leading zero
+// as an octal prefix, so the value stays text until here.
+func parseAuditLimit(value string) (uint64, error) {
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	if parsed > math.MaxUint32 {
+		return 0, fmt.Errorf("--limit must be at most %d", uint64(math.MaxUint32))
+	}
+	return parsed, nil
 }
 
-const (
-	statusUsage = "usage: peers status\n"
-	auditUsage  = "usage: peers audit [--limit <n>]\n"
-)
-
-// statusCmd implements "peers status". It connects to a running Broker
-// without launching one and writes the status to standard output.
-func (a *app) statusCmd(ctx context.Context, args []string) int {
-	fs := flag.NewFlagSet("status", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			_, _ = fmt.Fprint(a.stdout, statusUsage)
-			return exitOK
-		}
-		_, _ = fmt.Fprint(a.stderr, statusUsage)
-		_, _ = fmt.Fprintf(a.stderr, "peers status: %v\n", err)
-		return exitUsage
+// serviceStatusCommand builds "service status". It connects to a running
+// Broker without launching one and writes the status to standard output.
+func (a *app) serviceStatusCommand() *cobra.Command {
+	var level *levelFlags
+	cmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show the status of the selected Broker",
+		Args:  noPositionalArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if _, err := level.system(a.deps.euid()); err != nil {
+				return err
+			}
+			if err := a.deps.runStatus(cmd.Context(), a.stdout); err != nil {
+				// The status already names the cause and the repair; a degraded
+				// Broker that serves diagnostics only makes the command fail
+				// without repeating them on standard error.
+				if errors.Is(err, termcmd.ErrDiagnosticsOnly) {
+					return commandResult(exitFailure)
+				}
+				return err
+			}
+			return nil
+		},
 	}
-	if fs.NArg() > 0 {
-		_, _ = fmt.Fprint(a.stderr, statusUsage)
-		_, _ = fmt.Fprintf(a.stderr, "peers status: unexpected argument %q\n", fs.Arg(0))
-		return exitUsage
-	}
-
-	if err := a.deps.runStatus(ctx, a.stdout); err != nil {
-		// The status already names the cause and the repair; a degraded Broker
-		// that serves diagnostics only makes the command fail without repeating
-		// them on standard error.
-		if errors.Is(err, termcmd.ErrDiagnosticsOnly) {
-			return exitFailure
-		}
-		_, _ = fmt.Fprintf(a.stderr, "peers status: %v\n", err)
-		return exitFailure
-	}
-	return exitOK
+	level = addLevelFlags(cmd)
+	return cmd
 }
 
-// auditCmd implements "peers audit". It reads the audit log from a
+// serviceAuditCommand builds "service audit". It reads the audit log from a
 // running Broker, without launching one, and writes one line per event.
-func (a *app) auditCmd(ctx context.Context, args []string) int {
-	fs := flag.NewFlagSet("audit", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	limit := uint64(0)
-	// Parse in base 10: the flag package's Uint64 reads a leading zero as an
-	// octal prefix, so "--limit 010" would silently mean eight.
-	fs.Func("limit", "maximum number of events to read; 0 means all", func(value string) error {
-		parsed, err := strconv.ParseUint(value, 10, 64)
-		if err != nil {
-			return err
-		}
-		limit = parsed
-		return nil
-	})
-	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			_, _ = fmt.Fprint(a.stdout, auditUsage)
-			return exitOK
-		}
-		_, _ = fmt.Fprint(a.stderr, auditUsage)
-		_, _ = fmt.Fprintf(a.stderr, "peers audit: %v\n", err)
-		return exitUsage
+func (a *app) serviceAuditCommand() *cobra.Command {
+	var (
+		limitText string
+		level     *levelFlags
+	)
+	cmd := &cobra.Command{
+		Use:   "audit",
+		Short: "Read the audit log from the selected Broker",
+		Args:  noPositionalArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if _, err := level.system(a.deps.euid()); err != nil {
+				return err
+			}
+			// Parse in base 10: a leading zero must not select an octal
+			// prefix, so "--limit 010" means ten.
+			limit, err := parseAuditLimit(limitText)
+			if err != nil {
+				return usageError(err)
+			}
+			return a.deps.runAudit(cmd.Context(), a.stdout, uint32(limit))
+		},
 	}
-	if fs.NArg() > 0 {
-		_, _ = fmt.Fprint(a.stderr, auditUsage)
-		_, _ = fmt.Fprintf(a.stderr, "peers audit: unexpected argument %q\n", fs.Arg(0))
-		return exitUsage
-	}
-	if limit > math.MaxUint32 {
-		_, _ = fmt.Fprint(a.stderr, auditUsage)
-		_, _ = fmt.Fprint(a.stderr, "peers audit: --limit must be at most 4294967295\n")
-		return exitUsage
-	}
-
-	if err := a.deps.runAudit(ctx, a.stdout, uint32(limit)); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "peers audit: %v\n", err)
-		return exitFailure
-	}
-	return exitOK
+	level = addLevelFlags(cmd)
+	cmd.Flags().StringVar(&limitText, "limit", "0", "maximum number of events to read; 0 means all")
+	return cmd
 }

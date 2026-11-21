@@ -157,7 +157,7 @@ func foreignSessionRejected(t *testing.T, readableRecord bool) {
 	}
 
 	harness.Consistently(t, time.Second, "the system Broker keeps one agent owned by peer", func() (bool, string) {
-		st := syscontainer.RunAs(t, "root", nil, "status")
+		st := syscontainer.RunAs(t, "root", nil, "service", "status")
 		if st.ExitCode != 0 {
 			return false, fmt.Sprintf("status exit %d: %s%s", st.ExitCode, st.Stdout, st.Stderr)
 		}

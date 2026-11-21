@@ -338,9 +338,9 @@ func TestPrivateTopicNamesStayHome(t *testing.T) {
 			t.Fatalf("hostB's Broker log does not record its own session %q; the absence checks are blind", observerName)
 		}
 
-		status := bNode.Exec(t, []string{"/usr/local/bin/peers", "status"}, nil)
+		status := bNode.Exec(t, []string{"/usr/local/bin/peers", "service", "status"}, nil)
 		if status.ExitCode != 0 {
-			t.Fatalf("peers status on hostB exited %d: %s", status.ExitCode, status.Stderr)
+			t.Fatalf("peers service status on hostB exited %d: %s", status.ExitCode, status.Stderr)
 		}
 		secAssertAbsent(t, "hostB status output", status.Stdout+status.Stderr, secretTopic, workerName)
 		secAssertAbsent(t, "hostB Broker log", string(brokerLog), secretTopic, workerName)

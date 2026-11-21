@@ -798,7 +798,7 @@ func (a *Agent) procs(kind string) []Proc {
 		}
 		switch kind {
 		case "broker":
-			return hasSubcommand(proc.Args, "broker")
+			return hasServiceRun(proc.Args)
 		case "mcp":
 			return hasSubcommand(proc.Args, "mcp")
 		default:
@@ -815,6 +815,11 @@ func (a *Agent) procs(kind string) []Proc {
 // after the program name.
 func hasSubcommand(args []string, subcommand string) bool {
 	return len(args) >= 2 && args[1] == subcommand
+}
+
+// hasServiceRun reports whether args run the Broker through "service run".
+func hasServiceRun(args []string) bool {
+	return len(args) >= 3 && args[1] == "service" && args[2] == "run"
 }
 
 // Workspace creates a workspace of the requested kind under a temporary

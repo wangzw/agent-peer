@@ -80,7 +80,7 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 		if !isError {
 			return false, "list_agents succeeded without a Broker"
 		}
-		for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
+		for _, want := range []string{"no Broker is available", "peers service install", "peers service run"} {
 			if !strings.Contains(text, want) {
 				return false, text
 			}
@@ -103,7 +103,7 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 	}
 
 	syscontainer.WaitFor(t, "the system Broker to list peer's agent", func() bool {
-		res := syscontainer.RunAs(t, "root", nil, "status")
+		res := syscontainer.RunAs(t, "root", nil, "service", "status")
 		return res.ExitCode == 0 && strings.Contains(res.Stdout, "alpha@")
 	})
 
@@ -111,7 +111,7 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 	// must never list its agent. Registration has just completed, so one
 	// second is ample for a leaked registration to appear.
 	harness.Consistently(t, time.Second, "the system Broker never lists other's agent", func() (bool, string) {
-		res := syscontainer.RunAs(t, "root", nil, "status")
+		res := syscontainer.RunAs(t, "root", nil, "service", "status")
 		if res.ExitCode != 0 {
 			return false, "status failed: " + res.Stderr
 		}
@@ -121,7 +121,7 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 	syscontainer.WaitFor(t, "other's user-level Broker process", func() bool {
 		return sgHasUserBroker(sgOtherUID)
 	})
-	for _, proc := range syscontainer.Pids("peers", "broker", "--system") {
+	for _, proc := range syscontainer.Pids("peers", "service", "run", "--system") {
 		if proc.UID == sgOtherUID {
 			t.Errorf("other runs a Broker with --system (pid %d)", proc.PID)
 		}
@@ -180,7 +180,7 @@ func TestSystemSocketGroupUnknownRejected(t *testing.T) {
 	// Broker at a time.
 	sgWriteSystemConfig(t, "broker:\n  local_socket_group: no-such-group\n")
 	res := sgRun(t, 5*time.Second,
-		syscontainer.Command("root", nil, sgBinary, "broker", "--system"))
+		syscontainer.Command("root", nil, sgBinary, "service", "run", "--system"))
 	if res.ExitCode == 0 {
 		t.Fatalf("the system Broker started with an unknown broker.local_socket_group; stdout:\n%s", res.Stdout)
 	}
@@ -240,7 +240,7 @@ func TestSystemSocketGroupUnknownRejected(t *testing.T) {
 // problem.
 func sgAssertNotPermitted(t *testing.T, account, path string) {
 	t.Helper()
-	res := syscontainer.RunAs(t, account, []string{"PEERS_TEST_SOCKET=" + path}, "status")
+	res := syscontainer.RunAs(t, account, []string{"PEERS_TEST_SOCKET=" + path}, "service", "status")
 	if res.ExitCode == 0 {
 		t.Errorf("status as %s through the system socket succeeded; stdout:\n%s", account, res.Stdout)
 		return
@@ -353,7 +353,7 @@ func sgWaitConnected(t *testing.T, session *syscontainer.Session) {
 
 // sgHasUserBroker reports whether a non-system Broker runs as uid.
 func sgHasUserBroker(uid uint32) bool {
-	for _, proc := range syscontainer.Pids("peers", "broker") {
+	for _, proc := range syscontainer.Pids("peers", "service", "run") {
 		if proc.UID == uid {
 			return true
 		}

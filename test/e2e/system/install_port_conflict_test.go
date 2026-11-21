@@ -140,7 +140,7 @@ func writeSystemListenConfig(t *testing.T, addr string) {
 func resetSystemServiceState(t *testing.T) {
 	t.Helper()
 
-	_ = syscontainer.RunAs(t, "root", nil, "service", "uninstall", "--system")
+	_ = syscontainer.RunAs(t, "root", nil, "service", "remove", "--system")
 	_ = runCommandAs(t, "root", "systemctl", "stop", "peers.service")
 	_ = runCommandAs(t, "root", "systemctl", "disable", "peers.service")
 	_ = runCommandAs(t, "root", "systemctl", "daemon-reload")
@@ -163,7 +163,7 @@ func assertSystemServiceNotRegistered(t *testing.T) {
 	case "active", "activating", "reloading", "deactivating":
 		t.Errorf("systemctl is-active peers.service = %q after the failed installation, want it inactive", state)
 	}
-	if procs := syscontainer.Pids("peers", "broker", "--system"); len(procs) != 0 {
+	if procs := syscontainer.Pids("peers", "service", "run", "--system"); len(procs) != 0 {
 		t.Errorf("the system Broker still runs after the failed installation: %v", procs)
 	}
 	// The unit is written only after the listen precheck, so a fresh

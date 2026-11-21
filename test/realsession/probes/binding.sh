@@ -246,7 +246,7 @@ stop_headless() {
 # instead of /dev/null. Registration is judged from rsprobe status and the
 # child session socket only: this log records successful registrations alone,
 # so it is kept as raw evidence and is not read by the checks.
-"$R/run" peers broker 2>"$OUT/broker.log" &
+"$R/run" peers service run --user 2>"$OUT/broker.log" &
 if ! rs_wait_file "$BROKER_SOCK" 15; then
 	echo "binding: the Broker socket $BROKER_SOCK did not appear (see $OUT/broker.log)" >&2
 	exit 1

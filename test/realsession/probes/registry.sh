@@ -208,23 +208,24 @@ reg_call_error() {
 }
 
 # reg_broker_pid prints the pid of the Broker rs_start_broker started. It runs
-# as "<exe> broker" with its standard error in $OUT/broker.log. Linux reads
-# /proc; macOS has none, so Darwin matches the command line with pgrep.
+# as "<exe> service run" with its standard error in $OUT/broker.log. Linux
+# reads /proc; macOS has none, so Darwin matches the command line with pgrep.
 reg_broker_pid() {
 	if [[ "$REG_OS" == Darwin ]]; then
 		local pid
-		pid="$(pgrep -f -- "$R/bin/peers broker" 2>/dev/null | sed -n '1p')" || true
+		pid="$(pgrep -f -- "$R/bin/peers service run" 2>/dev/null | sed -n '1p')" || true
 		[[ -n "$pid" ]] || return 1
 		printf '%s\n' "$pid"
 		return 0
 	fi
-	local proc exe second
+	local proc exe second third
 	for proc in /proc/[0-9]*; do
 		exe="$(readlink "$proc/exe" 2>/dev/null)" || continue
 		[[ "$exe" == "$R/bin/peers" ]] || continue
 		[[ -r "$proc/cmdline" ]] || continue
 		second="$(tr '\0' '\n' <"$proc/cmdline" | sed -n '2p')"
-		if [[ "$second" == broker ]]; then
+		third="$(tr '\0' '\n' <"$proc/cmdline" | sed -n '3p')"
+		if [[ "$second" == service && "$third" == run ]]; then
 			printf '%s\n' "${proc#/proc/}"
 			return 0
 		fi

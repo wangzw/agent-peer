@@ -1,74 +1,50 @@
 package main
 
 import (
-	"context"
-	"errors"
-	"flag"
-	"fmt"
-	"io"
+	"github.com/spf13/cobra"
 )
 
-const brokerUsage = "usage: peers broker [--system] [--listen <address>] [--allow-degraded]\n"
+// serviceRunCommand builds "service run": the foreground Broker that the
+// service definitions start. The level comes from --system/--user, or from the
+// executing account when neither is given. Startup failures keep the exit
+// codes the service manager relies on.
+func (a *app) serviceRunCommand() *cobra.Command {
+	var (
+		listen        string
+		allowDegraded bool
+		level         *levelFlags
+	)
+	cmd := &cobra.Command{
+		Use:   "run",
+		Short: "Run the local Broker in the foreground",
+		Long:  "run starts the local Broker in the foreground. The service definitions start the Broker this way.",
+		Args:  noPositionalArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			system, err := level.system(a.deps.euid())
+			if err != nil {
+				return err
+			}
+			if cmd.Flags().Changed("listen") && listen == "" {
+				return usageErrorf("--listen requires a non-empty address; to stop listening, set broker.listen to an empty value in the configuration")
+			}
 
-func init() {
-	subcommands["broker"] = (*app).brokerCmd
-}
+			err = a.deps.runBroker(cmd.Context(), brokerOptions{
+				System:        system,
+				Listen:        listen,
+				AllowDegraded: allowDegraded,
+				Version:       a.version,
+				LogOutput:     a.stderr,
+			})
+			if err == nil {
+				return nil
+			}
 
-// brokerCmd parses the broker subcommand's arguments and runs the Broker. It
-// translates startup failures into exit codes and reports them on standard
-// error.
-func (a *app) brokerCmd(ctx context.Context, args []string) int {
-	fs := flag.NewFlagSet("broker", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-
-	system := fs.Bool("system", false, "run the system-level Broker")
-	listen := fs.String("listen", "", "listen address, overriding broker.listen")
-	allowDegraded := fs.Bool("allow-degraded", false, "keep running and report failures on the local socket instead of exiting")
-
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			_, _ = fmt.Fprint(a.stdout, brokerUsage)
-			return exitOK
-		}
-		return a.brokerUsageError(err.Error())
+			failure := a.deps.classifyBrokerErr(err)
+			return &exitError{code: exitCodeFor(failure), err: err}
+		},
 	}
-
-	var listenSet bool
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "listen" {
-			listenSet = true
-		}
-	})
-
-	if fs.NArg() > 0 {
-		return a.brokerUsageError(fmt.Sprintf("unexpected argument %q", fs.Arg(0)))
-	}
-	if listenSet && *listen == "" {
-		return a.brokerUsageError("--listen requires a non-empty address; to stop listening, set broker.listen to an empty value in the configuration")
-	}
-
-	err := a.deps.runBroker(ctx, brokerOptions{
-		System:        *system,
-		Listen:        *listen,
-		AllowDegraded: *allowDegraded,
-		Version:       a.version,
-		LogOutput:     a.stderr,
-	})
-	if err == nil {
-		return exitOK
-	}
-
-	failure := a.deps.classifyBrokerErr(err)
-	if failure == failInvalidListen {
-		_, _ = fmt.Fprint(a.stderr, brokerUsage)
-	}
-	_, _ = fmt.Fprintf(a.stderr, "peers broker: %s\n", err)
-	return exitCodeFor(failure)
-}
-
-// brokerUsageError reports a usage error that did not reach broker.Run.
-func (a *app) brokerUsageError(reason string) int {
-	_, _ = fmt.Fprint(a.stderr, brokerUsage)
-	_, _ = fmt.Fprintf(a.stderr, "peers broker: %s\n", reason)
-	return exitUsage
+	level = addLevelFlags(cmd)
+	cmd.Flags().StringVar(&listen, "listen", "", "listen address, overriding broker.listen")
+	cmd.Flags().BoolVar(&allowDegraded, "allow-degraded", false, "keep running and report failures on the local socket instead of exiting")
+	return cmd
 }

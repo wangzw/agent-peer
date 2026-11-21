@@ -60,7 +60,7 @@ type ProcInfo struct {
 }
 
 // StartSystemBroker writes configYAML to the system configuration file when it
-// is non-empty, runs "peers broker --system" as root, and waits for
+// is non-empty, runs "peers service run --system" as root, and waits for
 // /run/peers/broker.sock. The process is terminated when the test ends.
 func StartSystemBroker(t *testing.T, configYAML string) *Proc {
 	t.Helper()
@@ -77,12 +77,13 @@ func StartSystemBrokerEnv(t *testing.T, configYAML string, env []string) *Proc {
 	if configYAML != "" {
 		writeSystemConfig(t, configYAML)
 	}
-	cmd := Command("root", env, peersBinary, "broker", "--system")
+	cmd := Command("root", env, peersBinary, "service", "run", "--system")
 	return startAndWait(t, cmd, systemSocketPath, "the system Broker")
 }
 
-// StartUserBroker runs "peers broker <args>" as account and waits for that
-// account's user-level socket. The process is terminated when the test ends.
+// StartUserBroker runs "peers service run --user <args>" as account and waits
+// for that account's user-level socket. The process is terminated when the
+// test ends.
 func StartUserBroker(t *testing.T, account string, args ...string) *Proc {
 	t.Helper()
 	return StartUserBrokerPath(t, peersBinary, account, nil, args...)
@@ -97,7 +98,7 @@ func StartUserBrokerPath(t *testing.T, exe, account string, env []string, args .
 		t.Fatalf("syscontainer: StartUserBrokerPath runs inside the container")
 	}
 	socket := UserSocketPath(t, account)
-	cmd := Command(account, env, exe, append([]string{"broker"}, args...)...)
+	cmd := Command(account, env, exe, append([]string{"service", "run", "--user"}, args...)...)
 	return startAndWait(t, cmd, socket, "the "+account+" user Broker")
 }
 

@@ -7,7 +7,9 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/usr/local/bin/peers</string>
-		<string>broker</string>
+		<string>service</string>
+		<string>run</string>
+		<string>--user</string>
 		<string>--allow-degraded</string>
 	</array>
 	<key>RunAtLoad</key>

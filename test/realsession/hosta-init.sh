@@ -24,7 +24,7 @@ cat >/rs/work/.peers.yaml <<'EOF'
 topics: [rs-probe]
 EOF
 
-peers broker >/rs/broker.log 2>&1 &
+peers service run --user >/rs/broker.log 2>&1 &
 broker_pid=$!
 
 # The Broker prints its readiness on standard error; the probe only needs the

@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // setOnlineCall is one recorded runSetOnline call.
@@ -14,11 +16,25 @@ type setOnlineCall struct {
 	out    io.Writer
 }
 
+// serviceSubcommand returns the named child of "peers service".
+func serviceSubcommand(t *testing.T, a *app, name string) *cobra.Command {
+	t.Helper()
+
+	service, _, err := a.newRootCommand().Find([]string{"service"})
+	if err != nil || service == nil || service.Name() != "service" {
+		t.Fatalf("find service command: %v", err)
+	}
+	child, _, err := service.Find([]string{name})
+	if err != nil || child == nil || child.Name() != name {
+		t.Fatalf("find service %s command: %v", name, err)
+	}
+	return child
+}
+
 func TestOfflineOnlineRegistered(t *testing.T) {
+	a, _, _ := newTermcmdApp(&termcmdStub{})
 	for _, name := range []string{"offline", "online"} {
-		if _, ok := subcommands[name]; !ok {
-			t.Errorf("subcommands[%q] is missing", name)
-		}
+		serviceSubcommand(t, a, name)
 	}
 }
 
@@ -28,9 +44,17 @@ func TestTopLevelUsageListsOfflineOnline(t *testing.T) {
 	if got := a.run(context.Background(), []string{"--help"}); got != exitOK {
 		t.Fatalf("run(--help) = %d, want %d", got, exitOK)
 	}
+	if !strings.Contains(stdout.String(), "service") {
+		t.Errorf("top-level usage does not mention the service group:\n%s", stdout.String())
+	}
+
+	stdout.Reset()
+	if got := a.run(context.Background(), []string{"service", "--help"}); got != exitOK {
+		t.Fatalf("run(service --help) = %d, want %d", got, exitOK)
+	}
 	for _, want := range []string{"offline", "online"} {
 		if !strings.Contains(stdout.String(), want) {
-			t.Errorf("usage does not mention %q:\n%s", want, stdout.String())
+			t.Errorf("service usage does not mention %q:\n%s", want, stdout.String())
 		}
 	}
 	if stderr.Len() != 0 {
@@ -53,8 +77,8 @@ func TestOfflineOnlineCallRunner(t *testing.T) {
 			stub := &termcmdStub{}
 			a, stdout, stderr := newTermcmdApp(stub)
 
-			if got := a.run(context.Background(), []string{tc.command}); got != exitOK {
-				t.Fatalf("run(%s) = %d, want %d (stderr %q)", tc.command, got, exitOK, stderr.String())
+			if got := a.run(context.Background(), []string{"service", tc.command}); got != exitOK {
+				t.Fatalf("run(service %s) = %d, want %d (stderr %q)", tc.command, got, exitOK, stderr.String())
 			}
 			if len(stub.setOnlineCalls) != 1 {
 				t.Fatalf("runSetOnline called %d times, want 1", len(stub.setOnlineCalls))
@@ -79,10 +103,10 @@ func TestOfflineErrorExitsOne(t *testing.T) {
 	stub := &termcmdStub{setOnlineErr: errors.New("permission_denied: write denied")}
 	a, stdout, stderr := newTermcmdApp(stub)
 
-	if got := a.run(context.Background(), []string{"offline"}); got != exitFailure {
-		t.Fatalf("run(offline) = %d, want %d", got, exitFailure)
+	if got := a.run(context.Background(), []string{"service", "offline"}); got != exitFailure {
+		t.Fatalf("run(service offline) = %d, want %d", got, exitFailure)
 	}
-	if want := "peers offline: permission_denied: write denied\n"; stderr.String() != want {
+	if want := "peers service offline: permission_denied: write denied\n"; stderr.String() != want {
 		t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 	}
 	if stdout.Len() != 0 {
@@ -91,29 +115,29 @@ func TestOfflineErrorExitsOne(t *testing.T) {
 }
 
 // TestOfflineRejectsArguments checks that both commands accept no arguments
-// and -h prints the usage.
+// and -h prints their usage.
 func TestOfflineRejectsArguments(t *testing.T) {
 	for _, command := range []string{"offline", "online"} {
 		t.Run(command, func(t *testing.T) {
 			stub := &termcmdStub{}
 			a, _, stderr := newTermcmdApp(stub)
 
-			if got := a.run(context.Background(), []string{command, "extra"}); got != exitUsage {
-				t.Fatalf("run(%s extra) = %d, want %d", command, got, exitUsage)
+			if got := a.run(context.Background(), []string{"service", command, "extra"}); got != exitUsage {
+				t.Fatalf("run(service %s extra) = %d, want %d", command, got, exitUsage)
 			}
 			if len(stub.setOnlineCalls) != 0 {
 				t.Fatalf("runSetOnline called %d times, want 0", len(stub.setOnlineCalls))
 			}
-			if !strings.Contains(stderr.String(), "peers "+command+": unexpected argument \"extra\"") {
+			if !strings.Contains(stderr.String(), `unexpected argument "extra"`) {
 				t.Fatalf("stderr = %q, want the usage error", stderr.String())
 			}
 
 			a, stdout, _ := newTermcmdApp(&termcmdStub{})
-			if got := a.run(context.Background(), []string{command, "-h"}); got != exitOK {
-				t.Fatalf("run(%s -h) = %d, want %d", command, got, exitOK)
+			if got := a.run(context.Background(), []string{"service", command, "-h"}); got != exitOK {
+				t.Fatalf("run(service %s -h) = %d, want %d", command, got, exitOK)
 			}
-			if want := "usage: peers " + command + "\n"; stdout.String() != want {
-				t.Fatalf("usage output = %q, want %q", stdout.String(), want)
+			if want := "peers service " + command; !strings.Contains(stdout.String(), want) {
+				t.Fatalf("usage output = %q, want it to contain %q", stdout.String(), want)
 			}
 		})
 	}

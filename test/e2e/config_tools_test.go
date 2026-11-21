@@ -279,13 +279,13 @@ func TestConfigTools(t *testing.T) {
 		if len(events) < 2 {
 			t.Fatalf("the audit log has %d records, want at least the two just written", len(events))
 		}
-		res := host.Exec(t, []string{ctBinary(t), "audit"}, nil)
+		res := host.Exec(t, []string{ctBinary(t), "service", "audit"}, nil)
 		if res.ExitCode != 0 {
-			t.Fatalf("peers audit exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+			t.Fatalf("peers service audit exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 		}
 		lines := ctNonEmptyLines(res.Stdout)
 		if len(lines) != len(events) {
-			t.Fatalf("peers audit printed %d lines for %d audit records:\n%s", len(lines), len(events), res.Stdout)
+			t.Fatalf("peers service audit printed %d lines for %d audit records:\n%s", len(lines), len(events), res.Stdout)
 		}
 		for i, event := range events {
 			name := ctAuditKindName(event.GetEvent())
@@ -298,13 +298,13 @@ func TestConfigTools(t *testing.T) {
 		if len(newest) != 1 {
 			t.Fatalf("the limited audit read returned %d records, want 1", len(newest))
 		}
-		res = host.Exec(t, []string{ctBinary(t), "audit", "--limit", "1"}, nil)
+		res = host.Exec(t, []string{ctBinary(t), "service", "audit", "--limit", "1"}, nil)
 		if res.ExitCode != 0 {
-			t.Fatalf("peers audit --limit 1 exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+			t.Fatalf("peers service audit --limit 1 exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 		}
 		limited := ctNonEmptyLines(res.Stdout)
 		if len(limited) != 1 {
-			t.Fatalf("peers audit --limit 1 printed %d lines:\n%s", len(limited), res.Stdout)
+			t.Fatalf("peers service audit --limit 1 printed %d lines:\n%s", len(limited), res.Stdout)
 		}
 		if name := ctAuditKindName(newest[0].GetEvent()); !strings.Contains(limited[0], name) {
 			t.Fatalf("the limited line is %q, want the newest record %s", limited[0], name)

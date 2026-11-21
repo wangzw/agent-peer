@@ -6,7 +6,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/peers broker --system --allow-degraded
+ExecStart=/usr/local/bin/peers service run --system --allow-degraded
 Restart=always
 RestartSec=5
 UMask=0022

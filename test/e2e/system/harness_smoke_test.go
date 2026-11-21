@@ -209,7 +209,7 @@ func TestHarnessSystemBrokerAndSessions(t *testing.T) {
 		t.Fatalf("the system Broker socket is not at /run/peers/broker.sock: %v", err)
 	}
 	found := false
-	for _, proc := range syscontainer.Pids("peers", "broker", "--system") {
+	for _, proc := range syscontainer.Pids("peers", "service", "run", "--system") {
 		if proc.PID == broker.PID {
 			found = true
 		}

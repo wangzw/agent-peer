@@ -316,7 +316,7 @@ func TestStartReportsStatusProbeError(t *testing.T) {
 	if err == nil {
 		t.Fatal("Start error = nil, want the status probe error")
 	}
-	for _, want := range []string{"connection reset", "could not be read", "peers status"} {
+	for _, want := range []string{"connection reset", "could not be read", "peers service status"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Start error = %q, want it to contain %q", err, want)
 		}

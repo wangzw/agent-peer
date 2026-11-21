@@ -1,25 +1,18 @@
 package main
 
 import (
-	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
-	"os"
-	"strings"
+
+	"github.com/spf13/cobra"
 
 	"github.com/wangzw/peers/internal/broker/service"
 	"github.com/wangzw/peers/internal/mcpserver/termcmd"
 )
 
-const serviceUsage = "usage: peers service install [--system] [--admin-group <name>]\n" +
-	"       peers service uninstall [--system]\n" +
-	"       peers service start|stop|restart\n"
-
-// The test seams replace the installation steps and the account check so the
-// command tests can check the option mapping and the exit-code mapping without
-// touching the system.
+// The test seams replace the installation steps so the command tests can check
+// the option mapping and the exit-code mapping without touching the system. The
+// executing account comes from deps.euid.
 var (
 	defaultOptionsFn = service.DefaultOptions
 	installFn        = service.Install
@@ -28,170 +21,180 @@ var (
 	stopFn           = service.Stop
 	restartFn        = service.Restart
 	installedFn      = service.Installed
-	serviceEUID      = os.Geteuid
 )
 
-func init() {
-	subcommands["service"] = (*app).serviceCmd
+// noPositionalArgs rejects positional arguments as a usage error.
+func noPositionalArgs(_ *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return usageErrorf("unexpected argument %q", args[0])
+	}
+	return nil
 }
 
-// serviceCmd implements the service subcommands. install enables the service
-// and starts it immediately; start, stop and restart act on the service of the
-// executing account and take no arguments.
-func (a *app) serviceCmd(_ context.Context, args []string) int {
-	if len(args) == 0 {
-		return a.serviceUsageError("service", "missing command")
+// serviceCommand builds the "service" group: everything that acts on the local
+// Broker. The group itself has no body; the tree-wide fallback prints its usage
+// and rejects an unknown verb.
+func (a *app) serviceCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "service",
+		Short:   "Run and manage the local Broker service",
+		Long:    "service runs the local Broker in the foreground and installs, controls and inspects its service.",
+		GroupID: groupLocal,
 	}
-
-	command := args[0]
-	switch command {
-	case "-h", "--help", "help":
-		_, _ = fmt.Fprint(a.stdout, serviceUsage)
-		return exitOK
-	case "install", "uninstall":
-		return a.serviceInstallCmd(command, args[1:])
-	case "start", "stop", "restart":
-		return a.serviceControlCmd(command, args[1:])
-	default:
-		return a.serviceUsageError("service", fmt.Sprintf("unknown command %q", command))
-	}
-}
-
-// serviceInstallCmd implements "service install [--system]" and
-// "service uninstall [--system]".
-func (a *app) serviceInstallCmd(command string, args []string) int {
-	fs := flag.NewFlagSet("service "+command, flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	system := fs.Bool("system", false, "use the system-level service")
-	var (
-		adminGroup    string
-		adminGroupSet bool
+	cmd.AddCommand(
+		a.serviceRunCommand(),
+		a.serviceInstallCommand(),
+		a.serviceRemoveCommand(),
+		a.serviceControlCommand("start", "Start the local Broker service"),
+		a.serviceControlCommand("stop", "Stop the local Broker service"),
+		a.serviceControlCommand("restart", "Restart the local Broker service"),
+		a.serviceStatusCommand(),
+		a.serviceOnlineCommand(),
+		a.serviceOfflineCommand(),
+		a.serviceAuditCommand(),
 	)
-	if command == "install" {
-		fs.StringVar(&adminGroup, "admin-group", service.DefaultAdminGroup, "group that administers a system-level Broker")
-	}
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			_, _ = fmt.Fprint(a.stdout, serviceUsage)
-			return exitOK
-		}
-		return a.serviceUsageError("service "+command, err.Error())
-	}
-	if fs.NArg() > 0 {
-		return a.serviceUsageError("service "+command, fmt.Sprintf("unexpected argument %q", fs.Arg(0)))
-	}
-	if command == "install" {
-		fs.Visit(func(f *flag.Flag) {
-			if f.Name == "admin-group" {
-				adminGroupSet = true
-			}
-		})
-		if adminGroupSet && !*system {
-			return a.serviceUsageError("service install", "--admin-group requires --system")
-		}
-		if !service.ValidAdminGroupName(adminGroup) {
-			return a.serviceUsageError("service install", fmt.Sprintf(
-				"invalid --admin-group %q: a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens", adminGroup))
-		}
-	}
+	return cmd
+}
 
-	opts, err := defaultOptionsFn(*system)
-	if err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "peers service %s: %s\n", command, err)
-		return exitFailure
+// serviceInstallCommand builds "service install". install enables the service
+// and starts it immediately. The level comes from --system/--user or the
+// executing account; --admin-group is accepted only at the system level.
+func (a *app) serviceInstallCommand() *cobra.Command {
+	var (
+		adminGroup string
+		level      *levelFlags
+	)
+	cmd := &cobra.Command{
+		Use:   "install",
+		Short: "Install the local Broker service",
+		Args:  noPositionalArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			system, err := level.system(a.deps.euid())
+			if err != nil {
+				return err
+			}
+			if cmd.Flags().Changed("admin-group") && !system {
+				return usageErrorf("--admin-group requires --system")
+			}
+			if !service.ValidAdminGroupName(adminGroup) {
+				return usageErrorf("invalid --admin-group %q: a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens", adminGroup)
+			}
+
+			opts, err := defaultOptionsFn(system)
+			if err != nil {
+				return err
+			}
+			opts.AdminGroup = adminGroup
+			result, err := installFn(opts)
+			if err != nil {
+				var degraded *service.DegradedError
+				if errors.As(err, &degraded) {
+					// The service is installed and running. The summary still
+					// applies; the degraded lines explain what is wrong and the
+					// exit code tells the installer to keep going.
+					a.printInstalled(result, system)
+					a.printServiceDegraded(degraded.State)
+					return commandResult(exitServiceDegraded)
+				}
+				return err
+			}
+			a.printInstalled(result, system)
+			return nil
+		},
 	}
-	if command == "install" {
-		opts.AdminGroup = adminGroup
-		result, err := installFn(opts)
-		if err != nil {
+	level = addLevelFlags(cmd)
+	cmd.Flags().StringVar(&adminGroup, "admin-group", service.DefaultAdminGroup, "group that administers a system-level Broker")
+	return cmd
+}
+
+// serviceRemoveCommand builds "service remove", which stops the service and
+// removes its definition but keeps the binary and the data.
+func (a *app) serviceRemoveCommand() *cobra.Command {
+	var level *levelFlags
+	cmd := &cobra.Command{
+		Use:   "remove",
+		Short: "Remove the local Broker service",
+		Args:  noPositionalArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			system, err := level.system(a.deps.euid())
+			if err != nil {
+				return err
+			}
+			opts, err := defaultOptionsFn(system)
+			if err != nil {
+				return err
+			}
+			result, err := uninstallFn(opts)
+			if err != nil {
+				return err
+			}
+			a.printUninstalled(result)
+			return nil
+		},
+	}
+	level = addLevelFlags(cmd)
+	return cmd
+}
+
+// serviceControlCommand builds "service start", "service stop" or
+// "service restart" for the level selected by --system/--user or the executing
+// account.
+func (a *app) serviceControlCommand(name, short string) *cobra.Command {
+	var level *levelFlags
+	cmd := &cobra.Command{
+		Use:   name,
+		Short: short,
+		Args:  noPositionalArgs,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			system, err := level.system(a.deps.euid())
+			if err != nil {
+				return err
+			}
+			opts, err := defaultOptionsFn(system)
+			if err != nil {
+				return err
+			}
+
+			var operation func(service.Options) (service.Result, error)
+			switch name {
+			case "start":
+				operation = startFn
+			case "stop":
+				operation = stopFn
+			case "restart":
+				operation = restartFn
+			}
+			_, err = operation(opts)
+			if err == nil {
+				a.printServiceAction(name, system)
+				return nil
+			}
+
 			var degraded *service.DegradedError
 			if errors.As(err, &degraded) {
-				// The service is installed and running. The summary still
-				// applies; the degraded lines explain what is wrong and the
-				// exit code tells the installer to keep going.
-				a.printInstalled(result, *system)
+				a.printServiceAction(name, system)
 				a.printServiceDegraded(degraded.State)
-				return exitServiceDegraded
+				return commandResult(exitServiceDegraded)
 			}
-			_, _ = fmt.Fprintf(a.stderr, "peers service install: %s\n", err)
-			return exitFailure
-		}
-		a.printInstalled(result, *system)
-		return exitOK
+			if errors.Is(err, service.ErrNotInstalled) {
+				return a.serviceNotInstalledError(name, system)
+			}
+			return err
+		},
 	}
-	result, err := uninstallFn(opts)
-	if err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "peers service uninstall: %s\n", err)
-		return exitFailure
-	}
-	a.printUninstalled(result)
-	return exitOK
+	level = addLevelFlags(cmd)
+	return cmd
 }
 
-// serviceControlCmd implements "service start|stop|restart". The level follows
-// the executing account: root acts on the system-level service, every other
-// account on its own user-level service. The commands do not accept --system.
-func (a *app) serviceControlCmd(command string, args []string) int {
-	for _, arg := range args {
-		if arg == "-h" || arg == "--help" {
-			_, _ = fmt.Fprint(a.stdout, serviceUsage)
-			return exitOK
-		}
-	}
-	if len(args) > 0 {
-		if args[0] == "--system" || strings.HasPrefix(args[0], "--system=") {
-			return a.serviceUsageError("service "+command,
-				"--system is not accepted; start, stop and restart act on the level of the executing account (root: system-level, other accounts: user-level)")
-		}
-		return a.serviceUsageError("service "+command, fmt.Sprintf("unexpected argument %q", args[0]))
-	}
-
-	opts, err := defaultOptionsFn(serviceEUID() == 0)
-	if err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "peers service %s: %s\n", command, err)
-		return exitFailure
-	}
-
-	var operation func(service.Options) (service.Result, error)
-	switch command {
-	case "start":
-		operation = startFn
-	case "stop":
-		operation = stopFn
-	case "restart":
-		operation = restartFn
-	}
-	_, err = operation(opts)
-	if err == nil {
-		a.printServiceAction(command, opts.System)
-		return exitOK
-	}
-
-	var degraded *service.DegradedError
-	if errors.As(err, &degraded) {
-		a.printServiceAction(command, opts.System)
-		a.printServiceDegraded(degraded.State)
-		return exitServiceDegraded
-	}
-	if errors.Is(err, service.ErrNotInstalled) {
-		return a.serviceNotInstalled(command, opts.System)
-	}
-	_, _ = fmt.Fprintf(a.stderr, "peers service %s: %s\n", command, err)
-	return exitFailure
-}
-
-// serviceNotInstalled explains that the command's level has no service. A
+// serviceNotInstalledError explains that the command's level has no service. A
 // non-root account that only has the system-level install is pointed at the
 // sudo form of the same command instead of installing anything.
-func (a *app) serviceNotInstalled(command string, system bool) int {
-	if !system && serviceEUID() != 0 {
+func (a *app) serviceNotInstalledError(command string, system bool) error {
+	if !system && a.deps.euid() != 0 {
 		systemOpts, err := defaultOptionsFn(true)
 		if err == nil {
 			if installed, instErr := installedFn(systemOpts); instErr == nil && installed {
-				_, _ = fmt.Fprintf(a.stderr,
-					"peers service %s: no user-level service is installed; the system-level service is installed, run `sudo peers service %s`\n",
-					command, command)
-				return exitFailure
+				return fmt.Errorf("no user-level service is installed; the system-level service is installed, run `sudo peers service %s`", command)
 			}
 		}
 	}
@@ -200,10 +203,7 @@ func (a *app) serviceNotInstalled(command string, system bool) int {
 	if system {
 		level, install = "system-level", "sudo peers service install --system"
 	}
-	_, _ = fmt.Fprintf(a.stderr,
-		"peers service %s: no %s service is installed; install it with `%s`\n",
-		command, level, install)
-	return exitFailure
+	return fmt.Errorf("no %s service is installed; install it with `%s`", level, install)
 }
 
 // printServiceAction reports the one-line result of a successful command.
@@ -250,8 +250,7 @@ func (a *app) printServiceDegraded(state service.DegradedState) {
 	_ = termcmd.WriteDegraded(a.stderr, state.Level, state.Reason, state.Fix)
 }
 
-// printUninstalled reports what uninstall removed, or that nothing was
-// installed.
+// printUninstalled reports what remove deleted, or that nothing was installed.
 func (a *app) printUninstalled(result service.Result) {
 	if !result.Removed {
 		_, _ = fmt.Fprintln(a.stdout, "peers service is not installed")
@@ -262,12 +261,4 @@ func (a *app) printUninstalled(result service.Result) {
 		return
 	}
 	_, _ = fmt.Fprintf(a.stdout, "uninstalled %s\n", service.UnitName)
-}
-
-// serviceUsageError reports a usage error found before the operation starts.
-// It prints the subcommand's usage, not the top-level one.
-func (a *app) serviceUsageError(command, reason string) int {
-	_, _ = fmt.Fprint(a.stderr, serviceUsage)
-	_, _ = fmt.Fprintf(a.stderr, "peers %s: %s\n", command, reason)
-	return exitUsage
 }

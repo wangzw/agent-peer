@@ -10,22 +10,21 @@ import (
 	"github.com/wangzw/peers/internal/broker/service"
 )
 
-// controlSeams replaces the start, stop and restart operations, the level
-// check and the account lookup for one test. A nil field leaves that seam
-// unchanged.
+// controlSeams replaces the start, stop and restart operations and the
+// installed check for one test. A nil field leaves that seam unchanged. The
+// executing account is set on the test double's deps.euid, not here.
 type controlSeams struct {
 	options   func(bool) (service.Options, error)
 	start     func(service.Options) (service.Result, error)
 	stop      func(service.Options) (service.Result, error)
 	restart   func(service.Options) (service.Result, error)
 	installed func(service.Options) (bool, error)
-	euid      func() int
 }
 
 func setControlSeams(t *testing.T, s controlSeams) {
 	t.Helper()
 	previousOptions, previousStart, previousStop := defaultOptionsFn, startFn, stopFn
-	previousRestart, previousInstalled, previousEUID := restartFn, installedFn, serviceEUID
+	previousRestart, previousInstalled := restartFn, installedFn
 	if s.options != nil {
 		defaultOptionsFn = s.options
 	}
@@ -41,31 +40,32 @@ func setControlSeams(t *testing.T, s controlSeams) {
 	if s.installed != nil {
 		installedFn = s.installed
 	}
-	if s.euid != nil {
-		serviceEUID = s.euid
-	}
 	t.Cleanup(func() {
 		defaultOptionsFn, startFn, stopFn = previousOptions, previousStart, previousStop
-		restartFn, installedFn, serviceEUID = previousRestart, previousInstalled, previousEUID
+		restartFn, installedFn = previousRestart, previousInstalled
 	})
 }
 
 func TestServiceControlMapsVerbAndLevel(t *testing.T) {
 	cases := []struct {
 		command  string
+		args     []string
 		euid     int
 		wantPast string
 		wantSys  bool
 	}{
-		{"start", 1000, "started", false},
-		{"stop", 1000, "stopped", false},
-		{"restart", 1000, "restarted", false},
-		{"start", 0, "started", true},
-		{"stop", 0, "stopped", true},
-		{"restart", 0, "restarted", true},
+		{"start", nil, 1000, "started", false},
+		{"stop", nil, 1000, "stopped", false},
+		{"restart", nil, 1000, "restarted", false},
+		{"start", nil, 0, "started", true},
+		{"stop", nil, 0, "stopped", true},
+		{"restart", nil, 0, "restarted", true},
+		{"start", []string{"--system"}, 1000, "started", true},
+		{"stop", []string{"--user"}, 0, "stopped", false},
+		{"restart", []string{"--system"}, 1000, "restarted", true},
 	}
 	for _, tc := range cases {
-		t.Run(fmt.Sprintf("%s euid=%d", tc.command, tc.euid), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s %v euid=%d", tc.command, tc.args, tc.euid), func(t *testing.T) {
 			var (
 				optionsSystem bool
 				optionsCalls  int
@@ -89,12 +89,13 @@ func TestServiceControlMapsVerbAndLevel(t *testing.T) {
 				start:   operation("start"),
 				stop:    operation("stop"),
 				restart: operation("restart"),
-				euid:    func() int { return tc.euid },
 			})
 
-			a, stdout, stderr, _ := newDispatchApp("dev")
-			if got := a.run(context.Background(), []string{"service", tc.command}); got != exitOK {
-				t.Fatalf("run(service %s) = %d, want %d (stderr %q)", tc.command, got, exitOK, stderr.String())
+			a, stdout, stderr, stub := newDispatchApp("dev")
+			stub.euid = func() int { return tc.euid }
+			args := append([]string{"service", tc.command}, tc.args...)
+			if got := a.run(context.Background(), args); got != exitOK {
+				t.Fatalf("run(%q) = %d, want %d (stderr %q)", args, got, exitOK, stderr.String())
 			}
 			if optionsCalls != 1 {
 				t.Fatalf("options calls = %d, want 1", optionsCalls)
@@ -124,8 +125,8 @@ func TestServiceControlRejectsArguments(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"service", "start", "--system"}, "--system is not accepted"},
-		{[]string{"service", "stop", "--system=false"}, "--system is not accepted"},
+		{[]string{"service", "start", "--system", "--user"}, "mutually exclusive"},
+		{[]string{"service", "stop", "--user", "--system"}, "mutually exclusive"},
 		{[]string{"service", "restart", "extra"}, `unexpected argument "extra"`},
 	}
 	for _, tc := range cases {
@@ -156,9 +157,6 @@ func TestServiceControlRejectsArguments(t *testing.T) {
 			if stdout.Len() != 0 {
 				t.Errorf("stdout = %q, want empty", stdout.String())
 			}
-			if !strings.HasPrefix(stderr.String(), serviceUsage) {
-				t.Errorf("stderr = %q, want the service usage first", stderr.String())
-			}
 			if !strings.Contains(stderr.String(), tc.want) {
 				t.Errorf("stderr = %q, want it to contain %q", stderr.String(), tc.want)
 			}
@@ -179,8 +177,8 @@ func TestServiceControlHelp(t *testing.T) {
 			if got := a.run(context.Background(), []string{"service", command, "--help"}); got != exitOK {
 				t.Fatalf("run(service %s --help) = %d, want %d", command, got, exitOK)
 			}
-			if stdout.String() != serviceUsage {
-				t.Errorf("stdout = %q, want %q", stdout.String(), serviceUsage)
+			if !strings.Contains(stdout.String(), "peers service "+command) {
+				t.Errorf("stdout = %q, want the %s usage", stdout.String(), command)
 			}
 			if stderr.Len() != 0 {
 				t.Errorf("stderr = %q, want empty", stderr.String())
@@ -203,7 +201,6 @@ func TestServiceControlNotInstalled(t *testing.T) {
 			installed: func(service.Options) (bool, error) {
 				return false, nil
 			},
-			euid: func() int { return 1000 },
 		})
 
 		a, stdout, stderr, _ := newDispatchApp("dev")
@@ -231,7 +228,6 @@ func TestServiceControlNotInstalled(t *testing.T) {
 			installed: func(opts service.Options) (bool, error) {
 				return opts.System, nil
 			},
-			euid: func() int { return 1000 },
 		})
 
 		a, _, stderr, _ := newDispatchApp("dev")
@@ -259,10 +255,10 @@ func TestServiceControlNotInstalled(t *testing.T) {
 				t.Fatal("the system-level installed check ran for root")
 				return false, nil
 			},
-			euid: func() int { return 0 },
 		})
 
-		a, _, stderr, _ := newDispatchApp("dev")
+		a, _, stderr, stub := newDispatchApp("dev")
+		stub.euid = func() int { return 0 }
 		if got := a.run(context.Background(), []string{"service", "start"}); got != exitFailure {
 			t.Fatalf("run(service start) = %d, want %d", got, exitFailure)
 		}
@@ -299,7 +295,6 @@ func TestServiceControlDegraded(t *testing.T) {
 				start: func(service.Options) (service.Result, error) {
 					return service.Result{Domain: "gui/501"}, &service.DegradedError{State: state}
 				},
-				euid: func() int { return 1000 },
 			})
 
 			a, stdout, stderr, _ := newDispatchApp("dev")
@@ -323,7 +318,6 @@ func TestServiceControlFailure(t *testing.T) {
 		stop: func(service.Options) (service.Result, error) {
 			return service.Result{}, errors.New("systemctl failed")
 		},
-		euid: func() int { return 1000 },
 	})
 
 	a, stdout, stderr, _ := newDispatchApp("dev")
@@ -346,7 +340,6 @@ func TestServiceControlDefaultOptionsError(t *testing.T) {
 			calls++
 			return service.Result{}, nil
 		},
-		euid: func() int { return 0 },
 	})
 
 	a, stdout, stderr, _ := newDispatchApp("dev")

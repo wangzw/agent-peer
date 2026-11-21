@@ -46,40 +46,40 @@ func TestOtherAccountRejected(t *testing.T) {
 
 	t.Run("REQ-broker-config-019 filesystem layer", func(t *testing.T) {
 		status := accountsRunAsOther(t, c, "hostA", "fs-status",
-			map[string]string{"PEERS_TEST_SOCKET": socket}, "peers", "status")
+			map[string]string{"PEERS_TEST_SOCKET": socket}, "peers", "service", "status")
 		if status.ExitCode != 1 {
-			t.Fatalf("peers status as other exited %d, want 1\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers service status as other exited %d, want 1\nstdout: %s\nstderr: %s",
 				status.ExitCode, status.Stdout, status.Stderr)
 		}
 		if !strings.Contains(status.Stderr, "cannot reach the Broker") {
-			t.Fatalf("peers status as other did not report the Broker unreachable: %s", status.Stderr)
+			t.Fatalf("peers service status as other did not report the Broker unreachable: %s", status.Stderr)
 		}
 		// The default 0700 runtime directory denies the connection before
 		// anything reaches the Broker.
 		if !strings.Contains(status.Stderr, "may not connect to it") {
-			t.Fatalf("peers status as other did not report the filesystem denial: %s", status.Stderr)
+			t.Fatalf("peers service status as other did not report the filesystem denial: %s", status.Stderr)
 		}
 
 		audit := accountsRunAsOther(t, c, "hostA", "fs-audit",
-			map[string]string{"PEERS_TEST_SOCKET": socket}, "peers", "audit")
+			map[string]string{"PEERS_TEST_SOCKET": socket}, "peers", "service", "audit")
 		if audit.ExitCode != 1 {
-			t.Fatalf("peers audit as other exited %d, want 1\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers service audit as other exited %d, want 1\nstdout: %s\nstderr: %s",
 				audit.ExitCode, audit.Stdout, audit.Stderr)
 		}
 		if !strings.Contains(audit.Stderr, "cannot reach the Broker") {
-			t.Fatalf("peers audit as other did not report the Broker unreachable: %s", audit.Stderr)
+			t.Fatalf("peers service audit as other did not report the Broker unreachable: %s", audit.Stderr)
 		}
 
 		// Without the explicit socket the other account looks only under its
 		// own runtime directory, /tmp/peers-2000, so it does not discover
 		// the peer Broker.
-		own := accountsRunAsOther(t, c, "hostA", "fs-own", nil, "peers", "status")
+		own := accountsRunAsOther(t, c, "hostA", "fs-own", nil, "peers", "service", "status")
 		if own.ExitCode != 1 {
-			t.Fatalf("peers status as other without a socket entered %d, want 1\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers service status as other without a socket entered %d, want 1\nstdout: %s\nstderr: %s",
 				own.ExitCode, own.Stdout, own.Stderr)
 		}
 		if !strings.Contains(own.Stderr, "no Broker is available") {
-			t.Fatalf("peers status as other did not search only its own runtime directory: %s", own.Stderr)
+			t.Fatalf("peers service status as other did not search only its own runtime directory: %s", own.Stderr)
 		}
 	})
 
@@ -87,7 +87,7 @@ func TestOtherAccountRejected(t *testing.T) {
 		// Record the filesystem denial first, so the same test also shows that
 		// the second failure is not that denial.
 		before := accountsRunAsOther(t, c, "hostA", "cred-before",
-			map[string]string{"PEERS_TEST_SOCKET": socket}, "peers", "status")
+			map[string]string{"PEERS_TEST_SOCKET": socket}, "peers", "service", "status")
 		if !strings.Contains(before.Stderr, "may not connect to it") {
 			t.Fatalf("the filesystem layer did not deny the connection first: %s", before.Stderr)
 		}
@@ -104,19 +104,19 @@ func TestOtherAccountRejected(t *testing.T) {
 		})
 
 		after := accountsRunAsOther(t, c, "hostA", "cred-after",
-			map[string]string{"PEERS_TEST_SOCKET": socket}, "peers", "status")
+			map[string]string{"PEERS_TEST_SOCKET": socket}, "peers", "service", "status")
 		if after.ExitCode != 1 {
-			t.Fatalf("peers status as other exited %d after the filesystem was opened, want 1\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers service status as other exited %d after the filesystem was opened, want 1\nstdout: %s\nstderr: %s",
 				after.ExitCode, after.Stdout, after.Stderr)
 		}
 		if !strings.Contains(after.Stderr, "cannot reach the Broker") {
-			t.Fatalf("peers status as other did not report the Broker unreachable: %s", after.Stderr)
+			t.Fatalf("peers service status as other did not report the Broker unreachable: %s", after.Stderr)
 		}
 		if strings.Contains(after.Stderr, "may not connect to it") {
-			t.Fatalf("peers status still failed at the filesystem layer: %s", after.Stderr)
+			t.Fatalf("peers service status still failed at the filesystem layer: %s", after.Stderr)
 		}
 		if !strings.Contains(after.Stderr, "not this account (2000)") {
-			t.Fatalf("peers status did not reject the other account's credentials: %s", after.Stderr)
+			t.Fatalf("peers service status did not reject the other account's credentials: %s", after.Stderr)
 		}
 
 		// The same rejection keeps the other account's session off the Broker:

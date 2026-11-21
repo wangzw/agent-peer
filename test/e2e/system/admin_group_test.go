@@ -621,7 +621,7 @@ func agWaitAudit(t *testing.T, events []string, account string) {
 	t.Helper()
 	harness.Eventually(t, agAuditBound, "the audit log to record "+strings.Join(events, ", ")+" for "+account,
 		func() (bool, string) {
-			res := syscontainer.RunAs(t, "root", nil, "audit")
+			res := syscontainer.RunAs(t, "root", nil, "service", "audit")
 			if res.ExitCode != 0 {
 				return false, res.Stderr
 			}

@@ -28,6 +28,8 @@ func setServiceSeams(
 	if uninstall != nil {
 		uninstallFn = uninstall
 	}
+	// The stub's deps.euid reports a non-root account, so the tests check the
+	// default level independently of who runs them.
 	t.Cleanup(func() {
 		defaultOptionsFn = previousOptions
 		installFn = previousInstall
@@ -41,6 +43,7 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 		wantSystem bool
 	}{
 		{[]string{"service", "install"}, false},
+		{[]string{"service", "install", "--user"}, false},
 		{[]string{"service", "install", "--system"}, true},
 	}
 	for _, tc := range cases {
@@ -373,7 +376,7 @@ func TestServiceUninstall(t *testing.T) {
 				},
 			)
 
-			args := []string{"service", "uninstall"}
+			args := []string{"service", "remove"}
 			if tc.system {
 				args = append(args, "--system")
 			}
@@ -445,7 +448,7 @@ func TestServiceReportsErrors(t *testing.T) {
 		}
 	})
 
-	t.Run("uninstall", func(t *testing.T) {
+	t.Run("remove", func(t *testing.T) {
 		setServiceSeams(t,
 			func(bool) (service.Options, error) { return service.Options{}, nil },
 			nil,
@@ -455,10 +458,10 @@ func TestServiceReportsErrors(t *testing.T) {
 		)
 
 		a, stdout, stderr, _ := newDispatchApp("dev")
-		if got := a.run(context.Background(), []string{"service", "uninstall"}); got != exitFailure {
-			t.Fatalf("run(service uninstall) = %d, want %d", got, exitFailure)
+		if got := a.run(context.Background(), []string{"service", "remove"}); got != exitFailure {
+			t.Fatalf("run(service remove) = %d, want %d", got, exitFailure)
 		}
-		if want := "peers service uninstall: systemctl failed\n"; stderr.String() != want {
+		if want := "peers service remove: systemctl failed\n"; stderr.String() != want {
 			t.Fatalf("stderr = %q, want %q", stderr.String(), want)
 		}
 		if stdout.Len() != 0 {
@@ -470,17 +473,24 @@ func TestServiceReportsErrors(t *testing.T) {
 func TestServiceUsageErrors(t *testing.T) {
 	cases := []struct {
 		args []string
-		want string
+		// want is a substring of stderr unless wantStderr is set, which then
+		// has to match stderr exactly.
+		want       string
+		wantStderr string
 	}{
-		{[]string{"service"}, "peers service: missing command\n"},
-		{[]string{"service", "bogus"}, "peers service: unknown command \"bogus\"\n"},
-		{[]string{"service", "install", "extra"}, "peers service install: unexpected argument \"extra\"\n"},
-		{[]string{"service", "install", "--bogus"}, "peers service install: flag provided but not defined: -bogus\n"},
-		{[]string{"service", "install", "--admin-group", "ops"}, "peers service install: --admin-group requires --system\n"},
-		{[]string{"service", "install", "--system", "--admin-group", "-ops"}, "peers service install: invalid --admin-group \"-ops\": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens\n"},
-		{[]string{"service", "install", "--system", "--admin-group", "Ops"}, "peers service install: invalid --admin-group \"Ops\": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens\n"},
-		{[]string{"service", "uninstall", "extra"}, "peers service uninstall: unexpected argument \"extra\"\n"},
-		{[]string{"service", "uninstall", "--bogus"}, "peers service uninstall: flag provided but not defined: -bogus\n"},
+		{args: []string{"service"}, want: "Usage:"},
+		{
+			args:       []string{"service", "bogus"},
+			wantStderr: usageDiagnostic("peers service", `unknown command "bogus" for "peers service"`),
+		},
+		{args: []string{"service", "install", "extra"}, want: `unexpected argument "extra"`},
+		{args: []string{"service", "install", "--bogus"}, want: "unknown flag: --bogus"},
+		{args: []string{"service", "install", "--admin-group", "ops"}, want: "peers service install: --admin-group requires --system"},
+		{args: []string{"service", "install", "--system", "--admin-group", "-ops"}, want: `peers service install: invalid --admin-group "-ops"`},
+		{args: []string{"service", "install", "--system", "--admin-group", "Ops"}, want: `peers service install: invalid --admin-group "Ops"`},
+		{args: []string{"service", "install", "--system", "--user"}, want: "mutually exclusive"},
+		{args: []string{"service", "remove", "extra"}, want: `unexpected argument "extra"`},
+		{args: []string{"service", "remove", "--bogus"}, want: "unknown flag: --bogus"},
 	}
 	for _, tc := range cases {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
@@ -510,24 +520,30 @@ func TestServiceUsageErrors(t *testing.T) {
 			if stdout.Len() != 0 {
 				t.Fatalf("stdout = %q, want empty", stdout.String())
 			}
-			if !strings.HasPrefix(stderr.String(), serviceUsage) {
-				t.Fatalf("stderr = %q, want the service usage first", stderr.String())
+			if tc.wantStderr != "" {
+				if got := stderr.String(); got != tc.wantStderr {
+					t.Fatalf("stderr = %q, want %q", got, tc.wantStderr)
+				}
+				return
 			}
-			if got := brokerLastLine(stderr.String()); got != strings.TrimSuffix(tc.want, "\n") {
-				t.Fatalf("last stderr line = %q, want %q", got, strings.TrimSuffix(tc.want, "\n"))
+			if !strings.Contains(stderr.String(), tc.want) {
+				t.Fatalf("stderr = %q, want it to contain %q", stderr.String(), tc.want)
 			}
 		})
 	}
 }
 
 func TestServiceHelpPrintsUsage(t *testing.T) {
-	cases := [][]string{
-		{"service", "--help"},
-		{"service", "install", "--help"},
-		{"service", "uninstall", "--help"},
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"service", "--help"}, "peers service"},
+		{[]string{"service", "install", "--help"}, "peers service install"},
+		{[]string{"service", "remove", "--help"}, "peers service remove"},
 	}
-	for _, args := range cases {
-		t.Run(strings.Join(args, " "), func(t *testing.T) {
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			setServiceSeams(t,
 				func(bool) (service.Options, error) {
 					t.Fatal("default options ran for --help")
@@ -538,17 +554,17 @@ func TestServiceHelpPrintsUsage(t *testing.T) {
 					return service.Result{}, nil
 				},
 				func(service.Options) (service.Result, error) {
-					t.Fatal("uninstall ran for --help")
+					t.Fatal("remove ran for --help")
 					return service.Result{}, nil
 				},
 			)
 
 			a, stdout, stderr, _ := newDispatchApp("dev")
-			if got := a.run(context.Background(), args); got != exitOK {
-				t.Fatalf("run(%q) = %d, want %d", args, got, exitOK)
+			if got := a.run(context.Background(), tc.args); got != exitOK {
+				t.Fatalf("run(%q) = %d, want %d", tc.args, got, exitOK)
 			}
-			if stdout.String() != serviceUsage {
-				t.Fatalf("stdout = %q, want %q", stdout.String(), serviceUsage)
+			if !strings.Contains(stdout.String(), "Usage:") || !strings.Contains(stdout.String(), tc.want) {
+				t.Fatalf("stdout = %q, want the usage naming %q", stdout.String(), tc.want)
 			}
 			if stderr.Len() != 0 {
 				t.Fatalf("stderr = %q, want empty", stderr.String())

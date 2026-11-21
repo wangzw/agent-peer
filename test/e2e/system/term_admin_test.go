@@ -240,8 +240,8 @@ func termAdminHostA(t *testing.T) {
 	}
 
 	// Neither refused operation may reach the audit log as an event by other.
-	audit := syscontainer.RunAs(t, "root", nil, "audit")
-	termAdminRequireOK(t, audit, "peers audit as root")
+	audit := syscontainer.RunAs(t, "root", nil, "service", "audit")
+	termAdminRequireOK(t, audit, "peers service audit as root")
 	for _, event := range []string{"pairing_key_created", "config_set"} {
 		if termAdminHasAuditEvent(audit.Stdout, event, "other") {
 			t.Errorf("host A's audit records %s by other, but the call was refused:\n%s", event, audit.Stdout)
@@ -526,7 +526,7 @@ func termAdminWaitAudit(t *testing.T, account string, env []string, host string,
 
 	harness.Eventually(t, termAdminCallWait, host+"'s audit log to record "+termAdminEventNames(wants)+" in order",
 		func() (bool, string) {
-			res := syscontainer.RunAs(t, account, env, "audit")
+			res := syscontainer.RunAs(t, account, env, "service", "audit")
 			if res.ExitCode != 0 {
 				return false, fmt.Sprintf("exit %d: %s", res.ExitCode, res.Stderr)
 			}

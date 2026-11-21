@@ -256,7 +256,7 @@ func TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser(t *testing.T)
 		if _, err := os.Stat(installSystemUnitPath); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("the user-level install left the system unit %s behind: %v", installSystemUnitPath, err)
 		}
-		if procs := syscontainer.Pids("peers", "broker", "--system"); len(procs) != 0 {
+		if procs := syscontainer.Pids("peers", "service", "run", "--system"); len(procs) != 0 {
 			t.Errorf("the user-level install started system Brokers: %v", procs)
 		}
 	})
@@ -911,13 +911,13 @@ func assertUserInstall(t *testing.T) {
 	waitInstallUnitState(t, installAccount, installUserEnv(), "active", "--user")
 
 	found := false
-	for _, proc := range syscontainer.Pids("peers", "broker") {
+	for _, proc := range syscontainer.Pids("peers", "service", "run") {
 		if proc.UID == installUID {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("no Broker process runs as uid %d: %v", installUID, syscontainer.Pids("peers", "broker"))
+		t.Fatalf("no Broker process runs as uid %d: %v", installUID, syscontainer.Pids("peers", "service", "run"))
 	}
 }
 
@@ -940,7 +940,7 @@ func assertSystemInstall(t *testing.T) {
 	waitInstallSocket(t, "/run/peers/broker.sock")
 	waitInstallUnitState(t, "root", nil, "active")
 
-	if procs := syscontainer.Pids("peers", "broker", "--system"); len(procs) == 0 {
+	if procs := syscontainer.Pids("peers", "service", "run", "--system"); len(procs) == 0 {
 		t.Fatalf("no system Broker process is running")
 	}
 }

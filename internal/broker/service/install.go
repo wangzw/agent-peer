@@ -392,7 +392,7 @@ func Install(opts Options) (Result, error) {
 	if err != nil {
 		// The service is running but does not answer Status. Leave it alone:
 		// disabling it would take down a Broker that is reachable.
-		return res, fmt.Errorf("service: the service is running but its status could not be read: %w; check it with `peers status`", err)
+		return res, fmt.Errorf("service: the service is running but its status could not be read: %w; check it with `peers service status`", err)
 	}
 	if degraded {
 		return res, &DegradedError{State: state}

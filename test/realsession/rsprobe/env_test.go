@@ -590,7 +590,7 @@ func TestEnvDarwinProbePIDs(t *testing.T) {
 	psOutput := strings.Join([]string{
 		"  123 " + prefix + "claude --model haiku",
 		"  124 /usr/bin/python3 -c x",
-		"  125 " + prefix + "peers broker --ready-fd=3",
+		"  125 " + prefix + "peers service run --ready-fd=3",
 		"  126 " + prefix + "rsprobe watch --dir x",
 		"  abc " + prefix + "claude",
 		"  127 " + root + "binother/peers",

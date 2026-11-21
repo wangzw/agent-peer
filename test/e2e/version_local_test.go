@@ -28,7 +28,7 @@ const (
 	versionLocalRecoveryBudget = mcpserver.ConnBackoffCap + 5*time.Second
 )
 
-// versionLocalBrokerProcs returns the node's peers broker processes. The
+// versionLocalBrokerProcs returns the node's Broker processes. The
 // environment is the filter because every process the node starts inherits it,
 // including a Broker a test starts.
 func versionLocalBrokerProcs(n *harness.Node) ([]node.Proc, error) {
@@ -37,7 +37,7 @@ func versionLocalBrokerProcs(n *harness.Node) ([]node.Proc, error) {
 		if p.Env["PEERS_TEST_HOME"] != home {
 			return false
 		}
-		return len(p.Args) >= 2 && p.Args[1] == "broker"
+		return len(p.Args) >= 3 && p.Args[1] == "service" && p.Args[2] == "run"
 	})
 }
 
@@ -47,7 +47,7 @@ func versionLocalMustBrokerProcs(t *testing.T, n *harness.Node) []node.Proc {
 	t.Helper()
 	procs, err := versionLocalBrokerProcs(n)
 	if err != nil {
-		t.Fatalf("listing the peers broker processes: %v", err)
+		t.Fatalf("listing the Broker processes: %v", err)
 	}
 	return procs
 }
@@ -175,7 +175,7 @@ func TestLocalVersionMismatchReq016(t *testing.T) {
 
 	procs := versionLocalMustBrokerProcs(t, n)
 	if len(procs) != 1 {
-		t.Fatalf("the node runs %d peers broker processes, want 1: %v", len(procs), procs)
+		t.Fatalf("the node runs %d Broker processes, want 1: %v", len(procs), procs)
 	}
 	if procs[0].PID != st.PID {
 		t.Fatalf("the Broker process is %d, want the one that was started: %d", procs[0].PID, st.PID)
@@ -229,7 +229,7 @@ func TestLocalVersionMismatchRecoveryReq016(t *testing.T) {
 		if !r.IsError {
 			return false, "list_agents succeeded without a Broker"
 		}
-		for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
+		for _, want := range []string{"no Broker is available", "peers service install", "peers service run"} {
 			if !strings.Contains(r.Text, want) {
 				return false, r.Text
 			}
@@ -260,7 +260,7 @@ func TestLocalVersionMismatchRecoveryReq016(t *testing.T) {
 		return true, ""
 	})
 	if procs := versionLocalMustBrokerProcs(t, n); len(procs) != 1 {
-		t.Fatalf("the node runs %d peers broker processes after recovery, want 1: %v", len(procs), procs)
+		t.Fatalf("the node runs %d Broker processes after recovery, want 1: %v", len(procs), procs)
 	}
 	if got := versionLocalMCPPIDs(t, n); !slices.Equal(got, mcpBefore) {
 		t.Fatalf("the MCP server processes changed from %v to %v; the session reconnected instead of recovering", mcpBefore, got)

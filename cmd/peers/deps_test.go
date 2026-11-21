@@ -28,6 +28,7 @@ type stubAuditCall struct {
 type stubDeps struct {
 	// Overrides. When nil, the stub records the call and returns the matching
 	// configured result below.
+	euid              func() int
 	runBroker         func(ctx context.Context, o brokerOptions) error
 	classifyBrokerErr func(err error) startFailure
 	runMCP            func(ctx context.Context) error
@@ -80,6 +81,14 @@ type stubDeps struct {
 // the configured override or result.
 func (s *stubDeps) deps() deps {
 	return deps{
+		euid: func() int {
+			if s.euid != nil {
+				return s.euid()
+			}
+			// A non-root account keeps the default-level tests independent of
+			// the account that runs them.
+			return 1000
+		},
 		runBroker: func(ctx context.Context, o brokerOptions) error {
 			s.brokerCalls = append(s.brokerCalls, o)
 			if s.runBroker != nil {

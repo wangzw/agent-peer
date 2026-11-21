@@ -17,7 +17,7 @@ import (
 const (
 	// brokerStderrPrefix starts the line a Broker writes to standard error when
 	// it fails to start.
-	brokerStderrPrefix = "peers broker: "
+	brokerStderrPrefix = "peers service run: "
 	// brokerProbeInterval is how often StartBroker tries the local socket while
 	// the Broker process is starting.
 	brokerProbeInterval = 50 * time.Millisecond
@@ -36,7 +36,7 @@ const (
 type BrokerSpec struct {
 	// Path is the peers binary.
 	Path string
-	// Args follow "broker" on the command line, for example
+	// Args follow "service run" on the command line, for example
 	// ["--listen", "127.0.0.1:41234"].
 	Args []string
 	// Env is the complete environment, normally built by BaseEnv.Build.
@@ -96,7 +96,7 @@ func StartBroker(ctx context.Context, spec BrokerSpec, bound time.Duration) (*Br
 		return nil, StartResult{}, fmt.Errorf("node: opening broker log %s: %w", spec.LogPath, err)
 	}
 
-	cmd := exec.Command(spec.Path, append([]string{"broker"}, spec.Args...)...)
+	cmd := exec.Command(spec.Path, append([]string{"service", "run", "--user"}, spec.Args...)...)
 	cmd.Env = spec.Env
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile

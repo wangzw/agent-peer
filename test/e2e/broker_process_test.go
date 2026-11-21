@@ -66,7 +66,7 @@ func TestBrokerProcessLocal(t *testing.T) {
 			if !r.IsError {
 				return false, "list_agents succeeded without a Broker"
 			}
-			for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
+			for _, want := range []string{"no Broker is available", "peers service install", "peers service run"} {
 				if !strings.Contains(r.Text, want) {
 					return false, r.Text
 				}
@@ -171,7 +171,7 @@ func TestBrokerProcessLocal(t *testing.T) {
 		// A second start with another listen address still fails on the account
 		// lock and leaves the first Broker untouched.
 		other := host.FreeAddr(t)
-		second := host.Exec(t, []string{bin, "broker", "--listen", other}, nil)
+		second := host.Exec(t, []string{bin, "service", "run", "--user", "--listen", other}, nil)
 		if second.ExitCode != 3 {
 			t.Fatalf("a second Broker exited %d, want 3: %s", second.ExitCode, strings.TrimSpace(second.Stderr))
 		}
@@ -342,7 +342,7 @@ func TestBrokerProcessInContainer(t *testing.T) {
 			if !r.IsError {
 				return false, "list_agents succeeded while every address was taken"
 			}
-			for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
+			for _, want := range []string{"no Broker is available", "peers service install", "peers service run"} {
 				if !strings.Contains(r.Text, want) {
 					return false, r.Text
 				}
@@ -501,10 +501,13 @@ func bpContainerProcs(t *testing.T, c *harness.Cluster, name, kind string) []bpP
 }
 
 // bpHasSubcommand reports whether args name the peers subcommand kind.
-// "all" matches every process.
+// A Broker runs as "service run"; "all" matches every process.
 func bpHasSubcommand(args []string, kind string) bool {
 	if kind == "all" {
 		return true
+	}
+	if kind == "broker" {
+		return len(args) >= 3 && args[1] == "service" && args[2] == "run"
 	}
 	return len(args) >= 2 && args[1] == kind
 }
@@ -616,7 +619,7 @@ func bpWaitVisible(t *testing.T, observer *harness.Session, address string) {
 // bpCheckStructuredLog asserts that every line of data is one JSON record with
 // time, level and event, and that the sent body never appears. The only
 // permitted non-JSON line is the final failure line cmd writes as
-// "peers broker: ..."; a normal SIGTERM shutdown writes none.
+// "peers service run: ..."; a normal SIGTERM shutdown writes none.
 func bpCheckStructuredLog(t *testing.T, data []byte, forbidden string) {
 	t.Helper()
 
@@ -632,7 +635,7 @@ func bpCheckStructuredLog(t *testing.T, data []byte, forbidden string) {
 		if line == "" {
 			continue
 		}
-		if rest, ok := strings.CutPrefix(line, "peers broker: "); ok {
+		if rest, ok := strings.CutPrefix(line, "peers service run: "); ok {
 			if i != len(lines)-1 {
 				t.Fatalf("a failure line appears before the end of the log: %q", line)
 			}

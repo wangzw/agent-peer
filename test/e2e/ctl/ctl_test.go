@@ -82,7 +82,7 @@ func runMCPStub() int {
 // exits with the exit code of a Broker whose listen address is unavailable.
 func runBrokerFailStub() int {
 	fmt.Fprintln(os.Stderr, `{"time":"2026-01-01T00:00:00Z","level":"INFO","event":"starting"}`)
-	fmt.Fprintln(os.Stderr, "peers broker: listen address :1 is not available")
+	fmt.Fprintln(os.Stderr, "peers service run: listen address :1 is not available")
 	return 4
 }
 

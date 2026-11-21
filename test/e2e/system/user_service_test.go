@@ -225,7 +225,7 @@ func solePeerBroker(t *testing.T, peerUID uint32) int {
 // peerBrokers returns the running peer Broker processes.
 func peerBrokers(peerUID uint32) []syscontainer.ProcInfo {
 	var peer []syscontainer.ProcInfo
-	for _, proc := range syscontainer.Pids("peers", "broker") {
+	for _, proc := range syscontainer.Pids("peers", "service", "run") {
 		if proc.UID == peerUID {
 			peer = append(peer, proc)
 		}

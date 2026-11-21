@@ -85,7 +85,7 @@ func TestWriteStatusBrokerState(t *testing.T) {
 	const fix = "peers config set broker.listen <free address>"
 	const degradedLocal = "Broker: degraded (local only): " + reason + "\nFix: " + fix + "\n"
 	const degradedDiagnostics = "Broker: degraded (diagnostics only): " + reason + "\nFix: " + fix + "\n"
-	const offline = "Broker: offline; messages from other hosts are refused. Run peers online to accept them.\n"
+	const offline = "Broker: offline; messages from other hosts are refused. Run peers service online to accept them.\n"
 	const sections = "Agents: none\nPeers: none\n"
 
 	cases := []struct {
@@ -468,7 +468,7 @@ func TestWriteBrokerListBrokerState(t *testing.T) {
 	const reason = "listen address :17443 is unavailable: address already in use"
 	const fix = "peers config set broker.listen <free address>"
 	const degradedLocal = "Broker: degraded (local only): " + reason + "\nFix: " + fix + "\n"
-	const offline = "Broker: offline; messages from other hosts are refused. Run peers online to accept them.\n"
+	const offline = "Broker: offline; messages from other hosts are refused. Run peers service online to accept them.\n"
 	const table = "Brokers: none\n"
 
 	cases := []struct {

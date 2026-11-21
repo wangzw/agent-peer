@@ -73,7 +73,7 @@ func TestSystemServiceStartsAndRestarts(t *testing.T) {
 			// carries systemd's command line, so the Broker listing can be empty
 			// while MainPID already names the new process. Wait for the pid to
 			// appear rather than scanning once after the wait.
-			procs := syscontainer.Pids("peers", "broker", "--system")
+			procs := syscontainer.Pids("peers", "service", "run", "--system")
 			if !hasPID(procs, pid) {
 				return false, fmt.Sprintf("MainPID = %d, but the running system Brokers are %v", pid, procs)
 			}

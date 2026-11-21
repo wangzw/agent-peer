@@ -200,8 +200,8 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		}
 	}
 
-	if res := run(t, "sudo", "-n", installedBinary, "service", "uninstall", "--system"); res.exitCode != 0 {
-		t.Fatalf("service uninstall --system: exit %d\nstdout: %s\nstderr: %s", res.exitCode, res.stdout, res.stderr)
+	if res := run(t, "sudo", "-n", installedBinary, "service", "remove", "--system"); res.exitCode != 0 {
+		t.Fatalf("service remove --system: exit %d\nstdout: %s\nstderr: %s", res.exitCode, res.stdout, res.stderr)
 	}
 	waitForGone(t, "system", serviceStopBound)
 
@@ -262,9 +262,9 @@ func TestUserServiceControlDegraded(t *testing.T) {
 	if want := "Broker service started (user-level)\n"; res.stdout != want {
 		t.Errorf("stdout = %q, want %q", res.stdout, want)
 	}
-	status := run(t, installedBinary, "status")
+	status := run(t, installedBinary, "service", "status")
 	if status.exitCode != 0 {
-		t.Fatalf("peers status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers service status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
 			status.exitCode, strings.TrimSpace(status.stdout), strings.TrimSpace(status.stderr))
 	}
 	for _, want := range []string{"Broker: degraded (local only):", "Fix:"} {

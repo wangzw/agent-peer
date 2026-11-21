@@ -451,7 +451,7 @@ rs_start_broker() {
 	local sock deadline owner
 	sock="/tmp/peers-$(id -u)/broker.sock"
 	mkdir -p "$OUT"
-	"$R/run" peers broker >>"$log" 2>&1 &
+	"$R/run" peers service run --user >>"$log" 2>&1 &
 	RS_BROKER_PID=$!
 	if ((RS_BROKER_HOOKED == 0)); then
 		rs_on_exit rs_stop_broker

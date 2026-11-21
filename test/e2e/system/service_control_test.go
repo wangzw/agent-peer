@@ -181,9 +181,9 @@ func TestServiceControl(t *testing.T) {
 		if want := "Broker service started (user-level)\n"; res.Stdout != want {
 			t.Errorf("stdout = %q, want %q", res.Stdout, want)
 		}
-		status := runWithEnv(t, "peer", userEnv, releaseBinary, "status")
+		status := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "status")
 		if status.ExitCode != 0 {
-			t.Fatalf("peers status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers service status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
 				status.ExitCode, strings.TrimSpace(status.Stdout), strings.TrimSpace(status.Stderr))
 		}
 		for _, want := range []string{"Broker: degraded (local only):", "Fix:"} {
@@ -252,7 +252,7 @@ func serviceControlReset(t *testing.T) []string {
 	waitUserManager(t, peerUID)
 
 	reset := func() {
-		_ = runWithEnv(t, "peer", userEnv, releaseBinary, "service", "uninstall")
+		_ = runWithEnv(t, "peer", userEnv, releaseBinary, "service", "remove")
 		_ = runWithEnv(t, "peer", userEnv, "systemctl", "--user", "stop", "peers.service")
 		_ = runWithEnv(t, "peer", userEnv, "systemctl", "--user", "disable", "peers.service")
 		_ = os.Remove(userUnitPath(t))

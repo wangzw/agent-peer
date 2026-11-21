@@ -44,9 +44,9 @@ func TestSystemService(t *testing.T) {
 	restarted := waitForNewPID(t, "system", pid, restartBound)
 	t.Logf("launchd restarted the system Broker with pid %d", restarted)
 
-	res = run(t, "sudo", "-n", installedBinary, "service", "uninstall", "--system")
+	res = run(t, "sudo", "-n", installedBinary, "service", "remove", "--system")
 	if res.exitCode != 0 {
-		t.Fatalf("service uninstall --system: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("service remove --system: exit %d\nstdout: %s\nstderr: %s",
 			res.exitCode, res.stdout, res.stderr)
 	}
 	waitForGone(t, "system", serviceStopBound)
@@ -59,7 +59,7 @@ func TestSystemService(t *testing.T) {
 }
 
 // TestUserService installs the user-level Broker in the account's launchd
-// domain, checks that it runs and answers `peers status`, and uninstalls
+// domain, checks that it runs and answers `peers service status`, and uninstalls
 // it.
 func TestUserService(t *testing.T) {
 	resetUserService(t)
@@ -88,15 +88,15 @@ func TestUserService(t *testing.T) {
 	})
 
 	var status result
-	waitFor(t, serviceStartBound, "peers status to connect to the user Broker", func() (bool, string) {
-		status = run(t, installedBinary, "status")
+	waitFor(t, serviceStartBound, "peers service status to connect to the user Broker", func() (bool, string) {
+		status = run(t, installedBinary, "service", "status")
 		return status.exitCode == 0, fmt.Sprintf("exit %d\nstdout: %s\nstderr: %s", status.exitCode, status.stdout, status.stderr)
 	})
-	t.Logf("peers status connected to the user Broker: %s", status.stdout)
+	t.Logf("peers service status connected to the user Broker: %s", status.stdout)
 
-	res = run(t, installedBinary, "service", "uninstall")
+	res = run(t, installedBinary, "service", "remove")
 	if res.exitCode != 0 {
-		t.Fatalf("service uninstall: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("service remove: exit %d\nstdout: %s\nstderr: %s",
 			res.exitCode, res.stdout, res.stderr)
 	}
 	waitForGone(t, domain, serviceStopBound)
@@ -125,7 +125,7 @@ func userDomain(t *testing.T) string {
 // run. It is called before the test and from t.Cleanup.
 func resetSystemService(t *testing.T) {
 	t.Helper()
-	_ = sudo(installedBinary, "service", "uninstall", "--system")
+	_ = sudo(installedBinary, "service", "remove", "--system")
 	bootout("system")
 	_ = sudo("rm", "-f", daemonPlist)
 }
@@ -133,7 +133,7 @@ func resetSystemService(t *testing.T) {
 // resetUserService removes any user-level installation left by an earlier run.
 func resetUserService(t *testing.T) {
 	t.Helper()
-	_ = exec.Command(installedBinary, "service", "uninstall").Run()
+	_ = exec.Command(installedBinary, "service", "remove").Run()
 	bootout(fmt.Sprintf("gui/%d", os.Getuid()))
 	_ = os.Remove(filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", serviceLabel+".plist"))
 }
@@ -254,7 +254,7 @@ func startSystemPeer(t *testing.T) *systemPeer {
 	if err != nil {
 		t.Fatalf("creating the peer log: %v", err)
 	}
-	cmd := exec.Command("sudo", "-n", installedBinary, "broker", "--system", "--listen", ":"+reloginPeerPort)
+	cmd := exec.Command("sudo", "-n", installedBinary, "service", "run", "--system", "--listen", ":"+reloginPeerPort)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	if err := cmd.Start(); err != nil {

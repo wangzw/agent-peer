@@ -713,7 +713,7 @@ func TestRunReportsNoBroker(t *testing.T) {
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
-	for _, want := range []string{"no Broker is available", "ask the administrator", "peers service install", "peers broker", "code 6", "(code: internal)"} {
+	for _, want := range []string{"no Broker is available", "ask the administrator", "peers service install", "peers service run", "code 6", "(code: internal)"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("list_agents error = %q, want it to contain %q", text, want)
 		}

@@ -34,7 +34,7 @@ func TestREQBrokerConfig018_TwoAccountsShareSystemBroker(t *testing.T) {
 		t.Fatalf("the system Broker socket is not at %s: %v", e2eSystemSocketPath, err)
 	}
 	found := false
-	for _, proc := range syscontainer.Pids("peers", "broker", "--system") {
+	for _, proc := range syscontainer.Pids("peers", "service", "run", "--system") {
 		if proc.PID == broker.PID {
 			found = true
 		}
@@ -101,9 +101,9 @@ func TestREQBrokerConfig018_TwoAccountsShareSystemBroker(t *testing.T) {
 		return true, ""
 	})
 
-	status := syscontainer.RunAs(t, "root", nil, "status")
+	status := syscontainer.RunAs(t, "root", nil, "service", "status")
 	if status.ExitCode != 0 {
-		t.Fatalf("peers status as root: exit %d\n%s\n%s", status.ExitCode, status.Stdout, status.Stderr)
+		t.Fatalf("peers service status as root: exit %d\n%s\n%s", status.ExitCode, status.Stdout, status.Stderr)
 	}
 	if !strings.Contains(status.Stdout, "Agents (3):") {
 		t.Fatalf("status does not list all three agents:\n%s", status.Stdout)

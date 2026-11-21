@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// newBrokerCmdApp builds an app whose broker subcommand talks to stub.
+// newBrokerCmdApp builds an app whose "service run" subcommand talks to stub.
 func newBrokerCmdApp(stub *stubDeps) (*app, *bytes.Buffer, *bytes.Buffer) {
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
@@ -19,6 +19,11 @@ func newBrokerCmdApp(stub *stubDeps) (*app, *bytes.Buffer, *bytes.Buffer) {
 		version: "v-test",
 		deps:    stub.deps(),
 	}, stdout, stderr
+}
+
+// runServiceRun runs "peers service run" with args.
+func runServiceRun(a *app, args ...string) int {
+	return a.run(context.Background(), append([]string{"service", "run"}, args...))
 }
 
 // brokerLastLine returns the last non-empty line of s.
@@ -33,9 +38,9 @@ func TestBrokerPassesListenOverride(t *testing.T) {
 	stub := &stubDeps{}
 	a, _, _ := newBrokerCmdApp(stub)
 
-	code := a.brokerCmd(context.Background(), []string{"--listen", "127.0.0.1:17444"})
+	code := runServiceRun(a, "--listen", "127.0.0.1:17444")
 	if code != exitOK {
-		t.Fatalf("brokerCmd returned %d, want %d", code, exitOK)
+		t.Fatalf("service run returned %d, want %d", code, exitOK)
 	}
 	if len(stub.brokerCalls) != 1 {
 		t.Fatalf("runBroker called %d times, want 1", len(stub.brokerCalls))
@@ -53,8 +58,8 @@ func TestBrokerWithoutListenLeavesConfigInCharge(t *testing.T) {
 	stub := &stubDeps{}
 	a, _, _ := newBrokerCmdApp(stub)
 
-	if code := a.brokerCmd(context.Background(), nil); code != exitOK {
-		t.Fatalf("brokerCmd returned %d, want %d", code, exitOK)
+	if code := runServiceRun(a); code != exitOK {
+		t.Fatalf("service run returned %d, want %d", code, exitOK)
 	}
 	if len(stub.brokerCalls) != 1 {
 		t.Fatalf("runBroker called %d times, want 1", len(stub.brokerCalls))
@@ -69,8 +74,8 @@ func TestBrokerRejectsEmptyListen(t *testing.T) {
 		stub := &stubDeps{}
 		a, _, stderr := newBrokerCmdApp(stub)
 
-		if code := a.brokerCmd(context.Background(), args); code != exitUsage {
-			t.Fatalf("brokerCmd(%q) returned %d, want %d", args, code, exitUsage)
+		if code := runServiceRun(a, args...); code != exitUsage {
+			t.Fatalf("service run %q returned %d, want %d", args, code, exitUsage)
 		}
 		if !strings.Contains(stderr.String(), "--listen requires a non-empty address") {
 			t.Errorf("stderr = %q, want the empty --listen explanation", stderr.String())
@@ -106,10 +111,19 @@ func TestBrokerStartupFailureExitCodes(t *testing.T) {
 			}
 			a, _, stderr := newBrokerCmdApp(stub)
 
-			if code := a.brokerCmd(context.Background(), nil); code != tc.code {
-				t.Fatalf("brokerCmd returned %d, want %d", code, tc.code)
+			if code := runServiceRun(a); code != tc.code {
+				t.Fatalf("service run returned %d, want %d", code, tc.code)
 			}
-			if want := "peers broker: startup failed"; brokerLastLine(stderr.String()) != want {
+			const want = "peers service run: startup failed"
+			if tc.code == exitUsage {
+				// A usage error adds the help hint on the following line.
+				if !strings.Contains(stderr.String(), want+"\n") {
+					t.Errorf("stderr = %q, want the diagnostic %q", stderr.String(), want)
+				}
+				if !strings.Contains(stderr.String(), "Run 'peers service run --help' for usage.") {
+					t.Errorf("stderr = %q, want the usage hint", stderr.String())
+				}
+			} else if brokerLastLine(stderr.String()) != want {
 				t.Errorf("last stderr line = %q, want %q", brokerLastLine(stderr.String()), want)
 			}
 		})
@@ -123,8 +137,8 @@ func TestBrokerPassesSystemFlag(t *testing.T) {
 	}
 	a, _, _ := newBrokerCmdApp(stub)
 
-	if code := a.brokerCmd(context.Background(), []string{"--system"}); code != exitFailure {
-		t.Fatalf("brokerCmd returned %d, want %d", code, exitFailure)
+	if code := runServiceRun(a, "--system"); code != exitFailure {
+		t.Fatalf("service run returned %d, want %d", code, exitFailure)
 	}
 	if len(stub.brokerCalls) != 1 {
 		t.Fatalf("runBroker called %d times, want 1", len(stub.brokerCalls))
@@ -134,12 +148,29 @@ func TestBrokerPassesSystemFlag(t *testing.T) {
 	}
 }
 
+// TestBrokerPassesUserFlag checks that --user selects the user level even for
+// root, where the default would be the system level.
+func TestBrokerPassesUserFlag(t *testing.T) {
+	stub := &stubDeps{euid: func() int { return 0 }}
+	a, _, _ := newBrokerCmdApp(stub)
+
+	if code := runServiceRun(a, "--user"); code != exitOK {
+		t.Fatalf("service run returned %d, want %d", code, exitOK)
+	}
+	if len(stub.brokerCalls) != 1 {
+		t.Fatalf("runBroker called %d times, want 1", len(stub.brokerCalls))
+	}
+	if stub.brokerCalls[0].System {
+		t.Error("System = true, want false")
+	}
+}
+
 func TestBrokerPassesAllowDegraded(t *testing.T) {
 	stub := &stubDeps{}
 	a, _, _ := newBrokerCmdApp(stub)
 
-	if code := a.brokerCmd(context.Background(), []string{"--allow-degraded"}); code != exitOK {
-		t.Fatalf("brokerCmd returned %d, want %d", code, exitOK)
+	if code := runServiceRun(a, "--allow-degraded"); code != exitOK {
+		t.Fatalf("service run returned %d, want %d", code, exitOK)
 	}
 	if len(stub.brokerCalls) != 1 {
 		t.Fatalf("runBroker called %d times, want 1", len(stub.brokerCalls))
@@ -153,8 +184,8 @@ func TestBrokerHelpMentionsAllowDegraded(t *testing.T) {
 	stub := &stubDeps{}
 	a, stdout, _ := newBrokerCmdApp(stub)
 
-	if code := a.brokerCmd(context.Background(), []string{"-h"}); code != exitOK {
-		t.Fatalf("brokerCmd returned %d, want %d", code, exitOK)
+	if code := runServiceRun(a, "-h"); code != exitOK {
+		t.Fatalf("service run returned %d, want %d", code, exitOK)
 	}
 	if !strings.Contains(stdout.String(), "--allow-degraded") {
 		t.Errorf("usage = %q, want it to mention --allow-degraded", stdout.String())
@@ -165,8 +196,8 @@ func TestBrokerRejectsPositionalArgument(t *testing.T) {
 	stub := &stubDeps{}
 	a, _, stderr := newBrokerCmdApp(stub)
 
-	if code := a.brokerCmd(context.Background(), []string{"extra"}); code != exitUsage {
-		t.Fatalf("brokerCmd returned %d, want %d", code, exitUsage)
+	if code := runServiceRun(a, "extra"); code != exitUsage {
+		t.Fatalf("service run returned %d, want %d", code, exitUsage)
 	}
 	if !strings.Contains(stderr.String(), `unexpected argument "extra"`) {
 		t.Errorf("stderr = %q, want the unexpected argument message", stderr.String())
@@ -180,14 +211,31 @@ func TestBrokerHelpGoesToStdout(t *testing.T) {
 	stub := &stubDeps{}
 	a, stdout, stderr := newBrokerCmdApp(stub)
 
-	if code := a.brokerCmd(context.Background(), []string{"-h"}); code != exitOK {
-		t.Fatalf("brokerCmd returned %d, want %d", code, exitOK)
+	if code := runServiceRun(a, "-h"); code != exitOK {
+		t.Fatalf("service run returned %d, want %d", code, exitOK)
 	}
-	if !strings.Contains(stdout.String(), "usage: peers broker") {
-		t.Errorf("stdout = %q, want the broker usage", stdout.String())
+	if !strings.Contains(stdout.String(), "peers service run") {
+		t.Errorf("stdout = %q, want the service run usage", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("stderr = %q, want empty", stderr.String())
+	}
+	if len(stub.brokerCalls) != 0 {
+		t.Errorf("runBroker called %d times, want 0", len(stub.brokerCalls))
+	}
+}
+
+// TestBrokerRejectsBothLevelFlags checks the shared level-flag rule on the run
+// command.
+func TestBrokerRejectsBothLevelFlags(t *testing.T) {
+	stub := &stubDeps{}
+	a, _, stderr := newBrokerCmdApp(stub)
+
+	if code := runServiceRun(a, "--system", "--user"); code != exitUsage {
+		t.Fatalf("service run returned %d, want %d", code, exitUsage)
+	}
+	if !strings.Contains(stderr.String(), "mutually exclusive") {
+		t.Errorf("stderr = %q, want the level-flag conflict", stderr.String())
 	}
 	if len(stub.brokerCalls) != 0 {
 		t.Errorf("runBroker called %d times, want 0", len(stub.brokerCalls))
