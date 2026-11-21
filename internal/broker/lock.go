@@ -34,7 +34,7 @@ type AccountLock struct {
 func AcquireAccountLock(path string) (*AccountLock, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("open account lock %s: %w", path, err)
+		return nil, fmt.Errorf("cannot open account lock %s: %w", path, err)
 	}
 	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		_ = f.Close()
@@ -46,7 +46,7 @@ func AcquireAccountLock(path string) (*AccountLock, error) {
 	fi, err := f.Stat()
 	if err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("stat account lock %s: %w", path, err)
+		return nil, fmt.Errorf("cannot stat account lock %s: %w", path, err)
 	}
 	st, ok := fi.Sys().(*syscall.Stat_t)
 	if !ok {

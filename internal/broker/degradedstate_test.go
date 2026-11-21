@@ -69,7 +69,7 @@ func TestDegradedFixHints(t *testing.T) {
 				step: "identity", err: wrapDataUnavailable(dataKindIdentity, errors.New("permission denied")),
 				paths: paths,
 			},
-			want: "check the owner and permissions of /var/lib/peers, then run peers service restart; without a restart it retries every minute",
+			want: "check the owner and permissions of /var/lib/peers, then run peers service restart; otherwise the Broker retries every minute",
 		},
 		{
 			name: "data directory system",
@@ -77,7 +77,7 @@ func TestDegradedFixHints(t *testing.T) {
 				step: "identity", err: wrapDataUnavailable(dataKindIdentity, errors.New("permission denied")),
 				paths: paths, system: true,
 			},
-			want: "check the owner and permissions of /var/lib/peers, then run sudo peers service restart; without a restart it retries every minute",
+			want: "check the owner and permissions of /var/lib/peers, then run sudo peers service restart; otherwise the Broker retries every minute",
 		},
 		{
 			name: "audit log user",
@@ -88,7 +88,7 @@ func TestDegradedFixHints(t *testing.T) {
 					Err:   errors.New("cannot open /var/log/peers/audit.log: permission denied"),
 				},
 			},
-			want: "check the owner and permissions of /var/log/peers/audit.log, then run peers service restart; without a restart it retries every minute",
+			want: "check the owner and permissions of /var/log/peers/audit.log, then run peers service restart; otherwise the Broker retries every minute",
 		},
 		{
 			name: "audit log system",
@@ -99,7 +99,7 @@ func TestDegradedFixHints(t *testing.T) {
 					Err:   errors.New("cannot open /var/log/peers/audit.log: permission denied"),
 				},
 			},
-			want: "check the owner and permissions of /var/log/peers/audit.log, then run sudo peers service restart; without a restart it retries every minute",
+			want: "check the owner and permissions of /var/log/peers/audit.log, then run sudo peers service restart; otherwise the Broker retries every minute",
 		},
 	}
 	for _, tc := range cases {

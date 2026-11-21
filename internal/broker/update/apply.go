@@ -59,7 +59,7 @@ func Apply(ctx context.Context, o ApplyOptions) error {
 
 	info, err := os.Lstat(o.Target)
 	if err != nil {
-		return fmt.Errorf("inspecting %s: %w", o.Target, err)
+		return fmt.Errorf("cannot inspect %s: %w", o.Target, err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("target %s is a symbolic link", o.Target)
@@ -133,7 +133,7 @@ func Apply(ctx context.Context, o ApplyOptions) error {
 	// temporary directory cannot break the preflight.
 	tmp, err := os.CreateTemp(filepath.Dir(o.Target), ".peers-update-*")
 	if err != nil {
-		return fmt.Errorf("creating a temporary file next to %s: %w", o.Target, err)
+		return fmt.Errorf("cannot create a temporary file next to %s: %w", o.Target, err)
 	}
 	tmpName := tmp.Name()
 	installed := false
@@ -144,7 +144,7 @@ func Apply(ctx context.Context, o ApplyOptions) error {
 		}
 	}()
 	if _, err := tmp.Write(binary); err != nil {
-		return fmt.Errorf("writing the downloaded binary: %w", err)
+		return fmt.Errorf("cannot write the downloaded binary: %w", err)
 	}
 	if err := tmp.Chmod(0o700); err != nil {
 		return fmt.Errorf("making the downloaded binary executable: %w", err)
@@ -152,7 +152,7 @@ func Apply(ctx context.Context, o ApplyOptions) error {
 	// The writer has to be closed before the file can be executed: an open
 	// write descriptor makes execve fail with ETXTBSY.
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("closing %s: %w", tmpName, err)
+		return fmt.Errorf("cannot close %s: %w", tmpName, err)
 	}
 	if err := checkVersion(ctx, tmpName, version); err != nil {
 		return err
@@ -173,7 +173,7 @@ func Apply(ctx context.Context, o ApplyOptions) error {
 		return fmt.Errorf("syncing %s: %w", tmpName, err)
 	}
 	if err := staged.Close(); err != nil {
-		return fmt.Errorf("closing %s: %w", tmpName, err)
+		return fmt.Errorf("cannot close %s: %w", tmpName, err)
 	}
 	if err := os.Rename(tmpName, o.Target); err != nil {
 		return fmt.Errorf("replacing %s: %w", o.Target, err)
@@ -211,7 +211,7 @@ func download(ctx context.Context, c *http.Client, url string) ([]byte, error) {
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxDownloadSize+1))
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", url, err)
+		return nil, fmt.Errorf("cannot read %s: %w", url, err)
 	}
 	if int64(len(data)) > maxDownloadSize {
 		return nil, fmt.Errorf("download %s exceeds the %d-byte limit", url, maxDownloadSize)
@@ -253,7 +253,7 @@ func expectedChecksum(checksums []byte, name string) ([]byte, error) {
 func extractBinary(archive []byte) ([]byte, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
-		return nil, fmt.Errorf("opening the release archive: %w", err)
+		return nil, fmt.Errorf("cannot open the release archive: %w", err)
 	}
 	defer func() { _ = gz.Close() }()
 
@@ -265,7 +265,7 @@ func extractBinary(archive []byte) ([]byte, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("reading the release archive: %w", err)
+			return nil, fmt.Errorf("cannot read the release archive: %w", err)
 		}
 		if !safeArchivePath(hdr.Name) {
 			return nil, fmt.Errorf("release archive contains the unsafe path %q", hdr.Name)
@@ -282,7 +282,7 @@ func extractBinary(archive []byte) ([]byte, error) {
 			}
 			data, err := io.ReadAll(io.LimitReader(tr, maxDownloadSize+1))
 			if err != nil {
-				return nil, fmt.Errorf("reading %s from the release archive: %w", binaryName, err)
+				return nil, fmt.Errorf("cannot read %s from the release archive: %w", binaryName, err)
 			}
 			if int64(len(data)) > maxDownloadSize {
 				return nil, fmt.Errorf("%s exceeds the %d-byte limit", binaryName, maxDownloadSize)
@@ -318,7 +318,7 @@ func checkVersion(ctx context.Context, binary, version string) error {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("running the downloaded binary: %w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
+		return fmt.Errorf("cannot run the downloaded binary: %w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
 	}
 	got := strings.TrimSuffix(stdout.String(), "\n")
 	got = strings.TrimSuffix(got, "\r")
@@ -343,7 +343,7 @@ func precheckEnv() []string {
 func syncDir(dir string) error {
 	f, err := os.Open(dir)
 	if err != nil {
-		return fmt.Errorf("opening %s to sync it: %w", dir, err)
+		return fmt.Errorf("cannot open %s to sync it: %w", dir, err)
 	}
 	defer func() { _ = f.Close() }()
 	if err := f.Sync(); err != nil {

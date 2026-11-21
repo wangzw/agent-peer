@@ -458,8 +458,29 @@ func TestUpdateRestartTimeoutNamesTheLog(t *testing.T) {
 	if !strings.Contains(err, "did not report version 0.1.2") {
 		t.Fatalf("stderr = %q, want the timeout version", err)
 	}
-	if !strings.Contains(err, "journalctl -u peers.service") {
+	if !strings.Contains(err, "within 0 seconds") {
+		t.Fatalf("stderr = %q, want the wait in a human-readable form", err)
+	}
+	if !strings.Contains(err, "check the service log: journalctl -u peers.service") {
 		t.Fatalf("stderr = %q, want the system service log location", err)
+	}
+}
+
+// TestHumanDuration pins the wait formatting: the timeout line shows seconds as
+// a reader counts them, not the time.Duration String form.
+func TestHumanDuration(t *testing.T) {
+	for _, tc := range []struct {
+		d    time.Duration
+		want string
+	}{
+		{0, "0 seconds"},
+		{time.Second, "1 second"},
+		{60 * time.Second, "60 seconds"},
+		{90 * time.Second, "90 seconds"},
+	} {
+		if got := humanDuration(tc.d); got != tc.want {
+			t.Errorf("humanDuration(%v) = %q, want %q", tc.d, got, tc.want)
+		}
 	}
 }
 
@@ -477,7 +498,7 @@ func TestUpdateRestartTimeoutNamesTheUserLevelLog(t *testing.T) {
 		t.Fatalf("run(update --yes) = %d, want %d", got, exitFailure)
 	}
 	err := stderr.String()
-	if !strings.Contains(err, "check the service log with journalctl --user -u peers.service") {
+	if !strings.Contains(err, "check the service log: journalctl --user -u peers.service") {
 		t.Fatalf("stderr = %q, want the user service log location", err)
 	}
 }

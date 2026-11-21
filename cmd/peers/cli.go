@@ -133,7 +133,7 @@ func (a *app) confirm(prompt string, yes bool) (bool, error) {
 	_, _ = fmt.Fprint(a.stderr, prompt)
 	answer, err := readAnswer(a.stdin)
 	if err != nil {
-		return false, fmt.Errorf("reading the answer: %w", err)
+		return false, fmt.Errorf("cannot read the answer: %w", err)
 	}
 	return isYes(answer), nil
 }

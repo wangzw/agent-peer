@@ -240,7 +240,7 @@ func TestBrokerOffline(t *testing.T) {
 		if res.ExitCode != 0 {
 			t.Fatalf("peers service offline exited %d\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 		}
-		if res.Stdout != "Broker is now offline\n" {
+		if res.Stdout != "The Broker is now offline.\n" {
 			t.Fatalf("peers service offline printed %q", res.Stdout)
 		}
 		if status, detail := bNode.Oracle().Status(t); detail != nil || !status.GetOffline() {
@@ -251,7 +251,7 @@ func TestBrokerOffline(t *testing.T) {
 		if res.ExitCode != 0 {
 			t.Fatalf("peers service online exited %d\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 		}
-		if res.Stdout != "Broker is now online\n" {
+		if res.Stdout != "The Broker is now online.\n" {
 			t.Fatalf("peers service online printed %q", res.Stdout)
 		}
 		if status, detail := bNode.Oracle().Status(t); detail != nil || status.GetOffline() {

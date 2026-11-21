@@ -93,8 +93,11 @@ func TestCreatePairingKeyNotListening(t *testing.T) {
 
 	_, err := callCreatePairingKey(t, tb, &localpb.CreatePairingKeyRequest{})
 	detail := wantErrorDetail(t, err, localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT)
-	if !strings.Contains(detail.GetMessage(), "ask the other side") {
-		t.Fatalf("message = %q, want the suggestion to create the key on the other side", detail.GetMessage())
+	if !strings.Contains(detail.GetMessage(), "is not listening") {
+		t.Fatalf("message = %q, want it to say the Broker does not listen", detail.GetMessage())
+	}
+	if strings.Contains(detail.GetMessage(), "connect_broker") {
+		t.Fatalf("message = %q, want no MCP tool name", detail.GetMessage())
 	}
 	if evs := auditsOf(tb.cfg, config.EventPairingKeyCreated); len(evs) != 0 {
 		t.Fatalf("audit events = %d, want none for a failed key creation", len(evs))

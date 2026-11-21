@@ -48,7 +48,7 @@ func fingerprintWarnings(peer pairing.Peer, cards cardLookup) []*localpb.Warning
 			warnings = append(warnings, &localpb.Warning{
 				Kind: localpb.WarningKind_WARNING_KIND_FINGERPRINT_MISMATCH,
 				Message: fmt.Sprintf(
-					"fingerprint mismatch: the directory card for %s belongs to %s, but the paired broker presented %s",
+					"fingerprint mismatch: the directory card for %s belongs to %s, but the paired Broker presented %s",
 					addr, cardFP.String(), peer.Fingerprint.String(),
 				),
 			})

@@ -186,7 +186,7 @@ func dataFix(kind dataKind, paths config.PathSet, system bool) string {
 	if system {
 		restart = "sudo " + restart
 	}
-	return "check the owner and permissions of " + target + ", then run " + restart + "; without a restart it retries every minute"
+	return "check the owner and permissions of " + target + ", then run " + restart + "; otherwise the Broker retries every minute"
 }
 
 // listenFix returns the repair hint for a listen bind failure. The low-port

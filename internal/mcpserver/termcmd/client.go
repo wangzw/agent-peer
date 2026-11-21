@@ -142,9 +142,9 @@ func RunSetOnline(ctx context.Context, sel Selector, online bool, w io.Writer) e
 	callCtx, cancel := context.WithTimeout(ctx, UnaryTimeout)
 	defer cancel()
 
-	value, message := "true", "Broker is now offline"
+	value, message := "true", "The Broker is now offline."
 	if online {
-		value, message = "false", "Broker is now online"
+		value, message = "false", "The Broker is now online."
 	}
 	if _, err := client.SetConfig(callCtx, &localpb.SetConfigRequest{
 		Key:   "broker.offline",
@@ -170,9 +170,21 @@ func RunPairingKeyCreate(ctx context.Context, sel Selector, w io.Writer) error {
 
 	resp, err := client.CreatePairingKey(callCtx, &localpb.CreatePairingKeyRequest{})
 	if err != nil {
-		return errors.New(Describe(err))
+		return errors.New(pairingKeyErrorText(err))
 	}
 	return WritePairingKey(w, resp)
+}
+
+// pairingKeyErrorText describes a failed key creation and, when the Broker
+// refuses because it does not listen, names the terminal command that pairs
+// from this side. The Broker states the refusal without MCP tool names, which
+// only the model would understand.
+func pairingKeyErrorText(err error) string {
+	text := Describe(err)
+	if errorCode(err) == localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT {
+		text += "; ask the other side to create a pairing key and pair from here with `peers broker connect`"
+	}
+	return text
 }
 
 // RunPeerList connects to the selected Broker and writes every Broker it knows
@@ -215,12 +227,23 @@ func RunPeerConnect(ctx context.Context, sel Selector, address, key, alias strin
 		LocalAlias: alias,
 	})
 	if err != nil {
-		return errors.New(Describe(err))
+		return errors.New(connectErrorText(err))
 	}
 	if err := WritePairingResult(w, resp); err != nil {
 		return err
 	}
 	return WriteWarnings(warn, resp.GetWarnings())
+}
+
+// connectErrorText describes a failed pairing and, when the other Broker's
+// alias is taken, names --alias, the terminal command's form of the
+// local_alias parameter.
+func connectErrorText(err error) string {
+	text := Describe(err)
+	if errorCode(err) == localpb.ErrorCode_ERROR_CODE_NEEDS_LOCAL_ALIAS {
+		text += "; rerun with --alias set to a new name for it"
+	}
+	return text
 }
 
 // RunPeerDisconnect connects to the selected Broker, removes one paired Broker
@@ -236,10 +259,20 @@ func RunPeerDisconnect(ctx context.Context, sel Selector, broker string, w io.Wr
 	defer cancel()
 
 	if _, err := client.Disconnect(callCtx, &localpb.DisconnectRequest{Broker: broker}); err != nil {
-		return errors.New(Describe(err))
+		return errors.New(disconnectErrorText(err))
 	}
 	_, err = fmt.Fprintf(w, "Disconnected %s\n", broker)
 	return err
+}
+
+// disconnectErrorText describes a failed disconnect and, when no peer matches
+// the reference, names the terminal command that lists the paired Brokers.
+func disconnectErrorText(err error) string {
+	text := Describe(err)
+	if errorCode(err) == localpb.ErrorCode_ERROR_CODE_NOT_FOUND {
+		text += "; `peers broker list` shows the paired Brokers"
+	}
+	return text
 }
 
 // PeerNames returns the aliases and fingerprints of the paired Brokers. It

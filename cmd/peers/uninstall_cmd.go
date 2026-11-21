@@ -131,15 +131,15 @@ func runMCPCommand(name string, args ...string) ([]byte, error) {
 func (a *app) uninstallCmd(ctx context.Context, purge, yes bool) error {
 	userOpts, err := uninstallOptionsFn(false)
 	if err != nil {
-		return uninstallError("determine the options", err)
+		return uninstallError("cannot determine the options", err)
 	}
 	if !filepath.IsAbs(userOpts.Home) {
-		return uninstallError("determine the options",
+		return uninstallError("cannot determine the options",
 			fmt.Errorf("the home directory %q is not an absolute path", userOpts.Home))
 	}
 	systemOpts, err := uninstallOptionsFn(true)
 	if err != nil {
-		return uninstallError("determine the options", err)
+		return uninstallError("cannot determine the options", err)
 	}
 
 	if a.deps.euid() == 0 {
@@ -154,7 +154,7 @@ func (a *app) uninstallAsRoot(ctx context.Context, opts service.Options, purge, 
 	noServiceBinary := ""
 	installed, err := uninstallInstalledFn(opts)
 	if err != nil {
-		return uninstallError("inspect the installation", err)
+		return uninstallError("cannot inspect the installation", err)
 	}
 	if !installed {
 		// An installation that used --no-service left only the MCP
@@ -162,7 +162,7 @@ func (a *app) uninstallAsRoot(ctx context.Context, opts service.Options, purge, 
 		// checked, since either may be the account the install belonged to.
 		exe, err := uninstallExecutableFn()
 		if err != nil {
-			return uninstallError("locate the executable", err)
+			return uninstallError("cannot locate the executable", err)
 		}
 		accounts := []string{""}
 		if user := uninstallGetenvFn("SUDO_USER"); user != "" && user != "root" {
@@ -191,12 +191,12 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 	noServiceBinary := ""
 	installed, err := uninstallInstalledFn(userOpts)
 	if err != nil {
-		return uninstallError("inspect the installation", err)
+		return uninstallError("cannot inspect the installation", err)
 	}
 	if !installed {
 		exe, err := uninstallExecutableFn()
 		if err != nil {
-			return uninstallError("locate the executable", err)
+			return uninstallError("cannot locate the executable", err)
 		}
 		if binary, ok := installationBinary(userOpts, "", exe); ok {
 			noServiceBinary = binary
@@ -215,7 +215,7 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 
 	systemInstalled, err := uninstallInstalledFn(systemOpts)
 	if err != nil {
-		return uninstallError("inspect the installation", err)
+		return uninstallError("cannot inspect the installation", err)
 	}
 	if !systemInstalled {
 		_, _ = fmt.Fprintln(a.stdout, "peers is not installed")
@@ -232,7 +232,7 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 	if isTerminal(a.stdin) {
 		confirmed, err := a.confirm(uninstallSystemPrompt, false)
 		if err != nil {
-			return uninstallError("confirm the system uninstall", err)
+			return uninstallError("cannot confirm the system uninstall", err)
 		}
 		if confirmed {
 			// The answer only approves the sudo rerun. It is not a
@@ -254,7 +254,7 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 func (a *app) sudoUninstall(ctx context.Context, purge, yes bool) error {
 	exe, err := uninstallExecutableFn()
 	if err != nil {
-		return uninstallError("locate the executable", err)
+		return uninstallError("cannot locate the executable", err)
 	}
 	args := []string{"uninstall"}
 	if purge {
@@ -264,7 +264,7 @@ func (a *app) sudoUninstall(ctx context.Context, purge, yes bool) error {
 		args = append(args, "--yes")
 	}
 	if err := uninstallSudoFn(ctx, exe, args, a.stdin, a.stdout, a.stderr); err != nil {
-		return uninstallError("run sudo", err)
+		return uninstallError("cannot run sudo", err)
 	}
 	return nil
 }
@@ -323,7 +323,7 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 		if !purgeData {
 			confirmed, err := a.confirm(uninstallDataPrompt, false)
 			if err != nil {
-				return uninstallError("confirm the data removal", err)
+				return uninstallError("cannot confirm the data removal", err)
 			}
 			purgeData = confirmed
 		}
@@ -332,7 +332,7 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 	if binary == "" {
 		path, ok, err := uninstallServiceBinaryFn(opts)
 		if err != nil {
-			return uninstallError("read the service definition", err)
+			return uninstallError("cannot read the service definition", err)
 		}
 		if ok {
 			binary = path
@@ -343,7 +343,7 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 			// other copy is left alone.
 			exe, err := uninstallExecutableFn()
 			if err != nil {
-				return uninstallError("locate the executable", err)
+				return uninstallError("cannot locate the executable", err)
 			}
 			if candidate, ok := installationBinary(opts, account, exe); ok {
 				binary = candidate
@@ -356,7 +356,7 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 
 	result, err := uninstallServiceFn(opts)
 	if err != nil {
-		return uninstallError("stop and remove the service", err)
+		return uninstallError("cannot stop and remove the service", err)
 	}
 	if result.Removed {
 		_, _ = fmt.Fprintf(a.stdout, "stopped and removed the service %s\n", result.UnitPath)
@@ -371,18 +371,18 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 	} else {
 		outcome, err := uninstallMCPFn(account, binary)
 		if err != nil {
-			return uninstallError("remove the MCP registration", err)
+			return uninstallError("cannot remove the MCP registration", err)
 		}
 		_, _ = fmt.Fprintln(a.stdout, outcome)
 	}
 
 	if err := a.removeInstallationFiles(opts, system); err != nil {
-		return uninstallError("remove the shell completions and man pages", err)
+		return uninstallError("cannot remove the shell completions and man pages", err)
 	}
 
 	removedDirs, err := uninstallRemoveRuntimeDirFn(opts)
 	if err != nil {
-		return uninstallError("remove the runtime directory", err)
+		return uninstallError("cannot remove the runtime directory", err)
 	}
 	if len(removedDirs) == 0 {
 		_, _ = fmt.Fprintln(a.stdout, "the runtime directory was already gone")
@@ -401,7 +401,7 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 			_, _ = fmt.Fprintf(a.stdout, "removed %s\n", entry)
 		}
 		if purgeErr != nil {
-			return uninstallError("remove the data", purgeErr)
+			return uninstallError("cannot remove the data", purgeErr)
 		}
 		if len(removed) == 0 {
 			_, _ = fmt.Fprintln(a.stdout, "no configuration, data or logs were present")
@@ -413,21 +413,21 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 	if system {
 		accounts, err := uninstallOtherAccountsFn(opts)
 		if err != nil {
-			return uninstallError("list other accounts' Brokers", err)
+			return uninstallError("cannot list other accounts' Brokers", err)
 		}
 		if len(accounts) > 0 {
-			_, _ = fmt.Fprintf(a.stdout, "other accounts run a user Broker: %s\n", strings.Join(accounts, ", "))
+			_, _ = fmt.Fprintf(a.stdout, "Other accounts run a user Broker: %s.\n", strings.Join(accounts, ", "))
 			if binary != "" {
-				_, _ = fmt.Fprintf(a.stdout, "their Broker will fail to start after %s is removed\n", binary)
+				_, _ = fmt.Fprintf(a.stdout, "Their Brokers will fail to start after %s is removed.\n", binary)
 			} else {
-				_, _ = fmt.Fprintln(a.stdout, "their Broker may fail to start if the shared binary is removed")
+				_, _ = fmt.Fprintln(a.stdout, "Their Brokers may fail to start if the shared binary is removed.")
 			}
 		}
 	}
 
 	if binary != "" {
 		if err := a.removeServiceBinary(opts, system, binary); err != nil {
-			return uninstallError("remove the binary", err)
+			return uninstallError("cannot remove the binary", err)
 		}
 	}
 
@@ -456,7 +456,7 @@ func (a *app) removeInstallationFiles(opts service.Options, system bool) error {
 			glob := filepath.Join(rootedPath(opts, "/usr/local/share/man/man1"), pattern)
 			pages, err := filepath.Glob(glob)
 			if err != nil {
-				return fmt.Errorf("list %s: %w", glob, err)
+				return fmt.Errorf("cannot list %s: %w", glob, err)
 			}
 			for _, path := range pages {
 				if err := a.removeInstallationFile(path); err != nil {
@@ -476,7 +476,7 @@ func (a *app) removeCompletion(path string) error {
 	case errors.Is(err, os.ErrNotExist):
 		return nil
 	case err != nil:
-		return fmt.Errorf("inspect %s: %w", path, err)
+		return fmt.Errorf("cannot inspect %s: %w", path, err)
 	}
 	if info.IsDir() {
 		_, _ = fmt.Fprintf(a.stdout, "kept %s: it is a directory\n", path)
@@ -487,7 +487,7 @@ func (a *app) removeCompletion(path string) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return fmt.Errorf("read %s: %w", path, err)
+		return fmt.Errorf("cannot read %s: %w", path, err)
 	}
 	if !generatedCompletion(data) {
 		_, _ = fmt.Fprintf(a.stdout, "kept %s: it was not written by peers\n", path)
@@ -519,7 +519,7 @@ func (a *app) removeInstallationFile(path string) error {
 	case errors.Is(err, os.ErrNotExist):
 		return nil
 	case err != nil:
-		return fmt.Errorf("inspect %s: %w", path, err)
+		return fmt.Errorf("cannot inspect %s: %w", path, err)
 	}
 	if info.IsDir() {
 		_, _ = fmt.Fprintf(a.stdout, "kept %s: it is a directory\n", path)
@@ -529,7 +529,7 @@ func (a *app) removeInstallationFile(path string) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return fmt.Errorf("remove %s: %w", path, err)
+		return fmt.Errorf("cannot remove %s: %w", path, err)
 	}
 	_, _ = fmt.Fprintf(a.stdout, "removed %s\n", path)
 	return nil
@@ -563,7 +563,7 @@ func (a *app) removeServiceBinary(opts service.Options, system bool, binary stri
 			_, _ = fmt.Fprintf(a.stdout, "the binary %s was already gone\n", binary)
 			return nil
 		}
-		return fmt.Errorf("inspect %s: %w", binary, err)
+		return fmt.Errorf("cannot inspect %s: %w", binary, err)
 	}
 	if reason := serviceBinaryIdentity(opts, binary); reason != "" {
 		_, _ = fmt.Fprintf(a.stdout, "kept the binary %s: %s\n", binary, reason)
@@ -576,7 +576,7 @@ func (a *app) removeServiceBinary(opts service.Options, system bool, binary stri
 				_, _ = fmt.Fprintf(a.stdout, "the binary %s was already gone\n", binary)
 				return nil
 			}
-			return fmt.Errorf("inspect %s: %w", binary, err)
+			return fmt.Errorf("cannot inspect %s: %w", binary, err)
 		}
 		if uid != uint32(opts.EUID) {
 			_, _ = fmt.Fprintf(a.stdout, "kept the binary %s: it belongs to another account\n", binary)
@@ -588,7 +588,7 @@ func (a *app) removeServiceBinary(opts service.Options, system bool, binary stri
 			_, _ = fmt.Fprintf(a.stdout, "the binary %s was already gone\n", binary)
 			return nil
 		}
-		return fmt.Errorf("remove %s: %w", binary, err)
+		return fmt.Errorf("cannot remove %s: %w", binary, err)
 	}
 	_, _ = fmt.Fprintf(a.stdout, "removed the binary %s\n", binary)
 	return nil

@@ -55,7 +55,7 @@ var (
 func newUpdateCommand(a *app) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "update",
-		Short:   "Install the newest release of peers",
+		Short:   "Install the latest release of peers",
 		GroupID: groupInstall,
 		Args:    noPositionalArgs,
 	}
@@ -158,7 +158,7 @@ func (a *app) reportBrokerUpdate(ctx context.Context, result brokerUpdateResult)
 		return nil
 	}
 
-	_, _ = fmt.Fprintf(a.stdout, "The Broker is restarting to version %s.\n", to)
+	_, _ = fmt.Fprintf(a.stdout, "The Broker is restarting with version %s.\n", to)
 	if err := a.waitForBrokerVersion(ctx, to, result.UserLevel); err != nil {
 		return err
 	}
@@ -196,9 +196,19 @@ func (a *app) waitForBrokerVersion(ctx context.Context, want string, userLevel b
 		}
 	}
 	if lastErr != nil {
-		return fmt.Errorf("the Broker did not report version %s within %s (%v); check the service log with %s", want, updateRestartWait, lastErr, updateLogHint(userLevel))
+		return fmt.Errorf("the Broker did not report version %s within %s (last error: %v); check the service log: %s", want, humanDuration(updateRestartWait), lastErr, updateLogHint(userLevel))
 	}
-	return fmt.Errorf("the Broker did not report version %s within %s; check the service log with %s", want, updateRestartWait, updateLogHint(userLevel))
+	return fmt.Errorf("the Broker did not report version %s within %s; check the service log: %s", want, humanDuration(updateRestartWait), updateLogHint(userLevel))
+}
+
+// humanDuration renders d as a user reads it, such as "60 seconds", rather than
+// as the time.Duration String method writes it.
+func humanDuration(d time.Duration) string {
+	seconds := int64(d / time.Second)
+	if seconds == 1 {
+		return "1 second"
+	}
+	return fmt.Sprintf("%d seconds", seconds)
 }
 
 // updateLogHint names where the service manager writes the Broker's standard
@@ -224,11 +234,11 @@ func updateLogHint(userLevel bool) string {
 func updateTarget() (string, error) {
 	exe, err := updateExecutable()
 	if err != nil {
-		return "", fmt.Errorf("locating the executable: %w", err)
+		return "", fmt.Errorf("cannot locate the executable: %w", err)
 	}
 	real, err := updateEvalSymlinks(exe)
 	if err != nil {
-		return "", fmt.Errorf("resolving the executable %q: %w", exe, err)
+		return "", fmt.Errorf("cannot resolve the executable %q: %w", exe, err)
 	}
 	return real, nil
 }

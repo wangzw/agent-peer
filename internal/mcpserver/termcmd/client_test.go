@@ -527,8 +527,8 @@ func TestRunSetOnline(t *testing.T) {
 		wantVal  string
 		wantLine string
 	}{
-		{"offline", false, "true", "Broker is now offline\n"},
-		{"online", true, "false", "Broker is now online\n"},
+		{"offline", false, "true", "The Broker is now offline.\n"},
+		{"online", true, "false", "The Broker is now online.\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -606,6 +606,33 @@ func TestRunPairingKeyCreate(t *testing.T) {
 	}
 	if n := methodCalls(srv, "CreatePairingKey"); n != 1 {
 		t.Errorf("CreatePairingKey calls = %d, want 1", n)
+	}
+}
+
+// TestRunPairingKeyCreateNotListening checks that the terminal tells the user
+// how to pair from this side, in the command-line form rather than the MCP tool
+// name that the Broker's own message no longer carries.
+func TestRunPairingKeyCreateNotListening(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	fakelocal.Start(t, path, fakelocal.Handlers{
+		CreatePairingKey: func(context.Context, *localpb.CreatePairingKeyRequest) (*localpb.CreatePairingKeyResponse, error) {
+			return nil, fakelocal.ErrorStatus(codes.InvalidArgument, &localpb.ErrorDetail{
+				Code:    localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT,
+				Message: "this Broker is not listening (broker.listen is empty), so the other Broker cannot dial it",
+			})
+		},
+	})
+
+	var got bytes.Buffer
+	err := RunPairingKeyCreate(t.Context(), fixedSelector(path), &got)
+	if err == nil {
+		t.Fatal("RunPairingKeyCreate returned nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "`peers broker connect`") {
+		t.Errorf("error = %q, want the pairing command", err)
+	}
+	if got.Len() != 0 {
+		t.Errorf("RunPairingKeyCreate wrote %q, want nothing", got.String())
 	}
 }
 
@@ -813,6 +840,35 @@ func TestRunPeerConnectNoWarnings(t *testing.T) {
 	}
 }
 
+// TestRunPeerConnectNeedsLocalAlias checks that the terminal asks for --alias,
+// the command's own form of the local_alias parameter.
+func TestRunPeerConnectNeedsLocalAlias(t *testing.T) {
+	path := fakelocal.SocketPath(t)
+	fakelocal.Start(t, path, fakelocal.Handlers{
+		Connect: func(context.Context, *localpb.ConnectRequest) (*localpb.ConnectResponse, error) {
+			return nil, fakelocal.ErrorStatus(codes.FailedPrecondition, &localpb.ErrorDetail{
+				Code:    localpb.ErrorCode_ERROR_CODE_NEEDS_LOCAL_ALIAS,
+				Message: "the other Broker's alias is already this Broker's alias or a peer's alias",
+			})
+		},
+	})
+
+	var got, warned bytes.Buffer
+	err := RunPeerConnect(t.Context(), fixedSelector(path), "hostb.example:17443", "key", "", &got, &warned)
+	if err == nil {
+		t.Fatal("RunPeerConnect returned nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "--alias") {
+		t.Errorf("error = %q, want the --alias hint", err)
+	}
+	if strings.Contains(err.Error(), "retry with local_alias") {
+		t.Errorf("error = %q, want no MCP parameter name", err)
+	}
+	if got.Len() != 0 || warned.Len() != 0 {
+		t.Errorf("RunPeerConnect wrote %q and %q, want nothing", got.String(), warned.String())
+	}
+}
+
 func TestRunPeerDisconnect(t *testing.T) {
 	path := fakelocal.SocketPath(t)
 	srv := fakelocal.Start(t, path, fakelocal.Handlers{
@@ -851,6 +907,9 @@ func TestRunPeerDisconnectError(t *testing.T) {
 	}
 	if !strings.HasPrefix(err.Error(), "not_found: ") {
 		t.Errorf("RunPeerDisconnect error = %q, want it to start with %q", err, "not_found: ")
+	}
+	if !strings.Contains(err.Error(), "`peers broker list`") {
+		t.Errorf("RunPeerDisconnect error = %q, want the list command", err)
 	}
 	if got.Len() != 0 {
 		t.Errorf("RunPeerDisconnect wrote %q, want nothing", got.String())

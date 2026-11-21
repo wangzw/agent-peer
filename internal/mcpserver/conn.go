@@ -148,7 +148,7 @@ func dialUnixChecked(ctx context.Context, address string) (net.Conn, error) {
 	uid, err := peerUID(conn)
 	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("read the peer credentials of %s: %w", path, err)
+		return nil, fmt.Errorf("cannot read the peer credentials of %s: %w", path, err)
 	}
 	if !peerMayServe(uid) {
 		_ = conn.Close()

@@ -33,7 +33,7 @@ func resolvePeerRef(p PairingOps, ref string) (pairing.Fingerprint, *Error) {
 		}
 	}
 	return pairing.Fingerprint{}, Errorf(localpb.ErrorCode_ERROR_CODE_NOT_FOUND,
-		"no peer Broker has the alias or fingerprint %q; list_brokers shows the peers", ref)
+		"no peer Broker has the alias or fingerprint %q", ref)
 }
 
 // Disconnect removes one peer from the pairing table. The link is closed by

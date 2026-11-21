@@ -67,7 +67,11 @@ func TestConnectErrorMapping(t *testing.T) {
 			name:     "wrapped needs local alias",
 			err:      fmt.Errorf("w: %w", pairing.ErrNeedsLocalAlias),
 			wantCode: localpb.ErrorCode_ERROR_CODE_NEEDS_LOCAL_ALIAS,
-			contains: []string{"local_alias"},
+			contains: []string{"already this Broker's alias or a peer's alias"},
+			notContain: []string{
+				"local_alias",
+				"connect_broker",
+			},
 		},
 		{
 			name:     "pairing error carries detail",
@@ -194,9 +198,14 @@ func TestPairingKeyErrorNotListening(t *testing.T) {
 	if got.Code != localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT {
 		t.Errorf("Code = %v, want invalid_argument", got.Code)
 	}
-	for _, want := range []string{"does not listen", "ask the other side to create a pairing key"} {
+	for _, want := range []string{"is not listening", "broker.listen is empty"} {
 		if !strings.Contains(got.Message, want) {
 			t.Errorf("Message = %q, want it to contain %q", got.Message, want)
+		}
+	}
+	for _, unwanted := range []string{"connect_broker", "local_alias"} {
+		if strings.Contains(got.Message, unwanted) {
+			t.Errorf("Message = %q, want it to carry no MCP name %q", got.Message, unwanted)
 		}
 	}
 

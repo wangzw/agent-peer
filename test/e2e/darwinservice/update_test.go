@@ -120,7 +120,7 @@ func TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate(t *testing.T) {
 	// The command does not print the old version with --yes; the check before
 	// the update already proved the old release was running.
 	for _, want := range []string{
-		"The Broker is restarting to version " + updateNewVersion,
+		"The Broker is restarting with version " + updateNewVersion,
 		"The Broker is running peers " + updateNewVersion,
 	} {
 		if !strings.Contains(combined, want) {

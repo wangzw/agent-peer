@@ -957,7 +957,7 @@ func TestUninstallStopsAfterAFailedStep(t *testing.T) {
 	if got := a.run(context.Background(), []string{"uninstall", "--yes"}); got != exitFailure {
 		t.Fatalf("run(uninstall --yes) = %d, want %d", got, exitFailure)
 	}
-	if !strings.Contains(stderr.String(), "stop and remove the service") {
+	if !strings.Contains(stderr.String(), "cannot stop and remove the service") {
 		t.Errorf("stderr = %q, want the failed step named", stderr)
 	}
 	if len(rec.steps) != 0 {
@@ -1057,7 +1057,7 @@ func TestUninstallReportsPathsRemovedBeforeAPurgeFailure(t *testing.T) {
 	if strings.Contains(stdout.String(), "removed kept group") {
 		t.Errorf("stdout prefixes a kept-group message with removed:\n%s", stdout)
 	}
-	if !strings.Contains(stderr.String(), "remove the data") {
+	if !strings.Contains(stderr.String(), "cannot remove the data") {
 		t.Errorf("stderr = %q, want the failed step named", stderr)
 	}
 }

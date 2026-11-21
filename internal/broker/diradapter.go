@@ -49,10 +49,10 @@ func (a *directoryAdapter) DeclarePublicTopic(name, description string) error {
 		return nil
 	case errors.Is(err, directory.ErrNotPublic):
 		return Errorf(localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT,
-			"Not joined: the broker is not public; set broker.public to true before declaring a public topic")
+			"Not joined: the Broker is not public; set broker.public to true before declaring a public topic")
 	case errors.Is(err, directory.ErrQuotaExceeded):
 		return Errorf(localpb.ErrorCode_ERROR_CODE_QUOTA_EXCEEDED,
-			"Not joined: this broker already declares the maximum number of public topics")
+			"Not joined: this Broker already declares the maximum number of public topics")
 	case errors.Is(err, directory.ErrInvalidTopic):
 		return Errorf(localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT,
 			"Not joined: invalid topic name")

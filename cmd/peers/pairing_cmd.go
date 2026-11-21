@@ -21,7 +21,7 @@ func (a *app) newBrokerCommand() *cobra.Command {
 	broker.AddCommand(
 		&cobra.Command{
 			Use:   "list",
-			Short: "List the Brokers this host knows",
+			Short: "List the Brokers this host knows about",
 			Args:  noPositionalArgs,
 			RunE: func(cmd *cobra.Command, _ []string) error {
 				if err := a.deps.runPeerList(cmd.Context(), a.stdout); err != nil {

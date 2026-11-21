@@ -67,3 +67,20 @@ func Describe(err error) string {
 	}
 	return st.Code().String() + ": " + st.Message()
 }
+
+// errorCode returns the stable Broker error code carried in err, or
+// ERROR_CODE_UNSPECIFIED when err carries no ErrorDetail. A terminal command
+// uses it to add the command-line form of a hint that the Broker states in
+// terms of the MCP tools.
+func errorCode(err error) localpb.ErrorCode {
+	st, ok := status.FromError(err)
+	if !ok {
+		return localpb.ErrorCode_ERROR_CODE_UNSPECIFIED
+	}
+	for _, detail := range st.Details() {
+		if ed, ok := detail.(*localpb.ErrorDetail); ok {
+			return ed.GetCode()
+		}
+	}
+	return localpb.ErrorCode_ERROR_CODE_UNSPECIFIED
+}

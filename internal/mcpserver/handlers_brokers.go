@@ -13,7 +13,9 @@ import (
 const (
 	textPairingNoAddress = "This Broker has no address to show; tell the other side this host's address yourself."
 	textPairingShare     = "Share the key and one of the addresses with the other side; the addresses are not part of the key."
-	textPairingNotListen = "This Broker does not listen; ask the other side to create the pairing key and connect from this side with connect_broker"
+	textPairingNotListen = "Ask the other side to create the pairing key and connect from this side with connect_broker."
+	textNeedsLocalAlias  = "Retry with local_alias set to a new name for it."
+	textNoPeerBroker     = "list_brokers shows the paired Brokers."
 )
 
 // ListBrokers lists the Brokers this Broker knows. It works before the
@@ -146,7 +148,11 @@ func (h *handlers) ConnectBroker(ctx context.Context, in ConnectBrokerIn) (Conne
 		AgentId:    st.AgentID,
 	})
 	if err != nil {
-		return ConnectBrokerOut{}, rpcError("connect_broker", callConnect, permWrite, err)
+		out := rpcError("connect_broker", callConnect, permWrite, err)
+		if d := errorDetail(err); d != nil && d.GetCode() == localpb.ErrorCode_ERROR_CODE_NEEDS_LOCAL_ALIAS {
+			out = fmt.Errorf("%w. %s", out, textNeedsLocalAlias)
+		}
+		return ConnectBrokerOut{}, out
 	}
 
 	out := ConnectBrokerOut{
@@ -175,7 +181,11 @@ func (h *handlers) DisconnectBroker(ctx context.Context, in DisconnectBrokerIn) 
 		AgentId: st.AgentID,
 	})
 	if err != nil {
-		return DisconnectBrokerOut{}, rpcError("disconnect_broker", callGeneric, permWrite, err)
+		out := rpcError("disconnect_broker", callGeneric, permWrite, err)
+		if d := errorDetail(err); d != nil && d.GetCode() == localpb.ErrorCode_ERROR_CODE_NOT_FOUND {
+			out = fmt.Errorf("%w. %s", out, textNoPeerBroker)
+		}
+		return DisconnectBrokerOut{}, out
 	}
 
 	return DisconnectBrokerOut{Result: "unpaired " + in.Broker + "; the link is closed"}, nil

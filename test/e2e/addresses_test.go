@@ -338,7 +338,7 @@ func TestAdvertisedAddresses(t *testing.T) {
 
 		r := opA.Call(t, "create_pairing_key", nil)
 		r.MustCode(t, "invalid_argument")
-		if !strings.Contains(r.Text, "ask the other side") {
+		if !strings.Contains(r.Text, "Ask the other side") {
 			t.Fatalf("the no-listener error %q does not tell the caller to ask the other side", r.Text)
 		}
 

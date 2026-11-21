@@ -53,7 +53,7 @@ func fpcheckFP(b byte) pairing.Fingerprint {
 // fpcheckMessage is the exact warning text a mismatch at addr produces.
 func fpcheckMessage(addr string, cardFP, peerFP pairing.Fingerprint) string {
 	return fmt.Sprintf(
-		"fingerprint mismatch: the directory card for %s belongs to %s, but the paired broker presented %s",
+		"fingerprint mismatch: the directory card for %s belongs to %s, but the paired Broker presented %s",
 		addr, cardFP.String(), peerFP.String(),
 	)
 }

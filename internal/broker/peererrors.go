@@ -36,7 +36,7 @@ func connectError(address, localAlias string, err error) *Error {
 			"invalid local alias: use 1 to %d letters, digits, '.', '-' or '_'", config.AliasMaxLen)
 	case errors.Is(err, pairing.ErrNeedsLocalAlias):
 		return Errorf(localpb.ErrorCode_ERROR_CODE_NEEDS_LOCAL_ALIAS,
-			"the other Broker's alias is already this Broker's alias or a peer's alias; retry with local_alias set to a new name for it")
+			"the other Broker's alias is already this Broker's alias or a peer's alias")
 	}
 
 	// A *PairingError unwraps to ErrPairingRejected, so it has to be checked
@@ -59,7 +59,7 @@ func connectError(address, localAlias string, err error) *Error {
 			"the other side broke the pairing protocol: %v", err)
 	case errors.Is(err, pairing.ErrPeerUnreachable):
 		return Errorf(localpb.ErrorCode_ERROR_CODE_PEER_UNREACHABLE,
-			"cannot reach %s; check the address and that the other Broker listens there", address)
+			"cannot reach %s; check the address and that the other Broker is listening there", address)
 	case errors.Is(err, context.Canceled):
 		return nil
 	default:
@@ -71,7 +71,7 @@ func connectError(address, localAlias string, err error) *Error {
 func pairingKeyError(err error) *Error {
 	if errors.Is(err, pairing.ErrNotListening) {
 		return Errorf(localpb.ErrorCode_ERROR_CODE_INVALID_ARGUMENT,
-			"this Broker does not listen (broker.listen is empty), so the other Broker cannot dial it; ask the other side to create a pairing key and pair from here with connect_broker")
+			"this Broker is not listening (broker.listen is empty), so the other Broker cannot dial it")
 	}
 	return Errorf(localpb.ErrorCode_ERROR_CODE_INTERNAL, "creating a pairing key failed: %v", err)
 }

@@ -38,16 +38,16 @@ func gitOrigin(ctx context.Context, dir string) (string, error) {
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return "", fmt.Errorf("read git origin in %s: %w", dir, ctxErr)
+			return "", fmt.Errorf("cannot read the git origin in %s: %w", dir, ctxErr)
 		}
 		if detail := strings.TrimSpace(stderr.String()); detail != "" {
-			return "", fmt.Errorf("read git origin in %s: %w: %s", dir, err, detail)
+			return "", fmt.Errorf("cannot read the git origin in %s: %w: %s", dir, err, detail)
 		}
-		return "", fmt.Errorf("read git origin in %s: %w", dir, err)
+		return "", fmt.Errorf("cannot read the git origin in %s: %w", dir, err)
 	}
 	url := strings.TrimSpace(stdout.String())
 	if url == "" {
-		return "", fmt.Errorf("read git origin in %s: empty remote.origin.url", dir)
+		return "", fmt.Errorf("cannot read the git origin in %s: empty remote.origin.url", dir)
 	}
 	return url, nil
 }

@@ -69,7 +69,7 @@ func (a *app) serviceInstallCommand() *cobra.Command {
 				return usageErrorf("--admin-group requires --system")
 			}
 			if !service.ValidAdminGroupName(adminGroup) {
-				return usageErrorf("invalid --admin-group %q: a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens", adminGroup)
+				return usageErrorf("invalid --admin-group %q: a group name must start with a lowercase letter or underscore and contain only lowercase letters, digits, underscores and hyphens", adminGroup)
 			}
 
 			opts, err := defaultOptionsFn(system)
@@ -186,7 +186,7 @@ func (a *app) serviceNotInstalledError(command string, system bool) error {
 		systemOpts, err := defaultOptionsFn(true)
 		if err == nil {
 			if installed, instErr := installedFn(systemOpts); instErr == nil && installed {
-				return fmt.Errorf("no user service is installed; the system service is installed, run `sudo peers service %s --system`", command)
+				return fmt.Errorf("no user service is installed, but the system service is; run `sudo peers service %s --system`", command)
 			}
 		}
 	}
@@ -201,11 +201,11 @@ func (a *app) serviceNotInstalledError(command string, system bool) error {
 // printServiceAction reports the one-line result of a successful command.
 func (a *app) printServiceAction(command string, system bool) {
 	past := map[string]string{"start": "started", "stop": "stopped", "restart": "restarted"}[command]
-	level := "user service"
+	level := "user"
 	if system {
-		level = "system service"
+		level = "system"
 	}
-	_, _ = fmt.Fprintf(a.stdout, "Broker service %s (%s)\n", past, level)
+	_, _ = fmt.Fprintf(a.stdout, "The %s Broker service has %s.\n", level, past)
 }
 
 // printInstalled reports a successful installation: the level, the files it
@@ -245,7 +245,7 @@ func (a *app) printServiceDegraded(state service.DegradedState) {
 // printUninstalled reports what remove deleted, or that nothing was installed.
 func (a *app) printUninstalled(result service.Result) {
 	if !result.Removed {
-		_, _ = fmt.Fprintln(a.stdout, "peers service is not installed")
+		_, _ = fmt.Fprintln(a.stdout, "The peers service is not installed.")
 		return
 	}
 	if result.Domain != "" {

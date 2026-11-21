@@ -85,8 +85,11 @@ func TestDisconnectUnknown(t *testing.T) {
 	for _, ref := range refs {
 		_, err := tb.client.Disconnect(context.Background(), &localpb.DisconnectRequest{Broker: ref})
 		detail := wantErrorDetail(t, err, localpb.ErrorCode_ERROR_CODE_NOT_FOUND)
-		if !strings.Contains(detail.GetMessage(), "list_brokers") {
-			t.Fatalf("Disconnect(%q) message = %q, want it to point at list_brokers", ref, detail.GetMessage())
+		if !strings.Contains(detail.GetMessage(), "no peer Broker has the alias or fingerprint") {
+			t.Fatalf("Disconnect(%q) message = %q, want the unknown-reference message", ref, detail.GetMessage())
+		}
+		if strings.Contains(detail.GetMessage(), "list_brokers") {
+			t.Fatalf("Disconnect(%q) message = %q, want no MCP tool name", ref, detail.GetMessage())
 		}
 	}
 	if disconnectHasCall(disconnectPairingCalls(p), "Unpair") {

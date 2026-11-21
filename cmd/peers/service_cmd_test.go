@@ -359,7 +359,7 @@ func TestServiceUninstall(t *testing.T) {
 		{
 			name:   "not installed",
 			result: service.Result{},
-			want:   "peers service is not installed\n",
+			want:   "The peers service is not installed.\n",
 		},
 	}
 	for _, tc := range cases {
@@ -501,11 +501,11 @@ func TestServiceUsageErrors(t *testing.T) {
 		},
 		{
 			args:       []string{"service", "install", "--system", "--admin-group", "-ops"},
-			wantStderr: usageDiagnostic("peers service install", `invalid --admin-group "-ops": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens`),
+			wantStderr: usageDiagnostic("peers service install", `invalid --admin-group "-ops": a group name must start with a lowercase letter or underscore and contain only lowercase letters, digits, underscores and hyphens`),
 		},
 		{
 			args:       []string{"service", "install", "--system", "--admin-group", "Ops"},
-			wantStderr: usageDiagnostic("peers service install", `invalid --admin-group "Ops": a group name starts with a lowercase letter or underscore and contains only lowercase letters, digits, underscores and hyphens`),
+			wantStderr: usageDiagnostic("peers service install", `invalid --admin-group "Ops": a group name must start with a lowercase letter or underscore and contain only lowercase letters, digits, underscores and hyphens`),
 		},
 		{
 			args:       []string{"service", "install", "--system", "--user"},
