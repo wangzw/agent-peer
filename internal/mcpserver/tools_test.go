@@ -410,6 +410,10 @@ func TestInstructions(t *testing.T) {
 		"drops the duplicate",
 		"broker_offline",
 		"denied or would be blocked",
+		// Broadcast rules: local sessions by default, peers only on request.
+		"built-in session tools",
+		"explicitly asks to broadcast with peers",
+		"do not fall back to peers",
 	} {
 		if !strings.Contains(info.Instructions, want) {
 			t.Errorf("instructions do not contain %q", want)
