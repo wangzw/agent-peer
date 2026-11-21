@@ -17,15 +17,15 @@ func setPostUpdateSeams(
 	post func(service.Options) error,
 ) {
 	t.Helper()
-	previousOptions, previousPost := defaultOptionsFn, postUpdateFn
+	previousOptions, previousPost := postUpdateOptionsFn, postUpdateFn
 	if options != nil {
-		defaultOptionsFn = options
+		postUpdateOptionsFn = options
 	}
 	if post != nil {
 		postUpdateFn = post
 	}
 	t.Cleanup(func() {
-		defaultOptionsFn = previousOptions
+		postUpdateOptionsFn = previousOptions
 		postUpdateFn = previousPost
 	})
 }
@@ -62,7 +62,7 @@ func TestPostUpdateCmdMapsLevel(t *testing.T) {
 				t.Fatalf("run(internal post-update --level %s) = %d, want %d", tc.level, got, exitOK)
 			}
 			if optionsSystem != tc.wantSystem {
-				t.Errorf("DefaultOptions(system) got %t, want %t", optionsSystem, tc.wantSystem)
+				t.Errorf("PostUpdateOptions(system) got %t, want %t", optionsSystem, tc.wantSystem)
 			}
 			if calls != 1 || gotSystem != tc.wantSystem {
 				t.Errorf("PostUpdate calls = %d with system %t, want one call with %t", calls, gotSystem, tc.wantSystem)
@@ -74,6 +74,65 @@ func TestPostUpdateCmdMapsLevel(t *testing.T) {
 				t.Errorf("stderr = %q, want empty", stderr.String())
 			}
 		})
+	}
+}
+
+// TestPostUpdateCmdSystemNeedsNoHome runs the command with HOME unset, as a
+// system service does. The system level must not read the account home, so the
+// command reaches the rewrite; the rewrite is a stand-in, so the test observes
+// only the options it was given.
+func TestPostUpdateCmdSystemNeedsNoHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	var got *service.Options
+	setPostUpdateSeams(t, nil, func(opts service.Options) error {
+		got = &opts
+		return nil
+	})
+
+	a, stdout, stderr, _ := newDispatchApp("dev")
+	if code := a.run(context.Background(), []string{"internal", "post-update", "--level", "system"}); code != exitOK {
+		t.Fatalf("run(internal post-update --level system) = %d, want %d; stderr: %s", code, exitOK, stderr.String())
+	}
+	if got == nil {
+		t.Fatal("PostUpdate did not run")
+	}
+	if !got.System {
+		t.Errorf("System = false, want the system level")
+	}
+	if got.Home != "" {
+		t.Errorf("Home = %q, want empty: the system level must not read the account home", got.Home)
+	}
+	if got.Exe == "" {
+		t.Error("Exe is empty, so the rewritten definition would not name a binary")
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
+	}
+}
+
+// TestPostUpdateCmdUserNeedsHome keeps the user level reading the account
+// home: without HOME it reports the failure instead of rewriting a definition
+// for a directory it cannot find.
+func TestPostUpdateCmdUserNeedsHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	var called bool
+	setPostUpdateSeams(t, nil, func(service.Options) error {
+		called = true
+		return nil
+	})
+
+	a, stdout, stderr, _ := newDispatchApp("dev")
+	if code := a.run(context.Background(), []string{"internal", "post-update", "--level", "user"}); code != exitFailure {
+		t.Fatalf("run(internal post-update --level user) = %d, want %d", code, exitFailure)
+	}
+	if called {
+		t.Fatal("PostUpdate ran without a home directory at the user level")
+	}
+	if !strings.Contains(stderr.String(), "locate home directory") {
+		t.Errorf("stderr = %q, want it to name the missing home directory", stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
 	}
 }
 

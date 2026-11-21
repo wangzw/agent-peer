@@ -130,6 +130,32 @@ type Result struct {
 
 // DefaultOptions fills Options from the running process.
 func DefaultOptions(system bool) (Options, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return Options{}, fmt.Errorf("service: locate home directory: %w", err)
+	}
+	return defaultOptions(system, home)
+}
+
+// PostUpdateOptions fills the Options PostUpdate needs for the level a process
+// of this host runs at. The system level needs no home directory, so a system
+// service whose environment has no HOME can still rewrite its definition; the
+// user level reads the account home.
+func PostUpdateOptions(system bool) (Options, error) {
+	home := ""
+	if !system {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return Options{}, fmt.Errorf("service: locate home directory: %w", err)
+		}
+	}
+	return defaultOptions(system, home)
+}
+
+// defaultOptions builds the default Options for a level and an account home.
+// home is empty at the system level, whose paths never use it.
+func defaultOptions(system bool, home string) (Options, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return Options{}, fmt.Errorf("service: locate executable: %w", err)
@@ -137,10 +163,6 @@ func DefaultOptions(system bool) (Options, error) {
 	exe, err = filepath.Abs(exe)
 	if err != nil {
 		return Options{}, fmt.Errorf("service: make executable path absolute: %w", err)
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return Options{}, fmt.Errorf("service: locate home directory: %w", err)
 	}
 	return Options{
 		System:        system,

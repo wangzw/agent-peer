@@ -13,11 +13,13 @@ import (
 
 // The test seams replace the helper entry points so the command tests can check
 // the streams and the exit-code mapping without running the pipe protocol.
+// postUpdateOptionsFn builds the options for the level named by --level, and
 // postUpdateFn is the service rewrite behind "internal post-update".
 var (
-	runAccountHelperFn = helper.RunAccountHelper
-	runAccessCheckFn   = helper.RunAccessCheck
-	postUpdateFn       = service.PostUpdate
+	runAccountHelperFn  = helper.RunAccountHelper
+	runAccessCheckFn    = helper.RunAccessCheck
+	postUpdateOptionsFn = service.PostUpdateOptions
+	postUpdateFn        = service.PostUpdate
 )
 
 func init() {
@@ -79,7 +81,7 @@ func (a *app) postUpdateCmd(_ context.Context, args []string) int {
 		return a.postUpdateUsageError(err.Error())
 	}
 
-	opts, err := defaultOptionsFn(system)
+	opts, err := postUpdateOptionsFn(system)
 	if err != nil {
 		_, _ = fmt.Fprintf(a.stderr, "peers internal post-update: %s\n", err)
 		return exitFailure

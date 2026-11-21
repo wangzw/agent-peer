@@ -189,6 +189,33 @@ func TestPostUpdateLaunchdReportsABootstrapFailure(t *testing.T) {
 	}
 }
 
+// TestPostUpdateOptionsSystemNeedsNoHome covers the systemd case: the system
+// service runs with no HOME, and rewriting its definition must not read the
+// account home. The user level still reads it.
+func TestPostUpdateOptionsSystemNeedsNoHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	opts, err := PostUpdateOptions(true)
+	if err != nil {
+		t.Fatalf("PostUpdateOptions(true): %v", err)
+	}
+	if !opts.System {
+		t.Error("System = false, want the system level")
+	}
+	if opts.Home != "" {
+		t.Errorf("Home = %q, want empty: the system level must not read the account home", opts.Home)
+	}
+	if opts.Exe == "" {
+		t.Error("Exe is empty, so the rewritten definition would not name a binary")
+	}
+	if opts.Run == nil {
+		t.Error("Run is nil, so the rewrite could not reload the unit database")
+	}
+
+	if _, err := PostUpdateOptions(false); err == nil {
+		t.Fatal("PostUpdateOptions(false) succeeded without a home directory")
+	}
+}
+
 // TestPostUpdateRejectsAnUnsupportedPlatform keeps the platform behaviour the
 // other service operations have.
 func TestPostUpdateRejectsAnUnsupportedPlatform(t *testing.T) {
