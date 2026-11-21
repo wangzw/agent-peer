@@ -2,11 +2,13 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-11-21
 
 ### Changed
 
 - The project is renamed to `peers`, a breaking change. The binary, the release archives and the entry inside them, the Go module path, the installation paths, the configuration, data, log and runtime directories, the service unit names, the launchd label, the administration group, the project configuration file name, the environment variables and the pairing protocol labels all use the new name. See [ADR-rename-peers](docs/adr/adr-rename-peers.md). The MCP server name `peer` and the tool names are unchanged. peers is incompatible with agent-peer 0.3.0, and no migration is provided.
+- When the user asks to send a message to every agent or to broadcast and does not mention peers, the session sends it to this host's sessions through Claude Code's built-in session messaging and then gives one short hint that peers can notify agents on other hosts. The session sends to every agent that `list_agents` returns, once per agent, only when the user explicitly asks for a peers broadcast, and a session without the built-in tool reports that a local broadcast is unavailable instead of sending through peers.
+- After a self-update, the installed binary rewrites the service definition in the new version's format before the Broker restarts, so an update still leaves a working service when the service unit format changes between releases. If the rewrite fails or times out, the update restores the previous binary and the service definition and leaves the Broker running.
 
 ## [0.3.0] - 2026-11-20
 

@@ -29,7 +29,7 @@ SITE_DIR ?= docs/site
 
 # Version whose released section in CHANGELOG.md the release notes check
 # extracts.
-RELEASE_NOTES_VERSION ?= v0.3.0
+RELEASE_NOTES_VERSION ?= v0.4.0
 
 .PHONY: gen gen-check lint release-notes-check archive-check proto-lint test test-root e2e e2e-darwin docs-check check site site-check
 
