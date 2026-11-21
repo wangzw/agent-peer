@@ -549,6 +549,37 @@ func TestInstallScriptSystemCompletionsAndManPages(t *testing.T) {
 	mustNotContain(t, "stdout", stdout, "zsh completion was not installed")
 }
 
+// TestInstallScriptSystemSkipsFishWhenFishIsMissing checks that a system-level
+// install without fish writes the other completions and the man pages, but
+// neither the fish completion nor its configuration directory.
+func TestInstallScriptSystemSkipsFishWhenFishIsMissing(t *testing.T) {
+	f := newFixture(t)
+	writeArchiveManPages(t, f)
+	prefix := f.systemPrefix(t)
+	env := f.systemInstallEnv("")
+	env["PATH"] = f.pathWithout(t, "fish")
+	stdout, stderr, code := f.run(env, systemInstallArgs(prefix, "--no-service")...)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	for _, path := range []string{
+		f.systemShare(t, "bash-completion", "completions", "peers"),
+		f.systemShare(t, "zsh", "site-functions", "_peers"),
+		f.systemShare(t, "man", "man1", "peers.1"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("the installed file %s is missing: %v", path, err)
+		}
+	}
+	if _, err := os.Stat(f.systemShare(t, "fish")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the fish configuration directory was created although fish is missing: %v", err)
+	}
+	if got := countLines(readLines(t, f.agentLog), "completion fish"); got != 0 {
+		t.Errorf("completion fish calls = %d, want none; calls: %q", got, readLines(t, f.agentLog))
+	}
+}
+
 // TestInstallScriptWarnsAboutCompletionFailure checks that a completion that
 // cannot be written is a warning: the service is already installed and the
 // script still succeeds.
@@ -1019,7 +1050,7 @@ func (f *fixture) pathWithout(t *testing.T, name string) string {
 			t.Fatalf("linking %s: %v", entry.Name(), err)
 		}
 	}
-	for _, tool := range []string{"grep", "dirname", "mkdir"} {
+	for _, tool := range []string{"grep", "dirname", "mkdir", "cp"} {
 		if err := os.Symlink(mustLookPath(t, tool), filepath.Join(dir, tool)); err != nil {
 			t.Fatalf("linking the real %s: %v", tool, err)
 		}

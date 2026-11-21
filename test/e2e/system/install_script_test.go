@@ -152,6 +152,7 @@ func TestREQBrokerConfig041_UserInstallScript(t *testing.T) {
 		return
 	}
 
+	assertInstallImageHasNoFish(t)
 	installFakeClaude(t)
 	archive := prepareInstallArchive(t)
 	startInstallUserManager(t)
@@ -185,6 +186,7 @@ func TestREQBrokerConfig041_SystemInstallScript(t *testing.T) {
 		return
 	}
 
+	assertInstallImageHasNoFish(t)
 	installFakeClaude(t)
 	archive := prepareInstallArchive(t)
 	removePreinstalledSystemBinary(t)
@@ -221,6 +223,7 @@ func TestREQBrokerConfig041_InstallScriptFilesRemovedByUninstall(t *testing.T) {
 		return
 	}
 
+	assertInstallImageHasNoFish(t)
 	installFakeClaude(t)
 	archive := prepareInstallArchive(t)
 	startInstallUserManager(t)
@@ -978,15 +981,31 @@ func installShellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
 
+// assertInstallImageHasNoFish checks the image contract the completion checks
+// rely on. The e2e images do not install fish, so the script must skip the fish
+// completion; an image that starts carrying fish fails here rather than letting
+// the absence checks pass without exercising the skip.
+func assertInstallImageHasNoFish(t *testing.T) {
+	t.Helper()
+	if path, err := exec.LookPath("fish"); err == nil {
+		t.Fatalf("the e2e image now has fish at %s; the completion assertions must cover both cases", path)
+	}
+}
+
 // assertUserInstallCompletions checks the completion files a user-level install
-// writes. The zsh completion is deliberately absent, and output, when given,
-// must name the manual step.
+// writes. The image has no fish, so the fish completion and its configuration
+// directory must be absent; the zsh completion is deliberately absent, and
+// output, when given, must name the manual step.
 func assertUserInstallCompletions(t *testing.T, output string) {
 	t.Helper()
-	for _, path := range []string{installUserBashCompletion, installUserFishCompletion} {
-		if _, err := os.Stat(path); err != nil {
-			t.Errorf("the user-level completion %s is missing: %v", path, err)
-		}
+	if _, err := os.Stat(installUserBashCompletion); err != nil {
+		t.Errorf("the user-level completion %s is missing: %v", installUserBashCompletion, err)
+	}
+	if _, err := os.Stat(installUserFishCompletion); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the user-level install wrote the fish completion %s although the image has no fish: %v", installUserFishCompletion, err)
+	}
+	if _, err := os.Stat(filepath.Join(installHome, ".config", "fish")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the user-level install created the fish configuration directory although the image has no fish: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(installHome, ".local", "share", "zsh", "site-functions", "_peers")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the user-level install wrote the zsh completion: %v", err)
@@ -1001,13 +1020,13 @@ func assertUserInstallCompletions(t *testing.T, output string) {
 }
 
 // assertSystemInstallCompletionsAndMan checks the completion files and man
-// pages a system-level install writes.
+// pages a system-level install writes. The image has no fish, so the fish
+// completion and its configuration directory must be absent.
 func assertSystemInstallCompletionsAndMan(t *testing.T) {
 	t.Helper()
 	for _, path := range []string{
 		installSystemBashCompletion,
 		installSystemZshCompletion,
-		installSystemFishCompletion,
 		installSystemManPage,
 		installSystemUpdateManPage,
 	} {
@@ -1015,10 +1034,16 @@ func assertSystemInstallCompletionsAndMan(t *testing.T) {
 			t.Errorf("the system-level installation file %s is missing: %v", path, err)
 		}
 	}
+	if _, err := os.Stat(installSystemFishCompletion); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the system-level install wrote the fish completion %s although the image has no fish: %v", installSystemFishCompletion, err)
+	}
+	if _, err := os.Stat("/usr/local/share/fish"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the system-level install created the fish configuration directory although the image has no fish: %v", err)
+	}
 }
 
 // assertUserInstallCompletionsRemoved checks that an uninstall removed the
-// user-level completion files.
+// user-level completion files and left no fish configuration directory.
 func assertUserInstallCompletionsRemoved(t *testing.T) {
 	t.Helper()
 	for _, path := range []string{installUserBashCompletion, installUserFishCompletion} {
@@ -1026,10 +1051,14 @@ func assertUserInstallCompletionsRemoved(t *testing.T) {
 			t.Errorf("the user-level completion %s still exists: %v", path, err)
 		}
 	}
+	if _, err := os.Stat(filepath.Join(installHome, ".config", "fish")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the fish configuration directory remains after the user-level uninstall: %v", err)
+	}
 }
 
 // assertSystemInstallCompletionsAndManRemoved checks that an uninstall removed
-// the system-level completion files and man pages.
+// the system-level completion files and man pages and left no fish
+// configuration directory.
 func assertSystemInstallCompletionsAndManRemoved(t *testing.T) {
 	t.Helper()
 	for _, path := range []string{
@@ -1042,6 +1071,9 @@ func assertSystemInstallCompletionsAndManRemoved(t *testing.T) {
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("the system-level installation file %s still exists: %v", path, err)
 		}
+	}
+	if _, err := os.Stat("/usr/local/share/fish"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the fish configuration directory remains after the system-level uninstall: %v", err)
 	}
 }
 
