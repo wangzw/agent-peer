@@ -20,9 +20,9 @@ import (
 // switch has to happen before the child reads any caller-controlled byte, and
 // the Broker constructs the environment itself.
 const (
-	accessCheckUIDEnv    = "AGENT_PEER_ACCESS_CHECK_UID"
-	accessCheckGIDEnv    = "AGENT_PEER_ACCESS_CHECK_GID"
-	accessCheckGroupsEnv = "AGENT_PEER_ACCESS_CHECK_GROUPS"
+	accessCheckUIDEnv    = "PEERS_ACCESS_CHECK_UID"
+	accessCheckGIDEnv    = "PEERS_ACCESS_CHECK_GID"
+	accessCheckGroupsEnv = "PEERS_ACCESS_CHECK_GROUPS"
 )
 
 // Access is the permission a caller asks for when reading or writing the
@@ -37,7 +37,7 @@ const (
 // defaultAccessCheckTimeout bounds one permission check from start to result.
 const defaultAccessCheckTimeout = 5 * time.Second
 
-// RunAccessCheck is the body of `agent-peer internal access-check`: it first
+// RunAccessCheck is the body of `peers internal access-check`: it first
 // drops its effective identity to the account named by the Broker, then reads
 // one AccessCheckRequest from stdin, checks it as that account, writes one
 // AccessCheckResponse to stdout and returns.

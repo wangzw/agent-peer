@@ -69,15 +69,15 @@ func (zeroIdentity) Sign([]byte) []byte                 { return nil }
 func TestDirectoryAssemblerMarksReadFailures(t *testing.T) {
 	cfg := pathsConfig{
 		fakeConfig: newFakeConfig(t.TempDir()),
-		paths:      config.PathSet{DataDir: "/home/u/.agent-peer"},
+		paths:      config.PathSet{DataDir: "/home/u/.peers"},
 	}
 	asm := &Assembly{Pairing: &pairing.Pairing{}, Link: &link.Link{}}
 	a := &directoryAssembler{
 		open: func(directory.Deps) (directoryHandle, error) {
 			// directory.Open wraps a failed read of directory.json, which is an
 			// *fs.PathError at the bottom of the chain.
-			return nil, fmt.Errorf("directory: read %s: %w", "/home/u/.agent-peer/directory.json",
-				&fs.PathError{Op: "open", Path: "/home/u/.agent-peer/directory.json", Err: errors.New("permission denied")})
+			return nil, fmt.Errorf("directory: read %s: %w", "/home/u/.peers/directory.json",
+				&fs.PathError{Op: "open", Path: "/home/u/.peers/directory.json", Err: errors.New("permission denied")})
 		},
 		newIdentity: func(*pairing.Pairing) (directory.Identity, error) { return zeroIdentity{}, nil },
 	}

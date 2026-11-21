@@ -44,7 +44,7 @@ func (b *Broker) ApplyUpdate(ctx context.Context, _ *localpb.ApplyUpdateRequest)
 	}
 	if !serviceManager() || b.deps.RequestShutdown == nil {
 		return nil, toStatus(Errorf(localpb.ErrorCode_ERROR_CODE_NOT_UNDER_SERVICE_MANAGER,
-			"the Broker is not running under a service manager, so it cannot start the new binary again; install it as a service and run the update against that service (for example, \"agent-peer service install\" or \"sudo agent-peer service install --system\")"))
+			"the Broker is not running under a service manager, so it cannot start the new binary again; install it as a service and run the update against that service (for example, \"peers service install\" or \"sudo peers service install --system\")"))
 	}
 
 	if !b.updateBusy.CompareAndSwap(false, true) {

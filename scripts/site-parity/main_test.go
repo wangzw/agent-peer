@@ -73,7 +73,7 @@ weight: 1
 
 See [the guide](../guide.md).
 
-`+"```bash\nagent-peer --help\n```\n")
+`+"```bash\npeers --help\n```\n")
 	requirePass(t, checkTrees(t, map[string]string{"docs/_index.md": en}, map[string]string{"docs/_index.md": zh}))
 }
 
@@ -160,8 +160,8 @@ func TestCheckReportsReferenceStyleLinkDefinition(t *testing.T) {
 }
 
 func TestCheckReportsCodeBlockMismatch(t *testing.T) {
-	en := "---\ntitle: Docs\nweight: 1\n---\n\n```bash\nagent-peer --help\n```\n"
-	zh := "---\ntitle: Docs\nweight: 1\n---\n\n```bash\nagent-peer --version\n```\n"
+	en := "---\ntitle: Docs\nweight: 1\n---\n\n```bash\npeers --help\n```\n"
+	zh := "---\ntitle: Docs\nweight: 1\n---\n\n```bash\npeers --version\n```\n"
 	problems := checkTrees(t, map[string]string{"docs/_index.md": en}, map[string]string{"docs/_index.md": zh})
 	requireProblem(t, problems, "docs/_index.md: code block 1 differs")
 }

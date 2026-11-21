@@ -90,8 +90,8 @@ func TestConfigSettingsReadsLiveValues(t *testing.T) {
 		t.Error("DataDir() with an empty DataDir path = nil error, want an error")
 	}
 
-	withDir := configSettings{paths: func() config.PathSet { return config.PathSet{DataDir: "/var/lib/agent-peer"} }}
-	if dir, err := withDir.DataDir(); err != nil || dir != "/var/lib/agent-peer" {
-		t.Errorf("DataDir() = %q, %v, want /var/lib/agent-peer", dir, err)
+	withDir := configSettings{paths: func() config.PathSet { return config.PathSet{DataDir: "/var/lib/peers"} }}
+	if dir, err := withDir.DataDir(); err != nil || dir != "/var/lib/peers" {
+		t.Errorf("DataDir() = %q, %v, want /var/lib/peers", dir, err)
 	}
 }

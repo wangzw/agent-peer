@@ -12,7 +12,7 @@ type auditTestSettings struct {
 	events []config.Event
 }
 
-func (s *auditTestSettings) DataDir() (string, error) { return "/tmp/agent-peer-test", nil }
+func (s *auditTestSettings) DataDir() (string, error) { return "/tmp/peers-test", nil }
 func (s *auditTestSettings) Alias() (string, error)   { return "hostA", nil }
 func (s *auditTestSettings) Hostname() (string, error) {
 	return "hostA", nil

@@ -14,10 +14,10 @@ import (
 // system form; the data rows name the path and the no-restart retry.
 func TestDegradedFixHints(t *testing.T) {
 	paths := config.PathSet{
-		RuntimeDir: "/run/agent-peer",
-		ConfigFile: "/etc/agent-peer/config.yaml",
-		DataDir:    "/var/lib/agent-peer",
-		AuditLog:   "/var/log/agent-peer/audit.log",
+		RuntimeDir: "/run/peers",
+		ConfigFile: "/etc/peers/config.yaml",
+		DataDir:    "/var/lib/peers",
+		AuditLog:   "/var/log/peers/audit.log",
 	}
 	listenErr := errors.New("address already in use")
 	lowPortErr := config.ErrLowPortDenied
@@ -34,7 +34,7 @@ func TestDegradedFixHints(t *testing.T) {
 				err:   errors.Join(ErrListenUnavailable, listenErr),
 				paths: paths,
 			},
-			want: "agent-peer config set broker.listen <free address>, or edit broker.listen in /etc/agent-peer/config.yaml",
+			want: "peers config set broker.listen <free address>, or edit broker.listen in /etc/peers/config.yaml",
 		},
 		{
 			name: "listen system",
@@ -43,7 +43,7 @@ func TestDegradedFixHints(t *testing.T) {
 				err:   errors.Join(ErrListenUnavailable, listenErr),
 				paths: paths,
 			},
-			want: "sudo agent-peer config set broker.listen <free address>, or edit broker.listen in /etc/agent-peer/config.yaml with sudo",
+			want: "sudo peers config set broker.listen <free address>, or edit broker.listen in /etc/peers/config.yaml with sudo",
 		},
 		{
 			name: "low port user",
@@ -52,7 +52,7 @@ func TestDegradedFixHints(t *testing.T) {
 				err:   errors.Join(ErrListenUnavailable, lowPortErr),
 				paths: paths,
 			},
-			want: "chmod g-w /etc/agent-peer/config.yaml, or set broker.listen to a port at or above 1024",
+			want: "chmod g-w /etc/peers/config.yaml, or set broker.listen to a port at or above 1024",
 		},
 		{
 			name: "low port system",
@@ -61,7 +61,7 @@ func TestDegradedFixHints(t *testing.T) {
 				err:   errors.Join(ErrListenUnavailable, lowPortErr),
 				paths: paths,
 			},
-			want: "sudo chmod g-w /etc/agent-peer/config.yaml, or set broker.listen to a port at or above 1024",
+			want: "sudo chmod g-w /etc/peers/config.yaml, or set broker.listen to a port at or above 1024",
 		},
 		{
 			name: "data directory user",
@@ -69,7 +69,7 @@ func TestDegradedFixHints(t *testing.T) {
 				step: "identity", err: wrapDataUnavailable(dataKindIdentity, errors.New("permission denied")),
 				paths: paths,
 			},
-			want: "check the owner and permissions of /var/lib/agent-peer, then run agent-peer service restart; without a restart it retries every minute",
+			want: "check the owner and permissions of /var/lib/peers, then run peers service restart; without a restart it retries every minute",
 		},
 		{
 			name: "data directory system",
@@ -77,7 +77,7 @@ func TestDegradedFixHints(t *testing.T) {
 				step: "identity", err: wrapDataUnavailable(dataKindIdentity, errors.New("permission denied")),
 				paths: paths, system: true,
 			},
-			want: "check the owner and permissions of /var/lib/agent-peer, then run sudo agent-peer service restart; without a restart it retries every minute",
+			want: "check the owner and permissions of /var/lib/peers, then run sudo peers service restart; without a restart it retries every minute",
 		},
 		{
 			name: "audit log user",
@@ -85,10 +85,10 @@ func TestDegradedFixHints(t *testing.T) {
 				step: "audit log",
 				err: &config.DataUnavailableError{
 					Paths: paths,
-					Err:   errors.New("cannot open /var/log/agent-peer/audit.log: permission denied"),
+					Err:   errors.New("cannot open /var/log/peers/audit.log: permission denied"),
 				},
 			},
-			want: "check the owner and permissions of /var/log/agent-peer/audit.log, then run agent-peer service restart; without a restart it retries every minute",
+			want: "check the owner and permissions of /var/log/peers/audit.log, then run peers service restart; without a restart it retries every minute",
 		},
 		{
 			name: "audit log system",
@@ -96,10 +96,10 @@ func TestDegradedFixHints(t *testing.T) {
 				step: "audit log", system: true,
 				err: &config.DataUnavailableError{
 					Paths: paths,
-					Err:   errors.New("cannot open /var/log/agent-peer/audit.log: permission denied"),
+					Err:   errors.New("cannot open /var/log/peers/audit.log: permission denied"),
 				},
 			},
-			want: "check the owner and permissions of /var/log/agent-peer/audit.log, then run sudo agent-peer service restart; without a restart it retries every minute",
+			want: "check the owner and permissions of /var/log/peers/audit.log, then run sudo peers service restart; without a restart it retries every minute",
 		},
 	}
 	for _, tc := range cases {

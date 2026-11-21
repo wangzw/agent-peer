@@ -1,5 +1,5 @@
 # Build output
-/agent-peer
+/peers
 /bin/
 /dist/
 *.exe

@@ -25,7 +25,7 @@ type VersionMismatchError struct {
 }
 
 func (e *VersionMismatchError) Error() string {
-	return fmt.Sprintf("version_mismatch: the Broker speaks local protocol version %d and this agent-peer speaks %d; %s", e.Broker, e.Client, restartWithThisBinary)
+	return fmt.Sprintf("version_mismatch: the Broker speaks local protocol version %d and this peers binary speaks %d; %s", e.Broker, e.Client, restartWithThisBinary)
 }
 
 // Describe turns an error returned by the Local service into the sentence shown

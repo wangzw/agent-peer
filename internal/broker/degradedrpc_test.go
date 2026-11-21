@@ -32,7 +32,7 @@ func TestBrokerStatusAndListBrokersCarryDegraded(t *testing.T) {
 		Level:  localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY,
 		Step:   "listen",
 		Reason: "listen address :17443 is unavailable: address already in use",
-		Fix:    "agent-peer config set broker.listen <free address>",
+		Fix:    "peers config set broker.listen <free address>",
 	}
 	b.setDegraded(state)
 
@@ -87,7 +87,7 @@ func TestCreatePairingKeyRefusedLocallyOnly(t *testing.T) {
 		Level:  localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY,
 		Step:   "listen",
 		Reason: "listen address :17443 is unavailable: address already in use",
-		Fix:    "agent-peer config set broker.listen <free address>",
+		Fix:    "peers config set broker.listen <free address>",
 	}
 	b.setDegraded(state)
 
@@ -96,7 +96,7 @@ func TestCreatePairingKeyRefusedLocallyOnly(t *testing.T) {
 	if detail.GetCode() != localpb.ErrorCode_ERROR_CODE_BROKER_DEGRADED {
 		t.Errorf("code = %v, want broker_degraded", detail.GetCode())
 	}
-	for _, want := range []string{":17443", "broker.listen", "agent-peer config set"} {
+	for _, want := range []string{":17443", "broker.listen", "peers config set"} {
 		if !strings.Contains(detail.GetMessage(), want) {
 			t.Errorf("message %q does not contain %q", detail.GetMessage(), want)
 		}

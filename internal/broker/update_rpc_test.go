@@ -135,7 +135,7 @@ func TestApplyUpdateApplyFailure(t *testing.T) {
 		d.LatestRelease = fixedRelease("0.1.2")
 		d.ApplyRelease = func(context.Context, update.ApplyOptions) error {
 			installs++
-			return errors.New("checksum mismatch for agent-peer_0.1.2_linux_amd64.tar.gz")
+			return errors.New("checksum mismatch for peers_0.1.2_linux_amd64.tar.gz")
 		}
 		d.RequestShutdown = func() { shutdown = true }
 	})
@@ -371,7 +371,7 @@ func TestRunningUnderServiceManager(t *testing.T) {
 		},
 		{
 			name: "launchd job running this process", goos: "darwin", system: false,
-			env:     map[string]string{"XPC_SERVICE_NAME": "io.github.wangzw.agent-peer"},
+			env:     map[string]string{"XPC_SERVICE_NAME": "io.github.wangzw.peers"},
 			mainPID: answer(selfPID), want: true,
 		},
 		{

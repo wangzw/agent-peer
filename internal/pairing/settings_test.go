@@ -14,7 +14,7 @@ import (
 func settingsTestConfig() configSettings {
 	return configSettings{
 		paths: func() config.PathSet {
-			return config.PathSet{DataDir: "/var/lib/test-agent-peer"}
+			return config.PathSet{DataDir: "/var/lib/test-peers"}
 		},
 		get: func(key string) (config.Value, error) {
 			switch key {
@@ -57,8 +57,8 @@ func TestConfigSettingsReadsDocumentedConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DataDir() error = %v", err)
 	}
-	if dir != "/var/lib/test-agent-peer" {
-		t.Errorf("DataDir() = %q, want /var/lib/test-agent-peer", dir)
+	if dir != "/var/lib/test-peers" {
+		t.Errorf("DataDir() = %q, want /var/lib/test-peers", dir)
 	}
 
 	alias, err := s.Alias()

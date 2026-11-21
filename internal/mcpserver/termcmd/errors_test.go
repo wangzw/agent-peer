@@ -15,13 +15,13 @@ import (
 func TestDescribeErrorDetail(t *testing.T) {
 	detail := &localpb.ErrorDetail{
 		Code:    localpb.ErrorCode_ERROR_CODE_PERMISSION_DENIED,
-		Message: "read permission on /etc/agent-peer/config.yaml is required",
+		Message: "read permission on /etc/peers/config.yaml is required",
 	}
 	st, err := status.New(codes.PermissionDenied, "x").WithDetails(detail)
 	if err != nil {
 		t.Fatalf("WithDetails: %v", err)
 	}
-	want := "permission_denied: read permission on /etc/agent-peer/config.yaml is required"
+	want := "permission_denied: read permission on /etc/peers/config.yaml is required"
 	if got := Describe(st.Err()); got != want {
 		t.Errorf("Describe = %q, want %q", got, want)
 	}

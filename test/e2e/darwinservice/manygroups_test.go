@@ -51,9 +51,9 @@ const (
 
 	// accessCheckUIDEnv and friends are the helper's identity environment,
 	// written by the Broker when it derives the check process.
-	accessCheckUIDEnv    = "AGENT_PEER_ACCESS_CHECK_UID"
-	accessCheckGIDEnv    = "AGENT_PEER_ACCESS_CHECK_GID"
-	accessCheckGroupsEnv = "AGENT_PEER_ACCESS_CHECK_GROUPS"
+	accessCheckUIDEnv    = "PEERS_ACCESS_CHECK_UID"
+	accessCheckGIDEnv    = "PEERS_ACCESS_CHECK_GID"
+	accessCheckGroupsEnv = "PEERS_ACCESS_CHECK_GROUPS"
 )
 
 // manyGroupFixture is the account and the two permission fixtures.

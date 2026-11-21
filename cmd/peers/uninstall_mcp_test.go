@@ -29,11 +29,11 @@ func (f *mcpFakeRun) run(name string, args ...string) ([]byte, error) {
 
 func TestRemoveMCPRegistrationRemovesMatchingCommand(t *testing.T) {
 	fake := &mcpFakeRun{output: map[string]string{
-		"claude mcp get peer":            "peer:\n  Scope: user\n  Command: /usr/local/bin/agent-peer\n  Args: mcp\n",
+		"claude mcp get peer":            "peer:\n  Scope: user\n  Command: /usr/local/bin/peers\n  Args: mcp\n",
 		"claude mcp remove -s user peer": "removed\n",
 	}}
 
-	outcome, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/agent-peer")
+	outcome, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/peers")
 	if err != nil {
 		t.Fatalf("removeMCPRegistration: %v", err)
 	}
@@ -47,13 +47,13 @@ func TestRemoveMCPRegistrationRemovesMatchingCommand(t *testing.T) {
 
 func TestRemoveMCPRegistrationLeavesAnotherCommand(t *testing.T) {
 	fake := &mcpFakeRun{output: map[string]string{
-		"claude mcp get peer": "peer:\n  Command: /opt/other/agent-peer\n",
+		"claude mcp get peer": "peer:\n  Command: /opt/other/peers\n",
 	}}
-	outcome, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/agent-peer")
+	outcome, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/peers")
 	if err != nil {
 		t.Fatalf("removeMCPRegistration: %v", err)
 	}
-	if !strings.Contains(outcome, "/opt/other/agent-peer") || !strings.Contains(outcome, "left unchanged") {
+	if !strings.Contains(outcome, "/opt/other/peers") || !strings.Contains(outcome, "left unchanged") {
 		t.Errorf("outcome = %q, want the other command named and left unchanged", outcome)
 	}
 	for _, call := range fake.calls {
@@ -67,7 +67,7 @@ func TestRemoveMCPRegistrationWithoutClaude(t *testing.T) {
 	fake := &mcpFakeRun{errs: map[string]error{
 		"claude mcp get peer": exec.ErrNotFound,
 	}}
-	outcome, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/agent-peer")
+	outcome, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/peers")
 	if err != nil {
 		t.Fatalf("removeMCPRegistration: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestRemoveMCPRegistrationWithoutCommandLine(t *testing.T) {
 	fake := &mcpFakeRun{output: map[string]string{
 		"claude mcp get peer": "peer:\n  Scope: user\n",
 	}}
-	outcome, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/agent-peer")
+	outcome, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/peers")
 	if err != nil {
 		t.Fatalf("removeMCPRegistration: %v", err)
 	}
@@ -120,10 +120,10 @@ func TestRemoveMCPRegistrationForAnotherAccount(t *testing.T) {
 			)
 			output := fakeLoginShell(goos, "bob", "/bin/bash")
 			output["sudo -u bob -H /bin/bash -lc command -v claude"] = "/usr/local/bin/claude\n"
-			output[get] = "peer:\n  Command: /usr/local/bin/agent-peer\n"
+			output[get] = "peer:\n  Command: /usr/local/bin/peers\n"
 			output[remove] = "removed\n"
 			fake := &mcpFakeRun{output: output}
-			outcome, err := removeMCPRegistration(fake.run, "bob", "/usr/local/bin/agent-peer")
+			outcome, err := removeMCPRegistration(fake.run, "bob", "/usr/local/bin/peers")
 			if err != nil {
 				t.Fatalf("removeMCPRegistration: %v", err)
 			}
@@ -147,7 +147,7 @@ func TestRemoveMCPRegistrationForAnotherAccountWithoutClaude(t *testing.T) {
 					"sudo -u bob -H /bin/sh -lc command -v claude": exec.ErrNotFound,
 				},
 			}
-			outcome, err := removeMCPRegistration(fake.run, "bob", "/usr/local/bin/agent-peer")
+			outcome, err := removeMCPRegistration(fake.run, "bob", "/usr/local/bin/peers")
 			if err != nil {
 				t.Fatalf("removeMCPRegistration: %v", err)
 			}
@@ -162,7 +162,7 @@ func TestRemoveMCPRegistrationReportsUnreadableRegistration(t *testing.T) {
 	fake := &mcpFakeRun{errs: map[string]error{
 		"claude mcp get peer": errors.New("exit status 1"),
 	}}
-	outcome, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/agent-peer")
+	outcome, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/peers")
 	if err != nil {
 		t.Fatalf("removeMCPRegistration: %v", err)
 	}
@@ -174,13 +174,13 @@ func TestRemoveMCPRegistrationReportsUnreadableRegistration(t *testing.T) {
 func TestRemoveMCPRegistrationReportsRemoveFailure(t *testing.T) {
 	fake := &mcpFakeRun{
 		output: map[string]string{
-			"claude mcp get peer": "peer:\n  Command: /usr/local/bin/agent-peer\n",
+			"claude mcp get peer": "peer:\n  Command: /usr/local/bin/peers\n",
 		},
 		errs: map[string]error{
 			"claude mcp remove -s user peer": errors.New("denied"),
 		},
 	}
-	if _, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/agent-peer"); err == nil {
+	if _, err := removeMCPRegistration(fake.run, "", "/usr/local/bin/peers"); err == nil {
 		t.Fatal("removeMCPRegistration succeeded although the removal failed")
 	}
 }

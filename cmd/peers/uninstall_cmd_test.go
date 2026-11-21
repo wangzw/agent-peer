@@ -176,7 +176,7 @@ func uninstallOptions(root string, system bool, euid int) service.Options {
 		EUID:   euid,
 		UID:    euid,
 		Home:   "/home/alice",
-		Exe:    "/usr/local/bin/agent-peer",
+		Exe:    "/usr/local/bin/peers",
 		Root:   root,
 	}
 }
@@ -213,7 +213,7 @@ func TestUninstallHelp(t *testing.T) {
 // asked once.
 func TestUninstallRootSystemLevel(t *testing.T) {
 	root := t.TempDir()
-	binary := "/usr/local/libexec/agent-peer"
+	binary := "/usr/local/libexec/peers"
 	binPath := filepath.Join(root, binary)
 	if err := os.MkdirAll(filepath.Dir(binPath), 0o755); err != nil {
 		t.Fatal(err)
@@ -306,7 +306,7 @@ func TestUninstallRootPurgeSkipsDataQuestion(t *testing.T) {
 		},
 		installed: func(opts service.Options) (bool, error) { return opts.System, nil },
 		serviceBinary: func(service.Options) (string, bool, error) {
-			return "/usr/local/bin/agent-peer", true, nil
+			return "/usr/local/bin/peers", true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
 			return service.Result{UnitPath: "/etc/systemd/system/peers.service", Removed: true}, nil
@@ -325,7 +325,7 @@ func TestUninstallRootPurgeSkipsDataQuestion(t *testing.T) {
 		ask:           ask.ask,
 		fileOwner:     func(string) (uint32, error) { return 0, nil },
 		removeFile:    func(string) error { return nil },
-		executable:    func() (string, error) { return "/usr/local/bin/agent-peer", nil },
+		executable:    func() (string, error) { return "/usr/local/bin/peers", nil },
 		evalSymlinks:  func(path string) (string, error) { return path, nil },
 		geteuid:       func() int { return 0 },
 	})
@@ -349,7 +349,7 @@ func TestUninstallRootNotInstalled(t *testing.T) {
 			return uninstallOptions(t.TempDir(), system, 0), nil
 		},
 		installed:    func(service.Options) (bool, error) { return false, nil },
-		executable:   func() (string, error) { return "/usr/local/bin/agent-peer", nil },
+		executable:   func() (string, error) { return "/usr/local/bin/peers", nil },
 		evalSymlinks: func(path string) (string, error) { return path, nil },
 		mcpLookup:    func(string) mcpRegistration { return mcpRegistration{} },
 		uninstallSvc: func(service.Options) (service.Result, error) {
@@ -373,7 +373,7 @@ func TestUninstallRootNotInstalled(t *testing.T) {
 
 func TestUninstallRootNoServiceInstallation(t *testing.T) {
 	root := t.TempDir()
-	resolved := "/usr/local/bin/agent-peer"
+	resolved := "/usr/local/bin/peers"
 	if err := os.MkdirAll(filepath.Join(root, filepath.Dir(resolved)), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +439,7 @@ func TestUninstallRootNoServiceInstallation(t *testing.T) {
 
 func TestUninstallAccountNoServiceAtDefaultPrefix(t *testing.T) {
 	root := t.TempDir()
-	exe := "/home/alice/.local/bin/agent-peer"
+	exe := "/home/alice/.local/bin/peers"
 	full := filepath.Join(root, exe)
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatal(err)
@@ -502,7 +502,7 @@ func TestUninstallAccountNoServiceAtDefaultPrefix(t *testing.T) {
 
 func TestUninstallNoServiceOutsideTheDefaultPrefix(t *testing.T) {
 	root := t.TempDir()
-	exe := "/home/alice/downloads/agent-peer"
+	exe := "/home/alice/downloads/peers"
 	rec := &uninstallRecorder{}
 	withUninstallSeams(t, uninstallSeams{
 		options: func(system bool) (service.Options, error) {
@@ -545,7 +545,7 @@ func TestUninstallNoServiceOutsideTheDefaultPrefix(t *testing.T) {
 
 func TestUninstallKeepsADownloadedCopyWhenNoUnitFileExists(t *testing.T) {
 	root := t.TempDir()
-	exe := "/home/alice/downloads/agent-peer"
+	exe := "/home/alice/downloads/peers"
 	full := filepath.Join(root, exe)
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatal(err)
@@ -610,7 +610,7 @@ func TestUninstallKeepsADownloadedCopyWhenNoUnitFileExists(t *testing.T) {
 
 func TestUninstallAccountUserLevelKeepsData(t *testing.T) {
 	root := t.TempDir()
-	binary := "/home/alice/bin/agent-peer"
+	binary := "/home/alice/bin/peers"
 	binPath := filepath.Join(root, binary)
 	if err := os.MkdirAll(filepath.Dir(binPath), 0o755); err != nil {
 		t.Fatal(err)
@@ -684,7 +684,7 @@ func TestUninstallAccountHintsAtSystemLevel(t *testing.T) {
 		},
 		installed: func(opts service.Options) (bool, error) { return true, nil },
 		serviceBinary: func(service.Options) (string, bool, error) {
-			return "/home/alice/bin/agent-peer", true, nil
+			return "/home/alice/bin/peers", true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
 			return service.Result{UnitPath: "/home/alice/.config/systemd/user/peers.service", Removed: true}, nil
@@ -697,7 +697,7 @@ func TestUninstallAccountHintsAtSystemLevel(t *testing.T) {
 		ask:             func(string) (bool, bool) { return false, true },
 		fileOwner:       func(string) (uint32, error) { return 1000, nil },
 		removeFile:      func(string) error { return nil },
-		executable:      func() (string, error) { return "/usr/local/bin/agent-peer", nil },
+		executable:      func() (string, error) { return "/usr/local/bin/peers", nil },
 		evalSymlinks:    func(path string) (string, error) { return path, nil },
 		geteuid:         func() int { return 1000 },
 		systemInstalled: func(service.Options) bool { return true },
@@ -785,7 +785,7 @@ func TestUninstallAccountOnlySystemRunsSudo(t *testing.T) {
 				geteuid:   func() int { return 1000 },
 				lookPath:  func(string) (string, error) { return "/usr/bin/sudo", nil },
 				executable: func() (string, error) {
-					return "/usr/local/bin/agent-peer", nil
+					return "/usr/local/bin/peers", nil
 				},
 				sudo: func(_ context.Context, exe string, args []string, _ io.Reader, _ io.Writer, _ io.Writer) (int, error) {
 					rec.sudoExe, rec.sudoArgs = exe, args
@@ -801,7 +801,7 @@ func TestUninstallAccountOnlySystemRunsSudo(t *testing.T) {
 			if got := a.run(context.Background(), args); got != tc.code {
 				t.Fatalf("run(%q) = %d, want the child's %d (stderr %s)", args, got, tc.code, stderr)
 			}
-			if rec.sudoExe != "/usr/local/bin/agent-peer" {
+			if rec.sudoExe != "/usr/local/bin/peers" {
 				t.Errorf("sudo exe = %q", rec.sudoExe)
 			}
 			if !slices.Equal(rec.sudoArgs, tc.wantArgs) {
@@ -822,7 +822,7 @@ func TestUninstallAccountOnlySystemWithoutSudo(t *testing.T) {
 		geteuid:   func() int { return 1000 },
 		lookPath:  func(string) (string, error) { return "", os.ErrNotExist },
 		executable: func() (string, error) {
-			return "/usr/local/bin/agent-peer", nil
+			return "/usr/local/bin/peers", nil
 		},
 	})
 
@@ -843,7 +843,7 @@ func TestUninstallStopsAfterAFailedStep(t *testing.T) {
 		},
 		installed: func(opts service.Options) (bool, error) { return !opts.System, nil },
 		serviceBinary: func(service.Options) (string, bool, error) {
-			return "/home/alice/bin/agent-peer", true, nil
+			return "/home/alice/bin/peers", true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
 			return service.Result{}, os.ErrPermission
@@ -875,7 +875,7 @@ func TestUninstallStopsAfterAFailedStep(t *testing.T) {
 
 func TestUninstallKeepsABinaryOfAnotherAccount(t *testing.T) {
 	root := t.TempDir()
-	binary := "/usr/local/bin/agent-peer"
+	binary := "/usr/local/bin/peers"
 	full := filepath.Join(root, binary)
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatal(err)
@@ -930,7 +930,7 @@ func TestUninstallReportsPathsRemovedBeforeAPurgeFailure(t *testing.T) {
 		},
 		installed: func(opts service.Options) (bool, error) { return !opts.System, nil },
 		serviceBinary: func(service.Options) (string, bool, error) {
-			return "/home/alice/bin/agent-peer", true, nil
+			return "/home/alice/bin/peers", true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
 			return service.Result{UnitPath: "/home/alice/.config/systemd/user/peers.service", Removed: true}, nil
@@ -948,7 +948,7 @@ func TestUninstallReportsPathsRemovedBeforeAPurgeFailure(t *testing.T) {
 		ask:             func(string) (bool, bool) { return true, true },
 		fileOwner:       func(string) (uint32, error) { return 1000, nil },
 		removeFile:      func(string) error { return nil },
-		executable:      func() (string, error) { return "/usr/local/bin/agent-peer", nil },
+		executable:      func() (string, error) { return "/usr/local/bin/peers", nil },
 		evalSymlinks:    func(path string) (string, error) { return path, nil },
 		geteuid:         func() int { return 1000 },
 		systemInstalled: func(service.Options) bool { return false },
@@ -983,7 +983,7 @@ func TestUninstallRejectsRelativeHomeBeforeAnyStep(t *testing.T) {
 		},
 		installed: func(service.Options) (bool, error) { return true, nil },
 		serviceBinary: func(service.Options) (string, bool, error) {
-			return "/home/alice/.local/bin/agent-peer", true, nil
+			return "/home/alice/.local/bin/peers", true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
 			rec.steps = append(rec.steps, "service")
@@ -1096,13 +1096,13 @@ func TestUninstallKeepsABinaryThatIsNotPeers(t *testing.T) {
 		exe    string
 		script string
 	}{
-		{name: "shell", binary: "/bin/sh", exe: "/usr/local/bin/agent-peer"},
-		{name: "env", binary: "/usr/bin/env", exe: "/usr/local/bin/agent-peer"},
+		{name: "shell", binary: "/bin/sh", exe: "/usr/local/bin/peers"},
+		{name: "env", binary: "/usr/bin/env", exe: "/usr/local/bin/peers"},
 		{
 			name:   "same name different inode",
-			binary: "/opt/check/agent-peer",
-			exe:    "/opt/other/agent-peer",
-			script: "#!/bin/sh\necho ran > \"$0.ran\"\necho agent-peer fake-version\n",
+			binary: "/opt/check/peers",
+			exe:    "/opt/other/peers",
+			script: "#!/bin/sh\necho ran > \"$0.ran\"\necho peers fake-version\n",
 		},
 	}
 	for _, tc := range cases {
@@ -1110,7 +1110,7 @@ func TestUninstallKeepsABinaryThatIsNotPeers(t *testing.T) {
 			if tc.script != "" {
 				removed, output, marker := runBinaryDeletionWithScript(t, tc.binary, tc.exe, tc.script)
 				if removed {
-					t.Errorf("removed %s, which is not this agent-peer binary\n%s", tc.binary, output)
+					t.Errorf("removed %s, which is not this peers binary\n%s", tc.binary, output)
 				}
 				if _, err := os.Stat(marker); !os.IsNotExist(err) {
 					t.Errorf("executed %s; a binary of another inode must not be run: %v", tc.binary, err)
@@ -1125,7 +1125,7 @@ func TestUninstallKeepsABinaryThatIsNotPeers(t *testing.T) {
 			}
 			removed, output := runBinaryDeletion(t, tc.binary, tc.exe)
 			if removed {
-				t.Errorf("removed %s, which is not this agent-peer binary\n%s", tc.binary, output)
+				t.Errorf("removed %s, which is not this peers binary\n%s", tc.binary, output)
 			}
 			if !strings.Contains(output, "kept the binary "+tc.binary) {
 				t.Errorf("output does not say the binary was kept:\n%s", output)
@@ -1187,7 +1187,7 @@ func runBinaryDeletionWithScript(t *testing.T, binary, exe, script string) (remo
 
 func TestUninstallRemovesTheServiceBinary(t *testing.T) {
 	root := t.TempDir()
-	binary := "/usr/local/bin/agent-peer"
+	binary := "/usr/local/bin/peers"
 	full := filepath.Join(root, binary)
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		t.Fatal(err)

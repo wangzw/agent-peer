@@ -534,7 +534,7 @@ func toProtoSession(s inbox.Session) *helperpb.Session {
 	}
 }
 
-// RunAccountHelper is the body of `agent-peer internal account-helper`.
+// RunAccountHelper is the body of `peers internal account-helper`.
 func RunAccountHelper(ctx context.Context, stdin io.Reader, stdout io.Writer) error {
 	return Serve(ctx, stdin, stdout, InboxOps{}, CurrentIdentity())
 }

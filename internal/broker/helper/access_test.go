@@ -271,7 +271,7 @@ func TestAccessCheckCommandExecsAsRootWithAccountIdentity(t *testing.T) {
 		Groups: []uint32{27, 109, 1002},
 		Home:   "/home/alice",
 	}
-	cmd := accessCheckCommand("/usr/bin/agent-peer", acct)
+	cmd := accessCheckCommand("/usr/bin/peers", acct)
 
 	if cmd.SysProcAttr == nil {
 		t.Fatal("SysProcAttr is nil")

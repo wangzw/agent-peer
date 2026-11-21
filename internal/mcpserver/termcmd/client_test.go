@@ -130,7 +130,7 @@ func TestRunStatusDiagnosticsOnly(t *testing.T) {
 }
 
 func TestRunStatusSelectorError(t *testing.T) {
-	const noBroker = "no Broker is available for this account; if a system-level Broker is installed on this host, ask the administrator to start it. Otherwise start a user-level Broker with `agent-peer service install`, or run `agent-peer broker` in a terminal outside the Claude Code session (a Broker started inside the session exits with code 6)"
+	const noBroker = "no Broker is available for this account; if a system-level Broker is installed on this host, ask the administrator to start it. Otherwise start a user-level Broker with `peers service install`, or run `peers broker` in a terminal outside the Claude Code session (a Broker started inside the session exits with code 6)"
 	want := "cannot reach the Broker: " + noBroker
 	var got bytes.Buffer
 	err := RunStatus(t.Context(), func(context.Context) (string, Dialer, error) {
@@ -492,7 +492,7 @@ func TestRunConfigSet(t *testing.T) {
 }
 
 func TestRunConfigSetPermissionDeniedIncludesPath(t *testing.T) {
-	const configFile = "/etc/agent-peer/config.yaml"
+	const configFile = "/etc/peers/config.yaml"
 	path := fakelocal.SocketPath(t)
 	fakelocal.Start(t, path, fakelocal.Handlers{
 		SetConfig: func(context.Context, *localpb.SetConfigRequest) (*localpb.SetConfigResponse, error) {
@@ -562,7 +562,7 @@ func TestRunSetOnlinePermissionDenied(t *testing.T) {
 	path := fakelocal.SocketPath(t)
 	fakelocal.Start(t, path, fakelocal.Handlers{
 		SetConfig: func(context.Context, *localpb.SetConfigRequest) (*localpb.SetConfigResponse, error) {
-			return nil, fakelocal.PermissionDenied("changing the configuration requires write permission on /etc/agent-peer/config.yaml")
+			return nil, fakelocal.PermissionDenied("changing the configuration requires write permission on /etc/peers/config.yaml")
 		},
 	})
 
@@ -679,7 +679,7 @@ func TestRunPeerListShowsLocalState(t *testing.T) {
 				Degraded: &localpb.DegradedState{
 					Level:  localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY,
 					Reason: "listen address :17443 is unavailable",
-					Fix:    "agent-peer config set broker.listen <free address>",
+					Fix:    "peers config set broker.listen <free address>",
 				},
 			}}, nil
 		},
@@ -690,8 +690,8 @@ func TestRunPeerListShowsLocalState(t *testing.T) {
 		t.Fatalf("RunPeerList: %v", err)
 	}
 	want := "Broker: degraded (local only): listen address :17443 is unavailable\n" +
-		"Fix: agent-peer config set broker.listen <free address>\n" +
-		"Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.\n" +
+		"Fix: peers config set broker.listen <free address>\n" +
+		"Broker: offline; messages from other hosts are refused. Run peers online to accept them.\n" +
 		"Brokers: none\n"
 	if got.String() != want {
 		t.Errorf("RunPeerList output = %q, want %q", got.String(), want)

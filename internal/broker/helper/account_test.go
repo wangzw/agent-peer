@@ -92,7 +92,7 @@ func TestAccountCommandEnvironmentIsMinimal(t *testing.T) {
 		GID:  1000,
 		Home: "/home/alice",
 	}
-	cmd := accountCommand("/usr/bin/agent-peer", []string{"internal", "account-helper"}, acct)
+	cmd := accountCommand("/usr/bin/peers", []string{"internal", "account-helper"}, acct)
 
 	want := []string{
 		"HOME=/home/alice",

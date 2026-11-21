@@ -182,7 +182,7 @@ func dataFix(kind dataKind, paths config.PathSet, system bool) string {
 	if target == "" {
 		target = "the data directory and the audit log"
 	}
-	restart := "agent-peer service restart"
+	restart := "peers service restart"
 	if system {
 		restart = "sudo " + restart
 	}
@@ -207,13 +207,13 @@ func listenFix(err error, paths config.PathSet, system bool) string {
 		if system {
 			edit += " with sudo"
 		}
-		return fmt.Sprintf("%sagent-peer config set broker.listen <free address>, or %s", sudo, edit)
+		return fmt.Sprintf("%speers config set broker.listen <free address>, or %s", sudo, edit)
 	}
-	return sudo + "agent-peer config set broker.listen <free address>"
+	return sudo + "peers config set broker.listen <free address>"
 }
 
 func genericFix(step string, paths config.PathSet, system bool) string {
-	restart := "agent-peer service restart"
+	restart := "peers service restart"
 	if system {
 		restart = "sudo " + restart
 	}

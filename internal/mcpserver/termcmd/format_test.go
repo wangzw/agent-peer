@@ -82,10 +82,10 @@ func TestWriteStatusEmptySections(t *testing.T) {
 // sections.
 func TestWriteStatusBrokerState(t *testing.T) {
 	const reason = "listen address :17443 is unavailable: address already in use"
-	const fix = "agent-peer config set broker.listen <free address>"
+	const fix = "peers config set broker.listen <free address>"
 	const degradedLocal = "Broker: degraded (local only): " + reason + "\nFix: " + fix + "\n"
 	const degradedDiagnostics = "Broker: degraded (diagnostics only): " + reason + "\nFix: " + fix + "\n"
-	const offline = "Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.\n"
+	const offline = "Broker: offline; messages from other hosts are refused. Run peers online to accept them.\n"
 	const sections = "Agents: none\nPeers: none\n"
 
 	cases := []struct {
@@ -466,9 +466,9 @@ func TestWriteBrokerListWithoutLocalState(t *testing.T) {
 // the table: local only degradation, offline, and both together.
 func TestWriteBrokerListBrokerState(t *testing.T) {
 	const reason = "listen address :17443 is unavailable: address already in use"
-	const fix = "agent-peer config set broker.listen <free address>"
+	const fix = "peers config set broker.listen <free address>"
 	const degradedLocal = "Broker: degraded (local only): " + reason + "\nFix: " + fix + "\n"
-	const offline = "Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.\n"
+	const offline = "Broker: offline; messages from other hosts are refused. Run peers online to accept them.\n"
 	const table = "Brokers: none\n"
 
 	cases := []struct {
@@ -586,7 +586,7 @@ func TestWriteStatusShowsAvailableUpdate(t *testing.T) {
 		t.Fatalf("WriteStatus: %v", err)
 	}
 	want := "Agents: none\nPeers: none\n" +
-		"Update: 0.1.2 available (current 0.1.1); run agent-peer update\n"
+		"Update: 0.1.2 available (current 0.1.1); run peers update\n"
 	if got := buf.String(); got != want {
 		t.Errorf("WriteStatus output = %q, want %q", got, want)
 	}

@@ -154,7 +154,7 @@ func accountOutsideGroup(t *testing.T, gid uint32) (Account, bool) {
 // rootTestDir makes a directory another account can traverse.
 func rootTestDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "agent-peer-root-test-")
+	dir, err := os.MkdirTemp("", "peers-root-test-")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}

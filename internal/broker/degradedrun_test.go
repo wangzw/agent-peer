@@ -427,7 +427,7 @@ func TestRunConfigFailuresStayFatalWithAllowDegraded(t *testing.T) {
 // form's check after a successful Load: a group that does not exist is a
 // configuration failure, not a degraded state.
 func TestRunUnknownSocketGroupStaysFatalWithAllowDegraded(t *testing.T) {
-	name := "agent-peer-no-such-group-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	name := "peers-no-such-group-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	rt := newRunTest(t, func(rt *runTest) {
 		rt.opts.AllowDegraded = true
 		rt.opts.System = true

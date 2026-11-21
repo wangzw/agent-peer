@@ -141,7 +141,7 @@ func TestListBrokers(t *testing.T) {
 // offline and degraded state, and an error when a response omits it.
 func TestListBrokersLocalState(t *testing.T) {
 	const reason = "listen address :17443 is unavailable"
-	const fix = "agent-peer config set broker.listen <free address>"
+	const fix = "peers config set broker.listen <free address>"
 	cases := []struct {
 		name    string
 		local   *localpb.LocalBrokerState

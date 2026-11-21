@@ -239,7 +239,7 @@ func (a systemAssembler) Assemble(ctx context.Context, _ ConfigSource, deps *Dep
 	}
 	exe, err := executable()
 	if err != nil {
-		return nil, fmt.Errorf("locating the agent-peer executable: %w", err)
+		return nil, fmt.Errorf("locating the peers executable: %w", err)
 	}
 	newDeps := a.newDeps
 	if newDeps == nil {

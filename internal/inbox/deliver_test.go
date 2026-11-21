@@ -112,7 +112,7 @@ func TestREQAgentMessaging015_NoListenerIsNotWritten(t *testing.T) {
 	fake := fakesession.New(t, fakesession.Options{
 		Name:       "unbound",
 		NoBind:     true,
-		SocketPath: "/nonexistent/agent-peer/inbox.sock",
+		SocketPath: "/nonexistent/peers/inbox.sock",
 	})
 
 	err := bDeliver(t, Session{SocketPath: fake.SocketPath()}, "sender", "hello", "msg-015-nolisten")

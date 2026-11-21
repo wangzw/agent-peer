@@ -55,14 +55,14 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 				func(system bool) (service.Options, error) {
 					optionsCalls++
 					optionsSystem = system
-					return service.Options{System: system, Exe: "/usr/local/bin/agent-peer"}, nil
+					return service.Options{System: system, Exe: "/usr/local/bin/peers"}, nil
 				},
 				func(opts service.Options) (service.Result, error) {
 					installCalls++
 					installed = opts
 					if opts.System {
 						return service.Result{
-							Binary:     "/usr/local/bin/agent-peer",
+							Binary:     "/usr/local/bin/peers",
 							ConfigPath: "/etc/peers/config.yaml",
 							ConfigNew:  true,
 							RunLog:     "journalctl -u peers.service",
@@ -70,7 +70,7 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 						}, nil
 					}
 					return service.Result{
-						Binary:     "/usr/local/bin/agent-peer",
+						Binary:     "/usr/local/bin/peers",
 						ConfigPath: "/home/alice/.peers/config.yaml",
 						ConfigNew:  true,
 						RunLog:     "journalctl --user -u peers.service",
@@ -117,7 +117,7 @@ func TestServiceInstallMapsAdminGroup(t *testing.T) {
 			var installed service.Options
 			setServiceSeams(t,
 				func(system bool) (service.Options, error) {
-					return service.Options{System: system, Exe: "/usr/local/bin/agent-peer"}, nil
+					return service.Options{System: system, Exe: "/usr/local/bin/peers"}, nil
 				},
 				func(opts service.Options) (service.Result, error) {
 					installed = opts
@@ -151,14 +151,14 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 		{
 			name: "user-level generated configuration",
 			result: service.Result{
-				Binary:     "/usr/local/bin/agent-peer",
+				Binary:     "/usr/local/bin/peers",
 				ConfigPath: "/home/alice/.peers/config.yaml",
 				ConfigNew:  true,
 				RunLog:     "journalctl --user -u peers.service",
 				AuditLog:   "/home/alice/.peers/audit.log",
 			},
 			want: "peers 0.1.2 installed (user-level, starts at login)\n" +
-				"  binary:     /usr/local/bin/agent-peer\n" +
+				"  binary:     /usr/local/bin/peers\n" +
 				"  config:     /home/alice/.peers/config.yaml (generated)\n" +
 				"  run log:    journalctl --user -u peers.service\n" +
 				"  audit log:  /home/alice/.peers/audit.log\n" +
@@ -170,13 +170,13 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 		{
 			name: "user-level kept configuration",
 			result: service.Result{
-				Binary:     "/usr/local/bin/agent-peer",
+				Binary:     "/usr/local/bin/peers",
 				ConfigPath: "/home/alice/.peers/config.yaml",
 				RunLog:     "journalctl --user -u peers.service",
 				AuditLog:   "/home/alice/.peers/audit.log",
 			},
 			want: "peers 0.1.2 installed (user-level, starts at login)\n" +
-				"  binary:     /usr/local/bin/agent-peer\n" +
+				"  binary:     /usr/local/bin/peers\n" +
 				"  config:     /home/alice/.peers/config.yaml (kept)\n" +
 				"  run log:    journalctl --user -u peers.service\n" +
 				"  audit log:  /home/alice/.peers/audit.log\n" +
@@ -189,7 +189,7 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 			name:   "system-level generated configuration",
 			system: true,
 			result: service.Result{
-				Binary:     "/usr/local/bin/agent-peer",
+				Binary:     "/usr/local/bin/peers",
 				ConfigPath: "/etc/peers/config.yaml",
 				ConfigNew:  true,
 				AdminGroup: "peers",
@@ -197,7 +197,7 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 				AuditLog:   "/var/log/peers/audit.log",
 			},
 			want: "peers 0.1.2 installed (system-level, starts at boot)\n" +
-				"  binary:     /usr/local/bin/agent-peer\n" +
+				"  binary:     /usr/local/bin/peers\n" +
 				"  config:     /etc/peers/config.yaml (generated)\n" +
 				"  run log:    journalctl -u peers.service\n" +
 				"  audit log:  /var/log/peers/audit.log\n" +
@@ -210,14 +210,14 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 			name:   "system-level kept configuration",
 			system: true,
 			result: service.Result{
-				Binary:     "/usr/local/bin/agent-peer",
+				Binary:     "/usr/local/bin/peers",
 				ConfigPath: "/etc/peers/config.yaml",
 				AdminGroup: "peers",
 				RunLog:     "journalctl -u peers.service",
 				AuditLog:   "/var/log/peers/audit.log",
 			},
 			want: "peers 0.1.2 installed (system-level, starts at boot)\n" +
-				"  binary:     /usr/local/bin/agent-peer\n" +
+				"  binary:     /usr/local/bin/peers\n" +
 				"  config:     /etc/peers/config.yaml (kept)\n" +
 				"  run log:    journalctl -u peers.service\n" +
 				"  audit log:  /var/log/peers/audit.log\n" +
@@ -259,14 +259,14 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 // lines to standard error, and exits with exitServiceDegraded.
 func TestServiceInstallReportsDegraded(t *testing.T) {
 	result := service.Result{
-		Binary:     "/usr/local/bin/agent-peer",
+		Binary:     "/usr/local/bin/peers",
 		ConfigPath: "/home/alice/.peers/config.yaml",
 		ConfigNew:  true,
 		RunLog:     "journalctl --user -u peers.service",
 		AuditLog:   "/home/alice/.peers/audit.log",
 	}
 	summary := "peers 0.1.2 installed (user-level, starts at login)\n" +
-		"  binary:     /usr/local/bin/agent-peer\n" +
+		"  binary:     /usr/local/bin/peers\n" +
 		"  config:     /home/alice/.peers/config.yaml (generated)\n" +
 		"  run log:    journalctl --user -u peers.service\n" +
 		"  audit log:  /home/alice/.peers/audit.log\n" +

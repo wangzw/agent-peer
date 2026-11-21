@@ -99,9 +99,9 @@ func samePath(a, b string) bool {
 // is given.
 func defaultInstallPath(opts service.Options) string {
 	if opts.System {
-		return "/usr/local/bin/agent-peer"
+		return "/usr/local/bin/peers"
 	}
-	return filepath.Join(opts.Home, ".local", "bin", "agent-peer")
+	return filepath.Join(opts.Home, ".local", "bin", "peers")
 }
 
 func defaultLookupPeerMCP(account string) mcpRegistration {
@@ -377,7 +377,7 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 // removeServiceBinary removes the binary the service started. A user-level
 // uninstall leaves a binary that belongs to another account alone, such as a
 // shared system-level binary. The path must also prove it is this
-// installation's agent-peer binary.
+// installation's peers binary.
 func (a *app) removeServiceBinary(opts service.Options, system bool, binary string) error {
 	path := rootedPath(opts, binary)
 	if _, err := os.Lstat(path); err != nil {
@@ -417,7 +417,7 @@ func (a *app) removeServiceBinary(opts service.Options, system bool, binary stri
 }
 
 // serviceBinaryIdentity returns why binary is not this installation's
-// agent-peer binary, or an empty string when it is. A file only qualifies by
+// peers binary, or an empty string when it is. A file only qualifies by
 // name and by being the running executable; nothing else is deleted with root's
 // permission, and an unrelated file is never executed to find out.
 func serviceBinaryIdentity(opts service.Options, binary string) string {
@@ -425,8 +425,8 @@ func serviceBinaryIdentity(opts service.Options, binary string) string {
 	if !filepath.IsAbs(binary) {
 		return "it is not an absolute path; " + manual
 	}
-	if filepath.Base(binary) != "agent-peer" {
-		return "its name is not agent-peer; " + manual
+	if filepath.Base(binary) != "peers" {
+		return "its name is not peers; " + manual
 	}
 	path := rootedPath(opts, binary)
 	info, err := os.Stat(path)
@@ -438,7 +438,7 @@ func serviceBinaryIdentity(opts service.Options, binary string) string {
 			return ""
 		}
 	}
-	return "it is not this agent-peer binary; " + manual
+	return "it is not this peers binary; " + manual
 }
 
 // keptPaths lists the paths a keep-data uninstall left in place.

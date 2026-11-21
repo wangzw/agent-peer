@@ -41,7 +41,7 @@ func TestHelperStderrContextCanceledDuringStopIsDebug(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	w := newHelperStderr(log, 4242, func() bool { return true })
 
-	if _, err := w.Write([]byte("agent-peer internal account-helper: context canceled\n")); err != nil {
+	if _, err := w.Write([]byte("peers internal account-helper: context canceled\n")); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 	out := buf.String()
@@ -63,7 +63,7 @@ func TestHelperStderrContextCanceledOutsideStopStaysWarn(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	w := newHelperStderr(log, 4242, func() bool { return false })
 
-	if _, err := w.Write([]byte("agent-peer internal account-helper: context canceled\n")); err != nil {
+	if _, err := w.Write([]byte("peers internal account-helper: context canceled\n")); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 	out := buf.String()

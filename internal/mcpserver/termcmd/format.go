@@ -25,7 +25,7 @@ const (
 
 const emptyCell = "-"
 
-// WriteStatus writes resp as the two sections shown by "agent-peer status":
+// WriteStatus writes resp as the two sections shown by "peers status":
 // a table of registered agents followed by a table of peers. A Broker that runs
 // degraded or offline gets status lines before the sections. A degraded Broker
 // that runs diagnostics only prints just those lines and no sections.
@@ -42,7 +42,7 @@ func WriteStatus(w io.Writer, resp *localpb.StatusResponse) error {
 		}
 	}
 	if resp.GetOffline() {
-		if _, err := io.WriteString(w, "Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.\n"); err != nil {
+		if _, err := io.WriteString(w, "Broker: offline; messages from other hosts are refused. Run peers online to accept them.\n"); err != nil {
 			return err
 		}
 	}
@@ -100,7 +100,7 @@ func WriteStatus(w io.Writer, resp *localpb.StatusResponse) error {
 	}
 
 	if available := resp.GetAvailableVersion(); available != "" {
-		if _, err := fmt.Fprintf(w, "Update: %s available (current %s); run agent-peer update\n",
+		if _, err := fmt.Fprintf(w, "Update: %s available (current %s); run peers update\n",
 			available, resp.GetCurrentVersion()); err != nil {
 			return err
 		}
@@ -240,7 +240,7 @@ func WriteBrokerList(w io.Writer, brokers []*localpb.BrokerInfo, local *localpb.
 		}
 	}
 	if local.GetOffline() {
-		if _, err := io.WriteString(w, "Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them.\n"); err != nil {
+		if _, err := io.WriteString(w, "Broker: offline; messages from other hosts are refused. Run peers online to accept them.\n"); err != nil {
 			return err
 		}
 	}

@@ -105,15 +105,15 @@ func TestSystemCheckerMapsResults(t *testing.T) {
 	checker := systemChecker{c: access}
 
 	ctx := context.Background()
-	granted, err := checker.Check(ctx, Caller{UID: 1001}, "/etc/agent-peer/config.yaml", AccessRead)
+	granted, err := checker.Check(ctx, Caller{UID: 1001}, "/etc/peers/config.yaml", AccessRead)
 	if !granted || err != nil {
 		t.Fatalf("first Check = (%v, %v), want (true, nil)", granted, err)
 	}
-	granted, err = checker.Check(ctx, Caller{UID: 1001}, "/etc/agent-peer/config.yaml", AccessWrite)
+	granted, err = checker.Check(ctx, Caller{UID: 1001}, "/etc/peers/config.yaml", AccessWrite)
 	if granted || err != nil {
 		t.Fatalf("second Check = (%v, %v), want (false, nil)", granted, err)
 	}
-	granted, err = checker.Check(ctx, Caller{UID: 1001}, "/etc/agent-peer/config.yaml", AccessWrite)
+	granted, err = checker.Check(ctx, Caller{UID: 1001}, "/etc/peers/config.yaml", AccessWrite)
 	if granted || !errors.Is(err, checkErr) {
 		t.Fatalf("third Check = (%v, %v), want (false, %v)", granted, err, checkErr)
 	}
@@ -124,7 +124,7 @@ func TestSystemCheckerPassesPathAndAccess(t *testing.T) {
 	checker := systemChecker{c: access}
 	ctx := context.Background()
 
-	const path = "/etc/agent-peer/config.yaml"
+	const path = "/etc/peers/config.yaml"
 	if _, err := checker.Check(ctx, Caller{UID: 1001}, path, AccessWrite); err != nil {
 		t.Fatalf("Check(write): %v", err)
 	}
@@ -151,7 +151,7 @@ func TestSystemCheckerRejectsUnknownAccess(t *testing.T) {
 	access := &fakeHelperAccess{}
 	checker := systemChecker{c: access}
 
-	granted, err := checker.Check(context.Background(), Caller{UID: 1001}, "/etc/agent-peer/config.yaml", Access(99))
+	granted, err := checker.Check(context.Background(), Caller{UID: 1001}, "/etc/peers/config.yaml", Access(99))
 	if err == nil {
 		t.Fatal("Check accepted an unknown access level")
 	}

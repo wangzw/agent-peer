@@ -18,7 +18,7 @@ const (
 		"Reopen this session to use the new MCP server."
 	textUpdateCurrent  = "The Broker is already up to date (%s)."
 	textUpdateFailed   = "Upgrade failed"
-	textUpdateTerminal = "Run `agent-peer update` in a terminal instead."
+	textUpdateTerminal = "Run `peers update` in a terminal instead."
 	textUpdateAborted  = "an update is already in progress"
 )
 

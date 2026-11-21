@@ -80,7 +80,7 @@ func TestUpdateBroker(t *testing.T) {
 
 	t.Run("permission denied keeps the Broker's reason and the config path", func(t *testing.T) {
 		t.Parallel()
-		const message = "account 2001 cannot write /etc/agent-peer/config.yaml"
+		const message = "account 2001 cannot write /etc/peers/config.yaml"
 		c := &fakeUpdateClient{err: status.Error(codes.PermissionDenied, message)}
 
 		_, err := newUpdateTestHandler(c).UpdateBroker(t.Context(), NoArgs{})
@@ -103,7 +103,7 @@ func TestUpdateBroker(t *testing.T) {
 			t.Fatal("UpdateBroker succeeded, want a failed_precondition error")
 		}
 		want := "Upgrade failed: " + message +
-			" (code: failed_precondition). Run `agent-peer update` in a terminal instead."
+			" (code: failed_precondition). Run `peers update` in a terminal instead."
 		if err.Error() != want {
 			t.Errorf("error = %q, want %q", err, want)
 		}

@@ -30,7 +30,7 @@ func newHandlers(st Status) *handlers {
 // TestPreflight covers the five phases and the two ways a connected session may
 // answer a tool call.
 func TestPreflight(t *testing.T) {
-	const detail = "dial unix /run/agent-peer/broker.sock: no such file or directory"
+	const detail = "dial unix /run/peers/broker.sock: no such file or directory"
 	const mismatchDetail = "the running Broker speaks local protocol version 2, this MCP server speaks 1"
 	const remedy = "restart the Broker of this account with the same peers version; this session reconnects by itself"
 

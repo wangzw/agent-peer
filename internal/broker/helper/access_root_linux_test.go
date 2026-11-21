@@ -123,7 +123,7 @@ func accessTestExecutable(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
 	}
-	dir, err := os.MkdirTemp("", "agent-peer-access-check-")
+	dir, err := os.MkdirTemp("", "peers-access-check-")
 	if err != nil {
 		t.Fatalf("creating a directory for the test binary: %v", err)
 	}
