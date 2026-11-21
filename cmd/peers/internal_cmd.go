@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
+	"strconv"
 
 	"github.com/wangzw/peers/internal/broker/helper"
 	"github.com/wangzw/peers/internal/broker/service"
@@ -20,12 +22,15 @@ var (
 	runAccessCheckFn    = helper.RunAccessCheck
 	postUpdateOptionsFn = service.PostUpdateOptions
 	postUpdateFn        = service.PostUpdate
+	relaunchOptionsFn   = service.RelaunchOptions
+	launchdReloadFn     = service.LaunchdReload
 )
 
 func init() {
 	subcommands["internal account-helper"] = (*app).accountHelperCmd
 	subcommands["internal access-check"] = (*app).accessCheckCmd
 	subcommands["internal post-update"] = (*app).postUpdateCmd
+	subcommands["internal launchd-reload"] = (*app).launchdReloadCmd
 }
 
 // accountHelperCmd is the body of the hidden "internal account-helper"
@@ -91,6 +96,59 @@ func (a *app) postUpdateCmd(_ context.Context, args []string) int {
 		return exitFailure
 	}
 	return exitOK
+}
+
+// launchdReloadCmd is the body of the hidden "internal launchd-reload"
+// subcommand. On macOS the post-update step starts it in a detached session;
+// it waits for the Broker that answered the update to exit, then boots the
+// label out and bootstraps the rewritten plist. It is internal implementation,
+// not part of the cross-version contract: the contract is the post-update
+// command that starts it.
+func (a *app) launchdReloadCmd(_ context.Context, args []string) int {
+	fs := flag.NewFlagSet("internal launchd-reload", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	level := fs.String("level", "", "service level: system or user")
+	domain := fs.String("domain", "", "launchd domain")
+	plist := fs.String("plist", "", "path of the rewritten plist")
+	pidText := fs.String("pid", "", "pid of the Broker that answered the update")
+	audit := fs.String("audit", "", "path of the level's audit log")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitOK
+		}
+		return a.launchdReloadUsageError(err.Error())
+	}
+	if fs.NArg() > 0 {
+		return a.launchdReloadUsageError(fmt.Sprintf("unexpected argument %q", fs.Arg(0)))
+	}
+	system, err := postUpdateLevel(*level)
+	if err != nil {
+		return a.launchdReloadUsageError(err.Error())
+	}
+	if *domain == "" {
+		return a.launchdReloadUsageError("missing --domain")
+	}
+	if !filepath.IsAbs(*plist) {
+		return a.launchdReloadUsageError(fmt.Sprintf("--plist %q must be an absolute path", *plist))
+	}
+	pid, err := strconv.Atoi(*pidText)
+	if err != nil || pid <= 0 {
+		return a.launchdReloadUsageError(fmt.Sprintf("invalid --pid %q", *pidText))
+	}
+
+	opts := relaunchOptionsFn(system)
+	if err := launchdReloadFn(opts, *domain, *plist, pid, *audit); err != nil {
+		_, _ = fmt.Fprintf(a.stderr, "peers internal launchd-reload: %s\n", err)
+		return exitFailure
+	}
+	return exitOK
+}
+
+// launchdReloadUsageError reports a usage problem without printing the
+// top-level usage: the whole internal group stays hidden.
+func (a *app) launchdReloadUsageError(reason string) int {
+	_, _ = fmt.Fprintf(a.stderr, "peers internal launchd-reload: %s\n", reason)
+	return exitUsage
 }
 
 // postUpdateLevel maps the contract's --level value to the service level.

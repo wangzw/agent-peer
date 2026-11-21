@@ -107,6 +107,11 @@ type Options struct {
 	ReadyTimeout     time.Duration                                                           // wait for the local socket after start; zero uses readyBound
 	StopTimeout      time.Duration                                                           // one stop-and-replace budget; zero uses serviceStopBound
 	BootstrapTimeout time.Duration                                                           // wait for a bootstrap that keeps failing with exit 5; zero uses bootstrapRetryBound
+
+	PPID            func() int                               // caller pid for the launchd helper; nil: os.Getppid
+	StartDetached   func(cmd *exec.Cmd) error                // start the launchd helper and release it; nil: start it in its own session
+	WaitProcessExit func(pid int, bound time.Duration) error // wait for a process to exit; nil: poll kill(2)
+	Logf            func(format string, args ...any)         // write one helper log line; nil: drop it
 }
 
 // Result describes what Install or Uninstall did. On error it lists the steps

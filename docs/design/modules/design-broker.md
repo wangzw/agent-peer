@@ -589,11 +589,22 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 服务定义的格式随版本变化，例如启动 Broker 的子命令与参数不同。执行升级的是正在运行的旧二进制，它只认识旧格式，因此重写服务定义这一步交给新二进制：旧二进制在换完二进制之后调用新二进制的一个固定子命令，由新二进制按自己的格式重写（[ADR-post-update-service-rewrite](../../adr/adr-post-update-service-rewrite.md)）。子命令名与参数是跨版本的契约，一经发布不再更改：
 
 - 命令是隐藏的子命令 `peers internal post-update --level system|user`，处理 `--level` 指定的级别。
-- 新二进制按自己的格式重写该级别的主单元，只替换主单元，drop-in 不动，写入是原子的；然后让服务管理器重新读取：systemd 执行 `daemon-reload`，launchd 对该 label 先 `bootout` 再 `bootstrap`。
+- 新二进制按自己的格式重写该级别的主单元，只替换主单元，drop-in 不动，写入是原子的。
 - 成功时退出码为 0；失败时退出码非零，标准错误写明原因。
 - 子命令不启动、不重启 Broker，重启仍由“委托升级”的流程负责。
 
-`ApplyUpdate` 在 `update.Apply` 换完二进制之后、退出之前，以本服务的级别调用新二进制的该子命令，上限为 `updatePostUpdateTimeout`（30 秒，具名常量）。新二进制不认识这个子命令时进程以 2 退出，视为不需要更新后步骤，更新继续；这样将来删掉该子命令的版本不会让更早的更新路径卡住。其他非零退出或超时，`ApplyUpdate` 把二进制回滚为旧版本，不重启，写一条 `update_failed` 审计记录，向调用方返回错误，消息写明原因。
+更新后步骤分两段执行。第一段在应答之前同步完成，决定更新是否成立；第二段在应答之后，由服务管理器或辅助进程完成，失败时调用方已经收到成功应答。
+
+第一段是重写主单元：
+
+- Linux 重写后同步执行 `systemctl [--user] daemon-reload`。它不停止正在运行的进程。
+- macOS 重写 plist 后启动一个脱离当前任务的辅助进程。辅助进程用 `setsid` 建立新会话，不继承 Broker 的标准输入输出，输出写入该级别服务日志目录中的 `post-update.log`。它等调用它的 Broker 进程退出后，先 `launchctl bootout` 再 `launchctl bootstrap`，使新的 `ProgramArguments` 生效；`bootout` 报告任务已不在时不算失败。重新读取必须等到 Broker 退出：`bootout` 会停掉正在处理这条 update RPC 的 Broker，而新二进制作为 Broker 的子进程也在同一个 launchd 任务里，会被一起停掉，`bootstrap` 因此没有机会执行。辅助进程脱离任务后不受这次 `bootout` 影响。
+
+第一段失败（退出码非 0 且不是 2，或者超时）时，`ApplyUpdate` 把二进制回滚为旧版本，不重启，写一条 `update_failed` 审计记录，向调用方返回错误，消息写明原因。新二进制不认识这个子命令时进程以 2 退出，视为不需要更新后步骤，更新继续；将来删掉该子命令的版本因此不会让更早的更新路径卡住。
+
+第二段是让服务管理器加载新定义。`ApplyUpdate` 写完 `update_applied` 审计记录、发出 `restarting=true` 的应答后退出：Linux 按已经重新读取的单元重启，macOS 由辅助进程重新加载。这一段失败时调用方已经收到成功应答，无法再报错；辅助进程把失败写进 `post-update.log` 与审计日志，`peers update` 等待 Broker 回来的超时提示同时给出 Broker 服务日志与 `post-update.log` 的位置。
+
+`ApplyUpdate` 调用新二进制的上限为 `postUpdateTimeout`（30 秒，具名常量），覆盖第一段的重写与重新读取。
 
 ### 委托升级
 
@@ -602,8 +613,8 @@ Broker 处理 `ApplyUpdate`：
 1. 判定服务管理器：向该级别的服务管理器查询服务的主进程 PID（Linux 上 `systemctl [--user] show --property MainPID --value peers.service`，macOS 上 `launchctl print system/<label>` 或 `launchctl print gui/<uid>/<label>` 中的 `pid`），只有它等于本进程 PID 才算由服务管理器启动；查询失败、服务未安装、PID 不一致都按不是处理。不是时返回 `failed_precondition`，说明需要以服务方式运行，并给出该级别的 `service install` 命令。
 2. 取本项目最新的正式发布版本。当前版本不是正式发布版本时，`update.Newer` 视为不更新，按已是最新处理；否则 `update.Newer` 不为真时返回空的 `to_version`，不做任何改动（`REQ-update-007`、`REQ-update-008`）。
 3. 目标为 `os.Executable()` 解析符号链接后的路径，调用 `update.Apply`。失败时写一条 `update_failed` 审计记录，带调用方账户与原因，返回错误；二进制不变，进程不退出。
-4. 换完二进制后按“更新后步骤”调用新二进制。它失败或超时时回滚二进制，按上一步的失败处理：写 `update_failed` 审计记录，返回错误，进程不退出。
-5. 成功时先写一条 `update_applied` 审计记录，记录调用方账户与新旧版本，再把带 `restarting=true` 的应答完整发出。应答发出后等 `updateShutdownGrace`（500 毫秒，让应答经本机 socket 送达调用方）再取消运行上下文，走正常关闭流程，退出码为 0；服务管理器按 `Restart=always` 或 `KeepAlive` 用新二进制拉起。
+4. 换完二进制后按“更新后步骤”执行第一段。它失败或超时时回滚二进制，按上一步的失败处理：写 `update_failed` 审计记录，返回错误，进程不退出。
+5. 第一段成功后写一条 `update_applied` 审计记录，记录调用方账户与新旧版本，再把带 `restarting=true` 的应答完整发出。应答发出后等 `updateShutdownGrace`（500 毫秒，让应答经本机 socket 送达调用方）再取消运行上下文，走正常关闭流程，退出码为 0；服务管理器按 `Restart=always` 或 `KeepAlive` 用新二进制拉起，macOS 的辅助进程按第 4 步重写的 plist 重新加载服务。
 6. 同一时间只允许一个升级执行；第一个完成之前到达的请求返回 `aborted`。
 
 `update_applied` 与 `update_failed` 都不记录 URL 以外的敏感内容。
@@ -748,7 +759,7 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 配对与对端管理的本机调用 | 已实现 | `internal/broker/connect_rpc.go`、`internal/broker/disconnect_rpc.go`、`internal/broker/pairkey_rpc.go`、`internal/broker/listbrokers.go`、`internal/broker/peerinfo.go`；非对端的列出由名片与公开 topic 接入 |
 | 配置读写与审计的本机调用 | 已实现 | `internal/broker/configrpc.go`、`internal/broker/auditrpc.go` |
 | 终端命令 | 已实现 | `cmd/peers`、`internal/mcpserver/termcmd`、`cmd/peers/service_cmd.go` |
-| 更新检查与自我更新 | 已实现 | `internal/broker/updatecheck.go`（`startUpdateChecks`、`checkForUpdate`、`UpdateStatus`）、`internal/broker/update/`（`Latest`、`Newer`、`Apply`）、`internal/broker/update_rpc.go`（`ApplyUpdate`、`detectServiceManager`、`runningUnderServiceManager`）、`internal/broker/service/mainpid.go`（`MainPID`）、`cmd/peers/update_cmd.go`、`cmd/peers/update_rpc.go` |
+| 更新检查与自我更新 | 已实现 | `internal/broker/updatecheck.go`（`startUpdateChecks`、`checkForUpdate`、`UpdateStatus`）、`internal/broker/update/`（`Latest`、`Newer`、`Apply`、`Install`、`RunPostUpdate`）、`internal/broker/update_rpc.go`（`ApplyUpdate`、`detectServiceManager`、`runningUnderServiceManager`）、`internal/broker/service/postupdate.go`（`PostUpdate`、`LaunchdReload`）、`internal/broker/service/mainpid.go`（`MainPID`）、`cmd/peers/update_cmd.go`、`cmd/peers/update_rpc.go`、`cmd/peers/internal_cmd.go`（`postUpdateCmd`、`launchdReloadCmd`） |
 | 降级运行 | 已实现 | `internal/broker/run.go`（`Run` 的降级分支与仅诊断重试）、`internal/broker/degradedstate.go`（`degradedStateFor`、降级状态）、`internal/broker/degradedsvc.go`（仅诊断服务）、`internal/broker/listenretry.go`（监听重试）、`internal/broker/diagwatch.go`（配置文件目录监视）、`internal/broker/datafault.go`（数据目录类失败） |
 | 状态行输出 | 已实现 | `internal/mcpserver/termcmd/format.go`（`WriteStatus`）、`internal/mcpserver/termcmd/client.go`（`ErrDiagnosticsOnly`、`RunStatus`、`RunPeerList`）、`cmd/peers/termcmd_cmd.go`（`statusCmd`） |
 | 下线时拒绝投递 | 已实现 | `internal/broker/receive.go`（`handleDeliver` 的下线检查、`logDeliveryRefusedOffline`、`EvDeliveryRefusedOffline`）、`internal/broker/delivery_wire.go`（`configSettings.Offline`、`readFailed`）、`internal/broker/status.go`（`Status.Offline`）、`internal/broker/listbrokers.go`（`ListBrokers.Local.Offline`） |

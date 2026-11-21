@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -135,6 +137,12 @@ func TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate(t *testing.T) {
 	// The restarted Broker reports the new version and still answers the local
 	// interface, which is what "running the new release and serving" means.
 	waitForBrokerVersion(t, updateNewVersion)
+
+	// ApplyUpdate's post-update step rewrites the plist and detaches a helper
+	// that boots the label out and bootstraps the new definition after the old
+	// Broker exits. The loaded job must therefore hold the ProgramArguments this
+	// binary writes, which is how launchd proves it read the rewritten plist.
+	waitForLaunchdArguments(t, "system", []string{installedBinary, "broker", "--system", "--allow-degraded"})
 	if status := run(t, "sudo", "-n", installedBinary, "status"); status.exitCode != 0 {
 		t.Fatalf("peers status after the update: exit %d\nstdout: %s\nstderr: %s",
 			status.exitCode, status.stdout, status.stderr)
@@ -290,4 +298,39 @@ func runWithin(t *testing.T, bound time.Duration, name string, args ...string) r
 	}
 	res.exitCode = exitErr.ExitCode()
 	return res
+}
+
+// launchdArgumentsPattern captures the arguments block of launchctl print.
+var launchdArgumentsPattern = regexp.MustCompile(`(?ms)^\s*arguments = \{\n(.*?)^\s*\}`)
+
+// waitForLaunchdArguments waits until launchctl print reports want as the
+// loaded job's ProgramArguments. The reload is asynchronous: the detached
+// helper runs after the old Broker exits, so the check polls within the restart
+// bound.
+func waitForLaunchdArguments(t *testing.T, domain string, want []string) {
+	t.Helper()
+	waitFor(t, updateRestartBound, "launchd to load the rewritten ProgramArguments", func() (bool, string) {
+		out, loaded := launchctlPrint(domain)
+		if !loaded {
+			return false, "the job is not loaded"
+		}
+		got := launchdArguments(out)
+		return slices.Equal(got, want), fmt.Sprintf("arguments = %q", got)
+	})
+}
+
+// launchdArguments extracts the arguments list from launchctl print. An output
+// without the block returns nil, so the wait retries.
+func launchdArguments(out string) []string {
+	match := launchdArgumentsPattern.FindStringSubmatch(out)
+	if match == nil {
+		return nil
+	}
+	var args []string
+	for _, line := range strings.Split(match[1], "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			args = append(args, line)
+		}
+	}
+	return args
 }

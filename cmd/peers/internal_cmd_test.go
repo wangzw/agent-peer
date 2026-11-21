@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/wangzw/peers/internal/broker/service"
 )
 
 // setAccountHelper installs fn as the account-helper seam for one test.
@@ -182,6 +184,126 @@ func TestInternalHelpersRejectArguments(t *testing.T) {
 			}
 			if strings.Contains(stderr.String(), "usage: peers") {
 				t.Fatalf("stderr = %q, want the hidden command to print no usage", stderr.String())
+			}
+		})
+	}
+}
+
+// setLaunchdReload installs fn as the launchd-reload seam for one test.
+func setLaunchdReload(t *testing.T, fn func(service.Options, string, string, int, string) error) {
+	t.Helper()
+	previous := launchdReloadFn
+	launchdReloadFn = fn
+	t.Cleanup(func() { launchdReloadFn = previous })
+}
+
+// TestLaunchdReloadPassesItsArguments checks the hidden helper command: the
+// level, domain, plist, caller pid and audit path reach the service function
+// unchanged, and a success writes nothing to either stream.
+func TestLaunchdReloadPassesItsArguments(t *testing.T) {
+	var (
+		gotOpts   service.Options
+		gotDomain string
+		gotPlist  string
+		gotPID    int
+		gotAudit  string
+	)
+	setLaunchdReload(t, func(opts service.Options, domain, plist string, pid int, audit string) error {
+		gotOpts, gotDomain, gotPlist, gotPID, gotAudit = opts, domain, plist, pid, audit
+		return nil
+	})
+
+	a, stdout, stderr, _ := newDispatchApp("dev")
+	args := []string{
+		"internal", "launchd-reload",
+		"--level", "system",
+		"--domain", "system",
+		"--plist", "/Library/LaunchDaemons/io.github.wangzw.peers.plist",
+		"--pid", "4242",
+		"--audit", "/var/log/peers/audit.log",
+	}
+	if got := a.run(context.Background(), args); got != exitOK {
+		t.Fatalf("run(%q) = %d, want %d (stderr %q)", args, got, exitOK, stderr.String())
+	}
+	if !gotOpts.System {
+		t.Error("the helper ran at the user level, want system")
+	}
+	if gotDomain != "system" {
+		t.Errorf("domain = %q, want system", gotDomain)
+	}
+	if gotPlist != "/Library/LaunchDaemons/io.github.wangzw.peers.plist" {
+		t.Errorf("plist = %q", gotPlist)
+	}
+	if gotPID != 4242 {
+		t.Errorf("pid = %d, want 4242", gotPID)
+	}
+	if gotAudit != "/var/log/peers/audit.log" {
+		t.Errorf("audit = %q", gotAudit)
+	}
+	if stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Errorf("stdout = %q, stderr = %q, want both empty", stdout.String(), stderr.String())
+	}
+}
+
+// TestLaunchdReloadReportsFailure checks that a failed reload is the process's
+// non-zero exit and is written to standard error, which the detached helper
+// redirects to the post-update log.
+func TestLaunchdReloadReportsFailure(t *testing.T) {
+	setLaunchdReload(t, func(service.Options, string, string, int, string) error {
+		return errors.New("bootstrap failed")
+	})
+
+	a, stdout, stderr, _ := newDispatchApp("dev")
+	args := []string{
+		"internal", "launchd-reload",
+		"--level", "user",
+		"--domain", "gui/501",
+		"--plist", "/Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist",
+		"--pid", "4242",
+	}
+	if got := a.run(context.Background(), args); got != exitFailure {
+		t.Fatalf("run(%q) = %d, want %d", args, got, exitFailure)
+	}
+	if got, want := stderr.String(), "peers internal launchd-reload: bootstrap failed\n"; got != want {
+		t.Errorf("stderr = %q, want %q", got, want)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
+	}
+}
+
+// TestLaunchdReloadRejectsBadArguments keeps malformed helper invocations from
+// reaching launchctl; the post-update step builds every argument itself.
+func TestLaunchdReloadRejectsBadArguments(t *testing.T) {
+	cases := [][]string{
+		{"internal", "launchd-reload"},
+		{"internal", "launchd-reload", "--level", "internet", "--domain", "system", "--plist", "/x", "--pid", "1"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "", "--plist", "/x", "--pid", "1"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "relative", "--pid", "1"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "zero"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "0"},
+		{"internal", "launchd-reload", "--level", "system", "--domain", "system", "--plist", "/x", "--pid", "1", "extra"},
+	}
+	for _, args := range cases {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			called := false
+			setLaunchdReload(t, func(service.Options, string, string, int, string) error {
+				called = true
+				return nil
+			})
+			a, stdout, stderr, _ := newDispatchApp("dev")
+
+			if got := a.run(context.Background(), args); got != exitUsage {
+				t.Fatalf("run(%q) = %d, want %d (stderr %q)", args, got, exitUsage, stderr.String())
+			}
+			if called {
+				t.Fatalf("run(%q) reached the service function, want it rejected first", args)
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("stdout = %q, want empty", stdout.String())
+			}
+			if strings.Contains(stderr.String(), "usage: peers") {
+				t.Errorf("stderr = %q, want the hidden command to print no usage", stderr.String())
 			}
 		})
 	}

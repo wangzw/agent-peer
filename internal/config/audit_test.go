@@ -1305,3 +1305,41 @@ func TestConfigAuditAfterCloseIsLogged(t *testing.T) {
 		t.Fatalf("an event after Close was dropped silently; log = %q", got)
 	}
 }
+
+// TestAppendAuditWritesWithoutLoading covers the standalone entry point: a
+// process that is not the Broker, such as the detached launchd reload helper,
+// records one event at the level's audit log without loading the configuration.
+func TestAppendAuditWritesWithoutLoading(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "audit.log")
+	event := Event{
+		Event:  EventUpdateFailed,
+		Detail: "reloading the service definition failed: bootstrap failed",
+	}
+	if err := AppendAudit(path, event); err != nil {
+		t.Fatalf("AppendAudit: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	for _, want := range []string{
+		`"event":"update_failed"`,
+		`"detail":"reloading the service definition failed: bootstrap failed"`,
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("audit log = %q, want it to contain %q", data, want)
+		}
+	}
+	if bytes.Count(data, []byte("\n")) != 1 {
+		t.Errorf("audit log = %q, want exactly one record", data)
+	}
+}
+
+// TestAppendAuditRejectsAnEmptyPath keeps a missing path from silently dropping
+// the outcome the caller wanted recorded.
+func TestAppendAuditRejectsAnEmptyPath(t *testing.T) {
+	if err := AppendAudit("", Event{Event: EventUpdateFailed}); err == nil {
+		t.Fatal("AppendAudit accepted an empty path")
+	}
+}

@@ -469,8 +469,8 @@ func TestUpdateLogHintPerPlatform(t *testing.T) {
 	}{
 		{"linux", false, "journalctl -u peers.service"},
 		{"linux", true, "journalctl --user -u peers.service"},
-		{"darwin", false, "/var/log/peers/broker.log"},
-		{"darwin", true, "~/Library/Logs/peers/broker.log"},
+		{"darwin", false, "/var/log/peers/broker.log (post-update helper: /var/log/peers/post-update.log)"},
+		{"darwin", true, "~/Library/Logs/peers/broker.log (post-update helper: ~/Library/Logs/peers/post-update.log)"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.goos+"/user="+fmt.Sprint(tc.userLevel), func(t *testing.T) {

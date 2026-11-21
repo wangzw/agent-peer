@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"sync"
@@ -433,6 +434,23 @@ func Audit(e Event) {
 		return
 	}
 	c.auditAppend(e)
+}
+
+// AppendAudit writes one record to the audit log at path without loading the
+// configuration. The Broker uses Audit; this entry point is for a process that
+// is not the Broker, such as the detached launchd reload helper, which records
+// an outcome after the caller has already received the update response. An
+// event that would merge in a running Broker is written as one record.
+func AppendAudit(path string, e Event) error {
+	if path == "" {
+		return errors.New("config: audit log path is empty")
+	}
+	a, err := openAudit(path, time.Now, slog.Default())
+	if err != nil {
+		return err
+	}
+	defer func() { _ = a.close() }()
+	return a.append(e)
 }
 
 // ReadAudit returns the records at or after since in time order. Mergeable

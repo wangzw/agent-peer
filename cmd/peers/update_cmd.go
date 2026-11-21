@@ -223,13 +223,16 @@ func (a *app) waitForBrokerVersion(ctx context.Context, want string, userLevel b
 }
 
 // updateLogHint names where the service manager writes the Broker's standard
-// error, for the level that answered ApplyUpdate.
+// error, for the level that answered ApplyUpdate. On macOS it also names the
+// post-update log: the detached helper that reloads the service after the
+// Broker exits writes its failure there, and the second phase cannot report it
+// through the caller.
 func updateLogHint(userLevel bool) string {
 	switch {
 	case updateGOOS == "darwin" && userLevel:
-		return "~/Library/Logs/peers/broker.log"
+		return "~/Library/Logs/peers/broker.log (post-update helper: ~/Library/Logs/peers/" + service.LaunchdHelperLogName + ")"
 	case updateGOOS == "darwin":
-		return "/var/log/peers/broker.log"
+		return "/var/log/peers/broker.log (post-update helper: /var/log/peers/" + service.LaunchdHelperLogName + ")"
 	case userLevel:
 		return "journalctl --user -u " + service.UnitName
 	default:
