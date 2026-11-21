@@ -194,7 +194,7 @@ func (a *app) serviceNotInstalledError(command string, system bool) error {
 		systemOpts, err := defaultOptionsFn(true)
 		if err == nil {
 			if installed, instErr := installedFn(systemOpts); instErr == nil && installed {
-				return fmt.Errorf("no user-level service is installed; the system-level service is installed, run `sudo peers service %s`", command)
+				return fmt.Errorf("no user-level service is installed; the system-level service is installed, run `sudo peers service %s --system`", command)
 			}
 		}
 	}

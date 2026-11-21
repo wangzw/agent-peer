@@ -234,10 +234,9 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		if got := a.run(context.Background(), []string{"service", "start"}); got != exitFailure {
 			t.Fatalf("run(service start) = %d, want %d", got, exitFailure)
 		}
-		for _, want := range []string{"no user-level service is installed", "sudo peers service start"} {
-			if !strings.Contains(stderr.String(), want) {
-				t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
-			}
+		want := "peers service start: no user-level service is installed; the system-level service is installed, run `sudo peers service start --system`\n"
+		if stderr.String() != want {
+			t.Errorf("stderr = %q, want %q", stderr.String(), want)
 		}
 	})
 
