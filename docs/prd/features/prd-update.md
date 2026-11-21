@@ -104,7 +104,7 @@ Broker 替换二进制之后、重启之前，必须用新二进制按新版本�
 
 - **验收**：用一个不实现更新后步骤的新版本执行更新，更新成功，Broker 以新版本运行。
 - **状态**：已实现
-- **端到端测试**：未实现；由 `internal/broker/update` 的 `TestInstallPostUpdateNotNeeded` 覆盖
+- **端到端测试**：`test/e2e/system/update_post_install_test.go` 的 `TestREQUpdate010_UpdateWithoutPostUpdateStep`；单元测试 `internal/broker/update` 的 `TestInstallPostUpdateNotNeeded` 覆盖同一契约
 
 ### REQ-update-011
 
@@ -112,7 +112,7 @@ Broker 替换二进制之后、重启之前，必须用新二进制按新版本�
 
 - **验收**：在新版本的更新后步骤会失败或超时的两种情况下执行更新，更新都失败，二进制与运行中的 Broker 保持旧版本，命令输出包含原因。
 - **状态**：已实现
-- **端到端测试**：未实现；由 `internal/broker/update` 的 `TestInstallPostUpdateFailureRollsBack` 与 `TestInstallPostUpdateTimeoutRollsBack` 覆盖
+- **端到端测试**：`test/e2e/system/update_post_install_test.go` 的 `TestREQUpdate011_FailedPostUpdateRollsBack`；超时由 `internal/broker/update` 的 `TestInstallPostUpdateTimeoutRollsBack` 覆盖，非零退出由同目录的 `TestInstallPostUpdateFailureRollsBack` 覆盖
 
 ## 假设与依赖
 
