@@ -35,6 +35,11 @@ const getentOutputLimit = 64 << 10
 // the pipe must not defeat the timeout.
 const getentWaitDelay = 2 * time.Second
 
+// LookupBound is the upper bound one account lookup can take in production:
+// one getent invocation plus the pipe wait after a timeout. Callers sizing a
+// wait around a startup step that performs a lookup derive it from this.
+const LookupBound = getentTimeout + getentWaitDelay
+
 // getentPaths are the absolute paths probed for getent, in order. PATH is
 // never consulted: a Broker that runs as root must not execute a getent found
 // through an environment variable. Tests replace the list with a fake script.

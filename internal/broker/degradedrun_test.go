@@ -843,6 +843,12 @@ func TestRunDiagnosticsReasonChangeLogsUpdate(t *testing.T) {
 		return s.GetDegraded() != nil && strings.Contains(s.GetDegraded().GetReason(), "broker.advertise")
 	})
 
+	// The status reports the new reason before the log entry is written, so
+	// wait for the entry instead of reading the buffer once.
+	waitForReg(t, "the degraded_reason_changed entry", func() bool {
+		return strings.Contains(rt.logs.String(), EvDegradedReasonChanged)
+	})
+
 	logs := rt.logs.String()
 	if got := strings.Count(logs, EvDegradedEntered); got != 1 {
 		t.Errorf("degraded_entered appears %d times, want 1", got)
@@ -883,6 +889,12 @@ func TestRunDiagnosticsToLocalOnlyLogsFinalLevel(t *testing.T) {
 	waitForStatus(t, sock, func(s *localpb.StatusResponse) bool {
 		return s.GetDegraded() != nil &&
 			s.GetDegraded().GetLevel() == localpb.DegradedLevel_DEGRADED_LEVEL_LOCAL_ONLY
+	})
+
+	// The status reaches local only before the second entry is written, so wait
+	// for it instead of reading the buffer once.
+	waitForReg(t, "the local-only degraded_entered entry", func() bool {
+		return strings.Count(rt.logs.String(), EvDegradedEntered) >= 2
 	})
 
 	logs := rt.logs.String()

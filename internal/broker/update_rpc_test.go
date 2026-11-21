@@ -21,8 +21,9 @@ import (
 
 // capturedBrokerWait bounds the wait for the component that captures the
 // running Broker in a Run test. Run reaches the component's Start during
-// startup, so the bound only guards against a startup that never got there.
-const capturedBrokerWait = 3 * time.Second
+// startup, so the bound only guards against a startup that never got there; it
+// is the same liveness bound the other startup waits use.
+const capturedBrokerWait = runWaitBound
 
 // fixedRelease is a LatestRelease fake that always reports version.
 func fixedRelease(version string) func(context.Context, *http.Client, string) (update.Release, error) {

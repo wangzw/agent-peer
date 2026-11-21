@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/wangzw/peers/internal/accountdb"
 	"github.com/wangzw/peers/internal/broker/localpb"
 	"github.com/wangzw/peers/internal/config"
 	"github.com/wangzw/peers/internal/pairing"
@@ -69,12 +70,37 @@ func (r *fakeRunner) Start() {
 
 func (r *fakeRunner) Close() { r.order.add("Close") }
 
-// waitStarted blocks until Start ran, with a three-second cap.
+// runWaitBound bounds every wait for Run to reach its next lifecycle step or
+// to return. It is a liveness bound, not a latency budget: it fires only when
+// Run is stuck, so a slow but correct startup must not trip it.
+//
+// The system form resolves broker.local_socket_group before it binds anything,
+// and the account database bounds one lookup at accountdb.LookupBound, so that
+// single step may legitimately take that long on a host whose NSS source is
+// slow. Ten seconds is that bound plus three for the rest of startup and for
+// scheduling delay on a loaded host.
+const runWaitBound = 10 * time.Second
+
+// TestRunWaitBoundCoversAccountLookup checks the invariant behind runWaitBound:
+// a Run test must not give up on startup while the account database is still
+// inside its own bound for one lookup. accountdb.LookupBound is the product
+// bound (seven seconds on Linux: getentTimeout plus getentWaitDelay), and
+// runWaitBound adds a startup margin to it. Lowering runWaitBound below the
+// bound would reintroduce the "Run did not return" failure on a slow NSS
+// source.
+func TestRunWaitBoundCoversAccountLookup(t *testing.T) {
+	const startupMargin = 3 * time.Second
+	if want := accountdb.LookupBound + startupMargin; runWaitBound < want {
+		t.Fatalf("runWaitBound = %v, want at least %v (accountdb.LookupBound %v plus %v startup margin)", runWaitBound, want, accountdb.LookupBound, startupMargin)
+	}
+}
+
+// waitStarted blocks until Start ran, with the run liveness bound.
 func (r *fakeRunner) waitStarted(t *testing.T) {
 	t.Helper()
 	select {
 	case <-r.started:
-	case <-time.After(3 * time.Second):
+	case <-time.After(runWaitBound):
 		t.Fatal("link Start was not called")
 	}
 }
@@ -239,10 +265,10 @@ func (rt *runTest) start() {
 
 func (rt *runTest) socketPath() string { return filepath.Join(rt.dir, "broker.sock") }
 
-// readyLine reads one readiness line with a three-second cap.
+// readyLine reads one readiness line, bounded by the run liveness bound.
 func (rt *runTest) readyLine() string {
 	rt.t.Helper()
-	if err := rt.readyR.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+	if err := rt.readyR.SetReadDeadline(time.Now().Add(runWaitBound)); err != nil {
 		rt.t.Fatalf("SetReadDeadline: %v", err)
 	}
 	line, err := rt.reader.ReadString('\n')
@@ -258,7 +284,7 @@ func (rt *runTest) waitErr() error {
 	case err := <-rt.done:
 		rt.waited = true
 		return err
-	case <-time.After(3 * time.Second):
+	case <-time.After(runWaitBound):
 		rt.t.Fatal("Run did not return")
 		return nil
 	}
@@ -271,7 +297,7 @@ func (rt *runTest) stop() {
 		case err := <-rt.done:
 			_ = err
 			rt.waited = true
-		case <-time.After(3 * time.Second):
+		case <-time.After(runWaitBound):
 			rt.t.Errorf("Run did not return after cancel")
 		}
 	}
