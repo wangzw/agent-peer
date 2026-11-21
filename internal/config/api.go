@@ -262,6 +262,12 @@ func Get(key string) (Value, error) {
 	return c.getLocked(key)
 }
 
+// KeyNames returns every configuration key in lexicographic order. It reads
+// only the package's key table, so it works before Load and without a Broker.
+func KeyNames() []string {
+	return allKeyNames()
+}
+
 // All returns every known key in lexicographic order.
 func All() []Entry {
 	c := currentCore()

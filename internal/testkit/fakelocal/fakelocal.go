@@ -79,8 +79,8 @@ type Handlers struct {
 
 // Call is one unary request a Server received, in arrival order.
 // AdminHandlers returns handlers for the six Broker administration RPCs, each
-// answering a sample whose formatted output is distinct: config get prints an
-// entry, config set a change line, key create a key, broker list the
+// answering a sample whose formatted output is distinct: config list and get
+// print an entry, config set a change line, key create a key, broker list the
 // empty listing, broker connect a paired line, and broker disconnect a
 // disconnected line.
 func AdminHandlers() Handlers {

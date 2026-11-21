@@ -85,6 +85,21 @@ func TestKeyTableCompleteAndDefaults(t *testing.T) {
 	}
 }
 
+// TestKeyNamesListsTheWholeTable keeps the exported key list in step with the
+// table that the parser uses.
+func TestKeyNamesListsTheWholeTable(t *testing.T) {
+	got := KeyNames()
+	want := allKeyNames()
+	if len(got) != len(want) {
+		t.Fatalf("KeyNames returned %d keys, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("KeyNames[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestValidateValueBoundaries(t *testing.T) {
 	cases := []struct {
 		key   string

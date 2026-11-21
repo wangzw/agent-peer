@@ -14,7 +14,9 @@ func addPairingCommands(root *cobra.Command, a *app) {
 }
 
 // addConfigCommands adds the config commands.
-func addConfigCommands(root *cobra.Command, a *app) {}
+func addConfigCommands(root *cobra.Command, a *app) {
+	root.AddCommand(a.newConfigCommand())
+}
 
 // addServiceCommands adds the service commands.
 func addServiceCommands(root *cobra.Command, a *app) {}
