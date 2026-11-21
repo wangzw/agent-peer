@@ -294,7 +294,7 @@ func execGetent(ctx context.Context, path string, args []string) (getentResult, 
 // errUnavailable reports that a lookup failed for a reason other than a
 // missing entry: the database could not be read, or an answer could not be
 // trusted. Callers must treat it as a failed check, not as a missing account.
-var errUnavailable = errors.New("accountdb: account database unavailable")
+var errUnavailable = errors.New("account database unavailable")
 
 // validateName rejects names that must never reach a subprocess argument.
 // Colon and whitespace are refused because they cannot occur in a sane account
@@ -302,10 +302,10 @@ var errUnavailable = errors.New("accountdb: account database unavailable")
 // entry; NUL cannot be passed to exec at all.
 func validateName(name string) error {
 	if name == "" {
-		return errors.New("accountdb: empty account name")
+		return errors.New("cannot use an empty account name")
 	}
 	if strings.ContainsAny(name, ":\x00") || strings.IndexFunc(name, unicode.IsSpace) >= 0 {
-		return fmt.Errorf("accountdb: invalid account name %q", name)
+		return fmt.Errorf("cannot use account name %q: it is invalid", name)
 	}
 	return nil
 }

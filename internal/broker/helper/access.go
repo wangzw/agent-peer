@@ -214,13 +214,13 @@ func (c *AccessChecker) Check(ctx context.Context, uid uint32, path string, need
 			log.Warn("access_check_unknown_account", "uid", uid)
 			return false, nil
 		}
-		return false, fmt.Errorf("helper: access check for uid %d: %w", uid, err)
+		return false, fmt.Errorf("cannot check access for uid %d: %w", uid, err)
 	}
 
 	start := c.Start
 	if start == nil {
 		if c.Exe == "" {
-			return false, errors.New("helper: access check: no executable configured")
+			return false, errors.New("cannot check access: no executable is configured")
 		}
 		start = accessCheckStart(c.Exe)
 	}
@@ -234,7 +234,7 @@ func (c *AccessChecker) Check(ctx context.Context, uid uint32, path string, need
 
 	proc, err := start(ctx, acct)
 	if err != nil {
-		return false, fmt.Errorf("helper: access check for uid %d: starting process: %w", uid, err)
+		return false, fmt.Errorf("cannot check access for uid %d: starting the process: %w", uid, err)
 	}
 
 	req := &helperpb.AccessCheckRequest{
@@ -249,7 +249,7 @@ func (c *AccessChecker) Check(ctx context.Context, uid uint32, path string, need
 	}
 	if err := newMsgWriter(proc.Stdin).write(req); err != nil {
 		stopProcess(proc)
-		return false, fmt.Errorf("helper: access check for uid %d: sending request: %w", uid, err)
+		return false, fmt.Errorf("cannot check access for uid %d: sending the request: %w", uid, err)
 	}
 	// The child reads exactly one request; closing stdin tells it no more
 	// requests follow. A close error will surface as a read error below.
@@ -274,11 +274,11 @@ func (c *AccessChecker) Check(ctx context.Context, uid uint32, path string, need
 	case res = <-read:
 	case <-ctx.Done():
 		stopProcess(proc)
-		return false, fmt.Errorf("helper: access check for uid %d: waiting for the check process: %w", uid, ctx.Err())
+		return false, fmt.Errorf("cannot check access for uid %d: waiting for the check process: %w", uid, ctx.Err())
 	}
 	if res.err != nil {
 		stopProcess(proc)
-		return false, fmt.Errorf("helper: access check for uid %d: reading result: %w", uid, res.err)
+		return false, fmt.Errorf("cannot check access for uid %d: reading the result: %w", uid, res.err)
 	}
 
 	// The child exits after writing its result. Reap it before returning so no
@@ -286,7 +286,7 @@ func (c *AccessChecker) Check(ctx context.Context, uid uint32, path string, need
 	// answer explains what went wrong.
 	waitErr := proc.Wait()
 	if got := res.msg.GetProtocolVersion(); got != helperpb.ProtocolVersion {
-		return false, fmt.Errorf("helper: access check for uid %d: check process reported protocol version %d", uid, got)
+		return false, fmt.Errorf("cannot check access for uid %d: the check process reported protocol version %d", uid, got)
 	}
 	// Check the reported error before the uid: a failed identity switch is
 	// reported with the process's current effective uid, and that errno must
@@ -294,13 +294,13 @@ func (c *AccessChecker) Check(ctx context.Context, uid uint32, path string, need
 	// error response is never allowed, whatever its Allowed field says.
 	if msg := res.msg.GetError(); msg != "" {
 		log.Warn("access_check_failed", "uid", uid, "error", msg)
-		return false, fmt.Errorf("helper: access check for uid %d: %s", uid, msg)
+		return false, fmt.Errorf("cannot check access for uid %d: %s", uid, msg)
 	}
 	if got := res.msg.GetUid(); got != uid {
-		return false, fmt.Errorf("helper: access check for uid %d: check process ran as uid %d", uid, got)
+		return false, fmt.Errorf("cannot check access for uid %d: the check process ran as uid %d", uid, got)
 	}
 	if waitErr != nil {
-		return false, fmt.Errorf("helper: access check for uid %d: check process failed: %w", uid, waitErr)
+		return false, fmt.Errorf("cannot check access for uid %d: the check process failed: %w", uid, waitErr)
 	}
 	return res.msg.GetAllowed(), nil
 }

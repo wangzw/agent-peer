@@ -55,7 +55,7 @@ const (
 )
 
 // errAuditClosed is returned by append and read after the log has been closed.
-var errAuditClosed = errors.New("config: audit log is closed")
+var errAuditClosed = errors.New("the audit log is closed")
 
 // auditTimer is the part of time.Timer the audit log uses. afterFunc is a seam
 // so a test can move the injected clock past a window and fire the expiry
@@ -112,7 +112,7 @@ func openAudit(path string, now func() time.Time, logger *slog.Logger) (*auditLo
 
 func openAuditWithDirMode(path string, dirMode os.FileMode, now func() time.Time, logger *slog.Logger) (*auditLog, error) {
 	if path == "" {
-		return nil, errors.New("config: audit log path is empty")
+		return nil, errors.New("the audit log path is empty")
 	}
 	if now == nil {
 		now = time.Now
@@ -122,16 +122,16 @@ func openAuditWithDirMode(path string, dirMode os.FileMode, now func() time.Time
 	}
 	if dir := filepath.Dir(path); dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, dirMode); err != nil {
-			return nil, fmt.Errorf("config: cannot create audit log directory %s: %w", dir, err)
+			return nil, fmt.Errorf("cannot create the audit log directory %s: %w", dir, err)
 		}
 	}
 	file, err := createOrOpenAuditFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("config: cannot open audit log %s: %w", path, err)
+		return nil, fmt.Errorf("cannot open the audit log %s: %w", path, err)
 	}
 	if err := terminatePartialLine(file); err != nil {
 		_ = file.Close()
-		return nil, fmt.Errorf("config: cannot repair audit log %s: %w", path, err)
+		return nil, fmt.Errorf("cannot repair the audit log %s: %w", path, err)
 	}
 	return &auditLog{
 		file:      file,
@@ -203,7 +203,7 @@ func (a *auditLog) append(e Event) error {
 	}
 	if !validEventKind(e.Event) {
 		a.logger.Error("config_audit_unknown_kind", "audit_event", string(e.Event))
-		return fmt.Errorf("config: unknown audit event kind %q", e.Event)
+		return fmt.Errorf("unknown audit event kind %q", e.Event)
 	}
 	if e.Time.IsZero() {
 		e.Time = a.now()
@@ -362,11 +362,11 @@ func (a *auditLog) read(since time.Time) ([]Event, error) {
 		return nil, errAuditClosed
 	}
 	if _, err := a.file.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("config: cannot seek audit log %s: %w", a.path, err)
+		return nil, fmt.Errorf("cannot seek in the audit log %s: %w", a.path, err)
 	}
 	data, err := io.ReadAll(a.file)
 	if err != nil {
-		return nil, fmt.Errorf("config: cannot read audit log %s: %w", a.path, err)
+		return nil, fmt.Errorf("cannot read the audit log %s: %w", a.path, err)
 	}
 	events := make([]Event, 0, bytes.Count(data, []byte{'\n'}))
 	for len(data) > 0 {
@@ -566,9 +566,9 @@ func encodeValue(v Value) (*wireValue, error) {
 		// A secret value never reaches the audit log. Callers that build an
 		// event directly have the field stripped by append, but returning an
 		// error here keeps the encoder from ever producing one.
-		return nil, errors.New("config: secret value cannot be written to the audit log")
+		return nil, errors.New("a secret value cannot be written to the audit log")
 	default:
-		return nil, fmt.Errorf("config: unknown value kind %d", v.Kind)
+		return nil, fmt.Errorf("unknown value kind %d", v.Kind)
 	}
 }
 
@@ -578,14 +578,14 @@ func decodeEvent(line []byte) (Event, error) {
 		return Event{}, err
 	}
 	if wire.Time == "" {
-		return Event{}, errors.New("config: audit record has no time")
+		return Event{}, errors.New("audit record has no time")
 	}
 	when, err := time.Parse(time.RFC3339Nano, wire.Time)
 	if err != nil {
 		return Event{}, err
 	}
 	if !validEventKind(wire.Event) {
-		return Event{}, fmt.Errorf("config: unknown audit event kind %q", wire.Event)
+		return Event{}, fmt.Errorf("unknown audit event kind %q", wire.Event)
 	}
 	event := Event{
 		Time:    when,
@@ -602,7 +602,7 @@ func decodeEvent(line []byte) (Event, error) {
 			return Event{}, err
 		}
 		if len(fingerprint) != len(PeerRef{}.Fingerprint) {
-			return Event{}, fmt.Errorf("config: audit peer fingerprint has %d bytes", len(fingerprint))
+			return Event{}, fmt.Errorf("audit peer fingerprint has %d bytes", len(fingerprint))
 		}
 		peer := PeerRef{Alias: wire.Peer.Alias}
 		copy(peer.Fingerprint[:], fingerprint)
@@ -664,9 +664,9 @@ func decodeValue(wire wireValue) (Value, error) {
 	case "secret":
 		// The audit log must never carry a secret value, not even the
 		// "is set" flag. Treat a line that claims one as unreadable.
-		return Value{}, errors.New("config: audit record contains a secret value")
+		return Value{}, errors.New("audit record contains a secret value")
 	default:
-		return Value{}, fmt.Errorf("config: unknown audit value kind %q", wire.Kind)
+		return Value{}, fmt.Errorf("unknown audit value kind %q", wire.Kind)
 	}
 }
 

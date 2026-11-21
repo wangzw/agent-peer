@@ -25,17 +25,17 @@ type Session struct {
 
 var (
 	// ErrNoRecord reports that no matching session registry record exists.
-	ErrNoRecord = errors.New("inbox: no session registry record")
+	ErrNoRecord = errors.New("no session registry record")
 	// ErrPartial reports that a regular record file exists but its content
 	// cannot be parsed, including an empty file.
-	ErrPartial = errors.New("inbox: session registry record is incomplete")
+	ErrPartial = errors.New("the session registry record is incomplete")
 	// ErrBadSignature reports that sig is empty or the receiver would change
 	// it.
-	ErrBadSignature = errors.New("inbox: signature would be changed by the receiver")
+	ErrBadSignature = errors.New("the receiver would change the signature")
 	// ErrNotWritten reports that the message was certainly not written.
-	ErrNotWritten = errors.New("inbox: message was not written to the inbox socket")
+	ErrNotWritten = errors.New("the message was not written to the inbox socket")
 	// ErrUncertain reports that the message may have been written.
-	ErrUncertain = errors.New("inbox: message may have been written to the inbox socket")
+	ErrUncertain = errors.New("the message may have been written to the inbox socket")
 )
 
 // resolveConfigDir returns the configuration directory to read.
@@ -50,7 +50,7 @@ func resolveConfigDir(configDir string) (string, error) {
 	if configDir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", fmt.Errorf("inbox: resolving home directory: %w", err)
+			return "", fmt.Errorf("cannot resolve the home directory: %w", err)
 		}
 		return filepath.Join(home, ".claude"), nil
 	}

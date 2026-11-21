@@ -71,7 +71,7 @@ func readConfigFileFrom(path string, readFile func(string) ([]byte, error)) (con
 			doc.empty = true
 			return doc, nil
 		}
-		return configDocument{}, fmt.Errorf("config: cannot read %s: %w", path, err)
+		return configDocument{}, fmt.Errorf("cannot read %s: %w", path, err)
 	}
 	hash := sha256.Sum256(data)
 	doc, err := parseConfigFile(data)

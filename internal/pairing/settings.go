@@ -9,7 +9,7 @@ import (
 
 // errNoDataDir reports that config did not yield a data directory. Open wraps
 // it as ErrNotOpen; keeping it local lets this file stand on its own.
-var errNoDataDir = errors.New("pairing: config has no data directory")
+var errNoDataDir = errors.New("the configuration has no data directory")
 
 // settings is the narrow view of configuration pairing needs. Production code
 // uses configSettings; tests use a fake with mutable fields, so pairing's logic
@@ -158,7 +158,7 @@ func (s configSettings) stringValue(key string) (string, error) {
 		return "", err
 	}
 	if v.Kind != config.KindString {
-		return "", fmt.Errorf("pairing: config key %s has kind %s, want string", key, configKindName(v.Kind))
+		return "", fmt.Errorf("cannot read config key %s: it has kind %s, want string", key, configKindName(v.Kind))
 	}
 	return v.String, nil
 }
@@ -169,7 +169,7 @@ func (s configSettings) intValue(key string) (int, error) {
 		return 0, err
 	}
 	if v.Kind != config.KindInt {
-		return 0, fmt.Errorf("pairing: config key %s has kind %s, want int", key, configKindName(v.Kind))
+		return 0, fmt.Errorf("cannot read config key %s: it has kind %s, want int", key, configKindName(v.Kind))
 	}
 	return int(v.Int), nil
 }

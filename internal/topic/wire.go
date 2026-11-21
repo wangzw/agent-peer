@@ -170,7 +170,7 @@ func sortMembers(ms []Member) []Member {
 }
 
 // errBadDigest reports a digest that is not exactly 32 bytes.
-var errBadDigest = errors.New("topic: digest is not 32 bytes")
+var errBadDigest = errors.New("digest is not 32 bytes")
 
 // parseDigest checks that b is a 32-byte digest and copies it.
 func parseDigest(b []byte) ([32]byte, error) {

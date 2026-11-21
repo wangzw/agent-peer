@@ -18,9 +18,9 @@ var (
 	// errBadSignature means the record is unsigned, its signature does not
 	// verify against the public key in its body, or the publisher is not the
 	// holder of that key.
-	errBadSignature = errors.New("directory: bad signature")
+	errBadSignature = errors.New("bad signature")
 	// errMalformed means the record's encoding or structure is invalid.
-	errMalformed = errors.New("directory: malformed record")
+	errMalformed = errors.New("malformed record")
 	// errRecordTooLarge is a malformed record whose raw bytes exceed
 	// maxRecordRaw. It wraps errMalformed.
 	errRecordTooLarge = fmt.Errorf("%w: raw exceeds %d bytes", errMalformed, maxRecordRaw)
@@ -37,7 +37,7 @@ const maxRecordRaw = 64 << 10
 func signRecord(body *directorypb.RecordBody, sign func([]byte) []byte) (*storedRecord, error) {
 	raw, err := proto.MarshalOptions{Deterministic: true}.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("directory: marshal record body: %w", err)
+		return nil, fmt.Errorf("cannot marshal the record body: %w", err)
 	}
 	if len(raw) > maxRecordRaw {
 		return nil, errRecordTooLarge

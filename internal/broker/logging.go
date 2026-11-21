@@ -201,6 +201,6 @@ func ParseLogLevel(s string) (slog.Level, error) {
 	case "error":
 		return slog.LevelError, nil
 	default:
-		return 0, fmt.Errorf("broker: unknown log level %q (want debug, info, warn or error)", s)
+		return 0, fmt.Errorf("cannot parse log level %q (want debug, info, warn or error)", s)
 	}
 }

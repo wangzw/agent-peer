@@ -41,7 +41,7 @@ func ServiceBinary(opts Options) (path string, ok bool, err error) {
 	}
 	content, err := os.ReadFile(rooted(opts, defPath))
 	if err != nil {
-		return "", false, fmt.Errorf("service: read %s: %w", defPath, err)
+		return "", false, fmt.Errorf("cannot read %s: %w", defPath, err)
 	}
 
 	switch opts.GOOS {
@@ -50,13 +50,13 @@ func ServiceBinary(opts Options) (path string, ok bool, err error) {
 	case "darwin":
 		path, err = launchdProgramBinary(string(content), defPath)
 	default:
-		return "", false, fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return "", false, fmt.Errorf("cannot read the service definition on platform %q", opts.GOOS)
 	}
 	if err != nil {
 		return "", false, err
 	}
 	if path == "" {
-		return "", false, fmt.Errorf("service: %s does not name the program the service starts", defPath)
+		return "", false, fmt.Errorf("cannot read %s: it does not name the program the service starts", defPath)
 	}
 	return path, true, nil
 }
@@ -73,7 +73,7 @@ func systemdExecBinary(content, defPath string) (string, error) {
 		value = strings.TrimLeft(value, "-@+!:")
 		field, ok := systemdFirstField(value)
 		if !ok || field == "" {
-			return "", fmt.Errorf("service: %s has an empty ExecStart", defPath)
+			return "", fmt.Errorf("cannot read %s: the ExecStart line is empty", defPath)
 		}
 		// systemd escapes its specifier and variable sigils by doubling them.
 		field = strings.ReplaceAll(field, "%%", "%")
@@ -143,7 +143,7 @@ func launchdProgramBinary(content, defPath string) (string, error) {
 			return "", nil
 		}
 		if err != nil {
-			return "", fmt.Errorf("service: parse %s: %w", defPath, err)
+			return "", fmt.Errorf("cannot parse %s: %w", defPath, err)
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
@@ -151,7 +151,7 @@ func launchdProgramBinary(content, defPath string) (string, error) {
 			case "key":
 				var text string
 				if err := dec.DecodeElement(&text, &t); err != nil {
-					return "", fmt.Errorf("service: parse %s: %w", defPath, err)
+					return "", fmt.Errorf("cannot parse %s: %w", defPath, err)
 				}
 				afterKey = strings.TrimSpace(text) == "ProgramArguments"
 			case "array":
@@ -165,7 +165,7 @@ func launchdProgramBinary(content, defPath string) (string, error) {
 				}
 				var text string
 				if err := dec.DecodeElement(&text, &t); err != nil {
-					return "", fmt.Errorf("service: parse %s: %w", defPath, err)
+					return "", fmt.Errorf("cannot parse %s: %w", defPath, err)
 				}
 				return text, nil
 			}
@@ -182,7 +182,7 @@ func RemoveRuntimeDir(opts Options) ([]string, error) {
 	switch opts.GOOS {
 	case "linux", "darwin":
 	default:
-		return nil, fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return nil, fmt.Errorf("cannot remove the runtime directory on platform %q", opts.GOOS)
 	}
 	dir := filepath.Dir(localSocketPath(opts))
 	removed, err := removePath(opts, dir)
@@ -205,10 +205,10 @@ func PurgeData(opts Options) (removed []string, err error) {
 	switch opts.GOOS {
 	case "linux", "darwin":
 	default:
-		return nil, fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return nil, fmt.Errorf("cannot purge data on platform %q", opts.GOOS)
 	}
 	if !opts.System && !filepath.IsAbs(opts.Home) {
-		return nil, fmt.Errorf("service: the home directory %q is not an absolute path", opts.Home)
+		return nil, fmt.Errorf("cannot purge data: the home directory %q is not an absolute path", opts.Home)
 	}
 
 	// The group record and the configuration file's owner are read before
@@ -295,10 +295,10 @@ func removePath(opts Options, path string) (ok bool, err error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return false, nil
 		}
-		return false, fmt.Errorf("service: inspect %s: %w", path, err)
+		return false, fmt.Errorf("cannot inspect %s: %w", path, err)
 	}
 	if err := os.RemoveAll(rootedPath); err != nil {
-		return false, fmt.Errorf("service: remove %s: %w", path, err)
+		return false, fmt.Errorf("cannot remove %s: %w", path, err)
 	}
 	return true, nil
 }
@@ -312,13 +312,13 @@ func pruneEmptyDir(opts Options, path string) (bool, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return false, nil
 		}
-		return false, fmt.Errorf("service: inspect %s: %w", path, err)
+		return false, fmt.Errorf("cannot inspect %s: %w", path, err)
 	}
 	if len(entries) != 0 {
 		return false, nil
 	}
 	if err := os.Remove(rootedPath); err != nil {
-		return false, fmt.Errorf("service: remove %s: %w", path, err)
+		return false, fmt.Errorf("cannot remove %s: %w", path, err)
 	}
 	return true, nil
 }
@@ -332,7 +332,7 @@ func readAdminGroupRecord(opts Options) (string, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return "", nil
 		}
-		return "", fmt.Errorf("service: read %s: %w", path, err)
+		return "", fmt.Errorf("cannot read %s: %w", path, err)
 	}
 	return strings.TrimSpace(string(data)), nil
 }
@@ -348,11 +348,11 @@ func currentAdminGroupName(opts Options) (name string, gid int, exists bool, err
 		if errors.Is(err, fs.ErrNotExist) {
 			return "", -1, false, nil
 		}
-		return "", -1, false, fmt.Errorf("service: inspect %s: %w", path, err)
+		return "", -1, false, fmt.Errorf("cannot inspect %s: %w", path, err)
 	}
 	st, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return "", -1, true, fmt.Errorf("service: no owner information for %s", path)
+		return "", -1, true, fmt.Errorf("cannot read the group owner of %s", path)
 	}
 	gid = int(st.Gid)
 	name, err = groupNameByGID(opts, gid)
@@ -454,7 +454,7 @@ func primaryGroupOfAnyAccount(opts Options, gid int) (bool, error) {
 	case "linux":
 		out, err := opts.Run("getent", "passwd")
 		if err != nil {
-			return false, fmt.Errorf("service: list accounts: %w", err)
+			return false, fmt.Errorf("cannot list accounts: %w", err)
 		}
 		for _, line := range strings.Split(string(out), "\n") {
 			fields := strings.Split(line, ":")
@@ -466,7 +466,7 @@ func primaryGroupOfAnyAccount(opts Options, gid int) (bool, error) {
 	case "darwin":
 		out, err := opts.Run("dscl", ".", "-list", "/Users", "PrimaryGroupID")
 		if err != nil {
-			return false, fmt.Errorf("service: list accounts: %w", err)
+			return false, fmt.Errorf("cannot list accounts: %w", err)
 		}
 		for _, line := range strings.Split(string(out), "\n") {
 			fields := strings.Fields(line)
@@ -476,7 +476,7 @@ func primaryGroupOfAnyAccount(opts Options, gid int) (bool, error) {
 		}
 		return false, nil
 	default:
-		return false, fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return false, fmt.Errorf("cannot check the primary group on platform %q", opts.GOOS)
 	}
 }
 
@@ -491,17 +491,17 @@ func groupNameByGID(opts Options, gid int) (string, error) {
 			if exitStatus(err) == 2 {
 				return "", nil
 			}
-			return "", fmt.Errorf("service: look up group %s: %w", id, err)
+			return "", fmt.Errorf("cannot look up group %s: %w", id, err)
 		}
 		fields := strings.Split(strings.TrimSpace(string(out)), ":")
 		if len(fields) == 0 || fields[0] == "" {
-			return "", fmt.Errorf("service: getent group %s: unexpected output %q", id, strings.TrimSpace(string(out)))
+			return "", fmt.Errorf("cannot read group %s: unexpected getent output %q", id, strings.TrimSpace(string(out)))
 		}
 		return fields[0], nil
 	case "darwin":
 		out, err := opts.Run("dscl", ".", "-list", "/Groups", "PrimaryGroupID")
 		if err != nil {
-			return "", fmt.Errorf("service: list groups: %w", err)
+			return "", fmt.Errorf("cannot list groups: %w", err)
 		}
 		for _, line := range strings.Split(string(out), "\n") {
 			fields := strings.Fields(line)
@@ -511,7 +511,7 @@ func groupNameByGID(opts Options, gid int) (string, error) {
 		}
 		return "", nil
 	default:
-		return "", fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return "", fmt.Errorf("cannot look up the group on platform %q", opts.GOOS)
 	}
 }
 
@@ -525,15 +525,15 @@ func deleteAdminGroup(opts Options, name string) error {
 	case "darwin":
 		argv = []string{"dseditgroup", "-o", "delete", name}
 	default:
-		return fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return fmt.Errorf("cannot delete the group on platform %q", opts.GOOS)
 	}
 	cmdline := strings.Join(argv, " ")
 	out, err := opts.Run(argv[0], argv[1:]...)
 	if err != nil {
 		if msg := strings.TrimSpace(string(out)); msg != "" {
-			return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+			return fmt.Errorf("cannot run %s: %w: %s", cmdline, err, msg)
 		}
-		return fmt.Errorf("service: %s: %w", cmdline, err)
+		return fmt.Errorf("cannot run %s: %w", cmdline, err)
 	}
 	return nil
 }
@@ -547,7 +547,7 @@ func OtherAccountBrokers(opts Options) (accounts []string, err error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("service: read %s: %w", tmp, err)
+		return nil, fmt.Errorf("cannot read %s: %w", tmp, err)
 	}
 	if opts.Probe == nil {
 		return nil, nil

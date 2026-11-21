@@ -43,18 +43,18 @@ func interfaceAddresses(name string) ([]net.Addr, error) {
 func defaultRouteAddressesFrom(readFile func(string) ([]byte, error), ifaceAddrs func(string) ([]net.Addr, error)) ([]netip.Addr, error) {
 	routeData, err := readFile("/proc/net/route")
 	if err != nil {
-		return nil, fmt.Errorf("config: read /proc/net/route: %w", err)
+		return nil, fmt.Errorf("cannot read /proc/net/route: %w", err)
 	}
 	iface4, ok4, err := parseProcNetRoute(routeData)
 	if err != nil {
-		return nil, fmt.Errorf("config: parse /proc/net/route: %w", err)
+		return nil, fmt.Errorf("cannot parse /proc/net/route: %w", err)
 	}
 
 	var out []netip.Addr
 	if ok4 {
 		addrs, err := ifaceAddrs(iface4)
 		if err != nil {
-			return nil, fmt.Errorf("config: addresses of interface %s: %w", iface4, err)
+			return nil, fmt.Errorf("cannot read the addresses of interface %s: %w", iface4, err)
 		}
 		for _, a := range addrs {
 			ipnet, ok := a.(*net.IPNet)
@@ -87,21 +87,21 @@ func defaultRouteAddressesFrom(readFile func(string) ([]byte, error), ifaceAddrs
 	case errors.Is(v6Err, os.ErrNotExist):
 		// No IPv6 route table: leave ok6 false.
 	case v6Err != nil:
-		return nil, fmt.Errorf("config: read /proc/net/ipv6_route: %w", v6Err)
+		return nil, fmt.Errorf("cannot read /proc/net/ipv6_route: %w", v6Err)
 	default:
 		iface6, ok6, err = parseProcNetIPv6Route(v6Data)
 		if err != nil {
-			return nil, fmt.Errorf("config: parse /proc/net/ipv6_route: %w", err)
+			return nil, fmt.Errorf("cannot parse /proc/net/ipv6_route: %w", err)
 		}
 	}
 	if ok6 {
 		inet6Data, err := readFile("/proc/net/if_inet6")
 		if err != nil {
-			return nil, fmt.Errorf("config: read /proc/net/if_inet6: %w", err)
+			return nil, fmt.Errorf("cannot read /proc/net/if_inet6: %w", err)
 		}
 		entries, err := parseIfInet6(inet6Data)
 		if err != nil {
-			return nil, fmt.Errorf("config: parse /proc/net/if_inet6: %w", err)
+			return nil, fmt.Errorf("cannot parse /proc/net/if_inet6: %w", err)
 		}
 		for _, e := range entries {
 			if e.iface != iface6 {

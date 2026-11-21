@@ -49,7 +49,7 @@ type DegradedError struct {
 // Error names the level and the reason so an error logged without the printed
 // summary still says why the Broker runs degraded.
 func (e *DegradedError) Error() string {
-	msg := "service: the Broker is running degraded"
+	msg := "the Broker is running degraded"
 	if e.State.Level != localpb.DegradedLevel_DEGRADED_LEVEL_UNSPECIFIED {
 		msg += " (" + localpb.DegradedLevelLabel(e.State.Level) + ")"
 	}
@@ -113,7 +113,7 @@ func dialStatusSocket(ctx context.Context, address string) (net.Conn, error) {
 	uid, err := statusPeerUID(conn)
 	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("read the peer credentials of %s: %w", path, err)
+		return nil, fmt.Errorf("cannot read the peer credentials of %s: %w", path, err)
 	}
 	if !statusPeerAllowed(path, uid) {
 		_ = conn.Close()

@@ -51,7 +51,7 @@ var _ helperConn = (*Client)(nil)
 
 // errPoolClosed is returned by Acquire and by every backend call once Close
 // has started.
-var errPoolClosed = errors.New("helper: pool closed")
+var errPoolClosed = errors.New("the helper pool is closed")
 
 // reapTimeout is how long a child gets to exit after its stdin is closed
 // before it is killed.
@@ -219,7 +219,7 @@ func NewPool(opts PoolOptions) *Pool {
 		exe := p.opts.Exe
 		p.opts.Start = func(ctx context.Context, acct Account) (*Process, error) {
 			if exe == "" {
-				return nil, errors.New("helper: no executable configured")
+				return nil, errors.New("cannot start the account helper: no executable is configured")
 			}
 			return startHelperProcess(exe, acct, log, p.stoppingNow)
 		}
@@ -458,7 +458,7 @@ func (p *Pool) ensureLive(ctx context.Context, st *helperState) (*liveHelper, er
 	live := &liveHelper{conn: conn, proc: proc}
 	if conn == nil {
 		live.killAndWait()
-		return nil, errors.New("helper: no connection for started account helper")
+		return nil, errors.New("cannot start the account helper: the helper returned no connection")
 	}
 
 	readyCtx, cancelReady := context.WithTimeout(spawnCtx, p.opts.ReadyTimeout)
@@ -469,10 +469,10 @@ func (p *Pool) ensureLive(ctx context.Context, st *helperState) (*liveHelper, er
 		case ready == nil:
 			err = fmt.Errorf("%w: account helper for uid %d sent no Ready", ErrProtocol, st.uid)
 		case ready.ProtocolVersion != helperpb.ProtocolVersion:
-			err = fmt.Errorf("helper: account helper for uid %d speaks protocol version %d, want %d",
+			err = fmt.Errorf("cannot start the account helper for uid %d: it speaks protocol version %d, want %d",
 				st.uid, ready.ProtocolVersion, helperpb.ProtocolVersion)
 		case ready.Uid != acct.UID || ready.Gid != acct.GID:
-			err = fmt.Errorf("helper: account helper for uid %d reported uid %d gid %d, want uid %d gid %d",
+			err = fmt.Errorf("cannot start the account helper for uid %d: it reported uid %d gid %d, want uid %d gid %d",
 				st.uid, ready.Uid, ready.Gid, acct.UID, acct.GID)
 		}
 	}
@@ -802,7 +802,7 @@ func (b *Backend) Watch(ctx context.Context, configDir string, onChange func(pid
 			if entry.stopped {
 				entry.mu.Unlock()
 				cstop()
-				err = errors.New("helper: watch stopped while starting")
+				err = errors.New("the watch stopped while starting")
 			} else {
 				entry.conn = live.conn
 				entry.stop = cstop

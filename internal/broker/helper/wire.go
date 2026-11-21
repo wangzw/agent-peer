@@ -19,7 +19,7 @@ const maxMessageSize = 4 << 20
 // errOversize reports that a message was not written because its encoded size
 // exceeds maxMessageSize. A peer would reject such a frame, so sending it can
 // only break the connection.
-var errOversize = errors.New("helper: message exceeds the size limit")
+var errOversize = errors.New("message exceeds the size limit")
 
 // msgWriter writes length-delimited protobuf messages to a pipe. It serializes
 // complete messages, so concurrent callers never interleave their bytes.

@@ -42,7 +42,7 @@ func TestInstallSystemRejectsInvalidAdminGroup(t *testing.T) {
 		return nil, nil
 	}
 
-	if _, err := Install(opts); err == nil || !strings.Contains(err.Error(), "invalid administration group name") {
+	if _, err := Install(opts); err == nil || !strings.Contains(err.Error(), "the name is invalid") {
 		t.Fatalf("Install error = %v, want the invalid name error", err)
 	}
 	assertNoEntries(t, opts.Root)
@@ -203,7 +203,7 @@ func TestLookupGroupLinux(t *testing.T) {
 		opts := baseOptions(t)
 		opts.GroupGID = nil
 		opts.Run = func(string, ...string) ([]byte, error) { return []byte("staff\n"), nil }
-		if _, _, err := lookupGroup(opts, "staff"); err == nil || !strings.Contains(err.Error(), "unexpected output") {
+		if _, _, err := lookupGroup(opts, "staff"); err == nil || !strings.Contains(err.Error(), "unexpected getent output") {
 			t.Errorf("lookupGroup error = %v, want the unexpected output", err)
 		}
 	})

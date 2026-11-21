@@ -16,7 +16,7 @@ func Installed(opts Options) (bool, error) {
 	switch opts.GOOS {
 	case "linux", "darwin":
 	default:
-		return false, fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return false, fmt.Errorf("cannot check for an installed service on platform %q", opts.GOOS)
 	}
 
 	path, err := unitPath(opts)
@@ -58,7 +58,7 @@ func serviceFileExists(opts Options, path string) (bool, error) {
 	if errors.Is(statErr, fs.ErrNotExist) {
 		return false, nil
 	}
-	return false, fmt.Errorf("service: inspect %s: %w", path, statErr)
+	return false, fmt.Errorf("cannot inspect %s: %w", path, statErr)
 }
 
 // systemctlReportsInstalled reports whether systemd still has the unit enabled

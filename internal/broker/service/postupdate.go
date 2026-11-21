@@ -75,7 +75,7 @@ func PostUpdate(opts Options) error {
 	switch opts.GOOS {
 	case "linux", "darwin":
 	default:
-		return fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return fmt.Errorf("cannot update the service definition on platform %q", opts.GOOS)
 	}
 
 	path, err := unitPath(opts)
@@ -172,11 +172,11 @@ func saveUnit(opts Options, path string) (savedUnit, error) {
 		return savedUnit{}, nil
 	}
 	if err != nil {
-		return savedUnit{}, fmt.Errorf("service: inspect %s before rewriting it: %w", path, err)
+		return savedUnit{}, fmt.Errorf("cannot inspect %s before rewriting it: %w", path, err)
 	}
 	content, err := os.ReadFile(fsPath)
 	if err != nil {
-		return savedUnit{}, fmt.Errorf("service: read %s before rewriting it: %w", path, err)
+		return savedUnit{}, fmt.Errorf("cannot read %s before rewriting it: %w", path, err)
 	}
 	return savedUnit{exists: true, content: content, mode: info.Mode().Perm()}, nil
 }
@@ -226,7 +226,7 @@ func startLaunchdReload(opts Options, domain, plistPath string) error {
 	}
 	exeID, err := executableID(rooted(opts, opts.Exe))
 	if err != nil {
-		return fmt.Errorf("service: identify the binary that will reload the service: %w", err)
+		return fmt.Errorf("cannot identify the binary that will reload the service: %w", err)
 	}
 	logPath, err := launchdHelperLogPath(opts)
 	if err != nil {
@@ -237,12 +237,12 @@ func startLaunchdReload(opts Options, domain, plistPath string) error {
 	}
 	logFile, err := os.OpenFile(rooted(opts, logPath), os.O_CREATE|os.O_WRONLY|os.O_APPEND|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
-		return fmt.Errorf("service: open the post-update log %s: %w", logPath, err)
+		return fmt.Errorf("cannot open the post-update log %s: %w", logPath, err)
 	}
 	stdin, err := os.OpenFile(os.DevNull, os.O_RDONLY, 0)
 	if err != nil {
 		_ = logFile.Close()
-		return fmt.Errorf("service: open %s for the post-update helper: %w", os.DevNull, err)
+		return fmt.Errorf("cannot open %s for the post-update helper: %w", os.DevNull, err)
 	}
 
 	cmd := exec.Command(opts.Exe, "internal", "launchd-reload",
@@ -269,13 +269,13 @@ func startLaunchdReload(opts Options, domain, plistPath string) error {
 	logCloseErr := logFile.Close()
 	stdinCloseErr := stdin.Close()
 	if startErr != nil {
-		return fmt.Errorf("service: start the post-update helper: %w", startErr)
+		return fmt.Errorf("cannot start the post-update helper: %w", startErr)
 	}
 	if logCloseErr != nil {
-		return fmt.Errorf("service: close the post-update log %s: %w", logPath, logCloseErr)
+		return fmt.Errorf("cannot close the post-update log %s: %w", logPath, logCloseErr)
 	}
 	if stdinCloseErr != nil {
-		return fmt.Errorf("service: close %s for the post-update helper: %w", os.DevNull, stdinCloseErr)
+		return fmt.Errorf("cannot close %s for the post-update helper: %w", os.DevNull, stdinCloseErr)
 	}
 	return nil
 }
@@ -287,20 +287,20 @@ func startLaunchdReload(opts Options, domain, plistPath string) error {
 // another account could replace the log between two appends.
 func checkLogDir(opts Options, dir string) error {
 	if opts.Owner == nil {
-		return fmt.Errorf("service: the post-update log directory %s cannot be inspected", dir)
+		return fmt.Errorf("cannot inspect the post-update log directory %s", dir)
 	}
 	uid, mode, err := opts.Owner(dir)
 	if err != nil {
-		return fmt.Errorf("service: inspect the post-update log directory %s: %w", dir, err)
+		return fmt.Errorf("cannot inspect the post-update log directory %s: %w", dir, err)
 	}
 	if !mode.IsDir() {
-		return fmt.Errorf("service: the post-update log directory %s is not a directory", dir)
+		return fmt.Errorf("cannot use the post-update log directory %s: it is not a directory", dir)
 	}
 	if want := uint32(opts.EUID); uid != want {
-		return fmt.Errorf("service: the post-update log directory %s is owned by uid %d, want %d", dir, uid, want)
+		return fmt.Errorf("cannot use the post-update log directory %s: it is owned by uid %d, want %d", dir, uid, want)
 	}
 	if mode.Perm()&0o022 != 0 {
-		return fmt.Errorf("service: the post-update log directory %s is writable by group or others (%#o)", dir, mode.Perm())
+		return fmt.Errorf("cannot use the post-update log directory %s: it is writable by group or others (%#o)", dir, mode.Perm())
 	}
 	return nil
 }
@@ -326,11 +326,11 @@ func startDetachedProcess(cmd *exec.Cmd) (int, error) {
 func launchdHelperLogPath(opts Options) (string, error) {
 	switch {
 	case opts.GOOS != "darwin":
-		return "", fmt.Errorf("service: no launchd post-update log on %q", opts.GOOS)
+		return "", fmt.Errorf("cannot find a launchd post-update log on %q", opts.GOOS)
 	case opts.System:
 		return filepath.Join(systemLogDir, LaunchdHelperLogName), nil
 	case opts.Home == "":
-		return "", errors.New("service: the user installation needs a home directory for the post-update log")
+		return "", errors.New("cannot place the post-update log: the user installation needs a home directory")
 	default:
 		return filepath.Join(opts.Home, "Library", "Logs", "peers", LaunchdHelperLogName), nil
 	}
@@ -437,15 +437,15 @@ func executableID(path string) (ExecutableID, error) {
 func plistRunsBinary(opts Options, plistPath string, expected ExecutableID) error {
 	data, err := os.ReadFile(rooted(opts, plistPath))
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", plistPath, err)
+		return fmt.Errorf("cannot read %s: %w", plistPath, err)
 	}
 	program, err := launchdProgramPath(data)
 	if err != nil {
-		return fmt.Errorf("reading %s: %w", plistPath, err)
+		return fmt.Errorf("cannot read %s: %w", plistPath, err)
 	}
 	got, err := executableID(rooted(opts, program))
 	if err != nil {
-		return fmt.Errorf("inspecting the executable %q named by %s: %w", program, plistPath, err)
+		return fmt.Errorf("cannot inspect the executable %q named by %s: %w", program, plistPath, err)
 	}
 	if got != expected {
 		return fmt.Errorf("the service definition starts %s, which is not the binary that started this helper", program)
@@ -736,9 +736,9 @@ func reloadLaunchd(opts Options, domain, plistPath string) error {
 	out, err := bootstrapService(opts, domain, plistPath)
 	if err != nil {
 		if msg := strings.TrimSpace(string(out)); msg != "" {
-			return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+			return fmt.Errorf("cannot run %s: %w: %s", cmdline, err, msg)
 		}
-		return fmt.Errorf("service: %s: %w", cmdline, err)
+		return fmt.Errorf("cannot run %s: %w", cmdline, err)
 	}
 	return nil
 }

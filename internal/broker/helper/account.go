@@ -22,7 +22,7 @@ type Account struct {
 }
 
 // ErrNoAccount reports that the account database has no entry for the uid.
-var ErrNoAccount = errors.New("helper: no such account")
+var ErrNoAccount = errors.New("no such account")
 
 // The account database lookups are variables so tests can inject a failure
 // that must not be mistaken for a missing account.
@@ -38,7 +38,7 @@ func LookupAccount(uid uint32) (Account, error) {
 		if errors.Is(err, accountdb.ErrNotFound) {
 			return Account{}, fmt.Errorf("%w: uid %d", ErrNoAccount, uid)
 		}
-		return Account{}, fmt.Errorf("helper: looking up uid %d: %w", uid, err)
+		return Account{}, fmt.Errorf("cannot look up uid %d: %w", uid, err)
 	}
 
 	groups, err := groupIDsFromDB(u)
@@ -46,7 +46,7 @@ func LookupAccount(uid uint32) (Account, error) {
 		if errors.Is(err, accountdb.ErrNotFound) {
 			return Account{}, fmt.Errorf("%w: uid %d", ErrNoAccount, uid)
 		}
-		return Account{}, fmt.Errorf("helper: account %q: supplementary groups: %w", u.Name, err)
+		return Account{}, fmt.Errorf("cannot read account %q: supplementary groups: %w", u.Name, err)
 	}
 
 	return Account{

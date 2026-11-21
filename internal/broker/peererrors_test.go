@@ -95,7 +95,7 @@ func TestConnectErrorMapping(t *testing.T) {
 			name:     "generic pairing rejection",
 			err:      fmt.Errorf("x: %w", pairing.ErrPairingRejected),
 			wantCode: localpb.ErrorCode_ERROR_CODE_PAIRING_REJECTED,
-			wantMsg:  "x: pairing: rejected",
+			wantMsg:  "x: pairing rejected",
 		},
 		{
 			name:     "protocol error is a rejection",

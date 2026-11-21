@@ -118,6 +118,17 @@ func TestUninstallLinuxSystemKeepsData(t *testing.T) {
 	}
 }
 
+func TestUninstallLinuxWithoutSystemctl(t *testing.T) {
+	opts := baseOptions(t)
+	writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/peers.service")
+	opts.LookPath = func(string) (string, error) { return "", errors.New("not found") }
+
+	_, err := Uninstall(opts)
+	if err == nil || !strings.Contains(err.Error(), "cannot find systemctl (is systemd installed?)") {
+		t.Fatalf("Uninstall error = %v, want the parenthesized systemctl hint", err)
+	}
+}
+
 func TestUninstallRepeats(t *testing.T) {
 	opts := baseOptions(t)
 	writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/peers.service")

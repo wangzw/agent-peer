@@ -46,7 +46,7 @@ func adminGroupName(opts Options) string {
 func ensureAdminGroup(opts Options, res *Result) (int, error) {
 	name := adminGroupName(opts)
 	if !ValidAdminGroupName(name) {
-		return 0, fmt.Errorf("service: invalid administration group name %q", name)
+		return 0, fmt.Errorf("cannot use administration group %q: the name is invalid", name)
 	}
 	gid, exists, err := lookupGroup(opts, name)
 	if err != nil {
@@ -63,7 +63,7 @@ func ensureAdminGroup(opts Options, res *Result) (int, error) {
 		return 0, err
 	}
 	if !exists {
-		return 0, fmt.Errorf("service: group %q is still missing after creating it", name)
+		return 0, fmt.Errorf("cannot create group %q: it is still missing afterwards", name)
 	}
 	res.AdminGroupCreated = true
 	return gid, nil
@@ -73,7 +73,7 @@ func ensureAdminGroup(opts Options, res *Result) (int, error) {
 // record sits in the data directory, which uninstall reads before deleting it.
 func recordAdminGroup(opts Options, name string) error {
 	if err := os.MkdirAll(rooted(opts, systemDataDir), 0o700); err != nil {
-		return fmt.Errorf("service: create directory %s: %w", systemDataDir, err)
+		return fmt.Errorf("cannot create directory %s: %w", systemDataDir, err)
 	}
 	return writeFileAtomic(rooted(opts, adminGroupRecordPath), name+"\n", 0o600)
 }
@@ -91,7 +91,7 @@ func lookupGroup(opts Options, name string) (int, bool, error) {
 	case "darwin":
 		return lookupGroupDarwin(opts, name)
 	default:
-		return 0, false, fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return 0, false, fmt.Errorf("cannot look up the group on platform %q", opts.GOOS)
 	}
 }
 
@@ -105,17 +105,17 @@ func lookupGroupLinux(opts Options, name string) (int, bool, error) {
 		}
 		msg := strings.TrimSpace(string(out))
 		if msg != "" {
-			return 0, false, fmt.Errorf("service: look up group %q: %w: %s", name, err, msg)
+			return 0, false, fmt.Errorf("cannot look up group %q: %w: %s", name, err, msg)
 		}
-		return 0, false, fmt.Errorf("service: look up group %q: %w", name, err)
+		return 0, false, fmt.Errorf("cannot look up group %q: %w", name, err)
 	}
 	fields := strings.Split(strings.TrimSpace(string(out)), ":")
 	if len(fields) < 3 {
-		return 0, false, fmt.Errorf("service: getent group %s: unexpected output %q", name, strings.TrimSpace(string(out)))
+		return 0, false, fmt.Errorf("cannot read group %s: unexpected getent output %q", name, strings.TrimSpace(string(out)))
 	}
 	gid, err := strconv.Atoi(fields[2])
 	if err != nil {
-		return 0, false, fmt.Errorf("service: getent group %s: group id %q is not a number", name, fields[2])
+		return 0, false, fmt.Errorf("cannot read group %s: group id %q is not a number", name, fields[2])
 	}
 	return gid, true, nil
 }
@@ -134,11 +134,11 @@ func lookupGroupDarwin(opts Options, name string) (int, bool, error) {
 		}
 		gid, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil {
-			return 0, false, fmt.Errorf("service: dscl group %s: group id %q is not a number", name, strings.TrimSpace(value))
+			return 0, false, fmt.Errorf("cannot read group %s: group id %q is not a number", name, strings.TrimSpace(value))
 		}
 		return gid, true, nil
 	}
-	return 0, false, fmt.Errorf("service: dscl group %s: no PrimaryGroupID in output %q", name, strings.TrimSpace(string(out)))
+	return 0, false, fmt.Errorf("cannot read group %s: no PrimaryGroupID in output %q", name, strings.TrimSpace(string(out)))
 }
 
 // createAdminGroup creates a system group for administration.
@@ -150,16 +150,16 @@ func createAdminGroup(opts Options, res *Result, name string) error {
 	case "darwin":
 		argv = []string{"dseditgroup", "-o", "create", "-r", "peers administrators", name}
 	default:
-		return fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return fmt.Errorf("cannot create the group on platform %q", opts.GOOS)
 	}
 	cmdline := strings.Join(argv, " ")
 	res.Commands = append(res.Commands, cmdline)
 	out, err := opts.Run(argv[0], argv[1:]...)
 	if err != nil {
 		if msg := strings.TrimSpace(string(out)); msg != "" {
-			return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+			return fmt.Errorf("cannot run %s: %w: %s", cmdline, err, msg)
 		}
-		return fmt.Errorf("service: %s: %w", cmdline, err)
+		return fmt.Errorf("cannot run %s: %w", cmdline, err)
 	}
 	return nil
 }

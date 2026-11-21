@@ -68,7 +68,7 @@ func (s configSettings) DataDir() (string, error) {
 	}
 	dir := paths().DataDir
 	if dir == "" {
-		return "", errors.New("directory: config has no data directory")
+		return "", errors.New("the configuration has no data directory")
 	}
 	return dir, nil
 }

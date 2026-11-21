@@ -33,7 +33,7 @@ func Lookup(configDir, socketPath string) (Session, error) {
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
 			return Session{}, ErrNoRecord
 		}
-		return Session{}, fmt.Errorf("inbox: reading session registry %q: %w", sessionsDir(dir), err)
+		return Session{}, fmt.Errorf("cannot read the session registry %q: %w", sessionsDir(dir), err)
 	}
 
 	var (
@@ -162,7 +162,7 @@ func readRecordData(path string) ([]byte, error) {
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
 			return nil, ErrNoRecord
 		}
-		return nil, fmt.Errorf("inbox: inspecting session record %q: %w", path, err)
+		return nil, fmt.Errorf("cannot inspect session record %q: %w", path, err)
 	}
 	if !info.Mode().IsRegular() || info.Size() > maxRecordSize {
 		return nil, ErrNoRecord
@@ -176,21 +176,21 @@ func readRecordData(path string) ([]byte, error) {
 		case errors.Is(err, syscall.ELOOP):
 			return nil, ErrNoRecord
 		default:
-			return nil, fmt.Errorf("inbox: opening session record %q: %w", path, err)
+			return nil, fmt.Errorf("cannot open session record %q: %w", path, err)
 		}
 	}
 	defer func() { _ = file.Close() }()
 
 	info, err = file.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("inbox: inspecting session record %q: %w", path, err)
+		return nil, fmt.Errorf("cannot inspect session record %q: %w", path, err)
 	}
 	if !info.Mode().IsRegular() || info.Size() > maxRecordSize {
 		return nil, ErrNoRecord
 	}
 	data, err := io.ReadAll(io.LimitReader(file, maxRecordSize+1))
 	if err != nil {
-		return nil, fmt.Errorf("inbox: reading session record %q: %w", path, err)
+		return nil, fmt.Errorf("cannot read session record %q: %w", path, err)
 	}
 	if len(data) > maxRecordSize {
 		return nil, ErrNoRecord

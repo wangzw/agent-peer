@@ -62,17 +62,17 @@ type LinkState struct {
 var (
 	// ErrNotEstablished reports that no link to the peer is established. The
 	// broker maps it to peer_unreachable.
-	ErrNotEstablished = errors.New("link: not established")
+	ErrNotEstablished = errors.New("no link to the peer is established")
 	// ErrQueueFull reports that the bounded send queue is full; the link is
 	// closed as a result.
 	ErrQueueFull = fmt.Errorf("%w: send queue full", ErrNotEstablished)
 	// ErrLinkDown reports that the link went down after the request was sent
 	// and before the reply arrived.
-	ErrLinkDown = errors.New("link: link went down before the reply arrived")
+	ErrLinkDown = errors.New("the link went down before the reply arrived")
 	// ErrClosed reports use of a Link that has been closed.
-	ErrClosed = errors.New("link: closed")
+	ErrClosed = errors.New("the link is closed")
 	// ErrInvalidKind reports a frame kind reserved for link and pairing.
-	ErrInvalidKind = errors.New("link: frame kind is reserved for link and pairing")
+	ErrInvalidKind = errors.New("frame kind is reserved for link and pairing")
 )
 
 // UnsupportedError reports that the peer does not support the request kind.
@@ -81,5 +81,5 @@ type UnsupportedError struct {
 }
 
 func (e *UnsupportedError) Error() string {
-	return fmt.Sprintf("link: peer does not support request kind %d", e.Kind)
+	return fmt.Sprintf("the peer does not support request kind %d", e.Kind)
 }

@@ -136,13 +136,13 @@ func (s *server) readLoop(r io.Reader) error {
 func (s *server) handle(req *helperpb.HelperRequest) error {
 	if !hasOperation(req) {
 		s.respondError(req.GetId(), helperpb.HelperErrorCode_HELPER_ERROR_CODE_BAD_REQUEST,
-			errors.New("helper: request has no operation"))
+			errors.New("request has no operation"))
 		return nil
 	}
 	id := req.GetId()
 	if id == 0 {
 		s.respondError(0, helperpb.HelperErrorCode_HELPER_ERROR_CODE_BAD_REQUEST,
-			errors.New("helper: request id is zero"))
+			errors.New("request id is zero"))
 		return nil
 	}
 
@@ -175,7 +175,7 @@ func (s *server) handle(req *helperpb.HelperRequest) error {
 		d := op.Deliver
 		if d.GetTimeout() == nil || d.GetTimeout().AsDuration() <= 0 {
 			s.respondError(id, helperpb.HelperErrorCode_HELPER_ERROR_CODE_BAD_REQUEST,
-				errors.New("helper: deliver timeout is missing or not positive"))
+				errors.New("deliver timeout is missing or not positive"))
 			return nil
 		}
 		switch s.beginRequest(id, true) {
@@ -270,7 +270,7 @@ func (s *server) endRequest(id uint64) {
 
 func (s *server) respondDuplicate(id uint64) {
 	s.respondError(id, helperpb.HelperErrorCode_HELPER_ERROR_CODE_BAD_REQUEST,
-		errors.New("helper: duplicate request id"))
+		errors.New("duplicate request id"))
 }
 
 func (s *server) serveLookup(id uint64, req *helperpb.LookupRequest) {
@@ -383,7 +383,7 @@ func (s *server) serveUnwatch(id uint64, req *helperpb.UnwatchRequest) {
 	if !ok {
 		s.mu.Unlock()
 		s.respondError(id, helperpb.HelperErrorCode_HELPER_ERROR_CODE_BAD_REQUEST,
-			errors.New("helper: unknown watch id"))
+			errors.New("unknown watch id"))
 		return
 	}
 	delete(s.watches, req.GetWatchId())

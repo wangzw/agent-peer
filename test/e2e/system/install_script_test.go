@@ -428,8 +428,13 @@ func TestREQBrokerConfig047_InstallScriptUpgradePrompt(t *testing.T) {
 		if strings.Contains(res.Output, installLevelPrompt) {
 			t.Errorf("the terminal showed the install question instead of the upgrade question:\n%s", res.Output)
 		}
-		if !strings.Contains(res.Output, "Upgraded from ") {
-			t.Errorf("the upgrade did not report the replaced version:\n%s", res.Output)
+		// The image's binary reports the version "e2e", which has no
+		// MAJOR.MINOR.PATCH form. The binary installed first is the same build,
+		// so the two version strings are identical and name the same version:
+		// the script reports a reinstall of it rather than a replacement.
+		reinstalled := "Reinstalled " + installExpectedVersion + "."
+		if !strings.Contains(res.Output, reinstalled) {
+			t.Errorf("the upgrade run did not report the reinstalled version %q:\n%s", reinstalled, res.Output)
 		}
 		assertSystemInstall(t)
 		if got := readFile(t, configPath); got != configBefore {
@@ -447,8 +452,11 @@ func TestREQBrokerConfig047_InstallScriptUpgradePrompt(t *testing.T) {
 		if !strings.Contains(res.Output, installUpgradePrompt) {
 			t.Errorf("the terminal did not show %q:\n%s", installUpgradePrompt, res.Output)
 		}
-		if !strings.Contains(res.Output, "--user") {
-			t.Errorf("declining the upgrade did not point at --user:\n%s", res.Output)
+		if !strings.Contains(res.Output, "install.sh: the system installation was left unchanged.") {
+			t.Errorf("declining the upgrade did not say the system installation was unchanged:\n%s", res.Output)
+		}
+		if strings.Contains(res.Output, "--user") {
+			t.Errorf("declining the upgrade suggested --user, which would bind the same default port:\n%s", res.Output)
 		}
 		if got := readFile(t, configPath); got != configBefore {
 			t.Errorf("declining the upgrade changed the configuration:\n got: %q\nwant: %q", got, configBefore)

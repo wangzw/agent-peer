@@ -11,7 +11,7 @@ import (
 
 // errAgentGone reports that the agent named by an RPC left the table, either
 // before or during the reread the RPC asked for.
-var errAgentGone = errors.New("broker: agent is no longer registered")
+var errAgentGone = errors.New("agent is no longer registered")
 
 // prevNameRetention is how long a renamed agent keeps advertising its previous
 // name.

@@ -22,18 +22,18 @@ const authType = "peers-tls"
 // SubjectPublicKeyInfo, never from its chain.
 func identityFromState(st tls.ConnectionState, remote string) (peerIdentity, error) {
 	if st.Version != tls.VersionTLS13 {
-		return peerIdentity{}, fmt.Errorf("link: peer negotiated TLS version %#x, want TLS 1.3", st.Version)
+		return peerIdentity{}, fmt.Errorf("the peer negotiated TLS version %#x, want TLS 1.3", st.Version)
 	}
 	if len(st.PeerCertificates) == 0 {
-		return peerIdentity{}, errors.New("link: peer presented no certificate")
+		return peerIdentity{}, errors.New("the peer presented no certificate")
 	}
 	cert := st.PeerCertificates[0]
 	pub, ok := cert.PublicKey.(ed25519.PublicKey)
 	if !ok {
-		return peerIdentity{}, fmt.Errorf("link: peer certificate key type %T is not Ed25519", cert.PublicKey)
+		return peerIdentity{}, fmt.Errorf("the peer certificate key type %T is not Ed25519", cert.PublicKey)
 	}
 	if len(pub) != ed25519.PublicKeySize {
-		return peerIdentity{}, fmt.Errorf("link: peer Ed25519 key has %d bytes, want %d", len(pub), ed25519.PublicKeySize)
+		return peerIdentity{}, fmt.Errorf("the peer Ed25519 key has %d bytes, want %d", len(pub), ed25519.PublicKeySize)
 	}
 	return peerIdentity{
 		fp:     pairing.FingerprintOf(cert.RawSubjectPublicKeyInfo),
@@ -75,7 +75,7 @@ type serverCreds struct {
 func (c serverCreds) ServerHandshake(raw net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	cfg := c.cfg()
 	if cfg == nil {
-		return nil, nil, errors.New("link: no TLS configuration")
+		return nil, nil, errors.New("no TLS configuration is available")
 	}
 	tc := tls.Server(raw, cfg)
 	if err := tc.HandshakeContext(context.Background()); err != nil {
@@ -96,7 +96,7 @@ func (c serverCreds) ServerHandshake(raw net.Conn) (net.Conn, credentials.AuthIn
 }
 
 func (serverCreds) ClientHandshake(context.Context, string, net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return nil, nil, errors.New("link: server credentials cannot dial")
+	return nil, nil, errors.New("server credentials cannot dial")
 }
 
 func (serverCreds) Info() credentials.ProtocolInfo {
@@ -122,7 +122,7 @@ func (c clientCreds) ClientHandshake(_ context.Context, _ string, raw net.Conn) 
 }
 
 func (clientCreds) ServerHandshake(net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return nil, nil, errors.New("link: client credentials cannot accept")
+	return nil, nil, errors.New("client credentials cannot accept")
 }
 
 func (clientCreds) Info() credentials.ProtocolInfo {

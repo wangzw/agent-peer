@@ -43,8 +43,8 @@ type Options struct {
 var (
 	// ErrInvalidTopic: the topic name is empty, longer than 256 bytes, not
 	// valid UTF-8, or contains a control character. broker maps it to invalid_argument.
-	ErrInvalidTopic = errors.New("topic: invalid topic name")
+	ErrInvalidTopic = errors.New("invalid topic name")
 	// ErrUnknownAgent: Join for an agent that AgentChanged never introduced,
 	// or that LeaveAll removed. A broker bug; broker maps it to internal.
-	ErrUnknownAgent = errors.New("topic: unknown agent")
+	ErrUnknownAgent = errors.New("unknown agent")
 )

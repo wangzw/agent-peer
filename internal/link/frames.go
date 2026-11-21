@@ -13,7 +13,7 @@ import (
 // errMalformed reports a frame that does not match the link protocol. Every
 // decode error wraps it so callers can tell a protocol violation from a
 // transport failure.
-var errMalformed = errors.New("link: malformed frame")
+var errMalformed = errors.New("malformed frame")
 
 // nonceSize is the length of the Hello random value. Both sides mix it into
 // the pairing salt, so a difference in length would produce different salts.

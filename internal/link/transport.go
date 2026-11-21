@@ -58,7 +58,7 @@ func (l *Link) dialTLS(ctx context.Context, address string) (*tls.Conn, peerIden
 	cfg := l.peers.TLSConfig()
 	if cfg == nil {
 		_ = raw.Close()
-		return nil, peerIdentity{}, errors.New("link: no TLS configuration")
+		return nil, peerIdentity{}, errors.New("no TLS configuration is available")
 	}
 	tc := tls.Client(raw, cfg)
 	if err := tc.HandshakeContext(dialCtx); err != nil {
@@ -135,7 +135,7 @@ func (l *Link) newGRPCClientConn(tc *tls.Conn, id peerIdentity, address string) 
 	var used atomic.Bool
 	dial := func(context.Context, string) (net.Conn, error) {
 		if !used.CompareAndSwap(false, true) {
-			return nil, errors.New("link: transport already used")
+			return nil, errors.New("the transport was already used")
 		}
 		return tc, nil
 	}

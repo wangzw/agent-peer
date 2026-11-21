@@ -85,7 +85,7 @@ func (c *core) setLocked(actor Actor, key string, v Value) (Value, error) {
 	if err != nil {
 		// Reading the file failed for a reason outside the caller's value, so
 		// this is an internal failure rather than an invalid_argument.
-		return Value{}, fmt.Errorf("config: cannot read %s: %w", c.paths.ConfigFile, err)
+		return Value{}, fmt.Errorf("cannot read %s: %w", c.paths.ConfigFile, err)
 	}
 	if v.Kind != valueKindForSpec(spec) {
 		return Value{}, wrapInvalid(key, "type does not match the key")

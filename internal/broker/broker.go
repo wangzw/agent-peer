@@ -68,10 +68,10 @@ type Broker struct {
 // get version_mismatch before the access interceptor runs.
 func New(deps Deps) (*Broker, error) {
 	if deps.Topics == nil {
-		return nil, fmt.Errorf("broker: Deps.Topics is required")
+		return nil, fmt.Errorf("cannot create the Broker: Deps.Topics is required")
 	}
 	if deps.Config == nil {
-		return nil, fmt.Errorf("broker: Deps.Config is required")
+		return nil, fmt.Errorf("cannot create the Broker: Deps.Config is required")
 	}
 	if deps.Sessions == nil {
 		deps.Sessions = UserRouter()
@@ -154,7 +154,7 @@ func checkServerOptions(base credentials.TransportCredentials, opts []grpc.Serve
 		return nil
 	}
 	if serverOptionsReplaceCreds(base, opts) {
-		return fmt.Errorf("broker: Deps.ServerOptions must not set transport credentials; New installs the peer credentials")
+		return fmt.Errorf("cannot create the Broker: Deps.ServerOptions must not set transport credentials; New installs the peer credentials")
 	}
 	return nil
 }

@@ -137,7 +137,7 @@ func makeWatcher(configDir string, onChange func(int)) (*watcher, *callbackEntry
 	}
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, nil, fmt.Errorf("inbox: creating file watcher: %w", err)
+		return nil, nil, fmt.Errorf("cannot create the file watcher: %w", err)
 	}
 	w := &watcher{
 		configDir:    dir,
@@ -194,7 +194,7 @@ func (w *watcher) installWatch() (climbed bool, err error) {
 	w.ensureWatchTarget()
 	switch w.watchPath {
 	case "":
-		return false, fmt.Errorf("inbox: watching %q: no directory to watch", w.configDir)
+		return false, fmt.Errorf("cannot watch %q: there is no directory to watch", w.configDir)
 	case w.sessionsPath, w.configDir:
 		return false, nil
 	default:

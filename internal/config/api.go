@@ -144,23 +144,23 @@ type PathSet struct {
 }
 
 var (
-	ErrNotLoaded          = errors.New("config: not loaded")
-	ErrAlreadyLoaded      = errors.New("config: already loaded")
-	ErrUnknownKey         = errors.New("config: unknown key")
-	ErrSecretKey          = errors.New("config: secret key is file-only")
-	ErrListenOverridden   = errors.New("config: listen address is fixed by the command line")
-	ErrInvalidValue       = errors.New("config: invalid value")
-	ErrInvalidCombination = errors.New("config: invalid listen/advertise combination")
-	ErrTooManyAddresses   = errors.New("config: too many advertised addresses")
-	ErrFileWrite          = errors.New("config: cannot write config file")
+	ErrNotLoaded          = errors.New("the configuration is not loaded")
+	ErrAlreadyLoaded      = errors.New("the configuration is already loaded")
+	ErrUnknownKey         = errors.New("unknown configuration key")
+	ErrSecretKey          = errors.New("a secret key can only be set in the file")
+	ErrListenOverridden   = errors.New("the listen address is fixed by the command line")
+	ErrInvalidValue       = errors.New("invalid value")
+	ErrInvalidCombination = errors.New("invalid listen/advertise combination")
+	ErrTooManyAddresses   = errors.New("too many advertised addresses")
+	ErrFileWrite          = errors.New("cannot write the configuration file")
 	// ErrLowPortDenied reports that a system Broker refused a listen port
 	// below 1024 because the change was not made by root or the configuration
 	// file can be written by another account.
-	ErrLowPortDenied = errors.New("config: a listen port below 1024 requires root and a configuration file that only root can write")
+	ErrLowPortDenied = errors.New("a listen port below 1024 requires root and a configuration file that only root can write")
 	// ErrDataUnavailable reports that the data directory or the audit log
 	// cannot be used. A Broker started with --allow-degraded runs diagnostics
 	// only for this class instead of exiting.
-	ErrDataUnavailable = errors.New("config: data directory or audit log unavailable")
+	ErrDataUnavailable = errors.New("the data directory or audit log is unavailable")
 )
 
 // DataUnavailableError classifies a failed Load whose cause is the data
@@ -404,7 +404,7 @@ func ListenFromFile(path string) (string, error) {
 	} else {
 		spec, ok := lookupKey("broker.listen")
 		if !ok {
-			return "", errors.New("config: broker.listen is not a known key")
+			return "", errors.New("broker.listen is not a known key")
 		}
 		value = defaultValue(spec, defaultContext{}).String
 	}
@@ -449,7 +449,7 @@ func Audit(e Event) {
 // event that would merge in a running Broker is written as one record.
 func AppendAudit(path string, e Event) error {
 	if path == "" {
-		return errors.New("config: audit log path is empty")
+		return errors.New("the audit log path is empty")
 	}
 	a, err := openAudit(path, time.Now, slog.Default())
 	if err != nil {

@@ -1093,12 +1093,49 @@ func TestInstallScriptReportsSudoFailure(t *testing.T) {
 	}
 	mustContain(t, "stderr", stderr, "the system installation did not complete")
 	mustContain(t, "stderr", stderr, "sudo exited with status 1")
-	// The sudo run has already printed its own error; the outer message must
-	// not tell the caller to retry the same system command.
-	mustContain(t, "stderr", stderr, "See the error above")
-	mustContain(t, "stderr", stderr, "--user")
+	// The command under sudo failed while sudo itself works. The sudo run has
+	// already printed its own error; the outer message must only tell the
+	// caller to fix it and rerun, not suggest a level change that would hit the
+	// same failure.
+	mustContain(t, "stderr", stderr, "Fix the error above and run the script again.")
+	mustNotContain(t, "stderr", stderr, "--user")
 	mustNotContain(t, "stderr", stderr, "Rerun the installation command with sudo")
 	mustNotContain(t, "stderr", stderr, "rerun with sudo")
+	if calls := readLines(t, f.sudoLog); len(calls) != 2 || calls[1] != "sudo -n -v" {
+		t.Errorf("sudo calls = %q, want the install and a sudo -n -v check", calls)
+	}
+	if got := readLines(t, f.installLog); len(got) != 0 {
+		t.Errorf("the binary was installed although sudo failed: %q", got)
+	}
+}
+
+// TestInstallScriptReportsSudoVerifyFailure checks that a sudo that cannot run
+// at all, through an authentication failure or an account absent from
+// sudoers, is distinguished from a command that failed under sudo: only the
+// former suggests a user install, because rerunning the same command cannot
+// fix the sudo problem.
+func TestInstallScriptReportsSudoVerifyFailure(t *testing.T) {
+	f := newFixture(t)
+	prefix := f.systemPrefix(t)
+	env := map[string]string{
+		"FAKE_ID_UID":           "1000",
+		"FAKE_STAT_OWNER":       "0",
+		"FAKE_STAT_MODE":        "755",
+		"FAKE_INSTALL_COPY":     "1",
+		"FAKE_SUDO_EXIT":        "1",
+		"FAKE_SUDO_VERIFY_EXIT": "1",
+	}
+	_, stderr, code := f.run(env, "--system", "--prefix", prefix, "--no-service", "--no-mcp")
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1\nstderr:\n%s", code, stderr)
+	}
+	mustContain(t, "stderr", stderr, "the system installation did not complete")
+	mustContain(t, "stderr", stderr, "sudo exited with status 1")
+	mustContain(t, "stderr", stderr, "sudo is not usable; pass --user for a user install.")
+	mustNotContain(t, "stderr", stderr, "Fix the error above and run the script again.")
+	if calls := readLines(t, f.sudoLog); len(calls) != 2 || calls[1] != "sudo -n -v" {
+		t.Errorf("sudo calls = %q, want the install and a sudo -n -v check", calls)
+	}
 	if got := readLines(t, f.installLog); len(got) != 0 {
 		t.Errorf("the binary was installed although sudo failed: %q", got)
 	}
@@ -1289,7 +1326,8 @@ func TestInstallScriptLevelPromptDeclinesUpgrade(t *testing.T) {
 		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s\nterminal:\n%s", code, stdout, stderr, tty)
 	}
 	mustContain(t, "terminal", tty, levelUpgradePrompt)
-	mustContain(t, "stdout", stdout, "--user")
+	mustContain(t, "stdout", stdout, "install.sh: the system installation was left unchanged.")
+	mustNotContain(t, "stdout", stdout, "--user")
 	for what, path := range map[string]string{"sudo log": f.sudoLog, "install log": f.installLog, "agent log": f.agentLog, "claude log": f.claudeLog} {
 		if calls := readLines(t, path); len(calls) != 0 {
 			t.Errorf("%s = %q, want no changes when the upgrade is declined", what, calls)
@@ -2141,6 +2179,9 @@ exit "${FAKE_XATTR_EXIT:-0}"
 
 const fakeSudo = `#!/bin/sh
 printf 'sudo %s\n' "$*" >> "$FAKE_SUDO_LOG"
+if [ "$1" = "-n" ] && [ "$2" = "-v" ]; then
+	exit "${FAKE_SUDO_VERIFY_EXIT:-0}"
+fi
 if [ "${FAKE_SUDO_EXIT:-0}" != "0" ]; then
 	exit "$FAKE_SUDO_EXIT"
 fi

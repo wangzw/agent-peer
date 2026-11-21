@@ -245,7 +245,7 @@ func (c *conn) sendDirect(ctx context.Context, f *linkpb.Frame) error {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
 	if c.writerOn.Load() {
-		return errors.New("link: sendDirect after writer start")
+		return errors.New("sendDirect called after the writer started")
 	}
 	if err := checkFrameSize(f); err != nil {
 		return err

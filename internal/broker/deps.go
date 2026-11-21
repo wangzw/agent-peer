@@ -15,11 +15,11 @@ import (
 
 // ErrInvalidTopicName is returned by TopicTable.Join and Leave for a name that
 // breaks the topic name rules; the broker maps it to invalid_argument.
-var ErrInvalidTopicName = errors.New("broker: invalid topic name")
+var ErrInvalidTopicName = errors.New("invalid topic name")
 
 // ErrUnknownAgent is returned by TopicTable.Join for an agent that AgentChanged
 // never introduced or that LeaveAll removed; the broker maps it to internal.
-var ErrUnknownAgent = errors.New("broker: agent not introduced to the topic table")
+var ErrUnknownAgent = errors.New("agent not introduced to the topic table")
 
 // Member is one agent's current roster entry in the topic table.
 type Member struct {

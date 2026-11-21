@@ -21,10 +21,10 @@ func (c *core) resolvePaths() (PathSet, error) {
 	case ModeUser:
 		home, err := c.homeDir()
 		if err != nil {
-			return PathSet{}, fmt.Errorf("config: cannot determine the home directory: %w", err)
+			return PathSet{}, fmt.Errorf("cannot determine the home directory: %w", err)
 		}
 		if home == "" {
-			return PathSet{}, errors.New("config: the account has no home directory")
+			return PathSet{}, errors.New("the account has no home directory")
 		}
 		dataDir := filepath.Join(home, ".peers")
 		return PathSet{
@@ -44,7 +44,7 @@ func (c *core) resolvePaths() (PathSet, error) {
 			AuditLog:   "/var/log/peers/audit.log",
 		}, nil
 	default:
-		return PathSet{}, fmt.Errorf("config: unknown deployment mode %d", c.mode)
+		return PathSet{}, fmt.Errorf("unknown deployment mode %d", c.mode)
 	}
 }
 
@@ -94,7 +94,7 @@ const (
 
 func ensureDir(path string, mode os.FileMode, euid int, rule permRule) error {
 	if err := os.MkdirAll(path, mode); err != nil {
-		return fmt.Errorf("config: cannot create %s: %w", path, err)
+		return fmt.Errorf("cannot create %s: %w", path, err)
 	}
 	if err := validateDir(path, euid, rule); err != nil {
 		return err
@@ -105,29 +105,29 @@ func ensureDir(path string, mode os.FileMode, euid int, rule permRule) error {
 func validateDir(path string, euid int, rule permRule) error {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return fmt.Errorf("config: cannot inspect %s: %w", path, err)
+		return fmt.Errorf("cannot inspect %s: %w", path, err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("config: %s is a symbolic link", path)
+		return fmt.Errorf("cannot use %s: it is a symbolic link", path)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("config: %s is not a directory", path)
+		return fmt.Errorf("cannot use %s: it is not a directory", path)
 	}
 	f, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return fmt.Errorf("config: cannot open %s: %w", path, err)
+		return fmt.Errorf("cannot open %s: %w", path, err)
 	}
 	file := os.NewFile(uintptr(f), path)
 	st, err := file.Stat()
 	_ = file.Close()
 	if err != nil {
-		return fmt.Errorf("config: cannot inspect %s: %w", path, err)
+		return fmt.Errorf("cannot inspect %s: %w", path, err)
 	}
 	if sys, ok := st.Sys().(*syscall.Stat_t); ok && int(sys.Uid) != euid {
-		return fmt.Errorf("config: %s is owned by uid %d, not %d", path, int(sys.Uid), euid)
+		return fmt.Errorf("cannot use %s: it is owned by uid %d, not %d", path, int(sys.Uid), euid)
 	}
 	if err := checkDirPermission(st.Mode().Perm(), euid, rule); err != nil {
-		return fmt.Errorf("config: %s: %w", path, err)
+		return fmt.Errorf("cannot use %s: %w", path, err)
 	}
 	return nil
 }
@@ -168,7 +168,7 @@ func (c *core) prepareDataDirs(paths PathSet) error {
 		}
 	case ModeSystem:
 		if euid != 0 {
-			return errors.New("config: a system Broker must run as root")
+			return errors.New("a system Broker must run as root")
 		}
 		if err := ensureDir(filepath.Dir(paths.ConfigFile), 0o755, euid, permShared); err != nil {
 			return err

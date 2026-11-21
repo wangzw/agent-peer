@@ -40,11 +40,11 @@ func defaultRouteAddressesFrom(run commandRunner) ([]netip.Addr, error) {
 	if ok {
 		data, err := run("/sbin/ifconfig", iface4)
 		if err != nil {
-			return nil, fmt.Errorf("config: ifconfig %s: %w: %s", iface4, err, darwinOutputSnippet(data))
+			return nil, fmt.Errorf("cannot run ifconfig %s: %w: %s", iface4, err, darwinOutputSnippet(data))
 		}
 		addrs, err := parseDarwinIfconfig(data, false)
 		if err != nil {
-			return nil, fmt.Errorf("config: ifconfig %s: %w: %s", iface4, err, darwinOutputSnippet(data))
+			return nil, fmt.Errorf("cannot run ifconfig %s: %w: %s", iface4, err, darwinOutputSnippet(data))
 		}
 		out = append(out, addrs...)
 	}
@@ -56,11 +56,11 @@ func defaultRouteAddressesFrom(run commandRunner) ([]netip.Addr, error) {
 	if ok {
 		data, err := run("/sbin/ifconfig", iface6)
 		if err != nil {
-			return nil, fmt.Errorf("config: ifconfig %s: %w: %s", iface6, err, darwinOutputSnippet(data))
+			return nil, fmt.Errorf("cannot run ifconfig %s: %w: %s", iface6, err, darwinOutputSnippet(data))
 		}
 		addrs, err := parseDarwinIfconfig(data, true)
 		if err != nil {
-			return nil, fmt.Errorf("config: ifconfig %s: %w: %s", iface6, err, darwinOutputSnippet(data))
+			return nil, fmt.Errorf("cannot run ifconfig %s: %w: %s", iface6, err, darwinOutputSnippet(data))
 		}
 		out = append(out, addrs...)
 	}
@@ -95,7 +95,7 @@ func darwinDefaultInterface(run commandRunner, inet6 bool) (iface string, ok boo
 		return "", false, nil
 	}
 	if err != nil {
-		return "", false, fmt.Errorf("config: route %s: %w: %s", strings.Join(args, " "), err, darwinOutputSnippet(out))
+		return "", false, fmt.Errorf("cannot run route %s: %w: %s", strings.Join(args, " "), err, darwinOutputSnippet(out))
 	}
 	return parseDarwinRouteInterface(out)
 }
@@ -144,7 +144,7 @@ func parseDarwinRouteInterface(out []byte) (string, bool, error) {
 		}
 		value = strings.TrimSpace(value)
 		if value == "" {
-			return "", false, fmt.Errorf("config: route output has an empty interface: %s", darwinOutputSnippet(out))
+			return "", false, fmt.Errorf("cannot parse the route output: the interface is empty: %s", darwinOutputSnippet(out))
 		}
 		if !sawInterface {
 			iface = value
@@ -152,7 +152,7 @@ func parseDarwinRouteInterface(out []byte) (string, bool, error) {
 		}
 	}
 	if !sawRoute {
-		return "", false, fmt.Errorf("config: route output does not describe a route: %s", darwinOutputSnippet(out))
+		return "", false, fmt.Errorf("cannot parse the route output: it does not describe a route: %s", darwinOutputSnippet(out))
 	}
 	return iface, sawInterface, nil
 }

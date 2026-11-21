@@ -367,7 +367,7 @@ elif true 2>/dev/null </dev/tty; then
 	else
 		system=0
 		if [ "$_existing_system" -eq 1 ]; then
-			printf 'install.sh: the system installation was left unchanged; rerun with --user to install for this account instead.\n'
+			printf 'install.sh: the system installation was left unchanged.\n'
 			exit 0
 		fi
 	fi
@@ -433,7 +433,14 @@ if [ "$system" -eq 1 ] && [ "$_current_uid" -ne 0 ]; then
 		0|3) exit "$_sudo_status" ;;
 	esac
 	printf 'install.sh: the system installation did not complete: sudo exited with status %d.\n' "$_sudo_status" >&2
-	printf 'See the error above; rerun with --user for a user install.\n' >&2
+	# A sudo that cannot run at all cannot be fixed by rerunning the same
+	# command; a user install does not need sudo. -n keeps the check from
+	# asking for a password a second time on a terminal that is still open.
+	if sudo -n -v >/dev/null 2>&1; then
+		printf 'Fix the error above and run the script again.\n' >&2
+	else
+		printf 'sudo is not usable; pass --user for a user install.\n' >&2
+	fi
 	exit "$_sudo_status"
 fi
 

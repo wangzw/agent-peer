@@ -1,6 +1,9 @@
 package service
 
 import (
+	"bytes"
+	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +15,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -25,6 +29,13 @@ const (
 	systemdUnitDir   = "/etc/systemd/system"
 	launchDaemonDir  = "/Library/LaunchDaemons"
 	systemLogDir     = "/var/log/peers"
+
+	// lsofPath is where macOS keeps lsof. The occupant lookup uses the
+	// absolute path so it never depends on the caller's PATH.
+	lsofPath = "/usr/sbin/lsof"
+	// occupantCommandTimeout bounds one lsof run. The lookup is best effort and
+	// must not delay a failed installation.
+	occupantCommandTimeout = 2 * time.Second
 
 	// readyBound bounds the wait for the local socket to answer after the
 	// service starts. It covers the Broker's own startup and launchd's default
@@ -93,9 +104,11 @@ type Options struct {
 	XDGConfigHome    string                                                                  // XDG_CONFIG_HOME
 	TempDir          string                                                                  // os.TempDir()
 	Root             string                                                                  // filesystem prefix for tests; empty in production
+	ProcRoot         string                                                                  // Linux: /proc tree used to find a port's occupant; empty uses /proc
 	AdminGroup       string                                                                  // group that administers a system Broker; empty uses DefaultAdminGroup
 	LookPath         func(file string) (string, error)                                       // exec.LookPath
 	Run              func(name string, args ...string) ([]byte, error)                       // run a command, returning combined output
+	RunOutput        func(name string, args ...string) ([]byte, error)                       // run a command, returning only its standard output; nil uses Run
 	GroupGID         func(name string) (gid int, exists bool, err error)                     // group id lookup; nil queries the platform through Run
 	Owner            func(path string) (uid uint32, mode fs.FileMode, err error)             // owner and permission bits, not following symlinks
 	Chown            func(path string, uid, gid int) error                                   // ownership setter for the configuration file; nil uses os.Chown in production
@@ -137,7 +150,7 @@ type Result struct {
 func DefaultOptions(system bool) (Options, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return Options{}, fmt.Errorf("service: locate home directory: %w", err)
+		return Options{}, fmt.Errorf("cannot locate the home directory: %w", err)
 	}
 	return defaultOptions(system, home)
 }
@@ -152,7 +165,7 @@ func PostUpdateOptions(system bool) (Options, error) {
 		var err error
 		home, err = os.UserHomeDir()
 		if err != nil {
-			return Options{}, fmt.Errorf("service: locate home directory: %w", err)
+			return Options{}, fmt.Errorf("cannot locate the home directory: %w", err)
 		}
 	}
 	return defaultOptions(system, home)
@@ -163,11 +176,11 @@ func PostUpdateOptions(system bool) (Options, error) {
 func defaultOptions(system bool, home string) (Options, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return Options{}, fmt.Errorf("service: locate executable: %w", err)
+		return Options{}, fmt.Errorf("cannot locate the executable: %w", err)
 	}
 	exe, err = filepath.Abs(exe)
 	if err != nil {
-		return Options{}, fmt.Errorf("service: make executable path absolute: %w", err)
+		return Options{}, fmt.Errorf("cannot make the executable path absolute: %w", err)
 	}
 	return Options{
 		System:        system,
@@ -183,6 +196,7 @@ func defaultOptions(system bool, home string) (Options, error) {
 		Run: func(name string, args ...string) ([]byte, error) {
 			return exec.Command(name, args...).CombinedOutput()
 		},
+		RunOutput: runOccupantCommand,
 		Owner: func(path string) (uint32, fs.FileMode, error) {
 			fi, err := os.Lstat(path)
 			if err != nil {
@@ -228,7 +242,7 @@ func Install(opts Options) (Result, error) {
 	switch opts.GOOS {
 	case "linux", "darwin":
 	default:
-		return res, fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return res, fmt.Errorf("cannot install the service on platform %q", opts.GOOS)
 	}
 	if opts.System && opts.EUID != 0 {
 		return res, errors.New("service install --system must run as root")
@@ -237,7 +251,7 @@ func Install(opts Options) (Result, error) {
 		return res, errors.New("service install without --system must not run as root; the user unit belongs to one account")
 	}
 	if !filepath.IsAbs(opts.Exe) {
-		return res, fmt.Errorf("service: executable %q is not an absolute path", opts.Exe)
+		return res, fmt.Errorf("cannot install the service: the executable %q is not an absolute path", opts.Exe)
 	}
 	// A system unit must name the resolved executable. On macOS os.Executable
 	// does not resolve symbolic links, so writing the path as given could point
@@ -246,7 +260,7 @@ func Install(opts Options) (Result, error) {
 	if opts.System {
 		real, err := opts.EvalSymlinks(opts.Exe)
 		if err != nil {
-			return res, fmt.Errorf("service: resolve executable %q: %w", opts.Exe, err)
+			return res, fmt.Errorf("cannot resolve the executable %q: %w", opts.Exe, err)
 		}
 		opts.Exe = real
 	}
@@ -260,7 +274,7 @@ func Install(opts Options) (Result, error) {
 	}
 	if opts.GOOS == "linux" {
 		if _, err := opts.LookPath("systemctl"); err != nil {
-			return res, fmt.Errorf("service: systemctl not found, is systemd installed? %w", err)
+			return res, fmt.Errorf("cannot find systemctl (is systemd installed?): %w", err)
 		}
 	}
 
@@ -317,7 +331,7 @@ func Install(opts Options) (Result, error) {
 		if _, statErr := os.Lstat(rooted(opts, path)); statErr == nil {
 			plistExisted = true
 		} else if !errors.Is(statErr, fs.ErrNotExist) {
-			return res, fmt.Errorf("service: inspect %s: %w", path, statErr)
+			return res, fmt.Errorf("cannot inspect %s: %w", path, statErr)
 		}
 		if _, err := writeUnit(opts); err != nil {
 			return res, err
@@ -392,7 +406,7 @@ func Install(opts Options) (Result, error) {
 	if err != nil {
 		// The service is running but does not answer Status. Leave it alone:
 		// disabling it would take down a Broker that is reachable.
-		return res, fmt.Errorf("service: the service is running but its status could not be read: %w; %s", err, statusHint(opts))
+		return res, fmt.Errorf("cannot read the status of the running service: %w; %s", err, statusHint(opts))
 	}
 	if degraded {
 		return res, &DegradedError{State: state}
@@ -412,7 +426,7 @@ func unitPath(opts Options) (string, error) {
 	case opts.GOOS == "darwin" && opts.System:
 		return filepath.Join(launchDaemonDir, Label+".plist"), nil
 	default:
-		return "", fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return "", fmt.Errorf("cannot find the unit path on platform %q", opts.GOOS)
 	}
 }
 
@@ -448,7 +462,7 @@ func checkExistingBroker(opts Options, domain string) error {
 	if opts.System {
 		level = "system Broker"
 	}
-	return fmt.Errorf("service: a %s is already answering on %s and was not started by the peers service (service pid %d, socket peer pid %d); stop it before installing", level, path, servicePID, brokerPID)
+	return fmt.Errorf("cannot install the service: a %s is already answering on %s and was not started by the peers service (service pid %d, socket peer pid %d); stop it before installing", level, path, servicePID, brokerPID)
 }
 
 // listenCheck is what the listen precheck learned about this install's address.
@@ -480,7 +494,7 @@ func precheckListen(opts Options, domain string, res *Result) (listenCheck, erro
 	path := configFilePath(opts)
 	addr, err := config.ListenFromFile(rooted(opts, path))
 	if err != nil {
-		return listenCheck{}, fmt.Errorf("service: read broker.listen from %s: %w", path, err)
+		return listenCheck{}, fmt.Errorf("cannot read broker.listen from %s: %w", path, err)
 	}
 	if addr == "" {
 		return listenCheck{}, nil
@@ -494,10 +508,10 @@ func precheckListen(opts Options, domain string, res *Result) (listenCheck, erro
 		return listenCheck{addr: addr}, nil
 	}
 	if !errors.Is(err, syscall.EADDRINUSE) {
-		return listenCheck{}, listenError(path, addr, err)
+		return listenCheck{}, listenError(opts, path, addr, err)
 	}
 	if !serviceOwnsOccupiedAddress(opts, domain) {
-		return listenCheck{}, listenError(path, addr, err)
+		return listenCheck{}, listenError(opts, path, addr, err)
 	}
 
 	check := listenCheck{addr: addr, occupied: true}
@@ -511,7 +525,7 @@ func precheckListen(opts Options, domain string, res *Result) (listenCheck, erro
 		// effort; the disable is what the error must report, because that is
 		// what keeps the service from starting automatically.
 		_, disableErr := stopAndDisable(opts, domain, res)
-		msg := fmt.Sprintf("service: the existing service holding %q could not be stopped: %v", addr, err)
+		msg := fmt.Sprintf("cannot stop the existing service holding %q: %v", addr, err)
 		if disableErr != nil {
 			msg += fmt.Sprintf("; it could not be disabled either and may start automatically: %v", disableErr)
 			return listenCheck{}, errors.New(msg)
@@ -526,7 +540,7 @@ func precheckListen(opts Options, domain string, res *Result) (listenCheck, erro
 		// The service this install replaces was stopped and still holds the
 		// address: report the occupied address, say the existing service was
 		// stopped, and make sure it cannot start at boot.
-		return listenCheck{}, abandonInstall(opts, domain, res, true, listenError(path, addr, err))
+		return listenCheck{}, abandonInstall(opts, domain, res, true, listenError(opts, path, addr, err))
 	}
 	check.stopped = true
 	return check, nil
@@ -577,13 +591,359 @@ func stopBound(opts Options) time.Duration {
 }
 
 // listenError explains why the installation cannot use this install's
-// broker.listen and what the operator can change.
-func listenError(path, addr string, err error) error {
+// broker.listen and what the operator can change. For an address that is in
+// use, it names the process holding the port when the platform can tell.
+func listenError(opts Options, path, addr string, err error) error {
 	advice := "change broker.listen to another port, or leave it empty to run without a TCP listener, and run service install again"
 	if errors.Is(err, syscall.EADDRINUSE) {
-		return fmt.Errorf("service: broker.listen %q from %s is already in use; %s", addr, path, advice)
+		msg := fmt.Sprintf("cannot use broker.listen %q from %s: the address is already in use", addr, path)
+		if occupants := findListenOccupant(opts, addr); len(occupants) > 0 {
+			msg += describeOccupants(occupants)
+		}
+		return fmt.Errorf("%s; %s", msg, advice)
 	}
-	return fmt.Errorf("service: cannot bind broker.listen %q from %s: %w; %s", addr, path, err, advice)
+	return fmt.Errorf("cannot bind broker.listen %q from %s: %w; %s", addr, path, err, advice)
+}
+
+// listenOccupant is the process that holds a listening TCP port, as far as the
+// platform can tell. path is empty when the executable could not be read.
+type listenOccupant struct {
+	pid  int
+	path string
+}
+
+// describe renders the occupant as one item of the already-in-use sentence.
+// The path is quoted, so a path with spaces, quotes or shell metacharacters
+// cannot change how the sentence reads. A " (deleted)" suffix that the kernel
+// adds to the exe link is kept outside the quotes: it says the running image no
+// longer exists at that path, and putting it inside the quotes would read as
+// part of the path.
+func (o listenOccupant) describe() string {
+	switch {
+	case o.path != "":
+		path, deleted := strings.CutSuffix(o.path, " (deleted)")
+		desc := fmt.Sprintf("%q", path)
+		if deleted {
+			desc += " (deleted)"
+		}
+		return fmt.Sprintf("%s (pid %d)", desc, o.pid)
+	case o.pid > 0:
+		return fmt.Sprintf("the process with pid %d", o.pid)
+	}
+	return ""
+}
+
+// describeOccupants renders every occupant as the end of the already-in-use
+// sentence. More than one process can hold the same listening socket, and each
+// is named rather than picked by directory order.
+func describeOccupants(occupants []listenOccupant) string {
+	parts := make([]string, 0, len(occupants))
+	for _, o := range occupants {
+		if desc := o.describe(); desc != "" {
+			parts = append(parts, desc)
+		}
+	}
+	switch len(parts) {
+	case 0:
+		return ""
+	case 1:
+		return " by " + parts[0]
+	default:
+		return " by " + joinAnd(parts)
+	}
+}
+
+// joinAnd joins items the way the user-facing text does: no Oxford comma.
+func joinAnd(parts []string) string {
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	return strings.Join(parts[:len(parts)-1], ", ") + " and " + parts[len(parts)-1]
+}
+
+// findListenOccupant identifies the processes listening on the TCP port in
+// addr. It returns nil when the address has no TCP port, the platform cannot
+// tell, or the lookup fails; the caller then keeps the plain message. The
+// lookup never fails an installation and is never treated as evidence about
+// which product the process belongs to.
+func findListenOccupant(opts Options, addr string) []listenOccupant {
+	host, portText, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil || port <= 0 || port > 65535 {
+		return nil
+	}
+	// A host name cannot be compared with the kernel's numeric addresses, so it
+	// leaves want nil: every listener on the port is then a candidate, the
+	// conservative answer for a conflict.
+	var want net.IP
+	if host != "" {
+		want = net.ParseIP(host)
+	}
+	switch opts.GOOS {
+	case "linux":
+		root := opts.ProcRoot
+		if root == "" {
+			root = "/proc"
+		}
+		return occupantFromProc(root, want, port)
+	case "darwin":
+		return occupantFromLsof(opts, port)
+	}
+	return nil
+}
+
+// occupantFromProc finds the pids and executables that listen on port by
+// matching the listening sockets in the kernel's TCP tables to processes' file
+// descriptors. want limits the match to the addresses that conflict with the
+// installer's own bind. procRoot is a parameter so a test can supply a
+// stand-in /proc tree.
+func occupantFromProc(procRoot string, want net.IP, port int) []listenOccupant {
+	inodes := make(map[string]bool)
+	for _, table := range []string{"tcp", "tcp6"} {
+		for _, inode := range listeningInodes(filepath.Join(procRoot, "net", table), want, port) {
+			inodes[inode] = true
+		}
+	}
+	if len(inodes) == 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(procRoot)
+	if err != nil {
+		return nil
+	}
+	byPID := make(map[int]listenOccupant)
+	for _, entry := range entries {
+		if _, err := strconv.Atoi(entry.Name()); err != nil {
+			continue
+		}
+		fdDir := filepath.Join(procRoot, entry.Name(), "fd")
+		fds, err := os.ReadDir(fdDir)
+		if err != nil {
+			// Another account's process, or one that exited: its fds cannot be
+			// read, but that says nothing about the other candidates.
+			continue
+		}
+		for _, fd := range fds {
+			target, err := os.Readlink(filepath.Join(fdDir, fd.Name()))
+			if err != nil {
+				continue
+			}
+			inode, ok := strings.CutPrefix(target, "socket:[")
+			if !ok || !strings.HasSuffix(inode, "]") {
+				continue
+			}
+			if !inodes[strings.TrimSuffix(inode, "]")] {
+				continue
+			}
+			pid, _ := strconv.Atoi(entry.Name())
+			exe, _ := os.Readlink(filepath.Join(procRoot, entry.Name(), "exe"))
+			byPID[pid] = listenOccupant{pid: pid, path: exe}
+			break
+		}
+	}
+	if len(byPID) == 0 {
+		return nil
+	}
+	occupants := make([]listenOccupant, 0, len(byPID))
+	for _, occupant := range byPID {
+		occupants = append(occupants, occupant)
+	}
+	sort.Slice(occupants, func(i, j int) bool { return occupants[i].pid < occupants[j].pid })
+	return occupants
+}
+
+// listeningInodes returns the inodes of the listening sockets in one
+// /proc/net/tcp table whose local address can explain an address-in-use error
+// for want and port. The table's local address field is HEXADDRESS:HEXPORT and
+// state 0A is TCP_LISTEN. want nil means any address.
+func listeningInodes(tablePath string, want net.IP, port int) []string {
+	data, err := os.ReadFile(tablePath)
+	if err != nil {
+		return nil
+	}
+	var inodes []string
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) < 10 || fields[3] != "0A" {
+			continue
+		}
+		colon := strings.LastIndexByte(fields[1], ':')
+		if colon < 0 {
+			continue
+		}
+		listenPort, err := strconv.ParseInt(fields[1][colon+1:], 16, 32)
+		if err != nil || int(listenPort) != port {
+			continue
+		}
+		local, ok := procAddress(fields[1][:colon])
+		if !ok || !listenAddressConflicts(local, want) {
+			continue
+		}
+		inodes = append(inodes, fields[9])
+	}
+	return inodes
+}
+
+// procAddress parses one /proc/net/tcp or tcp6 local address field. The kernel
+// writes each 32-bit word in host byte order, so every four bytes are reversed
+// before they form the IP.
+func procAddress(field string) (net.IP, bool) {
+	raw, err := hex.DecodeString(field)
+	if err != nil {
+		return nil, false
+	}
+	switch len(raw) {
+	case net.IPv4len:
+		return net.IPv4(raw[3], raw[2], raw[1], raw[0]), true
+	case net.IPv6len:
+		ip := make(net.IP, net.IPv6len)
+		for word := 0; word < net.IPv6len; word += 4 {
+			ip[word] = raw[word+3]
+			ip[word+1] = raw[word+2]
+			ip[word+2] = raw[word+1]
+			ip[word+3] = raw[word]
+		}
+		return ip, true
+	}
+	return nil, false
+}
+
+// listenAddressConflicts reports whether a socket bound to local explains an
+// address-in-use error for a bind to want. A wildcard bind conflicts with every
+// socket on its port in any family, because Go binds a wildcard with a
+// dual-stack socket, so the rules are deliberately conservative: naming a
+// listener that is not the actual occupant is better than missing the one that
+// is. want nil matches every address.
+func listenAddressConflicts(local, want net.IP) bool {
+	if want == nil || want.IsUnspecified() {
+		return true
+	}
+	if want4 := want.To4(); want4 != nil {
+		if local4 := local.To4(); local4 != nil {
+			return local4.IsUnspecified() || local4.Equal(want4)
+		}
+		return local.IsUnspecified()
+	}
+	if local.To4() != nil {
+		return false
+	}
+	return local.IsUnspecified() || local.Equal(want)
+}
+
+// occupantFromLsof uses lsof to find the pids listening on port on macOS, then
+// asks lsof for each process's executable. Both commands are best effort: any
+// failure means the caller falls back to what it could establish.
+func occupantFromLsof(opts Options, port int) []listenOccupant {
+	run := opts.RunOutput
+	if run == nil {
+		run = opts.Run
+	}
+	if run == nil {
+		return nil
+	}
+	if opts.LookPath != nil {
+		if _, err := opts.LookPath(lsofPath); err != nil {
+			return nil
+		}
+	}
+	out, err := run(lsofPath, "-nP", "-iTCP:"+strconv.Itoa(port), "-sTCP:LISTEN")
+	if err != nil {
+		return nil
+	}
+	pids := lsofPID(string(out))
+	if len(pids) == 0 {
+		return nil
+	}
+	occupants := make([]listenOccupant, 0, len(pids))
+	for _, pid := range pids {
+		path := ""
+		if txt, err := run(lsofPath, "-a", "-p", strconv.Itoa(pid), "-d", "txt", "-Fn"); err == nil {
+			path = lsofTextPath(string(txt))
+		}
+		occupants = append(occupants, listenOccupant{pid: pid, path: path})
+	}
+	sort.Slice(occupants, func(i, j int) bool { return occupants[i].pid < occupants[j].pid })
+	return occupants
+}
+
+// lsofTextPath reads the executable path from `lsof -a -p <pid> -d txt -Fn`
+// field output: each open file starts with an f line and names its path on the
+// following n line.
+func lsofTextPath(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if path, ok := strings.CutPrefix(line, "n"); ok && path != "" {
+			return path
+		}
+	}
+	return ""
+}
+
+// runOccupantCommand runs one occupant lookup command with a timeout, keeping
+// only its standard output.
+func runOccupantCommand(name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), occupantCommandTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	err := cmd.Run()
+	return stdout.Bytes(), err
+}
+
+// humanDuration renders d as the timeout lines read it, such as "20 seconds",
+// rather than as the time.Duration String method writes it. Any part of a
+// second rounds up, so a short timeout still reads as a whole second.
+func humanDuration(d time.Duration) string {
+	if d < time.Second {
+		return "1 second"
+	}
+	seconds := int64(d / time.Second)
+	if d%time.Second != 0 {
+		seconds++
+	}
+	if seconds == 1 {
+		return "1 second"
+	}
+	return fmt.Sprintf("%d seconds", seconds)
+}
+
+// lsofPID reads every process id from lsof's table output, in the order they
+// appear, without duplicates.
+func lsofPID(out string) []int {
+	lines := strings.Split(out, "\n")
+	if len(lines) < 2 {
+		return nil
+	}
+	header := strings.Fields(lines[0])
+	pidColumn := -1
+	for i, field := range header {
+		if field == "PID" {
+			pidColumn = i
+			break
+		}
+	}
+	if pidColumn < 0 {
+		return nil
+	}
+	var pids []int
+	seen := make(map[int]bool)
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) <= pidColumn {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[pidColumn])
+		if err != nil || pid <= 0 || seen[pid] {
+			continue
+		}
+		seen[pid] = true
+		pids = append(pids, pid)
+	}
+	return pids
 }
 
 // abandonInstall handles a failed installation after the service definition
@@ -669,9 +1029,9 @@ func runLaunchctlCommand(opts Options, domain string, res *Result, verb string) 
 	out, err := opts.Run("launchctl", verb, target)
 	if err != nil {
 		if msg := strings.TrimSpace(string(out)); msg != "" {
-			return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+			return fmt.Errorf("cannot run %s: %w: %s", cmdline, err, msg)
 		}
-		return fmt.Errorf("service: %s: %w", cmdline, err)
+		return fmt.Errorf("cannot run %s: %w", cmdline, err)
 	}
 	return nil
 }
@@ -725,7 +1085,7 @@ func launchdDomain(opts Options) (string, error) {
 	if launchctlDomainExists(opts, gui) {
 		return gui, nil
 	}
-	return "", fmt.Errorf("service: launchd has no %s domain for uid %d; install the user service from a graphical login session, or use --system on a host without one", gui, opts.UID)
+	return "", fmt.Errorf("cannot start the service: launchd has no %s domain for uid %d; install the user service from a graphical login session, or use --system on a host without one", gui, opts.UID)
 }
 
 // launchctlDomainExists reports whether launchd knows the domain.
@@ -769,7 +1129,7 @@ func runLaunchctl(opts Options, domain, plistPath string, plistExisted bool, che
 		}
 		if err := waitListenReleased(probe, check.addr, deadline); err != nil {
 			return replaced, abandonLaunchd(opts, domain, plistPath, res, plistExisted, replaced, true,
-				listenError(configFilePath(opts), check.addr, err))
+				listenError(opts, configFilePath(opts), check.addr, err))
 		}
 	}
 
@@ -786,9 +1146,9 @@ func runLaunchctl(opts Options, domain, plistPath string, plistExisted bool, che
 	if err == nil {
 		return replaced, nil
 	}
-	failure := fmt.Errorf("service: %s: %w", cmdline, err)
+	failure := fmt.Errorf("cannot run %s: %w", cmdline, err)
 	if msg := strings.TrimSpace(string(out)); msg != "" {
-		failure = fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+		failure = fmt.Errorf("cannot run %s: %w: %s", cmdline, err, msg)
 	}
 	return replaced, abandonLaunchd(opts, domain, plistPath, res, plistExisted, replaced, true, failure)
 }
@@ -898,8 +1258,8 @@ func waitServiceUnloaded(opts Options, domain string, deadline time.Time, budget
 	if last != "" {
 		detail = fmt.Sprintf(" (launchctl still reports %q)", last)
 	}
-	return fmt.Errorf("service: the old service in %s was not unloaded within %s%s%s",
-		domain, budget, detail, tail)
+	return fmt.Errorf("cannot unload the old service in %s within %s%s%s",
+		domain, humanDuration(budget), detail, tail)
 }
 
 // unloadAdvice is the tail of waitServiceUnloaded's timeout message. It names
@@ -981,9 +1341,9 @@ func bootoutService(opts Options, domain string, res *Result) error {
 		return nil
 	}
 	if msg := strings.TrimSpace(string(out)); msg != "" {
-		return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+		return fmt.Errorf("cannot run %s: %w: %s", cmdline, err, msg)
 	}
-	return fmt.Errorf("service: %s: %w", cmdline, err)
+	return fmt.Errorf("cannot run %s: %w", cmdline, err)
 }
 
 // exitStatus returns the exit code of a command error, or -1 when the error
@@ -1027,23 +1387,23 @@ func waitReady(opts Options, domain string, since time.Time) (time.Time, error) 
 		}
 		if time.Now().After(deadline) {
 			if answering {
-				return deadline, fmt.Errorf("service: the Broker answering on %s is not the service's process (service pid %d, socket peer pid %d); stop it and check the service log with %s", path, servicePID, peerPID, logHint(opts))
+				return deadline, fmt.Errorf("cannot use the Broker answering on %s: it is not the service's process (service pid %d, socket peer pid %d); stop it and check the service log: %s", path, servicePID, peerPID, logHint(opts))
 			}
 			// The precheck can pass and the Broker still fail to start; the
 			// service log records the cause. Include it so the timeout names
 			// the real problem instead of only the silent socket.
 			reason := startupFailureReason(opts, since)
 			if reason != "" {
-				return deadline, fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s; its last startup_failed record says: %s", path, bound, logHint(opts), reason)
+				return deadline, fmt.Errorf("cannot reach the Broker on %s within %s; check the service log: %s; its last startup_failed record says: %s", path, humanDuration(bound), logHint(opts), reason)
 			}
 			// No failure record was written after this install began. The
 			// service manager still knows whether the unit failed and with what
 			// exit code, which is the next best description of the cause.
 			state, stateErr := serviceManagerState(opts, domain)
 			if stateErr != nil {
-				return deadline, fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s; the service manager state could not be read: %w", path, bound, logHint(opts), stateErr)
+				return deadline, fmt.Errorf("cannot reach the Broker on %s within %s; check the service log: %s; the service manager state could not be read: %w", path, humanDuration(bound), logHint(opts), stateErr)
 			}
-			return deadline, fmt.Errorf("service: the Broker did not answer on %s within %s; check the service log with %s; the service manager reports %s", path, bound, logHint(opts), state)
+			return deadline, fmt.Errorf("cannot reach the Broker on %s within %s; check the service log: %s; the service manager reports %s", path, humanDuration(bound), logHint(opts), state)
 		}
 		time.Sleep(readyPollInterval)
 	}
@@ -1118,7 +1478,7 @@ func serviceManagerState(opts Options, domain string) (string, error) {
 		}
 		return strings.Join(parts, ", "), nil
 	}
-	return "", fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+	return "", fmt.Errorf("cannot read the service manager state on platform %q", opts.GOOS)
 }
 
 // logHint names where the service manager writes the Broker's standard error.
@@ -1267,7 +1627,7 @@ func writeUnit(opts Options) (string, error) {
 		content, err = LaunchDaemonPlist(opts.Exe)
 		dirs = []string{systemLogDir, launchDaemonDir}
 	default:
-		return "", fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return "", fmt.Errorf("cannot write the service definition on platform %q", opts.GOOS)
 	}
 	if err != nil {
 		return "", err
@@ -1279,7 +1639,7 @@ func writeUnit(opts Options) (string, error) {
 	if opts.GOOS == "darwin" {
 		env, err := plistEnvironment(rooted(opts, path))
 		if err != nil {
-			return "", fmt.Errorf("service: read the environment variables of %s: %w", path, err)
+			return "", fmt.Errorf("cannot read the environment variables of %s: %w", path, err)
 		}
 		content = withPlistEnvironment(content, env)
 	}
@@ -1295,7 +1655,7 @@ func writeUnit(opts Options) (string, error) {
 			mode = 0o750
 		}
 		if err := os.MkdirAll(rooted(opts, dir), mode); err != nil {
-			return "", fmt.Errorf("service: create directory %s: %w", dir, err)
+			return "", fmt.Errorf("cannot create directory %s: %w", dir, err)
 		}
 	}
 	if err := writeFileAtomic(rooted(opts, path), content, 0o644); err != nil {
@@ -1354,7 +1714,7 @@ func createConfigWith(opts Options, res *Result, adminGID int, fileMode fs.FileM
 		dirMode = 0o700
 	}
 	if err := os.MkdirAll(rooted(opts, filepath.Dir(path)), dirMode); err != nil {
-		return fmt.Errorf("service: create configuration directory: %w", err)
+		return fmt.Errorf("cannot create the configuration directory: %w", err)
 	}
 
 	fsPath := rooted(opts, path)
@@ -1364,7 +1724,7 @@ func createConfigWith(opts Options, res *Result, adminGID int, fileMode fs.FileM
 			res.ConfigNew = false
 			return nil
 		}
-		return fmt.Errorf("service: create configuration file: %w", err)
+		return fmt.Errorf("cannot create the configuration file: %w", err)
 	}
 	// A file this run created is removed when a later step fails, so the next
 	// install does not mistake a partial file for an existing configuration.
@@ -1378,23 +1738,23 @@ func createConfigWith(opts Options, res *Result, adminGID int, fileMode fs.FileM
 	if _, err := f.Write(config.Template(mode)); err != nil {
 		_ = f.Close()
 		removePartial()
-		return fmt.Errorf("service: write configuration file %s: %w", path, err)
+		return fmt.Errorf("cannot write the configuration file %s: %w", path, err)
 	}
 	if opts.System {
 		if err := setConfigOwner(opts, fsPath, adminGID); err != nil {
 			_ = f.Close()
 			removePartial()
-			return fmt.Errorf("service: set configuration file owner: %w", err)
+			return fmt.Errorf("cannot set the owner of the configuration file: %w", err)
 		}
 	}
 	if err := setConfigMode(opts, fsPath, fileMode); err != nil {
 		_ = f.Close()
 		removePartial()
-		return fmt.Errorf("service: set configuration file mode: %w", err)
+		return fmt.Errorf("cannot set the mode of the configuration file: %w", err)
 	}
 	if err := f.Close(); err != nil {
 		removePartial()
-		return fmt.Errorf("service: close configuration file: %w", err)
+		return fmt.Errorf("cannot close the configuration file: %w", err)
 	}
 	res.ConfigNew = true
 	return nil
@@ -1447,9 +1807,9 @@ func runSystemctlCommand(opts Options, res *Result, args ...string) error {
 	out, err := opts.Run("systemctl", argv...)
 	if err != nil {
 		if msg := strings.TrimSpace(string(out)); msg != "" {
-			return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+			return fmt.Errorf("cannot run %s: %w: %s", cmdline, err, msg)
 		}
-		return fmt.Errorf("service: %s: %w", cmdline, err)
+		return fmt.Errorf("cannot run %s: %w", cmdline, err)
 	}
 	return nil
 }
@@ -1466,7 +1826,7 @@ func checkTempBinary(opts Options) error {
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return nil
 	}
-	return fmt.Errorf("service: refusing to install a service for %q, which is inside the temporary directory %q", opts.Exe, opts.TempDir)
+	return fmt.Errorf("cannot install a service for %q: it is inside the temporary directory %q", opts.Exe, opts.TempDir)
 }
 
 // checkSystemBinary verifies that the executable and every directory above it
@@ -1477,15 +1837,15 @@ func checkSystemBinary(opts Options) error {
 	for path := opts.Exe; ; {
 		uid, mode, err := opts.Owner(path)
 		if err != nil {
-			return fmt.Errorf("service: inspect %q: %w", path, err)
+			return fmt.Errorf("cannot inspect %q: %w", path, err)
 		}
 		switch {
 		case uid != 0:
-			return fmt.Errorf("service: %q is owned by uid %d, not root", path, uid)
+			return fmt.Errorf("cannot install the service: %q is owned by uid %d, not root", path, uid)
 		case mode&0o022 != 0:
-			return fmt.Errorf("service: %q is writable by group or others (%#o)", path, mode.Perm())
+			return fmt.Errorf("cannot install the service: %q is writable by group or others (%#o)", path, mode.Perm())
 		case mode&0o001 == 0:
-			return fmt.Errorf("service: %q is not executable by other accounts", path)
+			return fmt.Errorf("cannot install the service: %q is not executable by other accounts", path)
 		}
 		parent := filepath.Dir(path)
 		if parent == path {
@@ -1502,23 +1862,23 @@ func writeFileAtomic(path, content string, mode fs.FileMode) error {
 	dir := filepath.Dir(path)
 	f, err := os.CreateTemp(dir, ".peers-install-*")
 	if err != nil {
-		return fmt.Errorf("service: create temporary file in %s: %w", dir, err)
+		return fmt.Errorf("cannot create a temporary file in %s: %w", dir, err)
 	}
 	tmp := f.Name()
 	defer func() { _ = os.Remove(tmp) }()
 	if err := f.Chmod(mode); err != nil {
 		_ = f.Close()
-		return fmt.Errorf("service: set mode on %s: %w", tmp, err)
+		return fmt.Errorf("cannot set the mode of %s: %w", tmp, err)
 	}
 	if _, err := f.WriteString(content); err != nil {
 		_ = f.Close()
-		return fmt.Errorf("service: write %s: %w", tmp, err)
+		return fmt.Errorf("cannot write %s: %w", tmp, err)
 	}
 	if err := f.Close(); err != nil {
-		return fmt.Errorf("service: close %s: %w", tmp, err)
+		return fmt.Errorf("cannot close %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("service: install %s: %w", path, err)
+		return fmt.Errorf("cannot install %s: %w", path, err)
 	}
 	return nil
 }

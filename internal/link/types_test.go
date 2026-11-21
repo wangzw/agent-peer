@@ -22,7 +22,7 @@ func TestErrQueueFullIsNotEstablished(t *testing.T) {
 
 func TestUnsupportedErrorMessage(t *testing.T) {
 	e := &UnsupportedError{Kind: 301}
-	if got, want := e.Error(), "link: peer does not support request kind 301"; got != want {
+	if got, want := e.Error(), "the peer does not support request kind 301"; got != want {
 		t.Fatalf("Error() = %q, want %q", got, want)
 	}
 

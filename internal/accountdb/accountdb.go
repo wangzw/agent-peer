@@ -24,7 +24,7 @@ type User struct {
 }
 
 // ErrNotFound reports that the account database has no entry for the request.
-var ErrNotFound = errors.New("accountdb: not found")
+var ErrNotFound = errors.New("account not found")
 
 // LookupUID returns the account with the given uid.
 func LookupUID(uid uint32) (User, error) { return lookupUID(uid) }
@@ -87,7 +87,7 @@ func osUserLookupUID(uid uint32) (User, error) {
 		if errors.As(err, &unknown) {
 			return User{}, fmt.Errorf("%w: uid %d", ErrNotFound, uid)
 		}
-		return User{}, fmt.Errorf("accountdb: looking up uid %d: %w", uid, err)
+		return User{}, fmt.Errorf("cannot look up uid %d: %w", uid, err)
 	}
 	return osUserToUser(u)
 }
@@ -99,7 +99,7 @@ func osUserLookupName(name string) (User, error) {
 		if errors.As(err, &unknown) {
 			return User{}, fmt.Errorf("%w: user %s", ErrNotFound, name)
 		}
-		return User{}, fmt.Errorf("accountdb: looking up user %s: %w", name, err)
+		return User{}, fmt.Errorf("cannot look up user %s: %w", name, err)
 	}
 	return osUserToUser(u)
 }
@@ -111,11 +111,11 @@ func osUserLookupGroup(name string) (uint32, error) {
 		if errors.As(err, &unknown) {
 			return 0, fmt.Errorf("%w: group %s", ErrNotFound, name)
 		}
-		return 0, fmt.Errorf("accountdb: looking up group %s: %w", name, err)
+		return 0, fmt.Errorf("cannot look up group %s: %w", name, err)
 	}
 	gid, err := parseDecimal32(g.Gid)
 	if err != nil {
-		return 0, fmt.Errorf("accountdb: group %s has an invalid gid %q: %w", name, g.Gid, err)
+		return 0, fmt.Errorf("cannot read group %s: invalid gid %q: %w", name, g.Gid, err)
 	}
 	return gid, nil
 }
@@ -127,26 +127,26 @@ func osUserGroupIDs(u User) ([]uint32, error) {
 		if errors.As(err, &unknown) {
 			return nil, fmt.Errorf("%w: user %s", ErrNotFound, u.Name)
 		}
-		return nil, fmt.Errorf("accountdb: looking up user %s: %w", u.Name, err)
+		return nil, fmt.Errorf("cannot look up user %s: %w", u.Name, err)
 	}
 	// The local source may hold a different account with the same name. Its
 	// groups belong to that account, not to the one being looked up.
 	uid, err := parseDecimal32(account.Uid)
 	if err != nil {
-		return nil, fmt.Errorf("accountdb: account %s has an invalid uid %q: %w", u.Name, account.Uid, err)
+		return nil, fmt.Errorf("cannot read account %s: invalid uid %q: %w", u.Name, account.Uid, err)
 	}
 	if uid != u.UID {
-		return nil, fmt.Errorf("accountdb: user %q has uid %d, want %d", u.Name, uid, u.UID)
+		return nil, fmt.Errorf("cannot use user %q: it has uid %d, want %d", u.Name, uid, u.UID)
 	}
 	ids, err := account.GroupIds()
 	if err != nil {
-		return nil, fmt.Errorf("accountdb: supplementary groups of %s: %w", u.Name, err)
+		return nil, fmt.Errorf("cannot read the supplementary groups of %s: %w", u.Name, err)
 	}
 	parsed := make([]uint32, 0, len(ids))
 	for _, id := range ids {
 		v, err := parseDecimal32(id)
 		if err != nil {
-			return nil, fmt.Errorf("accountdb: account %s: group id %q: %w", u.Name, id, err)
+			return nil, fmt.Errorf("cannot read account %s: group id %q: %w", u.Name, id, err)
 		}
 		parsed = append(parsed, v)
 	}
@@ -156,11 +156,11 @@ func osUserGroupIDs(u User) ([]uint32, error) {
 func osUserToUser(u *user.User) (User, error) {
 	uid, err := parseDecimal32(u.Uid)
 	if err != nil {
-		return User{}, fmt.Errorf("accountdb: account %s has an invalid uid %q: %w", u.Username, u.Uid, err)
+		return User{}, fmt.Errorf("cannot read account %s: invalid uid %q: %w", u.Username, u.Uid, err)
 	}
 	gid, err := parseDecimal32(u.Gid)
 	if err != nil {
-		return User{}, fmt.Errorf("accountdb: account %s has an invalid gid %q: %w", u.Username, u.Gid, err)
+		return User{}, fmt.Errorf("cannot read account %s: invalid gid %q: %w", u.Username, u.Gid, err)
 	}
 	return User{Name: u.Username, UID: uid, GID: gid, Home: u.HomeDir}, nil
 }

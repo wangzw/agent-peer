@@ -16,9 +16,9 @@ import (
 
 var (
 	// ErrHelperGone reports that the connection to the account helper is lost.
-	ErrHelperGone = errors.New("helper: account helper connection lost")
+	ErrHelperGone = errors.New("the account helper connection was lost")
 	// ErrProtocol reports a violation of the helper pipe protocol.
-	ErrProtocol = errors.New("helper: protocol violation")
+	ErrProtocol = errors.New("helper protocol violation")
 )
 
 // cancelWait is how long Deliver waits for the outcome of a request after it
@@ -565,7 +565,7 @@ func clientError(e *helperpb.HelperError) error {
 		if msg == "" {
 			msg = e.GetCode().String()
 		}
-		return fmt.Errorf("helper: %s", msg)
+		return fmt.Errorf("%s", msg)
 	}
 }
 

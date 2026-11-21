@@ -128,7 +128,7 @@ func TestPostUpdateCmdUserNeedsHome(t *testing.T) {
 	if called {
 		t.Fatal("PostUpdate ran without a home directory for the user installation")
 	}
-	if !strings.Contains(stderr.String(), "locate home directory") {
+	if !strings.Contains(stderr.String(), "cannot locate the home directory") {
 		t.Errorf("stderr = %q, want it to name the missing home directory", stderr.String())
 	}
 	if stdout.Len() != 0 {

@@ -18,7 +18,7 @@ func Uninstall(opts Options) (Result, error) {
 	switch opts.GOOS {
 	case "linux", "darwin":
 	default:
-		return res, fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return res, fmt.Errorf("cannot uninstall the service on platform %q", opts.GOOS)
 	}
 	if opts.System && opts.EUID != 0 {
 		return res, errors.New("service remove --system must run as root")
@@ -54,7 +54,7 @@ func uninstallLinux(opts Options, path string, res *Result) (Result, error) {
 
 	if _, err := opts.LookPath("systemctl"); err != nil {
 		if fileExists {
-			return *res, fmt.Errorf("service: systemctl not found, is systemd installed? %w", err)
+			return *res, fmt.Errorf("cannot find systemctl (is systemd installed?): %w", err)
 		}
 		return *res, nil
 	}
@@ -77,10 +77,10 @@ func uninstallLinux(opts Options, path string, res *Result) (Result, error) {
 		var err error
 		content, err = os.ReadFile(rootedPath)
 		if err != nil {
-			return *res, fmt.Errorf("service: read %s: %w", path, err)
+			return *res, fmt.Errorf("cannot read %s: %w", path, err)
 		}
 		if err := os.Remove(rootedPath); err != nil {
-			return *res, fmt.Errorf("service: remove %s: %w", path, err)
+			return *res, fmt.Errorf("cannot remove %s: %w", path, err)
 		}
 	}
 	if err := runSystemctlCommand(opts, res, "daemon-reload"); err != nil {
@@ -126,7 +126,7 @@ func uninstallDarwin(opts Options, path string, res *Result) (Result, error) {
 	}
 	rootedPath := rooted(opts, path)
 	if err := os.Remove(rootedPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return *res, fmt.Errorf("service: remove %s: %w", path, err)
+		return *res, fmt.Errorf("cannot remove %s: %w", path, err)
 	}
 
 	res.Removed = true

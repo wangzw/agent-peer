@@ -158,11 +158,11 @@ func LaunchDaemonPlist(exe string) (string, error) {
 // definition: non-absolute paths and paths containing control characters.
 func validatePath(kind, path string) error {
 	if !filepath.IsAbs(path) {
-		return fmt.Errorf("service: %s must be an absolute path, got %q", kind, path)
+		return fmt.Errorf("cannot write the %s %q: the path must be absolute", kind, path)
 	}
 	for _, r := range path {
 		if r < 0x20 || r == 0x7f {
-			return fmt.Errorf("service: %s contains a control character", kind)
+			return fmt.Errorf("cannot write the %s: the path contains a control character", kind)
 		}
 	}
 	return nil

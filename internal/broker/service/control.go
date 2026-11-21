@@ -12,7 +12,7 @@ import (
 // ErrNotInstalled reports that opts' level has no service, as Installed judges
 // it. Start, Stop and Restart return it, possibly wrapped, before running any
 // service-manager command.
-var ErrNotInstalled = errors.New("service: no service is installed at this level")
+var ErrNotInstalled = errors.New("no service is installed at this level")
 
 // Start starts opts' level service, waits for the Broker like Install and
 // probes Status. A degraded Broker yields a complete Result and a
@@ -111,9 +111,9 @@ func Restart(opts Options) (Result, error) {
 		}
 		if _, statErr := os.Lstat(rooted(opts, plist)); statErr != nil {
 			if errors.Is(statErr, fs.ErrNotExist) {
-				return res, fmt.Errorf("service: the service is loaded in %s but its plist %s is missing; run `%s` to restore it before restarting", domain, plist, installHint(opts))
+				return res, fmt.Errorf("cannot restart the service: it is loaded in %s but its plist %s is missing; run `%s` to restore it before restarting", domain, plist, installHint(opts))
 			}
-			return res, fmt.Errorf("service: inspect %s: %w", plist, statErr)
+			return res, fmt.Errorf("cannot inspect %s: %w", plist, statErr)
 		}
 		if err := bootoutService(opts, domain, &res); err != nil {
 			return res, err
@@ -146,7 +146,7 @@ func serviceTarget(opts Options, needsDomain bool) (Result, string, error) {
 	switch opts.GOOS {
 	case "linux", "darwin":
 	default:
-		return res, "", fmt.Errorf("service: unsupported platform %q", opts.GOOS)
+		return res, "", fmt.Errorf("cannot run the service command on platform %q", opts.GOOS)
 	}
 
 	installed, err := Installed(opts)
@@ -169,7 +169,7 @@ func serviceTarget(opts Options, needsDomain bool) (Result, string, error) {
 	if !needsDomain {
 		return res, "", nil
 	}
-	return res, "", fmt.Errorf("service: launchd has no %s domain for uid %d; run this command from the user's graphical login session", domain, opts.UID)
+	return res, "", fmt.Errorf("cannot start the service: launchd has no %s domain for uid %d; run this command from the user's graphical login session", domain, opts.UID)
 }
 
 // notInstalledError names the level that has no service, so the command can
@@ -199,9 +199,9 @@ func enableAndBootstrap(opts Options, domain string, res *Result) error {
 	out, err := bootstrapService(opts, domain, path)
 	if err != nil {
 		if msg := strings.TrimSpace(string(out)); msg != "" {
-			return fmt.Errorf("service: %s: %w: %s", cmdline, err, msg)
+			return fmt.Errorf("cannot run %s: %w: %s", cmdline, err, msg)
 		}
-		return fmt.Errorf("service: %s: %w", cmdline, err)
+		return fmt.Errorf("cannot run %s: %w", cmdline, err)
 	}
 	return nil
 }
@@ -214,7 +214,7 @@ func enableAndBootstrap(opts Options, domain string, res *Result) error {
 func checkDegraded(opts Options, deadline time.Time) error {
 	state, degraded, err := waitStatus(opts, deadline)
 	if err != nil {
-		return fmt.Errorf("service: the service is running but its status could not be read: %w; %s", err, statusHint(opts))
+		return fmt.Errorf("cannot read the status of the running service: %w; %s", err, statusHint(opts))
 	}
 	if degraded {
 		return &DegradedError{State: state}

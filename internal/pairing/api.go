@@ -79,22 +79,22 @@ type Peer struct {
 
 // Sentinel errors. Callers match them with errors.Is.
 var (
-	ErrNotOpen         = errors.New("pairing: not open")
-	ErrNoTransport     = errors.New("pairing: transport is nil")
-	ErrInvalidAddress  = errors.New("pairing: invalid address")
-	ErrInvalidAlias    = errors.New("pairing: invalid alias")
-	ErrNeedsLocalAlias = errors.New("pairing: local alias required")
-	ErrPeerUnreachable = errors.New("pairing: peer unreachable")
-	ErrNotListening    = errors.New("pairing: not listening")
-	ErrIdentity        = errors.New("pairing: identity")
-	ErrStore           = errors.New("pairing: peer table")
-	ErrPairingRejected = errors.New("pairing: rejected")
-	ErrProtocol        = errors.New("pairing: protocol error")
+	ErrNotOpen         = errors.New("the pairing is not open")
+	ErrNoTransport     = errors.New("the transport is nil")
+	ErrInvalidAddress  = errors.New("invalid address")
+	ErrInvalidAlias    = errors.New("invalid alias")
+	ErrNeedsLocalAlias = errors.New("a local alias is required")
+	ErrPeerUnreachable = errors.New("the peer is unreachable")
+	ErrNotListening    = errors.New("not listening")
+	ErrIdentity        = errors.New("identity error")
+	ErrStore           = errors.New("peer table error")
+	ErrPairingRejected = errors.New("pairing rejected")
+	ErrProtocol        = errors.New("protocol error")
 
 	// ErrDialFailed marks an error caused by the dial itself: TCP connect, the
 	// TLS handshake or the dial deadline. Transport implementations wrap such
 	// errors with it; Connect maps only this sentinel to ErrPeerUnreachable.
-	ErrDialFailed = errors.New("pairing: dial failed")
+	ErrDialFailed = errors.New("dial failed")
 )
 
 // RejectReason is the local reason a pairing was refused. ReasonTimeout and

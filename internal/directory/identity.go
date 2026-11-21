@@ -31,15 +31,15 @@ func NewIdentity(p *pairing.Pairing) (Identity, error) { return newIdentity(p) }
 
 func newIdentity(src identitySource) (Identity, error) {
 	if src == nil {
-		return nil, fmt.Errorf("directory: %w: nil source", ErrNoIdentity)
+		return nil, fmt.Errorf("%w: the source is nil", ErrNoIdentity)
 	}
 	pub := src.PublicKey()
 	fp := src.Fingerprint()
 	if fp.IsZero() || len(pub) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("directory: %w: missing or malformed public key", ErrNoIdentity)
+		return nil, fmt.Errorf("%w: the public key is missing or malformed", ErrNoIdentity)
 	}
 	if got := pairing.FingerprintOf(pub); got != fp {
-		return nil, fmt.Errorf("directory: %w: public key fingerprint %s does not match %s", ErrNoIdentity, got, fp)
+		return nil, fmt.Errorf("%w: public key fingerprint %s does not match %s", ErrNoIdentity, got, fp)
 	}
 	return &pairingIdentity{
 		src: src,

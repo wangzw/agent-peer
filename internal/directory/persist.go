@@ -22,7 +22,7 @@ const fileFormat = 1
 // it and starts with an empty directory, which reconciliation can refill. A
 // read failure is returned as itself so that startup fails instead of silently
 // replacing the file.
-var errUnreadable = errors.New("directory: directory.json is unreadable")
+var errUnreadable = errors.New("directory.json is unreadable")
 
 // directoryFile is the on-disk form of the directory.
 type directoryFile struct {
@@ -54,7 +54,7 @@ func saveFile(ops fileOps, dir string, highest uint64, recs []fileRecord) error 
 		Records:       recs,
 	})
 	if err != nil {
-		return fmt.Errorf("directory: encode directory file: %w", err)
+		return fmt.Errorf("cannot encode the directory file: %w", err)
 	}
 	return atomicWrite(ops, filepath.Join(dir, fileName), data)
 }
@@ -75,7 +75,7 @@ func loadFile(ops fileOps, dir string) (recs []fileRecord, highest uint64, err e
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, 0, nil
 		}
-		return nil, 0, fmt.Errorf("directory: read %s: %w", path, err)
+		return nil, 0, fmt.Errorf("cannot read %s: %w", path, err)
 	}
 	var f directoryFile
 	if err := json.Unmarshal(data, &f); err != nil {
@@ -98,15 +98,15 @@ func atomicWrite(ops fileOps, path string, data []byte) error {
 	tmp := path + ".tmp-" + randomSuffix()
 	if err := ops.WriteFile(tmp, data, 0o600); err != nil {
 		_ = ops.Remove(tmp)
-		return fmt.Errorf("directory: write %s: %w", tmp, err)
+		return fmt.Errorf("cannot write %s: %w", tmp, err)
 	}
 	if err := ops.Rename(tmp, path); err != nil {
 		_ = ops.Remove(tmp)
-		return fmt.Errorf("directory: rename %s to %s: %w", tmp, path, err)
+		return fmt.Errorf("cannot rename %s to %s: %w", tmp, path, err)
 	}
 	if err := ops.SyncDir(filepath.Dir(path)); err != nil {
 		_ = ops.Remove(tmp)
-		return fmt.Errorf("directory: sync %s: %w", filepath.Dir(path), err)
+		return fmt.Errorf("cannot sync %s: %w", filepath.Dir(path), err)
 	}
 	return nil
 }

@@ -14,10 +14,10 @@ import (
 // the peer table; work begins with Listen or Start.
 func New(opts Options) (*Link, error) {
 	if opts.Peers == nil {
-		return nil, errors.New("link: Options.Peers is nil")
+		return nil, errors.New("cannot create the Link: Options.Peers is nil")
 	}
 	if opts.Settings == nil {
-		return nil, errors.New("link: Options.Settings is nil")
+		return nil, errors.New("cannot create the Link: Options.Settings is nil")
 	}
 
 	clock := opts.Clock

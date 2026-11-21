@@ -21,7 +21,7 @@ func (l *Link) nonce() ([]byte, error) {
 		return nil, err
 	}
 	if n != len(b) {
-		return nil, fmt.Errorf("link: random source returned %d of %d bytes", n, len(b))
+		return nil, fmt.Errorf("the random source returned %d of %d bytes", n, len(b))
 	}
 	return b, nil
 }
@@ -306,7 +306,7 @@ func (l *Link) dialerHandshake(c *conn) (salt []byte, failure FailReason, peerVe
 		if decodeErr != nil {
 			return nil, FailProtocol, 0, decodeErr
 		}
-		return nil, failFromReject(reason), 0, fmt.Errorf("link: peer rejected the link: %v", reason)
+		return nil, failFromReject(reason), 0, fmt.Errorf("the peer rejected the link: %v", reason)
 
 	case linkpb.KindHello:
 		hello, decodeErr := decodeHello(f)
@@ -321,7 +321,7 @@ func (l *Link) dialerHandshake(c *conn) (salt []byte, failure FailReason, peerVe
 			// reaches the wire, so closing right away can drop the Reject.
 			l.rejectAndLinger(c, linkpb.RejectReason_REJECT_REASON_PROTOCOL_VERSION_INCOMPATIBLE)
 			return nil, FailVersionIncompatible, hello.GetProtocolVersion(),
-				fmt.Errorf("link: peer protocol version %d, want %d", hello.GetProtocolVersion(), l.protocolVersion)
+				fmt.Errorf("the peer protocol version is %d, want %d", hello.GetProtocolVersion(), l.protocolVersion)
 		}
 		// The address list must reach the peer table before the up
 		// notification so a later dial uses the fresh list.

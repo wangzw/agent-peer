@@ -331,7 +331,7 @@ func TestStartReportsStatusProbeError(t *testing.T) {
 			if err == nil {
 				t.Fatal("Start error = nil, want the status probe error")
 			}
-			for _, want := range []string{"connection reset", "could not be read", tc.want} {
+			for _, want := range []string{"connection reset", "cannot read the status", tc.want} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("Start error = %q, want it to contain %q", err, want)
 				}
@@ -880,7 +880,7 @@ func TestStopAndRestartDarwinUnloadTimeoutAdvice(t *testing.T) {
 			if err == nil {
 				t.Fatalf("%s succeeded although launchd never reported the job unloaded", verb.name)
 			}
-			if !strings.Contains(err.Error(), "was not unloaded within") {
+			if !strings.Contains(err.Error(), "cannot unload the old service") {
 				t.Errorf("error = %q, want the unload timeout", err)
 			}
 			if !strings.Contains(err.Error(), verb.again) {

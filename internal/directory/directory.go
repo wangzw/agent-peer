@@ -61,13 +61,13 @@ func Open(deps Deps) (*Directory, error) {
 // nil ops means realFileOps{}.
 func openWith(deps Deps, clk clock, ops fileOps) (*Directory, error) {
 	if deps.Identity == nil {
-		return nil, errors.New("directory: identity is required")
+		return nil, errors.New("cannot open the directory: an identity is required")
 	}
 	if deps.Peers == nil {
-		return nil, errors.New("directory: peers is required")
+		return nil, errors.New("cannot open the directory: peers are required")
 	}
 	if deps.Links == nil {
-		return nil, errors.New("directory: links is required")
+		return nil, errors.New("cannot open the directory: links are required")
 	}
 	fp := deps.Identity.Fingerprint()
 	if fp.IsZero() {
@@ -91,13 +91,13 @@ func openWith(deps Deps, clk clock, ops fileOps) (*Directory, error) {
 
 	dataDir, err := settings.DataDir()
 	if err != nil {
-		return nil, fmt.Errorf("directory: %w", err)
+		return nil, fmt.Errorf("cannot resolve the data directory: %w", err)
 	}
 
 	frs, highest, err := loadFile(ops, dataDir)
 	if err != nil {
 		if !errors.Is(err, errUnreadable) {
-			return nil, fmt.Errorf("directory: load directory file: %w", err)
+			return nil, fmt.Errorf("cannot load the directory file: %w", err)
 		}
 		logger.Error("directory file cannot be parsed; starting with an empty directory", "error", err)
 		frs, highest = nil, 0

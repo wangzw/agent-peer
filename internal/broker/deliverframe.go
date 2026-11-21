@@ -110,7 +110,7 @@ func encodeDeliverRequest(r deliverRequest) (link.Frame, error) {
 	}
 	payload, err := proto.Marshal(msg)
 	if err != nil {
-		return link.Frame{}, fmt.Errorf("broker: encode delivery request: %w", err)
+		return link.Frame{}, fmt.Errorf("cannot encode delivery request: %w", err)
 	}
 	return link.Frame{Kind: link.FrameKind(deliverpb.KindDeliver), Payload: payload}, nil
 }
@@ -214,21 +214,21 @@ func encodeDeliverResult(e *Error) link.Frame {
 // understand must not count as delivered.
 func decodeDeliverResult(f link.Frame) (*localpb.ErrorDetail, error) {
 	if f.Kind != link.FrameKind(deliverpb.KindDeliverResult) {
-		return nil, fmt.Errorf("broker: unexpected delivery result frame kind %d, want %d", f.Kind, deliverpb.KindDeliverResult)
+		return nil, fmt.Errorf("cannot decode the delivery result: unexpected frame kind %d, want %d", f.Kind, deliverpb.KindDeliverResult)
 	}
 	msg := new(deliverpb.DeliverResult)
 	if err := proto.Unmarshal(f.Payload, msg); err != nil {
-		return nil, fmt.Errorf("broker: decode delivery result: %w", err)
+		return nil, fmt.Errorf("cannot decode the delivery result: %w", err)
 	}
 	switch result := msg.GetResult().(type) {
 	case *deliverpb.DeliverResult_Delivered:
 		return nil, nil
 	case *deliverpb.DeliverResult_Error:
 		if result.Error == nil {
-			return nil, fmt.Errorf("broker: delivery result has no error detail")
+			return nil, fmt.Errorf("cannot decode the delivery result: it has no error detail")
 		}
 		return result.Error, nil
 	default:
-		return nil, fmt.Errorf("broker: delivery result carries no result")
+		return nil, fmt.Errorf("cannot decode the delivery result: it carries no result")
 	}
 }

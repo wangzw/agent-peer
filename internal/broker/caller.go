@@ -28,7 +28,7 @@ type Caller struct {
 func ReadPeerCred(conn net.Conn) (Caller, error) {
 	u, ok := conn.(*net.UnixConn)
 	if !ok {
-		return Caller{}, fmt.Errorf("peercred: connection is %T, not *net.UnixConn", conn)
+		return Caller{}, fmt.Errorf("cannot read peer credentials: connection is %T, not *net.UnixConn", conn)
 	}
 	return readPeerCred(u)
 }
@@ -126,7 +126,7 @@ func newPeerCredCreds(read func(net.Conn) (Caller, error), allow func(Caller) bo
 
 // ClientHandshake implements credentials.TransportCredentials.
 func (c *peerCredCreds) ClientHandshake(context.Context, string, net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return nil, nil, fmt.Errorf("peercred: client side not supported")
+	return nil, nil, fmt.Errorf("cannot read peer credentials on the client side")
 }
 
 // ServerHandshake implements credentials.TransportCredentials.

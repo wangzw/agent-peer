@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -740,7 +741,7 @@ func TestCreateConfigRemovesPartialFileOnWriteFailure(t *testing.T) {
 	path := filepath.Join(opts.Root, "home/alice/.peers/config.yaml")
 	// The error must name the reason, not only that the step failed: the path
 	// the write targeted and the write error the read-only handle produced.
-	for _, want := range []string{"write configuration file", path, "bad file descriptor"} {
+	for _, want := range []string{"cannot write the configuration file", path, "bad file descriptor"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("createConfigWith error = %q, want it to contain %q", err, want)
 		}
@@ -941,6 +942,9 @@ func TestInstallLinuxWithoutSystemctl(t *testing.T) {
 	_, err := Install(opts)
 	if err == nil {
 		t.Fatal("Install succeeded without systemctl")
+	}
+	if !strings.Contains(err.Error(), "cannot find systemctl (is systemd installed?)") {
+		t.Errorf("error %q does not carry the parenthesized hint", err)
 	}
 	assertNoEntries(t, opts.Root)
 }
@@ -1612,11 +1616,16 @@ func TestInstallWaitsForTheBroker(t *testing.T) {
 		opts.ReadyTimeout = 30 * time.Millisecond
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
-		if !strings.Contains(err.Error(), "journalctl --user -u peers.service") {
-			t.Errorf("error %q does not name the user service log", err)
+		for _, want := range []string{
+			"within 1 second",
+			"check the service log: journalctl --user -u peers.service",
+		} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not contain %q", err, want)
+			}
 		}
 		if !slices.Contains(cmds, "systemctl --user restart peers.service") {
 			t.Errorf("commands = %q, want the restart", cmds)
@@ -1643,7 +1652,7 @@ func TestInstallWaitsForTheBroker(t *testing.T) {
 		}
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
 		if !strings.Contains(err.Error(), "/var/log/peers/broker.log") {
@@ -1659,7 +1668,7 @@ func TestInstallWaitsForTheBroker(t *testing.T) {
 		opts.ReadyTimeout = 30 * time.Millisecond
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
 		if !strings.Contains(err.Error(), "journalctl -u peers.service") {
@@ -1689,7 +1698,7 @@ func TestInstallWaitsForTheBroker(t *testing.T) {
 		}
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
 		if !strings.Contains(err.Error(), "/Users/alice/Library/Logs/peers/broker.log") {
@@ -1857,7 +1866,7 @@ func TestInstallDisablesTheServiceWhenThePrecheckStopFails(t *testing.T) {
 		t.Fatal("Install succeeded although the service holding broker.listen could not be stopped")
 	}
 	for _, want := range []string{
-		"could not be stopped",
+		"cannot stop the existing service",
 		"will not start automatically",
 		"systemctl --user enable --now " + UnitName,
 	} {
@@ -1911,6 +1920,413 @@ func TestInstallRefusesAnExternalOccupantWithoutStoppingTheService(t *testing.T)
 				t.Errorf("commands = %q, want no %q while the occupant is not this service", cmds, cmd)
 			}
 		}
+	}
+}
+
+// TestListenErrorReportsTheOccupant checks that an address already in use is
+// reported together with the pid and executable of the process holding it. The
+// lookup reads a stand-in /proc tree, so the test does not depend on what
+// listens on the host.
+func TestListenErrorReportsTheOccupant(t *testing.T) {
+	procRoot := t.TempDir()
+	var table strings.Builder
+	table.WriteString("  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n")
+	// A non-listening socket on the same port must not be taken for the occupant.
+	table.WriteString("   0: 0100007F:4423 0100007F:9999 01 00000000:00000000 00:00000000 00000000  1000        0 111111 1\n")
+	table.WriteString("   1: 0100007F:4423 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 424242 1\n")
+	writeProcFile(t, procRoot, "net/tcp", table.String())
+	writeProcFile(t, procRoot, "net/tcp6", "")
+
+	fdDir := filepath.Join(procRoot, "1234", "fd")
+	if err := os.MkdirAll(fdDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("socket:[424242]", filepath.Join(fdDir, "3")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/usr/local/bin/agent-peer", filepath.Join(procRoot, "1234", "exe")); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := baseOptions(t)
+	opts.ProcRoot = procRoot
+	err := listenError(opts, "/etc/peers/config.yaml", "127.0.0.1:17443", syscall.EADDRINUSE)
+	for _, want := range []string{
+		`already in use by "/usr/local/bin/agent-peer" (pid 1234)`,
+		"127.0.0.1:17443",
+		"/etc/peers/config.yaml",
+		"broker.listen",
+		"leave it empty",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
+// TestListenErrorFallsBackWithoutAnOccupant checks that an address in use whose
+// holder cannot be identified still gets the plain message, with no pid or
+// executable and no second failure.
+func TestListenErrorFallsBackWithoutAnOccupant(t *testing.T) {
+	opts := baseOptions(t)
+	opts.ProcRoot = t.TempDir()
+	err := listenError(opts, "/etc/peers/config.yaml", "127.0.0.1:17443", syscall.EADDRINUSE)
+	if err == nil {
+		t.Fatal("listenError returned nil for an address in use")
+	}
+	for _, want := range []string{"already in use", "127.0.0.1:17443", "/etc/peers/config.yaml", "broker.listen"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	for _, unwanted := range []string{"(pid", " by "} {
+		if strings.Contains(err.Error(), unwanted) {
+			t.Errorf("error %q names an occupant although none was found", err)
+		}
+	}
+}
+
+// TestListenErrorQuotesTheOccupantPath keeps the kernel's " (deleted)" mark
+// from the /proc exe link outside the quotes: the path is quoted so a path with
+// spaces or shell metacharacters cannot change how the sentence reads, and the
+// mark stays visible so a replaced executable is recognizable as such.
+func TestListenErrorQuotesTheOccupantPath(t *testing.T) {
+	procRoot := t.TempDir()
+	writeProcListener(t, procRoot, "tcp", "0100007F", 17443, 1234, "424242", "/usr/local/bin/agent-peer (deleted)")
+
+	opts := baseOptions(t)
+	opts.ProcRoot = procRoot
+	err := listenError(opts, "/etc/peers/config.yaml", "127.0.0.1:17443", syscall.EADDRINUSE)
+	want := `already in use by "/usr/local/bin/agent-peer" (deleted) (pid 1234)`
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("error = %v, want it to contain %q", err, want)
+	}
+}
+
+// TestOccupantFromProcFindsTCP6Listener checks that a listener in
+// /proc/net/tcp6 is matched by its address, not only by its port: the listening
+// and requested addresses differ in every case, so a lookup that ignored the
+// address would report the wrong answer.
+func TestOccupantFromProcFindsTCP6Listener(t *testing.T) {
+	const wildcard = "00000000000000000000000000000000"      // ::
+	const documentation = "b80d0120000000000000000001000000" // 2001:db8::1
+	cases := []struct {
+		name    string
+		listen  string
+		want    net.IP
+		matches bool
+	}{
+		{name: "wildcard holds the specific address", listen: wildcard, want: net.ParseIP("::1"), matches: true},
+		{name: "another specific address does not", listen: documentation, want: net.ParseIP("::1"), matches: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			procRoot := t.TempDir()
+			writeProcListener(t, procRoot, "tcp6", tc.listen, 17443, 4321, "515151", "/opt/peers/bin/peers")
+			got := occupantFromProc(procRoot, tc.want, 17443)
+			if tc.matches != (len(got) == 1) {
+				t.Fatalf("occupantFromProc = %+v, want matched=%v", got, tc.matches)
+			}
+			if tc.matches && (got[0].pid != 4321 || got[0].path != "/opt/peers/bin/peers") {
+				t.Fatalf("occupantFromProc = %+v, want pid 4321 at /opt/peers/bin/peers", got)
+			}
+		})
+	}
+}
+
+// TestOccupantFromProcMatchesListenAddress checks the wildcard rules: a
+// listener on 0.0.0.0 holds a specific IPv4 address on the same port, a
+// listener on another specific address does not, a wildcard request matches a
+// specific listener, and a wildcard request matches a listener of the other
+// address family, because Go binds 0.0.0.0 with a dual-stack socket.
+func TestOccupantFromProcMatchesListenAddress(t *testing.T) {
+	cases := []struct {
+		name    string
+		table   string
+		local   string
+		want    net.IP
+		matches bool
+	}{
+		{name: "wildcard listener holds the specific address", table: "tcp", local: "00000000", want: net.ParseIP("127.0.0.1"), matches: true},
+		{name: "another specific address does not", table: "tcp", local: "0200007F", want: net.ParseIP("127.0.0.1"), matches: false},
+		{name: "a wildcard request matches a specific listener", table: "tcp", local: "0100007F", want: nil, matches: true},
+		{name: "a wildcard IPv4 request matches an IPv6 listener", table: "tcp6", local: "00000000000000000000000001000000", want: net.ParseIP("0.0.0.0"), matches: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			procRoot := t.TempDir()
+			writeProcListener(t, procRoot, tc.table, tc.local, 17443, 1234, "424242", "/usr/local/bin/peers")
+			got := occupantFromProc(procRoot, tc.want, 17443)
+			if tc.matches != (len(got) == 1) {
+				t.Fatalf("occupantFromProc = %+v, want matched=%v", got, tc.matches)
+			}
+		})
+	}
+}
+
+// TestOccupantFromProcSkipsUnreadableDescriptors checks that a process whose fd
+// directory cannot be read is skipped without hiding another process that holds
+// the same socket and can be read.
+func TestOccupantFromProcSkipsUnreadableDescriptors(t *testing.T) {
+	procRoot := t.TempDir()
+	const header = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+	line := "   0: 0100007F:4423 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 424242 1\n"
+	writeProcFile(t, procRoot, "net/tcp", header+line)
+	writeProcFile(t, procRoot, "net/tcp6", header)
+	// The first process directory exists but its fd directory does not, as
+	// when /proc/<pid>/fd cannot be read.
+	if err := os.MkdirAll(filepath.Join(procRoot, "1234"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A second process holds the same socket and can be read.
+	fdDir := filepath.Join(procRoot, "5678", "fd")
+	if err := os.MkdirAll(fdDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("socket:[424242]", filepath.Join(fdDir, "3")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/usr/local/bin/peers", filepath.Join(procRoot, "5678", "exe")); err != nil {
+		t.Fatal(err)
+	}
+
+	got := occupantFromProc(procRoot, net.ParseIP("127.0.0.1"), 17443)
+	if len(got) != 1 || got[0].pid != 5678 || got[0].path != "/usr/local/bin/peers" {
+		t.Fatalf("occupantFromProc = %+v, want the readable process 5678 at /usr/local/bin/peers", got)
+	}
+}
+
+// TestOccupantFromProcReportsEveryOccupant checks that every process holding
+// the listening socket is named, in pid order, instead of the first one found.
+func TestOccupantFromProcReportsEveryOccupant(t *testing.T) {
+	procRoot := t.TempDir()
+	const header = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+	line := "   0: 0100007F:4423 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 424242 1\n"
+	writeProcFile(t, procRoot, "net/tcp", header+line)
+	writeProcFile(t, procRoot, "net/tcp6", header)
+	for _, holder := range []struct {
+		pid string
+		exe string
+	}{
+		{"5678", "/usr/local/bin/peers"},
+		{"1234", "/opt/old/bin/agent-peer"},
+	} {
+		fdDir := filepath.Join(procRoot, holder.pid, "fd")
+		if err := os.MkdirAll(fdDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink("socket:[424242]", filepath.Join(fdDir, "3")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(holder.exe, filepath.Join(procRoot, holder.pid, "exe")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := occupantFromProc(procRoot, net.ParseIP("127.0.0.1"), 17443)
+	want := []listenOccupant{
+		{pid: 1234, path: "/opt/old/bin/agent-peer"},
+		{pid: 5678, path: "/usr/local/bin/peers"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("occupantFromProc = %+v, want every holder in pid order %+v", got, want)
+	}
+	if desc := describeOccupants(got); desc != ` by "/opt/old/bin/agent-peer" (pid 1234) and "/usr/local/bin/peers" (pid 5678)` {
+		t.Errorf("description = %q, want both holders joined without an Oxford comma", desc)
+	}
+}
+
+// TestJoinAnd checks the user-facing list join: no Oxford comma.
+func TestJoinAnd(t *testing.T) {
+	cases := []struct {
+		in   []string
+		want string
+	}{
+		{[]string{"a"}, "a"},
+		{[]string{"a", "b"}, "a and b"},
+		{[]string{"a", "b", "c"}, "a, b and c"},
+	}
+	for _, tc := range cases {
+		if got := joinAnd(tc.in); got != tc.want {
+			t.Errorf("joinAnd(%v) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestLsofPID checks that every process id column of lsof's table output is
+// read, in order and without duplicates.
+func TestLsofPID(t *testing.T) {
+	out := "COMMAND  PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\n" +
+		"peers   4321 alice  5u  IPv4 0x1234567890abcdef      0t0  TCP *:17443 (LISTEN)\n" +
+		"peers   8765 bob    6u  IPv4 0x1234567890abcdef      0t0  TCP *:17443 (LISTEN)\n" +
+		"peers   4321 alice  7u  IPv6 0x1234567890abcdef      0t0  TCP *:17443 (LISTEN)\n"
+	if pids := lsofPID(out); !slices.Equal(pids, []int{4321, 8765}) {
+		t.Fatalf("lsofPID = %v, want [4321 8765]", pids)
+	}
+}
+
+// TestLsofTextPath checks the executable path in lsof's field output.
+func TestLsofTextPath(t *testing.T) {
+	cases := []struct {
+		name string
+		out  string
+		want string
+	}{
+		{"executable", "p4321\nf7\nn/usr/local/bin/peers\n", "/usr/local/bin/peers"},
+		{"no executable", "p4321\nf7\n", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := lsofTextPath(tc.out); got != tc.want {
+				t.Errorf("lsofTextPath = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestOccupantFromLsofParsesExecutablePath checks that the macOS path uses
+// absolute lsof paths, asks lsof for the executable with -d txt -Fn, and parses
+// only its standard output.
+func TestOccupantFromLsofParsesExecutablePath(t *testing.T) {
+	opts := baseOptions(t)
+	opts.GOOS = "darwin"
+	var calls [][]string
+	opts.RunOutput = func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string{name}, args...))
+		if len(args) > 0 && args[0] == "-nP" {
+			return []byte("COMMAND  PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\n" +
+				"peers   4321 alice  5u  IPv4 0x1234567890abcdef      0t0  TCP *:17443 (LISTEN)\n"), nil
+		}
+		return []byte("p4321\nf7\nn/usr/local/bin/peers\n"), nil
+	}
+
+	got := findListenOccupant(opts, "127.0.0.1:17443")
+	if len(got) != 1 || got[0].pid != 4321 || got[0].path != "/usr/local/bin/peers" {
+		t.Fatalf("findListenOccupant = %+v, want pid 4321 at /usr/local/bin/peers", got)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("commands = %v, want two lsof runs", calls)
+	}
+	for _, call := range calls {
+		if call[0] != "/usr/sbin/lsof" {
+			t.Errorf("command = %q, want the absolute lsof path", call[0])
+		}
+	}
+	wantArgs := []string{"-a", "-p", "4321", "-d", "txt", "-Fn"}
+	if !slices.Equal(calls[1][1:], wantArgs) {
+		t.Errorf("second lsof args = %v, want %v", calls[1][1:], wantArgs)
+	}
+}
+
+// TestOccupantFromLsofFallsBackWithoutTheExecutable checks that a failed
+// executable lookup still reports the pid and never fails the installation.
+func TestOccupantFromLsofFallsBackWithoutTheExecutable(t *testing.T) {
+	opts := baseOptions(t)
+	opts.GOOS = "darwin"
+	opts.RunOutput = func(_ string, args ...string) ([]byte, error) {
+		if len(args) > 0 && args[0] == "-nP" {
+			return []byte("COMMAND  PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\n" +
+				"peers   4321 alice  5u  IPv4 0x1234567890abcdef      0t0  TCP *:17443 (LISTEN)\n"), nil
+		}
+		return nil, errors.New("lsof failed")
+	}
+
+	got := findListenOccupant(opts, "127.0.0.1:17443")
+	if len(got) != 1 || got[0].pid != 4321 || got[0].path != "" {
+		t.Fatalf("findListenOccupant = %+v, want pid 4321 without a path", got)
+	}
+	if desc := describeOccupants(got); desc != " by the process with pid 4321" {
+		t.Errorf("description = %q, want the pid without a path", desc)
+	}
+}
+
+// TestOccupantFromLsofReportsEveryListener checks that every pid lsof lists as
+// listening on the port is reported with its executable, not only the first.
+func TestOccupantFromLsofReportsEveryListener(t *testing.T) {
+	opts := baseOptions(t)
+	opts.GOOS = "darwin"
+	opts.RunOutput = func(_ string, args ...string) ([]byte, error) {
+		if len(args) > 0 && args[0] == "-nP" {
+			return []byte("COMMAND  PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\n" +
+				"peers   4321 alice  5u  IPv4 0x1234567890abcdef      0t0  TCP *:17443 (LISTEN)\n" +
+				"old     8765 bob    6u  IPv4 0x1234567890abcdef      0t0  TCP *:17443 (LISTEN)\n"), nil
+		}
+		for i, arg := range args {
+			if arg != "-p" || i+1 >= len(args) {
+				continue
+			}
+			switch args[i+1] {
+			case "4321":
+				return []byte("p4321\nf7\nn/usr/local/bin/peers\n"), nil
+			case "8765":
+				return []byte("p8765\nf7\nn/opt/old/bin/agent-peer\n"), nil
+			}
+		}
+		return nil, errors.New("unexpected lsof call")
+	}
+
+	got := findListenOccupant(opts, "127.0.0.1:17443")
+	want := []listenOccupant{
+		{pid: 4321, path: "/usr/local/bin/peers"},
+		{pid: 8765, path: "/opt/old/bin/agent-peer"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("findListenOccupant = %+v, want every listener %+v", got, want)
+	}
+}
+
+// TestHumanDuration checks that the timeout lines read as whole seconds instead
+// of printing a time.Duration, rounding any part of a second up to 1 second.
+func TestHumanDuration(t *testing.T) {
+	cases := []struct {
+		d    time.Duration
+		want string
+	}{
+		{20 * time.Millisecond, "1 second"},
+		{time.Second, "1 second"},
+		{1500 * time.Millisecond, "2 seconds"},
+		{20 * time.Second, "20 seconds"},
+	}
+	for _, tc := range cases {
+		if got := humanDuration(tc.d); got != tc.want {
+			t.Errorf("humanDuration(%v) = %q, want %q", tc.d, got, tc.want)
+		}
+	}
+}
+
+// writeProcListener writes a stand-in /proc tree with one listening socket in
+// table (tcp or tcp6) at localHex:port, held by pid through inode.
+func writeProcListener(t *testing.T, procRoot, table, localHex string, port, pid int, inode, exe string) {
+	t.Helper()
+	const header = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+	line := fmt.Sprintf("   0: %s:%04X 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 %s 1\n", localHex, port, inode)
+	writeProcFile(t, procRoot, "net/"+table, header+line)
+	other := "tcp6"
+	if table == "tcp6" {
+		other = "tcp"
+	}
+	writeProcFile(t, procRoot, "net/"+other, header)
+	fdDir := filepath.Join(procRoot, strconv.Itoa(pid), "fd")
+	if err := os.MkdirAll(fdDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("socket:["+inode+"]", filepath.Join(fdDir, "3")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(exe, filepath.Join(procRoot, strconv.Itoa(pid), "exe")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeProcFile writes one file into a stand-in /proc tree.
+func writeProcFile(t *testing.T, procRoot, name, content string) {
+	t.Helper()
+	path := filepath.Join(procRoot, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -2089,7 +2505,7 @@ func TestInstallReportsTheStartupFailureOnTimeout(t *testing.T) {
 		opts.ReadyTimeout = 20 * time.Millisecond
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
 		if !strings.Contains(err.Error(), reason) {
@@ -2162,7 +2578,7 @@ func TestInstallIgnoresStartupFailuresBeforeTheInstallStarted(t *testing.T) {
 		opts.ReadyTimeout = 20 * time.Millisecond
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
 		if strings.Contains(err.Error(), oldReason) {
@@ -2199,7 +2615,7 @@ func TestInstallIgnoresStartupFailuresBeforeTheInstallStarted(t *testing.T) {
 		opts.ReadyTimeout = 20 * time.Millisecond
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
 		if strings.Contains(err.Error(), oldReason) {
@@ -2223,7 +2639,7 @@ func TestInstallDisablesAfterAReadinessFailure(t *testing.T) {
 		opts.ReadyTimeout = 20 * time.Millisecond
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
 		for _, want := range []string{"stopped and disabled", "run service install again"} {
@@ -2323,7 +2739,7 @@ func TestInstallReportsACleanupFailure(t *testing.T) {
 	opts.ReadyTimeout = 20 * time.Millisecond
 
 	_, err := Install(opts)
-	if err == nil || !strings.Contains(err.Error(), "did not answer") {
+	if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 		t.Fatalf("Install error = %v, want the readiness timeout", err)
 	}
 	for _, want := range []string{"could not be disabled", "may start automatically", "disable failed"} {
@@ -2567,7 +2983,7 @@ func TestInstallFailsWhenTheStatusCannotBeRead(t *testing.T) {
 	if errors.As(err, &degraded) {
 		t.Fatalf("Install error = %v, want a plain error, not *DegradedError", err)
 	}
-	for _, want := range []string{"service is running", "status could not be read", "peers service status", "connection reset"} {
+	for _, want := range []string{"running service", "cannot read the status", "peers service status", "connection reset"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}
@@ -2604,7 +3020,7 @@ func TestInstallReportsTheServiceManagerStateOnTimeout(t *testing.T) {
 		opts.ReadyTimeout = 20 * time.Millisecond
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
 		for _, want := range []string{"ActiveState=failed", "SubState=failed", "ExecMainStatus=1"} {
@@ -2643,7 +3059,7 @@ func TestInstallReportsTheServiceManagerStateOnTimeout(t *testing.T) {
 		opts.ReadyTimeout = 20 * time.Millisecond
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
 		for _, want := range []string{"state = exited", "last exit code = 1"} {
@@ -2670,7 +3086,7 @@ func TestInstallReportsTheServiceManagerStateOnTimeout(t *testing.T) {
 		opts.ReadyTimeout = 20 * time.Millisecond
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "did not answer") {
+		if err == nil || !strings.Contains(err.Error(), "cannot reach the Broker") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
 		for _, want := range []string{"service manager state could not be read", "ActiveState", "Failed to connect to bus"} {
@@ -3010,7 +3426,8 @@ func TestInstallDarwinDoesNotTreatAPrintErrorAsUnloaded(t *testing.T) {
 		t.Fatal("Install succeeded while launchctl print kept failing")
 	}
 	for _, want := range []string{
-		"was not unloaded within 30ms",
+		"cannot unload the old service in",
+		"within 1 second",
 		"Resource temporarily unavailable",
 		"run the install again",
 	} {
