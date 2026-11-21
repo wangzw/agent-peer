@@ -35,11 +35,11 @@
 #   -h, --help      print this usage and exit.
 #
 # Without --system or --user the script chooses the level itself. Root installs
-# system-wide without asking. An account without a controlling terminal gets a
-# user-level install without waiting for input. An account with a controlling
-# terminal is asked whether to install system-wide, and is asked whether to
-# upgrade the existing system-wide installation when the host already has one;
-# answering no to the upgrade leaves the host unchanged.
+# at the system level without asking. An account without a controlling terminal
+# gets a user-level install without waiting for input. An account with a
+# controlling terminal is asked whether to install at the system level, and is
+# asked whether to upgrade the existing system-level installation when the host
+# already has one; answering no to the upgrade leaves the host unchanged.
 #
 # A system-level install asks, on the controlling terminal, whether to add the
 # account that ran sudo to the admin group, so that account can manage the
@@ -247,11 +247,11 @@ if ! _os=$(uname -s); then
 	fail "determining the operating system"
 fi
 
-# Choose the install level. An explicit option wins. Root installs system-wide
-# without asking. An account with a controlling terminal is asked whether to
-# install system-wide, and whether to upgrade the system-wide installation when
-# the host already has one. An account without a terminal gets a user-level
-# install without waiting for input.
+# Choose the install level. An explicit option wins. Root installs at the
+# system level without asking. An account with a controlling terminal is asked
+# whether to install at the system level, and whether to upgrade the
+# system-level installation when the host already has one. An account without a
+# terminal gets a user-level install without waiting for input.
 if [ "$system_set" -eq 1 ]; then
 	system=1
 elif [ "$user_set" -eq 1 ]; then
@@ -269,10 +269,10 @@ elif true 2>/dev/null </dev/tty; then
 		_existing_system=1
 	fi
 	if [ "$_existing_system" -eq 1 ]; then
-		_prompt='Upgrade the system-wide installation? [Y/n] '
+		_prompt='Upgrade the system-level installation? [Y/n] '
 		_default=1
 	else
-		_prompt='Install system-wide (all accounts)? [y/N] '
+		_prompt='Install for every account on this host? [y/N] '
 		_default=0
 	fi
 	_choice=0
@@ -287,7 +287,7 @@ elif true 2>/dev/null </dev/tty; then
 	else
 		system=0
 		if [ "$_existing_system" -eq 1 ]; then
-			printf 'install.sh: the system-wide installation was left unchanged; rerun with --user to install for this account instead.\n'
+			printf 'install.sh: the system-level installation was left unchanged; rerun with --user to install for this account instead.\n'
 			exit 0
 		fi
 	fi
@@ -296,9 +296,9 @@ else
 fi
 
 # A root account that asked for a user-level install is told to drop --user
-# rather than silently installing system-wide instead.
+# rather than silently installing at the system level instead.
 if [ "$system" -eq 0 ] && [ "$_current_uid" -eq 0 ]; then
-	fail "a user-level install must not run as root; drop --user to install system-wide"
+	fail "a user-level install must not run as root; drop --user to install at the system level"
 fi
 
 # The admin group belongs to a system-level install. Reject the options on a
@@ -322,7 +322,7 @@ if [ ! -f "$archive_binary" ]; then
 fi
 
 # A system-level install needs root. Recheck the same script under sudo with the
-# options the caller gave, so a system-wide choice made at the prompt and an
+# options the caller gave, so a system-level choice made at the prompt and an
 # explicit --system take the same path.
 if [ "$system" -eq 1 ] && [ "$_current_uid" -ne 0 ]; then
 	set -- --system

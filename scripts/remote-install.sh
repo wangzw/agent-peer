@@ -6,8 +6,9 @@
 #   curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version <version>
 #
 # The packaged install.sh chooses the installation level. It asks on the
-# controlling terminal whether to install system-wide, runs itself through sudo
-# for that choice, and installs system-wide without asking when it runs as root.
+# controlling terminal whether to install at the system level, runs itself
+# through sudo for that choice, and installs at the system level without asking
+# when it runs as root.
 # Pass --system or --user after "--" to skip the question.
 #
 # The script selects the release for this host's operating system and

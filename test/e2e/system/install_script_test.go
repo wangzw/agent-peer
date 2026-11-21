@@ -191,10 +191,10 @@ func TestREQBrokerConfig041_SystemInstallScript(t *testing.T) {
 	})
 }
 
-// TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemWide answers the level
-// question with y and checks that the ordinary account gets a system-level
+// TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemLevel answers the
+// level question with y and checks that the ordinary account gets a system-level
 // install, with the MCP server registered for that account.
-func TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemWide(t *testing.T) {
+func TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemLevel(t *testing.T) {
 	if !syscontainer.InContainer() {
 		stageInstallArchive(t)
 		syscontainer.Run(t, syscontainer.Systemd)

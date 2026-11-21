@@ -872,7 +872,7 @@ func skipWithoutTTYForwarding(t *testing.T) {
 	}
 }
 
-func TestInstallScriptLevelPromptInstallsSystemWide(t *testing.T) {
+func TestInstallScriptLevelPromptInstallsSystemLevel(t *testing.T) {
 	skipWithoutTTYForwarding(t)
 	for _, tc := range []struct {
 		name   string
