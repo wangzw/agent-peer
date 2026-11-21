@@ -22,12 +22,12 @@ import (
 )
 
 const (
-	// sgBinary is the agent-peer build the system image provides.
-	sgBinary = "/usr/local/bin/agent-peer"
+	// sgBinary is the peers build the system image provides.
+	sgBinary = "/usr/local/bin/peers"
 	// sgConfigPath is the system Broker's configuration file.
-	sgConfigPath = "/etc/agent-peer/config.yaml"
+	sgConfigPath = "/etc/peers/config.yaml"
 	// sgSocketPath is the system Broker's local socket.
-	sgSocketPath = "/run/agent-peer/broker.sock"
+	sgSocketPath = "/run/peers/broker.sock"
 	// sgUsersGID is the gid of agentpeer-users in the system image.
 	sgUsersGID = 2001
 	// sgOtherUID is the uid of other in the system image.
@@ -80,7 +80,7 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 		if !isError {
 			return false, "list_agents succeeded without a Broker"
 		}
-		for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+		for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
 			if !strings.Contains(text, want) {
 				return false, text
 			}
@@ -121,7 +121,7 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 	syscontainer.WaitFor(t, "other's user-level Broker process", func() bool {
 		return sgHasUserBroker(sgOtherUID)
 	})
-	for _, proc := range syscontainer.Pids("agent-peer", "broker", "--system") {
+	for _, proc := range syscontainer.Pids("peers", "broker", "--system") {
 		if proc.UID == sgOtherUID {
 			t.Errorf("other runs a Broker with --system (pid %d)", proc.PID)
 		}
@@ -268,8 +268,8 @@ func sgSocketModeGID(t *testing.T, path string) (os.FileMode, uint32) {
 // with mode 0600, creating the directory when needed.
 func sgWriteSystemConfig(t *testing.T, yaml string) {
 	t.Helper()
-	if err := os.MkdirAll("/etc/agent-peer", 0o755); err != nil {
-		t.Fatalf("syscontainer: creating /etc/agent-peer: %v", err)
+	if err := os.MkdirAll("/etc/peers", 0o755); err != nil {
+		t.Fatalf("syscontainer: creating /etc/peers: %v", err)
 	}
 	if err := os.WriteFile(sgConfigPath, []byte(yaml), 0o600); err != nil {
 		t.Fatalf("syscontainer: writing %s: %v", sgConfigPath, err)
@@ -286,7 +286,7 @@ func sgWriteSystemConfig(t *testing.T, yaml string) {
 // user-level Broker listen on 17444.
 func sgWriteOtherConfig(t *testing.T) {
 	t.Helper()
-	dir := "/home/other/.agent-peer"
+	dir := "/home/other/.peers"
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("syscontainer: creating %s: %v", dir, err)
 	}
@@ -313,7 +313,7 @@ func sgMCPPIDs(t *testing.T, account string) []int {
 	t.Helper()
 	uid := syscontainer.AccountUID(t, account)
 	var out []int
-	for _, proc := range syscontainer.Pids("agent-peer", "mcp") {
+	for _, proc := range syscontainer.Pids("peers", "mcp") {
 		if proc.UID == uid {
 			out = append(out, proc.PID)
 		}
@@ -353,7 +353,7 @@ func sgWaitConnected(t *testing.T, session *syscontainer.Session) {
 
 // sgHasUserBroker reports whether a non-system Broker runs as uid.
 func sgHasUserBroker(uid uint32) bool {
-	for _, proc := range syscontainer.Pids("agent-peer", "broker") {
+	for _, proc := range syscontainer.Pids("peers", "broker") {
 		if proc.UID == uid {
 			return true
 		}

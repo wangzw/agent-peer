@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	// agentPeerBinaryPath is the agent-peer build in the base image.
-	agentPeerBinaryPath = "/usr/local/bin/agent-peer"
+	// agentPeerBinaryPath is the peers build in the base image.
+	agentPeerBinaryPath = "/usr/local/bin/peers"
 	// registerClientRoleEnv selects the registration client in TestMain.
 	registerClientRoleEnv = "AGENT_PEER_E2E_ROLE"
 	// registerClientRole is the role that opens a Register stream directly.
@@ -186,7 +186,7 @@ func foreignSessionRejected(t *testing.T, readableRecord bool) {
 	})
 }
 
-// startForeignMCPSession starts "agent-peer mcp" as account with env and
+// startForeignMCPSession starts "peers mcp" as account with env and
 // connects an MCP client over its standard streams.
 func startForeignMCPSession(t *testing.T, account string, env []string) *mcp.ClientSession {
 	t.Helper()

@@ -1,10 +1,10 @@
 [Unit]
-Description=agent-peer Broker for this account
-Documentation=https://github.com/wangzw/agent-peer
+Description=peers Broker for this account
+Documentation=https://github.com/wangzw/peers
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/agent-peer broker --allow-degraded
+ExecStart=/usr/local/bin/peers broker --allow-degraded
 Restart=always
 RestartSec=5
 UMask=0077

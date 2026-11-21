@@ -27,7 +27,7 @@ const (
 // the selector already set.
 func TestTestEnvIgnoredInReleaseBuild(t *testing.T) {
 	if os.Getenv(releaseChildEnv) == "1" {
-		if got, want := userSocketPath(1000), "/tmp/agent-peer-1000/broker.sock"; got != want {
+		if got, want := userSocketPath(1000), "/tmp/peers-1000/broker.sock"; got != want {
 			t.Errorf("userSocketPath(1000) = %q, want %q", got, want)
 		}
 		if got, want := systemSocketPath(), filepath.Join(systemRuntimeDir(runtime.GOOS), "broker.sock"); got != want {

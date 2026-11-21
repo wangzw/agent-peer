@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// writeProjectFile writes content to <dir>/.agent-peer.yaml and returns the
+// writeProjectFile writes content to <dir>/.peers.yaml and returns the
 // absolute path.
 func writeProjectFile(t *testing.T, dir, content string) string {
 	t.Helper()

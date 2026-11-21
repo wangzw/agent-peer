@@ -37,11 +37,11 @@ const (
 	manyGroupCount = 20
 	negativeGroup  = "apneg"
 	negativeGID    = 6199
-	manyGroupDir   = "/tmp/agent-peer-manygroups"
+	manyGroupDir   = "/tmp/peers-manygroups"
 
 	// systemConfigPath is the file the system Broker checks for every
 	// permission-gated call.
-	systemConfigPath = "/etc/agent-peer/config.yaml"
+	systemConfigPath = "/etc/peers/config.yaml"
 
 	// manyGroupsWaitBound bounds the wait for the directory service to report a
 	// freshly created account's group memberships on a loaded CI runner.
@@ -214,7 +214,7 @@ func setupManyGroups(t *testing.T) *manyGroupFixture {
 		gid := 6100 + i
 		sudoIgnore("dscl", ".", "-create", "/Groups/"+name)
 		mustSudo(t, "dscl", ".", "-create", "/Groups/"+name, "PrimaryGroupID", strconv.Itoa(gid))
-		sudoIgnore("dscl", ".", "-create", "/Groups/"+name, "RealName", "agent-peer e2e group")
+		sudoIgnore("dscl", ".", "-create", "/Groups/"+name, "RealName", "peers e2e group")
 	}
 	sudoIgnore("dscl", ".", "-create", "/Groups/"+negativeGroup)
 	mustSudo(t, "dscl", ".", "-create", "/Groups/"+negativeGroup, "PrimaryGroupID", strconv.Itoa(negativeGID))
@@ -264,7 +264,7 @@ func (f *manyGroupFixture) writeFiles(t *testing.T) {
 
 func writeFixtureFile(t *testing.T, content, dest, group string) {
 	t.Helper()
-	tmp, err := os.CreateTemp("", "agent-peer-manygroups-*")
+	tmp, err := os.CreateTemp("", "peers-manygroups-*")
 	if err != nil {
 		t.Fatalf("creating a fixture source: %v", err)
 	}

@@ -63,18 +63,18 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 					if opts.System {
 						return service.Result{
 							Binary:     "/usr/local/bin/agent-peer",
-							ConfigPath: "/etc/agent-peer/config.yaml",
+							ConfigPath: "/etc/peers/config.yaml",
 							ConfigNew:  true,
-							RunLog:     "journalctl -u agent-peer.service",
-							AuditLog:   "/var/log/agent-peer/audit.log",
+							RunLog:     "journalctl -u peers.service",
+							AuditLog:   "/var/log/peers/audit.log",
 						}, nil
 					}
 					return service.Result{
 						Binary:     "/usr/local/bin/agent-peer",
-						ConfigPath: "/home/alice/.agent-peer/config.yaml",
+						ConfigPath: "/home/alice/.peers/config.yaml",
 						ConfigNew:  true,
-						RunLog:     "journalctl --user -u agent-peer.service",
-						AuditLog:   "/home/alice/.agent-peer/audit.log",
+						RunLog:     "journalctl --user -u peers.service",
+						AuditLog:   "/home/alice/.peers/audit.log",
 					}, nil
 				},
 				nil,
@@ -121,7 +121,7 @@ func TestServiceInstallMapsAdminGroup(t *testing.T) {
 				},
 				func(opts service.Options) (service.Result, error) {
 					installed = opts
-					return service.Result{UnitPath: "/x/agent-peer.service"}, nil
+					return service.Result{UnitPath: "/x/peers.service"}, nil
 				},
 				nil,
 			)
@@ -152,16 +152,16 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 			name: "user-level generated configuration",
 			result: service.Result{
 				Binary:     "/usr/local/bin/agent-peer",
-				ConfigPath: "/home/alice/.agent-peer/config.yaml",
+				ConfigPath: "/home/alice/.peers/config.yaml",
 				ConfigNew:  true,
-				RunLog:     "journalctl --user -u agent-peer.service",
-				AuditLog:   "/home/alice/.agent-peer/audit.log",
+				RunLog:     "journalctl --user -u peers.service",
+				AuditLog:   "/home/alice/.peers/audit.log",
 			},
 			want: "peers 0.1.2 installed (user-level, starts at login)\n" +
 				"  binary:     /usr/local/bin/agent-peer\n" +
-				"  config:     /home/alice/.agent-peer/config.yaml (generated)\n" +
-				"  run log:    journalctl --user -u agent-peer.service\n" +
-				"  audit log:  /home/alice/.agent-peer/audit.log\n" +
+				"  config:     /home/alice/.peers/config.yaml (generated)\n" +
+				"  run log:    journalctl --user -u peers.service\n" +
+				"  audit log:  /home/alice/.peers/audit.log\n" +
 				"  start:      peers service start\n" +
 				"  stop:       peers service stop\n" +
 				"  restart:    peers service restart\n" +
@@ -171,15 +171,15 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 			name: "user-level kept configuration",
 			result: service.Result{
 				Binary:     "/usr/local/bin/agent-peer",
-				ConfigPath: "/home/alice/.agent-peer/config.yaml",
-				RunLog:     "journalctl --user -u agent-peer.service",
-				AuditLog:   "/home/alice/.agent-peer/audit.log",
+				ConfigPath: "/home/alice/.peers/config.yaml",
+				RunLog:     "journalctl --user -u peers.service",
+				AuditLog:   "/home/alice/.peers/audit.log",
 			},
 			want: "peers 0.1.2 installed (user-level, starts at login)\n" +
 				"  binary:     /usr/local/bin/agent-peer\n" +
-				"  config:     /home/alice/.agent-peer/config.yaml (kept)\n" +
-				"  run log:    journalctl --user -u agent-peer.service\n" +
-				"  audit log:  /home/alice/.agent-peer/audit.log\n" +
+				"  config:     /home/alice/.peers/config.yaml (kept)\n" +
+				"  run log:    journalctl --user -u peers.service\n" +
+				"  audit log:  /home/alice/.peers/audit.log\n" +
 				"  start:      peers service start\n" +
 				"  stop:       peers service stop\n" +
 				"  restart:    peers service restart\n" +
@@ -190,17 +190,17 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 			system: true,
 			result: service.Result{
 				Binary:     "/usr/local/bin/agent-peer",
-				ConfigPath: "/etc/agent-peer/config.yaml",
+				ConfigPath: "/etc/peers/config.yaml",
 				ConfigNew:  true,
-				AdminGroup: "agent-peer",
-				RunLog:     "journalctl -u agent-peer.service",
-				AuditLog:   "/var/log/agent-peer/audit.log",
+				AdminGroup: "peers",
+				RunLog:     "journalctl -u peers.service",
+				AuditLog:   "/var/log/peers/audit.log",
 			},
 			want: "peers 0.1.2 installed (system-level, starts at boot)\n" +
 				"  binary:     /usr/local/bin/agent-peer\n" +
-				"  config:     /etc/agent-peer/config.yaml (generated)\n" +
-				"  run log:    journalctl -u agent-peer.service\n" +
-				"  audit log:  /var/log/agent-peer/audit.log\n" +
+				"  config:     /etc/peers/config.yaml (generated)\n" +
+				"  run log:    journalctl -u peers.service\n" +
+				"  audit log:  /var/log/peers/audit.log\n" +
 				"  start:      sudo peers service start\n" +
 				"  stop:       sudo peers service stop\n" +
 				"  restart:    sudo peers service restart\n" +
@@ -211,21 +211,21 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 			system: true,
 			result: service.Result{
 				Binary:     "/usr/local/bin/agent-peer",
-				ConfigPath: "/etc/agent-peer/config.yaml",
-				AdminGroup: "agent-peer",
-				RunLog:     "journalctl -u agent-peer.service",
-				AuditLog:   "/var/log/agent-peer/audit.log",
+				ConfigPath: "/etc/peers/config.yaml",
+				AdminGroup: "peers",
+				RunLog:     "journalctl -u peers.service",
+				AuditLog:   "/var/log/peers/audit.log",
 			},
 			want: "peers 0.1.2 installed (system-level, starts at boot)\n" +
 				"  binary:     /usr/local/bin/agent-peer\n" +
-				"  config:     /etc/agent-peer/config.yaml (kept)\n" +
-				"  run log:    journalctl -u agent-peer.service\n" +
-				"  audit log:  /var/log/agent-peer/audit.log\n" +
+				"  config:     /etc/peers/config.yaml (kept)\n" +
+				"  run log:    journalctl -u peers.service\n" +
+				"  audit log:  /var/log/peers/audit.log\n" +
 				"  start:      sudo peers service start\n" +
 				"  stop:       sudo peers service stop\n" +
 				"  restart:    sudo peers service restart\n" +
 				"  uninstall:  peers uninstall\n" +
-				"To delegate administration, run: chgrp agent-peer /etc/agent-peer/config.yaml && chmod 0660 /etc/agent-peer/config.yaml\n",
+				"To delegate administration, run: chgrp peers /etc/peers/config.yaml && chmod 0660 /etc/peers/config.yaml\n",
 		},
 	}
 	for _, tc := range cases {
@@ -260,16 +260,16 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 func TestServiceInstallReportsDegraded(t *testing.T) {
 	result := service.Result{
 		Binary:     "/usr/local/bin/agent-peer",
-		ConfigPath: "/home/alice/.agent-peer/config.yaml",
+		ConfigPath: "/home/alice/.peers/config.yaml",
 		ConfigNew:  true,
-		RunLog:     "journalctl --user -u agent-peer.service",
-		AuditLog:   "/home/alice/.agent-peer/audit.log",
+		RunLog:     "journalctl --user -u peers.service",
+		AuditLog:   "/home/alice/.peers/audit.log",
 	}
 	summary := "peers 0.1.2 installed (user-level, starts at login)\n" +
 		"  binary:     /usr/local/bin/agent-peer\n" +
-		"  config:     /home/alice/.agent-peer/config.yaml (generated)\n" +
-		"  run log:    journalctl --user -u agent-peer.service\n" +
-		"  audit log:  /home/alice/.agent-peer/audit.log\n" +
+		"  config:     /home/alice/.peers/config.yaml (generated)\n" +
+		"  run log:    journalctl --user -u peers.service\n" +
+		"  audit log:  /home/alice/.peers/audit.log\n" +
 		"  start:      peers service start\n" +
 		"  stop:       peers service stop\n" +
 		"  restart:    peers service restart\n" +
@@ -295,10 +295,10 @@ func TestServiceInstallReportsDegraded(t *testing.T) {
 			state: service.DegradedState{
 				Level:  service.DegradedDiagnosticsOnly,
 				Reason: "the data directory is not writable",
-				Fix:    "fix the permissions of ~/.agent-peer",
+				Fix:    "fix the permissions of ~/.peers",
 			},
 			want: "Broker: degraded (diagnostics only): the data directory is not writable\n" +
-				"Fix: fix the permissions of ~/.agent-peer\n",
+				"Fix: fix the permissions of ~/.peers\n",
 		},
 	}
 	for _, tc := range cases {
@@ -336,18 +336,18 @@ func TestServiceUninstall(t *testing.T) {
 		{
 			name:   "removed",
 			result: service.Result{Removed: true},
-			want:   "uninstalled agent-peer.service\n",
+			want:   "uninstalled peers.service\n",
 		},
 		{
 			name:   "removed from a launchd domain",
 			result: service.Result{Removed: true, Domain: "user/501"},
-			want:   "uninstalled io.github.wangzw.agent-peer from user/501\n",
+			want:   "uninstalled io.github.wangzw.peers from user/501\n",
 		},
 		{
 			name:   "system",
 			result: service.Result{Removed: true},
 			system: true,
-			want:   "uninstalled agent-peer.service\n",
+			want:   "uninstalled peers.service\n",
 		},
 		{
 			name:   "not installed",

@@ -207,8 +207,8 @@ func TestREQUpdate004_ConfirmedUpdateRestartsUserService(t *testing.T) {
 	if after := updateFileHash(t, svc.target); after == beforeHash {
 		t.Errorf("the binary at %s was not replaced", svc.target)
 	}
-	if got := updateBinaryVersion(t, svc.target); got != "agent-peer "+updateNewVersion {
-		t.Fatalf("the installed binary reports %q, want %q", got, "agent-peer "+updateNewVersion)
+	if got := updateBinaryVersion(t, svc.target); got != "peers "+updateNewVersion {
+		t.Fatalf("the installed binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 
 	harness.Eventually(t, updateServiceBound, "the user Broker to report the new version", func() (bool, string) {
@@ -258,8 +258,8 @@ func TestREQUpdate004_RefusedUpdateChangesNothing(t *testing.T) {
 	if state := updateServiceState(t, svc.userEnv); state != "active" {
 		t.Fatalf("the user service is %q after the refusal, want active", state)
 	}
-	if got := updateBinaryVersion(t, svc.target); got != "agent-peer "+updateOldVersion {
-		t.Fatalf("the binary reports %q after the refusal, want %q", got, "agent-peer "+updateOldVersion)
+	if got := updateBinaryVersion(t, svc.target); got != "peers "+updateOldVersion {
+		t.Fatalf("the binary reports %q after the refusal, want %q", got, "peers "+updateOldVersion)
 	}
 }
 
@@ -285,7 +285,7 @@ func TestREQUpdate004_YesSkipsPrompt(t *testing.T) {
 	res := runWithEnv(t, "peer", env, svc.target, "update", "--yes")
 	combined := res.Stdout + res.Stderr
 	if res.ExitCode != 0 {
-		t.Fatalf("agent-peer update --yes exited %d with non-terminal input\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("peers update --yes exited %d with non-terminal input\nstdout:\n%s\nstderr:\n%s",
 			res.ExitCode, res.Stdout, res.Stderr)
 	}
 	// --yes skips the question, so the command never prints the installed
@@ -296,8 +296,8 @@ func TestREQUpdate004_YesSkipsPrompt(t *testing.T) {
 	if after := updateFileHash(t, svc.target); after == beforeHash {
 		t.Errorf("the binary at %s was not replaced", svc.target)
 	}
-	if got := updateBinaryVersion(t, svc.target); got != "agent-peer "+updateNewVersion {
-		t.Fatalf("the installed binary reports %q, want %q", got, "agent-peer "+updateNewVersion)
+	if got := updateBinaryVersion(t, svc.target); got != "peers "+updateNewVersion {
+		t.Fatalf("the installed binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 	harness.Eventually(t, updateServiceBound, "the user Broker to report the new version", func() (bool, string) {
 		version, err := updateBrokerVersion(t, "peer")
@@ -357,8 +357,8 @@ func TestREQUpdate005_FailedUpdateKeepsBinaryAndService(t *testing.T) {
 			if state := updateServiceState(t, svc.userEnv); state != "active" {
 				t.Fatalf("the user service is %q after %s, want active", state, tc.name)
 			}
-			if got := updateBinaryVersion(t, svc.target); got != "agent-peer "+updateOldVersion {
-				t.Fatalf("the binary reports %q after %s, want %q", got, tc.name, "agent-peer "+updateOldVersion)
+			if got := updateBinaryVersion(t, svc.target); got != "peers "+updateOldVersion {
+				t.Fatalf("the binary reports %q after %s, want %q", got, tc.name, "peers "+updateOldVersion)
 			}
 		})
 	}
@@ -378,7 +378,7 @@ func TestREQUpdate006_UpdateRequiresWritePermission(t *testing.T) {
 	fake := harness.StartFakeGitHub(t, updateLoadRelease(t, updateNewVersion, updateGoodReleaseArtifact, updateGoodChecksumsArtifact))
 
 	rootDir := "/opt/root-owned"
-	target := filepath.Join(rootDir, "agent-peer")
+	target := filepath.Join(rootDir, "peers")
 	if err := os.MkdirAll(rootDir, 0o755); err != nil {
 		t.Fatalf("creating %s: %v", rootDir, err)
 	}
@@ -408,7 +408,7 @@ func TestREQUpdate006_UpdateRequiresWritePermission(t *testing.T) {
 	if after := updateFileHash(t, target); after != beforeHash {
 		t.Fatalf("the binary at %s changed after the refused update", target)
 	}
-	if got := updateBinaryVersion(t, target); got != "agent-peer "+updateOldVersion {
-		t.Fatalf("the binary reports %q, want %q", got, "agent-peer "+updateOldVersion)
+	if got := updateBinaryVersion(t, target); got != "peers "+updateOldVersion {
+		t.Fatalf("the binary reports %q, want %q", got, "peers "+updateOldVersion)
 	}
 }

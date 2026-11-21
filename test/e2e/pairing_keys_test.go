@@ -211,7 +211,7 @@ func TestPairingKeys(t *testing.T) {
 		}
 		for _, needle := range keys {
 			if pkDataDirContains(t, a, needle) {
-				t.Fatalf("a generated one-time key is stored under %s/.agent-peer", a.AccountHome())
+				t.Fatalf("a generated one-time key is stored under %s/.peers", a.AccountHome())
 			}
 		}
 
@@ -473,7 +473,7 @@ func pkDisconnect(t *testing.T, op *harness.Session, broker string) {
 // pkPeersJSON returns the peer table's bytes, or nil when it does not exist.
 func pkPeersJSON(t *testing.T, node *harness.Node) []byte {
 	t.Helper()
-	path := filepath.Join(node.AccountHome(), ".agent-peer", "peers.json")
+	path := filepath.Join(node.AccountHome(), ".peers", "peers.json")
 	res := node.Exec(t, []string{"sh", "-c", "if [ -f " + shellQuote(path) + " ]; then cat " + shellQuote(path) + "; fi"}, nil)
 	if res.ExitCode != 0 {
 		t.Fatalf("reading %s: exit %d: %s", path, res.ExitCode, res.Stderr)
@@ -481,11 +481,11 @@ func pkPeersJSON(t *testing.T, node *harness.Node) []byte {
 	return []byte(res.Stdout)
 }
 
-// pkDataDirContains reports whether any file under the account's .agent-peer
+// pkDataDirContains reports whether any file under the account's .peers
 // directory contains needle.
 func pkDataDirContains(t *testing.T, node *harness.Node, needle string) bool {
 	t.Helper()
-	dir := filepath.Join(node.AccountHome(), ".agent-peer")
+	dir := filepath.Join(node.AccountHome(), ".peers")
 	// The peers table is rewritten through a temporary file that is renamed
 	// into place. A recursive grep can open one of those temporary files and
 	// find it gone a moment later, so the search walks the durable files and
@@ -511,7 +511,7 @@ exit $status`
 // the SHA-256 of the DER SubjectPublicKeyInfo.
 func pkIdentityFingerprint(t *testing.T, node *harness.Node) string {
 	t.Helper()
-	path := filepath.Join(node.AccountHome(), ".agent-peer", "identity.crt")
+	path := filepath.Join(node.AccountHome(), ".peers", "identity.crt")
 	data := node.ReadFile(t, path)
 	block, _ := pem.Decode(data)
 	if block == nil {

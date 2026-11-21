@@ -227,9 +227,9 @@ func (a *app) waitForBrokerVersion(ctx context.Context, want string, userLevel b
 func updateLogHint(userLevel bool) string {
 	switch {
 	case updateGOOS == "darwin" && userLevel:
-		return "~/Library/Logs/agent-peer/broker.log"
+		return "~/Library/Logs/peers/broker.log"
 	case updateGOOS == "darwin":
-		return "/var/log/agent-peer/broker.log"
+		return "/var/log/peers/broker.log"
 	case userLevel:
 		return "journalctl --user -u " + service.UnitName
 	default:
@@ -254,7 +254,7 @@ func updateTarget() (string, error) {
 // checkTargetDirWritable proves the directory will accept the temporary file
 // and rename Apply needs, before anything is downloaded.
 func checkTargetDirWritable(dir string) error {
-	f, err := os.CreateTemp(dir, ".agent-peer-update-check-*")
+	f, err := os.CreateTemp(dir, ".peers-update-check-*")
 	if err != nil {
 		return fmt.Errorf("cannot write to %s: %w", dir, err)
 	}

@@ -138,13 +138,13 @@ jobs:
         if: always()
         run: |
           uid="$(id -u)"
-          launchctl bootout "gui/$uid/io.github.wangzw.agent-peer" 2>/dev/null || true
-          sudo launchctl bootout "system/io.github.wangzw.agent-peer" 2>/dev/null || true
-          sudo pkill -f 'agent-peer-test broker --system --listen :17446' 2>/dev/null || true
-          rm -f "$HOME/Library/LaunchAgents/io.github.wangzw.agent-peer.plist"
-          sudo rm -f "/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist"
-          sudo rm -f /usr/local/libexec/agent-peer-test
-          sudo rm -f /usr/local/libexec/agent-peer-e2e
+          launchctl bootout "gui/$uid/io.github.wangzw.peers" 2>/dev/null || true
+          sudo launchctl bootout "system/io.github.wangzw.peers" 2>/dev/null || true
+          sudo pkill -f 'peers-test broker --system --listen :17446' 2>/dev/null || true
+          rm -f "$HOME/Library/LaunchAgents/io.github.wangzw.peers.plist"
+          sudo rm -f "/Library/LaunchDaemons/io.github.wangzw.peers.plist"
+          sudo rm -f /usr/local/libexec/peers-test
+          sudo rm -f /usr/local/libexec/peers-e2e
           # Remove the many-group test account and groups only when the name
           # still carries the id the test uses. A real account with a different
           # id is left alone and reported.

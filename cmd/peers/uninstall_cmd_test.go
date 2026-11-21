@@ -234,7 +234,7 @@ func TestUninstallRootSystemLevel(t *testing.T) {
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
 			rec.steps = append(rec.steps, "service")
-			return service.Result{UnitPath: "/etc/systemd/system/agent-peer.service", Removed: true}, nil
+			return service.Result{UnitPath: "/etc/systemd/system/peers.service", Removed: true}, nil
 		},
 		removeMCP: func(account, binary string) (string, error) {
 			rec.steps = append(rec.steps, "mcp")
@@ -244,11 +244,11 @@ func TestUninstallRootSystemLevel(t *testing.T) {
 		mcpLookup: func(string) mcpRegistration { return mcpRegistration{} },
 		removeRuntime: func(service.Options) ([]string, error) {
 			rec.steps = append(rec.steps, "runtime")
-			return []string{"/run/agent-peer"}, nil
+			return []string{"/run/peers"}, nil
 		},
 		purgeData: func(service.Options) ([]string, error) {
 			rec.steps = append(rec.steps, "purge")
-			return []string{"/etc/agent-peer", "group agent-peer"}, nil
+			return []string{"/etc/peers", "group peers"}, nil
 		},
 		otherAccounts: func(service.Options) ([]string, error) {
 			rec.steps = append(rec.steps, "others")
@@ -282,7 +282,7 @@ func TestUninstallRootSystemLevel(t *testing.T) {
 		t.Errorf("prompts = %q, want one data question", ask.prompts)
 	}
 	for _, want := range []string{
-		"stopped and removed the service /etc/systemd/system/agent-peer.service",
+		"stopped and removed the service /etc/systemd/system/peers.service",
 		"other accounts run a user-level Broker: other",
 		"removed the binary " + binary,
 		"each account that registered the peer MCP server",
@@ -309,16 +309,16 @@ func TestUninstallRootPurgeSkipsDataQuestion(t *testing.T) {
 			return "/usr/local/bin/agent-peer", true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
-			return service.Result{UnitPath: "/etc/systemd/system/agent-peer.service", Removed: true}, nil
+			return service.Result{UnitPath: "/etc/systemd/system/peers.service", Removed: true}, nil
 		},
 		removeMCP: func(string, string) (string, error) { return "removed", nil },
 		mcpLookup: func(string) mcpRegistration { return mcpRegistration{} },
 		removeRuntime: func(service.Options) ([]string, error) {
-			return []string{"/run/agent-peer"}, nil
+			return []string{"/run/peers"}, nil
 		},
 		purgeData: func(service.Options) ([]string, error) {
 			purged = true
-			return []string{"/etc/agent-peer"}, nil
+			return []string{"/etc/peers"}, nil
 		},
 		otherAccounts: func(service.Options) ([]string, error) { return nil, nil },
 		getenv:        func(string) string { return "" },
@@ -567,7 +567,7 @@ func TestUninstallKeepsADownloadedCopyWhenNoUnitFileExists(t *testing.T) {
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
 			rec.steps = append(rec.steps, "service")
-			return service.Result{UnitPath: "/etc/systemd/system/agent-peer.service", Removed: true}, nil
+			return service.Result{UnitPath: "/etc/systemd/system/peers.service", Removed: true}, nil
 		},
 		removeMCP: func(string, string) (string, error) {
 			rec.steps = append(rec.steps, "mcp")
@@ -630,7 +630,7 @@ func TestUninstallAccountUserLevelKeepsData(t *testing.T) {
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
 			rec.steps = append(rec.steps, "service")
-			return service.Result{UnitPath: "/home/alice/.config/systemd/user/agent-peer.service", Removed: true}, nil
+			return service.Result{UnitPath: "/home/alice/.config/systemd/user/peers.service", Removed: true}, nil
 		},
 		removeMCP: func(account, binary string) (string, error) {
 			rec.steps = append(rec.steps, "mcp")
@@ -642,7 +642,7 @@ func TestUninstallAccountUserLevelKeepsData(t *testing.T) {
 		mcpLookup: func(string) mcpRegistration { return mcpRegistration{} },
 		removeRuntime: func(service.Options) ([]string, error) {
 			rec.steps = append(rec.steps, "runtime")
-			return []string{"/tmp/agent-peer-1000"}, nil
+			return []string{"/tmp/peers-1000"}, nil
 		},
 		purgeData: func(service.Options) ([]string, error) {
 			rec.steps = append(rec.steps, "purge")
@@ -668,7 +668,7 @@ func TestUninstallAccountUserLevelKeepsData(t *testing.T) {
 	if want := []string{"service", "mcp", "runtime", "binary"}; !slices.Equal(rec.steps, want) {
 		t.Errorf("steps = %q, want %q", rec.steps, want)
 	}
-	if !strings.Contains(stdout.String(), "kept configuration, data and logs: /home/alice/.agent-peer") {
+	if !strings.Contains(stdout.String(), "kept configuration, data and logs: /home/alice/.peers") {
 		t.Errorf("stdout = %q, want the kept paths", stdout)
 	}
 	if len(ask.prompts) != 1 || ask.prompts[0] != uninstallDataPrompt {
@@ -687,7 +687,7 @@ func TestUninstallAccountHintsAtSystemLevel(t *testing.T) {
 			return "/home/alice/bin/agent-peer", true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
-			return service.Result{UnitPath: "/home/alice/.config/systemd/user/agent-peer.service", Removed: true}, nil
+			return service.Result{UnitPath: "/home/alice/.config/systemd/user/peers.service", Removed: true}, nil
 		},
 		removeMCP:       func(string, string) (string, error) { return "removed", nil },
 		mcpLookup:       func(string) mcpRegistration { return mcpRegistration{} },
@@ -892,7 +892,7 @@ func TestUninstallKeepsABinaryOfAnotherAccount(t *testing.T) {
 			return binary, true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
-			return service.Result{UnitPath: "/home/alice/.config/systemd/user/agent-peer.service", Removed: true}, nil
+			return service.Result{UnitPath: "/home/alice/.config/systemd/user/peers.service", Removed: true}, nil
 		},
 		removeMCP:     func(string, string) (string, error) { return "removed", nil },
 		mcpLookup:     func(string) mcpRegistration { return mcpRegistration{} },
@@ -933,14 +933,14 @@ func TestUninstallReportsPathsRemovedBeforeAPurgeFailure(t *testing.T) {
 			return "/home/alice/bin/agent-peer", true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
-			return service.Result{UnitPath: "/home/alice/.config/systemd/user/agent-peer.service", Removed: true}, nil
+			return service.Result{UnitPath: "/home/alice/.config/systemd/user/peers.service", Removed: true}, nil
 		},
 		removeMCP:     func(string, string) (string, error) { return "removed", nil },
 		mcpLookup:     func(string) mcpRegistration { return mcpRegistration{} },
 		removeRuntime: func(service.Options) ([]string, error) { return nil, nil },
 		purgeData: func(service.Options) ([]string, error) {
 			return []string{
-				"/home/alice/.agent-peer",
+				"/home/alice/.peers",
 				"kept group ops: the installation did not record creating it; remove it manually with: groupdel ops",
 			}, errors.New("disk on fire")
 		},
@@ -958,7 +958,7 @@ func TestUninstallReportsPathsRemovedBeforeAPurgeFailure(t *testing.T) {
 	if got := a.run(context.Background(), []string{"uninstall", "--purge"}); got != exitFailure {
 		t.Fatalf("run(uninstall --purge) = %d, want %d", got, exitFailure)
 	}
-	if !strings.Contains(stdout.String(), "removed /home/alice/.agent-peer") {
+	if !strings.Contains(stdout.String(), "removed /home/alice/.peers") {
 		t.Errorf("stdout does not list the removed path before the failure:\n%s", stdout)
 	}
 	if !strings.Contains(stdout.String(), "kept group ops:") {
@@ -987,7 +987,7 @@ func TestUninstallRejectsRelativeHomeBeforeAnyStep(t *testing.T) {
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
 			rec.steps = append(rec.steps, "service")
-			return service.Result{UnitPath: "/home/alice/.config/systemd/user/agent-peer.service", Removed: true}, nil
+			return service.Result{UnitPath: "/home/alice/.config/systemd/user/peers.service", Removed: true}, nil
 		},
 		removeMCP: func(string, string) (string, error) {
 			rec.steps = append(rec.steps, "mcp")
@@ -1063,7 +1063,7 @@ func runBinaryDeletion(t *testing.T, binary, exe string) (removed bool, output s
 			return binary, true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
-			return service.Result{UnitPath: "/etc/systemd/system/agent-peer.service", Removed: true}, nil
+			return service.Result{UnitPath: "/etc/systemd/system/peers.service", Removed: true}, nil
 		},
 		removeMCP:     func(string, string) (string, error) { return "removed", nil },
 		mcpLookup:     func(string) mcpRegistration { return mcpRegistration{} },
@@ -1159,7 +1159,7 @@ func runBinaryDeletionWithScript(t *testing.T, binary, exe, script string) (remo
 			return binary, true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
-			return service.Result{UnitPath: "/etc/systemd/system/agent-peer.service", Removed: true}, nil
+			return service.Result{UnitPath: "/etc/systemd/system/peers.service", Removed: true}, nil
 		},
 		removeMCP:     func(string, string) (string, error) { return "removed", nil },
 		mcpLookup:     func(string) mcpRegistration { return mcpRegistration{} },
@@ -1205,7 +1205,7 @@ func TestUninstallRemovesTheServiceBinary(t *testing.T) {
 			return binary, true, nil
 		},
 		uninstallSvc: func(service.Options) (service.Result, error) {
-			return service.Result{UnitPath: "/etc/systemd/system/agent-peer.service", Removed: true}, nil
+			return service.Result{UnitPath: "/etc/systemd/system/peers.service", Removed: true}, nil
 		},
 		removeMCP:     func(string, string) (string, error) { return "removed", nil },
 		mcpLookup:     func(string) mcpRegistration { return mcpRegistration{} },

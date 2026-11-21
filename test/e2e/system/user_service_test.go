@@ -67,11 +67,11 @@ func TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink(t *testing.T
 		"XDG_RUNTIME_DIR=/run/user/" + uid,
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/" + uid + "/bus",
 	}
-	socket := "/tmp/agent-peer-" + uid + "/broker.sock"
+	socket := "/tmp/peers-" + uid + "/broker.sock"
 
 	// The peer has a configuration that lets a Broker start on its own and
 	// redial quickly, so the recovery bound below is set by those timers.
-	writeAccountFile(t, "peer", "/home/peer/.agent-peer/config.yaml",
+	writeAccountFile(t, "peer", "/home/peer/.peers/config.yaml",
 		"broker:\n  listen: \":17445\"\nlink:\n  reconnect_min: 1s\n  reconnect_max: 2s\n")
 
 	otherBroker := syscontainer.StartUserBroker(t, "other", "--listen", ":17444")
@@ -92,9 +92,9 @@ func TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink(t *testing.T
 	// Install the user-level service as peer through the product's subcommand.
 	// The interface is "service install [--system]": omitting --system is what
 	// selects the user-level unit, and there is no separate --user flag.
-	install := runWithEnv(t, "peer", userEnv, "agent-peer", "service", "install")
+	install := runWithEnv(t, "peer", userEnv, "peers", "service", "install")
 	if install.ExitCode != 0 {
-		t.Fatalf("agent-peer service install as peer: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers service install as peer: exit %d\nstdout: %s\nstderr: %s",
 			install.ExitCode, strings.TrimSpace(install.Stdout), strings.TrimSpace(install.Stderr))
 	}
 	assertUserUnitEnabled(t, userEnv)
@@ -137,7 +137,7 @@ func TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink(t *testing.T
 	closeSession(t, peerSession)
 	closeSession(t, otherSession)
 	syscontainer.WaitFor(t, "the sessions' MCP server processes to exit", func() bool {
-		return len(syscontainer.Pids("agent-peer", "mcp")) == 0
+		return len(syscontainer.Pids("peers", "mcp")) == 0
 	})
 
 	// Login again without starting a session. The enabled unit starts the
@@ -168,9 +168,9 @@ func TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink(t *testing.T
 // assertUserUnitEnabled checks that systemd records the user unit as enabled.
 func assertUserUnitEnabled(t *testing.T, userEnv []string) {
 	t.Helper()
-	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-enabled", "agent-peer.service")
+	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-enabled", "peers.service")
 	if state := strings.TrimSpace(res.Stdout); res.ExitCode != 0 || state != "enabled" {
-		t.Errorf("systemctl --user is-enabled agent-peer.service = %q (exit %d), want %q\nstderr: %s",
+		t.Errorf("systemctl --user is-enabled peers.service = %q (exit %d), want %q\nstderr: %s",
 			state, res.ExitCode, "enabled", strings.TrimSpace(res.Stderr))
 	}
 }
@@ -194,13 +194,13 @@ func userUnitPath(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("looking up account peer: %v", err)
 	}
-	return filepath.Join(u.HomeDir, ".config", "systemd", "user", "agent-peer.service")
+	return filepath.Join(u.HomeDir, ".config", "systemd", "user", "peers.service")
 }
 
 // userServiceMainPID returns the MainPID systemd reports for the user unit.
 func userServiceMainPID(t *testing.T, userEnv []string) int {
 	t.Helper()
-	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "show", "--property", "MainPID", "--value", "agent-peer.service")
+	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "show", "--property", "MainPID", "--value", "peers.service")
 	if res.ExitCode != 0 {
 		t.Fatalf("systemctl --user show --property MainPID: exit %d\nstderr: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 	}
@@ -225,7 +225,7 @@ func solePeerBroker(t *testing.T, peerUID uint32) int {
 // peerBrokers returns the running peer Broker processes.
 func peerBrokers(peerUID uint32) []syscontainer.ProcInfo {
 	var peer []syscontainer.ProcInfo
-	for _, proc := range syscontainer.Pids("agent-peer", "broker") {
+	for _, proc := range syscontainer.Pids("peers", "broker") {
 		if proc.UID == peerUID {
 			peer = append(peer, proc)
 		}

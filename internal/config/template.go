@@ -10,7 +10,7 @@ import (
 // configuration sections.
 var templateSections = []string{"broker", "pairing", "topics", "directory", "send", "link", "update", "log"}
 
-const systemTemplateHeader = `# agent-peer system Broker configuration.
+const systemTemplateHeader = `# peers system Broker configuration.
 #
 # Every key is optional; a key that is absent takes its default value.
 # Granting a group read access to this file lets its accounts read the
@@ -18,7 +18,7 @@ const systemTemplateHeader = `# agent-peer system Broker configuration.
 # lets them change the configuration and manage pairing.
 `
 
-const userTemplateHeader = `# agent-peer user Broker configuration.
+const userTemplateHeader = `# peers user Broker configuration.
 #
 # Every key is optional; a key that is absent takes its default value.
 # This file belongs to this account only: only this account runs the Broker
@@ -37,7 +37,7 @@ var templateExamples = map[string]templateExample{
 	"broker.alias":              {value: "hostA.alice", runtime: true},
 	"broker.advertise":          {value: "203.0.113.5:17443"},
 	"broker.advertise_extra":    {value: "[203.0.113.5:17443]"},
-	"broker.local_socket_group": {value: "agent-peer"},
+	"broker.local_socket_group": {value: "peers"},
 	"pairing.static_key": {
 		value: `""`,
 		note:  "Fill in 16 to 128 random characters, for example the output of `openssl rand -hex 32`. An empty value leaves the static key unset.",

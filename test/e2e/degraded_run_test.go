@@ -24,8 +24,8 @@ func TestDegradedRun(t *testing.T) {
 	c := harness.Up(t, harness.TopoFlat(2))
 	host := c.Node("hostA")
 
-	identity := filepath.Join(host.AccountHome(), ".agent-peer", "identity.key")
-	audit := filepath.Join(host.AccountHome(), ".agent-peer", "audit.log")
+	identity := filepath.Join(host.AccountHome(), ".peers", "identity.key")
+	audit := filepath.Join(host.AccountHome(), ".peers", "audit.log")
 
 	drConfig := func(listen string) string {
 		return harness.ConfigYAML("broker:\n  listen: \"" + listen + "\"")
@@ -74,7 +74,7 @@ func TestDegradedRun(t *testing.T) {
 		// An unparsable configuration is a fatal configuration failure, and the
 		// last standard-error line names the reason.
 		host.WriteConfig(t, "broker: [unclosed\n")
-		res := drExec(t, []string{"/usr/local/bin/agent-peer", "broker"}, nil)
+		res := drExec(t, []string{"/usr/local/bin/peers", "broker"}, nil)
 		if res.ExitCode == 0 {
 			t.Fatalf("a Broker with an unparsable configuration exited 0: %s", res.Stderr)
 		}
@@ -85,7 +85,7 @@ func TestDegradedRun(t *testing.T) {
 
 		// --allow-degraded does not cover a configuration that cannot be
 		// parsed: the diagnostics interface must not run on untrusted values.
-		res = drExec(t, []string{"/usr/local/bin/agent-peer", "broker", "--allow-degraded"}, nil)
+		res = drExec(t, []string{"/usr/local/bin/peers", "broker", "--allow-degraded"}, nil)
 		if res.ExitCode == 0 {
 			t.Fatalf("a degraded Broker with an unparsable configuration exited 0: %s", res.Stderr)
 		}
@@ -97,7 +97,7 @@ func TestDegradedRun(t *testing.T) {
 		// A taken listen address is the listen exit code and leaves no socket.
 		host.WriteConfig(t, drConfig(":17443"))
 		held := c.HoldPort(t, "hostA", ":17443")
-		res = drExec(t, []string{"/usr/local/bin/agent-peer", "broker"}, nil)
+		res = drExec(t, []string{"/usr/local/bin/peers", "broker"}, nil)
 		if res.ExitCode != 4 {
 			t.Fatalf("the Broker exited %d with 17443 held, want 4: %s", res.ExitCode, res.Stderr)
 		}
@@ -115,7 +115,7 @@ func TestDegradedRun(t *testing.T) {
 		drStop(t)
 		drChmod(t, host, identity, "000")
 		t.Cleanup(func() { drChmod(t, host, identity, "600") })
-		res = drExec(t, []string{"/usr/local/bin/agent-peer", "broker"}, nil)
+		res = drExec(t, []string{"/usr/local/bin/peers", "broker"}, nil)
 		if res.ExitCode == 0 {
 			t.Fatalf("a Broker with an unreadable identity exited 0: %s", res.Stderr)
 		}
@@ -127,14 +127,14 @@ func TestDegradedRun(t *testing.T) {
 
 	t.Run("REQ-broker-config-060 before-lock failures exit", func(t *testing.T) {
 		// Inside a session's process tree.
-		res := host.Exec(t, []string{"/usr/local/bin/agent-peer", "broker", "--allow-degraded"},
+		res := host.Exec(t, []string{"/usr/local/bin/peers", "broker", "--allow-degraded"},
 			map[string]string{"CLAUDE_CODE_MESSAGING_SOCKET": "/tmp/inbox.sock"})
 		if res.ExitCode != 6 {
 			t.Fatalf("a degraded Broker inside a session exited %d, want 6: %s", res.ExitCode, res.Stderr)
 		}
 
 		// The system form without root.
-		res = host.Exec(t, []string{"/usr/local/bin/agent-peer", "broker", "--system", "--allow-degraded"}, nil)
+		res = host.Exec(t, []string{"/usr/local/bin/peers", "broker", "--system", "--allow-degraded"}, nil)
 		if res.ExitCode != 7 {
 			t.Fatalf("a non-root system Broker exited %d, want 7: %s", res.ExitCode, res.Stderr)
 		}
@@ -145,7 +145,7 @@ func TestDegradedRun(t *testing.T) {
 		if !first.Running {
 			t.Fatalf("the first Broker did not start: exit %d: %s", first.ExitCode, first.StderrLast)
 		}
-		res = host.Exec(t, []string{"/usr/local/bin/agent-peer", "broker", "--allow-degraded"}, nil)
+		res = host.Exec(t, []string{"/usr/local/bin/peers", "broker", "--allow-degraded"}, nil)
 		if res.ExitCode != 3 {
 			t.Fatalf("a second degraded Broker exited %d, want 3: %s", res.ExitCode, res.Stderr)
 		}
@@ -243,12 +243,12 @@ func TestDegradedRun(t *testing.T) {
 		// The status command prints the diagnostics-only line with the same
 		// reason the Status call reported, names the audit log in its fix, and
 		// exits non-zero without repeating the reason on standard error.
-		status := drExec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
+		status := drExec(t, []string{"/usr/local/bin/peers", "status"}, nil)
 		if status.ExitCode == 0 {
-			t.Fatalf("agent-peer status exited 0 while diagnostics only: %s", status.Stdout)
+			t.Fatalf("peers status exited 0 while diagnostics only: %s", status.Stdout)
 		}
 		if status.Stderr != "" {
-			t.Fatalf("agent-peer status stderr = %q, want empty", status.Stderr)
+			t.Fatalf("peers status stderr = %q, want empty", status.Stderr)
 		}
 		wantLine := "Broker: degraded (diagnostics only): " + resp.GetDegraded().GetReason()
 		if !strings.Contains(status.Stdout, wantLine) {
@@ -334,9 +334,9 @@ func TestDegradedRun(t *testing.T) {
 
 		// The status command prints the local-only line and the address that
 		// could not be bound.
-		status := drExec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
+		status := drExec(t, []string{"/usr/local/bin/peers", "status"}, nil)
 		if status.ExitCode != 0 {
-			t.Fatalf("agent-peer status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
 				status.ExitCode, status.Stdout, status.Stderr)
 		}
 		for _, want := range []string{"Broker: degraded (local only):", ":17443"} {
@@ -351,7 +351,7 @@ func TestDegradedRun(t *testing.T) {
 			t.Fatalf("ss -ltnp exited %d: %s", ss.ExitCode, strings.TrimSpace(ss.Stderr))
 		}
 		for _, line := range bpListenLines(ss.Stdout) {
-			if strings.Contains(line, ":17443") && strings.Contains(line, "agent-peer") {
+			if strings.Contains(line, ":17443") && strings.Contains(line, "peers") {
 				t.Fatalf("the local-only Broker still listens: %q", line)
 			}
 		}

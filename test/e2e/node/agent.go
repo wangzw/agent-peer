@@ -185,7 +185,7 @@ type Agent struct {
 // implied by env.
 func NewAgent(tb *TB, env BaseEnv, binary, logDir string) *Agent {
 	uid := strconv.Itoa(os.Geteuid())
-	socket := filepath.Join("/tmp", "agent-peer-"+uid, "broker.sock")
+	socket := filepath.Join("/tmp", "peers-"+uid, "broker.sock")
 	if root := env.Extra["AGENT_PEER_TEST_RUNTIME_ROOT"]; root != "" {
 		socket = filepath.Join(root, uid, "broker.sock")
 	}
@@ -1232,7 +1232,7 @@ func (a *Agent) accountHome() string {
 
 // writeAccountConfig replaces the account Broker configuration with yaml.
 func (a *Agent) writeAccountConfig(yaml string) {
-	dir := filepath.Join(a.accountHome(), ".agent-peer")
+	dir := filepath.Join(a.accountHome(), ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		a.tb.Fatalf("node: creating account directory %s: %v", dir, err)
 	}

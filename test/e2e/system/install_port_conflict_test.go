@@ -79,9 +79,9 @@ func TestSystemServiceInstallListenPortConflict(t *testing.T) {
 			t.Fatalf("reinstalling service --system over the running service: exit %d\nstdout: %s\nstderr: %s",
 				again.ExitCode, strings.TrimSpace(again.Stdout), strings.TrimSpace(again.Stderr))
 		}
-		enabled := runCommandAs(t, "root", "systemctl", "is-enabled", "agent-peer.service")
+		enabled := runCommandAs(t, "root", "systemctl", "is-enabled", "peers.service")
 		if state := strings.TrimSpace(enabled.Stdout); state != "enabled" {
-			t.Errorf("systemctl is-enabled agent-peer.service after the reinstall = %q (exit %d), want %q\nstderr: %s",
+			t.Errorf("systemctl is-enabled peers.service after the reinstall = %q (exit %d), want %q\nstderr: %s",
 				state, enabled.ExitCode, "enabled", strings.TrimSpace(enabled.Stderr))
 		}
 		syscontainer.WaitFor(t, "the reinstalled system Broker to answer on "+addr, func() bool {
@@ -141,8 +141,8 @@ func resetSystemServiceState(t *testing.T) {
 	t.Helper()
 
 	_ = syscontainer.RunAs(t, "root", nil, "service", "uninstall", "--system")
-	_ = runCommandAs(t, "root", "systemctl", "stop", "agent-peer.service")
-	_ = runCommandAs(t, "root", "systemctl", "disable", "agent-peer.service")
+	_ = runCommandAs(t, "root", "systemctl", "stop", "peers.service")
+	_ = runCommandAs(t, "root", "systemctl", "disable", "peers.service")
 	_ = runCommandAs(t, "root", "systemctl", "daemon-reload")
 	_ = os.Remove(systemUnitPath)
 }
@@ -153,17 +153,17 @@ func resetSystemServiceState(t *testing.T) {
 func assertSystemServiceNotRegistered(t *testing.T) {
 	t.Helper()
 
-	enabled := runCommandAs(t, "root", "systemctl", "is-enabled", "agent-peer.service")
+	enabled := runCommandAs(t, "root", "systemctl", "is-enabled", "peers.service")
 	if state := strings.TrimSpace(enabled.Stdout); state == "enabled" {
-		t.Errorf("systemctl is-enabled agent-peer.service = %q after the failed installation, want it not enabled\nstderr: %s",
+		t.Errorf("systemctl is-enabled peers.service = %q after the failed installation, want it not enabled\nstderr: %s",
 			state, strings.TrimSpace(enabled.Stderr))
 	}
-	active := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	active := runCommandAs(t, "root", "systemctl", "is-active", "peers.service")
 	switch state := strings.TrimSpace(active.Stdout); state {
 	case "active", "activating", "reloading", "deactivating":
-		t.Errorf("systemctl is-active agent-peer.service = %q after the failed installation, want it inactive", state)
+		t.Errorf("systemctl is-active peers.service = %q after the failed installation, want it inactive", state)
 	}
-	if procs := syscontainer.Pids("agent-peer", "broker", "--system"); len(procs) != 0 {
+	if procs := syscontainer.Pids("peers", "broker", "--system"); len(procs) != 0 {
 		t.Errorf("the system Broker still runs after the failed installation: %v", procs)
 	}
 	// The unit is written only after the listen precheck, so a fresh

@@ -66,7 +66,7 @@ func TestBrokerProcessLocal(t *testing.T) {
 			if !r.IsError {
 				return false, "list_agents succeeded without a Broker"
 			}
-			for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+			for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
 				if !strings.Contains(r.Text, want) {
 					return false, r.Text
 				}
@@ -342,7 +342,7 @@ func TestBrokerProcessInContainer(t *testing.T) {
 			if !r.IsError {
 				return false, "list_agents succeeded while every address was taken"
 			}
-			for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+			for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
 				if !strings.Contains(r.Text, want) {
 					return false, r.Text
 				}
@@ -500,7 +500,7 @@ func bpContainerProcs(t *testing.T, c *harness.Cluster, name, kind string) []bpP
 	return out
 }
 
-// bpHasSubcommand reports whether args name the agent-peer subcommand kind.
+// bpHasSubcommand reports whether args name the peers subcommand kind.
 // "all" matches every process.
 func bpHasSubcommand(args []string, kind string) bool {
 	if kind == "all" {
@@ -616,7 +616,7 @@ func bpWaitVisible(t *testing.T, observer *harness.Session, address string) {
 // bpCheckStructuredLog asserts that every line of data is one JSON record with
 // time, level and event, and that the sent body never appears. The only
 // permitted non-JSON line is the final failure line cmd writes as
-// "agent-peer broker: ..."; a normal SIGTERM shutdown writes none.
+// "peers broker: ..."; a normal SIGTERM shutdown writes none.
 func bpCheckStructuredLog(t *testing.T, data []byte, forbidden string) {
 	t.Helper()
 
@@ -632,7 +632,7 @@ func bpCheckStructuredLog(t *testing.T, data []byte, forbidden string) {
 		if line == "" {
 			continue
 		}
-		if rest, ok := strings.CutPrefix(line, "agent-peer broker: "); ok {
+		if rest, ok := strings.CutPrefix(line, "peers broker: "); ok {
 			if i != len(lines)-1 {
 				t.Fatalf("a failure line appears before the end of the log: %q", line)
 			}

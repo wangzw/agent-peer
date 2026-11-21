@@ -8,7 +8,7 @@ import (
 )
 
 func TestUserSocketPath(t *testing.T) {
-	const want = "/tmp/agent-peer-1001/broker.sock"
+	const want = "/tmp/peers-1001/broker.sock"
 	if got := userSocketPath(1001); got != want {
 		t.Fatalf("userSocketPath(1001) = %q, want %q", got, want)
 	}
@@ -25,9 +25,9 @@ func TestUserSocketPath(t *testing.T) {
 
 func TestSystemRuntimeDir(t *testing.T) {
 	cases := []struct{ goos, want string }{
-		{"linux", "/run/agent-peer"},
-		{"darwin", "/var/run/agent-peer"},
-		{"freebsd", "/run/agent-peer"},
+		{"linux", "/run/peers"},
+		{"darwin", "/var/run/peers"},
+		{"freebsd", "/run/peers"},
 	}
 	for _, c := range cases {
 		if got := systemRuntimeDir(c.goos); got != c.want {

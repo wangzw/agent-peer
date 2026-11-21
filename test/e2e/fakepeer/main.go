@@ -226,7 +226,7 @@ func prepareHome() error {
 	if home == "" {
 		return errors.New("AGENT_PEER_TEST_HOME is not set")
 	}
-	dir := filepath.Join(home, ".agent-peer")
+	dir := filepath.Join(home, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create data directory: %w", err)
 	}

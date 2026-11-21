@@ -59,7 +59,7 @@ func TestSystemService(t *testing.T) {
 }
 
 // TestUserService installs the user-level Broker in the account's launchd
-// domain, checks that it runs and answers `agent-peer status`, and uninstalls
+// domain, checks that it runs and answers `peers status`, and uninstalls
 // it.
 func TestUserService(t *testing.T) {
 	resetUserService(t)
@@ -81,18 +81,18 @@ func TestUserService(t *testing.T) {
 	pid := waitForPID(t, domain, serviceStartBound)
 	t.Logf("launchd started the user Broker with pid %d", pid)
 
-	socket := fmt.Sprintf("/tmp/agent-peer-%d/broker.sock", os.Getuid())
+	socket := fmt.Sprintf("/tmp/peers-%d/broker.sock", os.Getuid())
 	waitFor(t, serviceStartBound, "the user Broker socket "+socket, func() (bool, string) {
 		_, err := os.Stat(socket)
 		return err == nil, fmt.Sprint(err)
 	})
 
 	var status result
-	waitFor(t, serviceStartBound, "agent-peer status to connect to the user Broker", func() (bool, string) {
+	waitFor(t, serviceStartBound, "peers status to connect to the user Broker", func() (bool, string) {
 		status = run(t, installedBinary, "status")
 		return status.exitCode == 0, fmt.Sprintf("exit %d\nstdout: %s\nstderr: %s", status.exitCode, status.stdout, status.stderr)
 	})
-	t.Logf("agent-peer status connected to the user Broker: %s", status.stdout)
+	t.Logf("peers status connected to the user Broker: %s", status.stdout)
 
 	res = run(t, installedBinary, "service", "uninstall")
 	if res.exitCode != 0 {
@@ -163,15 +163,15 @@ func TestUserServiceRestoresLinkAfterRelogin(t *testing.T) {
 		if !t.Failed() {
 			return
 		}
-		logPath := filepath.Join(os.Getenv("HOME"), "Library", "Logs", "agent-peer", "broker.log")
+		logPath := filepath.Join(os.Getenv("HOME"), "Library", "Logs", "peers", "broker.log")
 		if data, err := os.ReadFile(logPath); err == nil {
 			t.Logf("user Broker log %s:\n%s", logPath, data)
 		}
 	})
 
 	// Start with empty peer tables so a rerun in the same job pairs afresh.
-	_ = os.Remove(filepath.Join(os.Getenv("HOME"), ".agent-peer", "peers.json"))
-	_ = sudo("rm", "-f", "/var/lib/agent-peer/peers.json")
+	_ = os.Remove(filepath.Join(os.Getenv("HOME"), ".peers", "peers.json"))
+	_ = sudo("rm", "-f", "/var/lib/peers/peers.json")
 	writeUserConfig(t, ":"+reloginUserPort)
 	peer := startSystemPeer(t)
 
@@ -180,7 +180,7 @@ func TestUserServiceRestoresLinkAfterRelogin(t *testing.T) {
 		t.Fatalf("service install: exit %d\nstdout: %s\nstderr: %s",
 			res.exitCode, res.stdout, res.stderr)
 	}
-	userSocket := fmt.Sprintf("/tmp/agent-peer-%d/broker.sock", os.Getuid())
+	userSocket := fmt.Sprintf("/tmp/peers-%d/broker.sock", os.Getuid())
 	waitFor(t, serviceStartBound, "the user Broker socket "+userSocket, func() (bool, string) {
 		_, err := os.Stat(userSocket)
 		return err == nil, fmt.Sprint(err)
@@ -220,7 +220,7 @@ func TestUserServiceRestoresLinkAfterRelogin(t *testing.T) {
 // test's listen port and fast reconnect timers.
 func writeUserConfig(t *testing.T, listen string) {
 	t.Helper()
-	dir := filepath.Join(os.Getenv("HOME"), ".agent-peer")
+	dir := filepath.Join(os.Getenv("HOME"), ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("creating %s: %v", dir, err)
 	}
@@ -250,7 +250,7 @@ func startSystemPeer(t *testing.T) *systemPeer {
 		t.Fatalf("a system Broker already answers on %s; stop it before this test", systemSocketPath)
 	}
 	ensureSystemConfig(t)
-	logFile, err := os.CreateTemp("", "agent-peer-system-broker-*.log")
+	logFile, err := os.CreateTemp("", "peers-system-broker-*.log")
 	if err != nil {
 		t.Fatalf("creating the peer log: %v", err)
 	}
@@ -291,14 +291,14 @@ func startSystemPeer(t *testing.T) *systemPeer {
 // access check reads this file; a missing file is a permission denial.
 func ensureSystemConfig(t *testing.T) {
 	t.Helper()
-	const path = "/etc/agent-peer/config.yaml"
+	const path = "/etc/peers/config.yaml"
 	if _, err := os.Stat(path); err == nil {
 		return
 	}
 	if err := sudo("mkdir", "-p", filepath.Dir(path)); err != nil {
 		t.Fatalf("creating the system configuration directory: %v", err)
 	}
-	tmp, err := os.CreateTemp("", "agent-peer-system-config-*")
+	tmp, err := os.CreateTemp("", "peers-system-config-*")
 	if err != nil {
 		t.Fatalf("creating the system configuration: %v", err)
 	}

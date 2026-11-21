@@ -58,7 +58,7 @@ func TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate(t *testing.T) {
 		if !t.Failed() {
 			return
 		}
-		if data, err := exec.Command("sudo", "-n", "cat", "/var/log/agent-peer/broker.log").Output(); err == nil {
+		if data, err := exec.Command("sudo", "-n", "cat", "/var/log/peers/broker.log").Output(); err == nil {
 			t.Logf("system Broker log:\n%s", data)
 		}
 	})
@@ -103,14 +103,14 @@ func TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate(t *testing.T) {
 	res = runWithin(t, updateCommandBound, "sudo", "-n", installedBinary, "update", "--yes")
 	combined := res.stdout + res.stderr
 	if res.exitCode != 0 {
-		t.Fatalf("agent-peer update --yes: exit %d\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("peers update --yes: exit %d\nstdout:\n%s\nstderr:\n%s",
 			res.exitCode, res.stdout, res.stderr)
 	}
 	// The command does not print the old version with --yes; the check before
 	// the update already proved the old release was running.
 	for _, want := range []string{
 		"The Broker is restarting to version " + updateNewVersion,
-		"The Broker is running agent-peer " + updateNewVersion,
+		"The Broker is running peers " + updateNewVersion,
 	} {
 		if !strings.Contains(combined, want) {
 			t.Fatalf("the update output does not contain %q:\n%s", want, combined)
@@ -120,8 +120,8 @@ func TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate(t *testing.T) {
 		t.Errorf("the update succeeded without downloading the release from the fake API")
 	}
 
-	if got := binaryVersion(t, installedBinary); got != "agent-peer "+updateNewVersion {
-		t.Fatalf("the installed binary reports %q, want %q", got, "agent-peer "+updateNewVersion)
+	if got := binaryVersion(t, installedBinary); got != "peers "+updateNewVersion {
+		t.Fatalf("the installed binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 	afterUID, afterGID, afterMode, err := binaryOwner(installedBinary)
 	if err != nil {
@@ -136,13 +136,13 @@ func TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate(t *testing.T) {
 	// interface, which is what "running the new release and serving" means.
 	waitForBrokerVersion(t, updateNewVersion)
 	if status := run(t, "sudo", "-n", installedBinary, "status"); status.exitCode != 0 {
-		t.Fatalf("agent-peer status after the update: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers status after the update: exit %d\nstdout: %s\nstderr: %s",
 			status.exitCode, status.stdout, status.stderr)
 	}
 
 	audit := run(t, "sudo", "-n", installedBinary, "audit", "--limit", "50")
 	if audit.exitCode != 0 {
-		t.Fatalf("agent-peer audit after the update: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers audit after the update: exit %d\nstdout: %s\nstderr: %s",
 			audit.exitCode, audit.stdout, audit.stderr)
 	}
 	if !strings.Contains(audit.stdout, "update_applied") {
@@ -165,7 +165,7 @@ func preserveInstalledBinary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading %s: %v", installedBinary, err)
 	}
-	backup, err := os.CreateTemp("", "agent-peer-test-binary-*")
+	backup, err := os.CreateTemp("", "peers-test-binary-*")
 	if err != nil {
 		t.Fatalf("creating a backup of %s: %v", installedBinary, err)
 	}

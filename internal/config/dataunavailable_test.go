@@ -36,7 +36,7 @@ func TestLoadClassifiesDataDirectoryFailure(t *testing.T) {
 	if !errors.As(err, &de) {
 		t.Fatalf("load error %T is not a *DataUnavailableError", err)
 	}
-	if de.Paths.DataDir != filepath.Join(home, ".agent-peer") {
+	if de.Paths.DataDir != filepath.Join(home, ".peers") {
 		t.Errorf("Paths.DataDir = %q", de.Paths.DataDir)
 	}
 	if de.Err == nil {
@@ -71,7 +71,7 @@ func TestLoadCarriesSocketSettingsOnAuditFailure(t *testing.T) {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(home, ".agent-peer")
+	dir := filepath.Join(home, ".peers")
 	if err := os.MkdirAll(filepath.Join(dir, "audit.log"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestLoadCarriesSocketSettingsOnAuditFailure(t *testing.T) {
 // configuration error even when the data directory is also unusable.
 func TestLoadReportsParseErrorBeforeDataUnavailable(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, ".agent-peer")
+	dir := filepath.Join(home, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

@@ -35,7 +35,7 @@ const (
 )
 
 // MCPCommand names the MCP server program and its arguments. It is normally
-// the agent-peer binary with the "mcp" argument.
+// the peers binary with the "mcp" argument.
 type MCPCommand struct {
 	Path string
 	Args []string

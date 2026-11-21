@@ -43,7 +43,7 @@ func newValueCore(t *testing.T, body, override string) (*core, string) {
 	c.accountName = func() (string, error) { return "tester", nil }
 	c.now = func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
 	c.routesSrc = watchTestRoutes{}
-	dir := filepath.Join(home, ".agent-peer")
+	dir := filepath.Join(home, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

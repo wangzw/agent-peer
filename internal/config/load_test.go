@@ -53,7 +53,7 @@ func newLoadTestCore(t *testing.T, home string, routes addressSource) *core {
 
 func writeLoadTestConfig(t *testing.T, home, body string) string {
 	t.Helper()
-	dir := filepath.Join(home, ".agent-peer")
+	dir := filepath.Join(home, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestLoadDefaults(t *testing.T) {
 	if !sameAddresses(c.advertised, want) {
 		t.Errorf("advertised = %+v, want %+v", c.advertised, want)
 	}
-	if wantPath := filepath.Join(home, ".agent-peer", "config.yaml"); c.paths.ConfigFile != wantPath {
+	if wantPath := filepath.Join(home, ".peers", "config.yaml"); c.paths.ConfigFile != wantPath {
 		t.Errorf("ConfigFile = %q, want %q", c.paths.ConfigFile, wantPath)
 	}
 	if c.audit == nil {

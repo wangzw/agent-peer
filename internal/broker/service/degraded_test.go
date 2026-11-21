@@ -169,12 +169,12 @@ func TestStatusPeerAllowed(t *testing.T) {
 		uid  uint32
 		want bool
 	}{
-		{"system socket served by root", "/run/agent-peer/broker.sock", 0, true},
-		{"system socket served by another account", "/run/agent-peer/broker.sock", foreign, false},
-		{"darwin system socket served by root", "/var/run/agent-peer/broker.sock", 0, true},
-		{"darwin system socket served by this account", "/var/run/agent-peer/broker.sock", me, me == 0},
-		{"user socket served by this account", filepath.Join("/tmp", "agent-peer-"+strconv.Itoa(int(me)), "broker.sock"), me, true},
-		{"user socket served by another account", filepath.Join("/tmp", "agent-peer-x", "broker.sock"), foreign, false},
+		{"system socket served by root", "/run/peers/broker.sock", 0, true},
+		{"system socket served by another account", "/run/peers/broker.sock", foreign, false},
+		{"darwin system socket served by root", "/var/run/peers/broker.sock", 0, true},
+		{"darwin system socket served by this account", "/var/run/peers/broker.sock", me, me == 0},
+		{"user socket served by this account", filepath.Join("/tmp", "peers-"+strconv.Itoa(int(me)), "broker.sock"), me, true},
+		{"user socket served by another account", filepath.Join("/tmp", "peers-x", "broker.sock"), foreign, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

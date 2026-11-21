@@ -42,7 +42,7 @@ func TestServiceControl(t *testing.T) {
 	t.Run("stop and start act on one level only", func(t *testing.T) {
 		userEnv := serviceControlSetup(t)
 		uid := strconv.FormatUint(uint64(syscontainer.AccountUID(t, "peer")), 10)
-		userSocket := "/tmp/agent-peer-" + uid + "/broker.sock"
+		userSocket := "/tmp/peers-" + uid + "/broker.sock"
 
 		systemBefore, ok := systemServiceMainPID(t)
 		if !ok || systemBefore == 0 {
@@ -125,7 +125,7 @@ func TestServiceControl(t *testing.T) {
 			t.Fatalf("service start as peer with only a system-level install: exit %d, want 1\nstdout: %s\nstderr: %s",
 				res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
-		for _, want := range []string{"no user-level service is installed", "system-level service is installed", "sudo agent-peer service start"} {
+		for _, want := range []string{"no user-level service is installed", "system-level service is installed", "sudo peers service start"} {
 			if !strings.Contains(res.Stderr, want) {
 				t.Errorf("stderr = %q, want it to contain %q", strings.TrimSpace(res.Stderr), want)
 			}
@@ -140,7 +140,7 @@ func TestServiceControl(t *testing.T) {
 			t.Fatalf("service start as root with nothing installed: exit %d, want 1\nstdout: %s\nstderr: %s",
 				res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
-		for _, want := range []string{"no system-level service is installed", "sudo agent-peer service install --system"} {
+		for _, want := range []string{"no system-level service is installed", "sudo peers service install --system"} {
 			if !strings.Contains(res.Stderr, want) {
 				t.Errorf("stderr = %q, want it to contain %q", strings.TrimSpace(res.Stderr), want)
 			}
@@ -183,7 +183,7 @@ func TestServiceControl(t *testing.T) {
 		}
 		status := runWithEnv(t, "peer", userEnv, releaseBinary, "status")
 		if status.ExitCode != 0 {
-			t.Fatalf("agent-peer status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
 				status.ExitCode, strings.TrimSpace(status.Stdout), strings.TrimSpace(status.Stderr))
 		}
 		for _, want := range []string{"Broker: degraded (local only):", "Fix:"} {
@@ -214,7 +214,7 @@ func serviceControlSetup(t *testing.T) []string {
 	t.Helper()
 	userEnv := serviceControlReset(t)
 
-	writeAccountFile(t, "peer", "/home/peer/.agent-peer/config.yaml",
+	writeAccountFile(t, "peer", "/home/peer/.peers/config.yaml",
 		fmt.Sprintf("broker:\n  listen: \"127.0.0.1:%s\"\n", serviceControlUserPort))
 	writeSystemListenConfig(t, "127.0.0.1:"+serviceControlSystemPort)
 
@@ -230,7 +230,7 @@ func serviceControlSetup(t *testing.T) []string {
 			install.ExitCode, strings.TrimSpace(install.Stdout), strings.TrimSpace(install.Stderr))
 	}
 	uid := strconv.FormatUint(uint64(syscontainer.AccountUID(t, "peer")), 10)
-	waitForSocket(t, "/tmp/agent-peer-"+uid+"/broker.sock")
+	waitForSocket(t, "/tmp/peers-"+uid+"/broker.sock")
 	return userEnv
 }
 
@@ -253,8 +253,8 @@ func serviceControlReset(t *testing.T) []string {
 
 	reset := func() {
 		_ = runWithEnv(t, "peer", userEnv, releaseBinary, "service", "uninstall")
-		_ = runWithEnv(t, "peer", userEnv, "systemctl", "--user", "stop", "agent-peer.service")
-		_ = runWithEnv(t, "peer", userEnv, "systemctl", "--user", "disable", "agent-peer.service")
+		_ = runWithEnv(t, "peer", userEnv, "systemctl", "--user", "stop", "peers.service")
+		_ = runWithEnv(t, "peer", userEnv, "systemctl", "--user", "disable", "peers.service")
 		_ = os.Remove(userUnitPath(t))
 		resetSystemServiceState(t)
 	}
@@ -276,7 +276,7 @@ func waitForSocket(t *testing.T, path string) {
 // active.
 func systemServiceIsActive(t *testing.T) bool {
 	t.Helper()
-	res := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	res := runCommandAs(t, "root", "systemctl", "is-active", "peers.service")
 	return strings.TrimSpace(res.Stdout) == "active"
 }
 
@@ -284,6 +284,6 @@ func systemServiceIsActive(t *testing.T) bool {
 // user unit active.
 func userServiceIsActive(t *testing.T, userEnv []string) bool {
 	t.Helper()
-	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-active", "agent-peer.service")
+	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-active", "peers.service")
 	return strings.TrimSpace(res.Stdout) == "active"
 }

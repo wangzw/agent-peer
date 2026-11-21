@@ -16,7 +16,7 @@ import (
 )
 
 // e2eSystemSocketPath is the system-level Broker's local socket.
-const e2eSystemSocketPath = "/run/agent-peer/broker.sock"
+const e2eSystemSocketPath = "/run/peers/broker.sock"
 
 // TestREQBrokerConfig018_TwoAccountsShareSystemBroker registers one session as
 // each account with the same system Broker, then checks that they see each
@@ -34,13 +34,13 @@ func TestREQBrokerConfig018_TwoAccountsShareSystemBroker(t *testing.T) {
 		t.Fatalf("the system Broker socket is not at %s: %v", e2eSystemSocketPath, err)
 	}
 	found := false
-	for _, proc := range syscontainer.Pids("agent-peer", "broker", "--system") {
+	for _, proc := range syscontainer.Pids("peers", "broker", "--system") {
 		if proc.PID == broker.PID {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("process %d does not appear in Pids(agent-peer, broker, --system)", broker.PID)
+		t.Errorf("process %d does not appear in Pids(peers, broker, --system)", broker.PID)
 	}
 
 	a := syscontainer.NewSession(t, "peer", "a1")
@@ -103,7 +103,7 @@ func TestREQBrokerConfig018_TwoAccountsShareSystemBroker(t *testing.T) {
 
 	status := syscontainer.RunAs(t, "root", nil, "status")
 	if status.ExitCode != 0 {
-		t.Fatalf("agent-peer status as root: exit %d\n%s\n%s", status.ExitCode, status.Stdout, status.Stderr)
+		t.Fatalf("peers status as root: exit %d\n%s\n%s", status.ExitCode, status.Stdout, status.Stderr)
 	}
 	if !strings.Contains(status.Stdout, "Agents (3):") {
 		t.Fatalf("status does not list all three agents:\n%s", status.Stdout)

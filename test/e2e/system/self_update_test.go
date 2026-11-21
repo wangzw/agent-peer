@@ -21,13 +21,13 @@ import (
 const (
 	// selfUpdateArchiveDir is where the inner test assembles a release-shaped
 	// archive around the old release binary.
-	selfUpdateArchiveDir = "/var/lib/agent-peer-self-update-archive"
+	selfUpdateArchiveDir = "/var/lib/peers-self-update-archive"
 	// selfUpdateBinary is the system-level binary the install script writes.
-	selfUpdateBinary = "/usr/local/bin/agent-peer"
+	selfUpdateBinary = "/usr/local/bin/peers"
 	// selfUpdateConfigPath is the system Broker's configuration file.
-	selfUpdateConfigPath = "/etc/agent-peer/config.yaml"
+	selfUpdateConfigPath = "/etc/peers/config.yaml"
 	// selfUpdateSystemSocket is the system Broker's local socket.
-	selfUpdateSystemSocket = "/run/agent-peer/broker.sock"
+	selfUpdateSystemSocket = "/run/peers/broker.sock"
 	// selfUpdateAdminGroup is the group the admin-group unit will grant. Until
 	// that unit is merged, the test performs the same chgrp and chmod itself.
 	selfUpdateAdminGroup = "agentpeer-admins"
@@ -60,7 +60,7 @@ const (
 
 // TestREQUpdate007_SystemUpdateByAdminGroup covers the first acceptance of
 // REQ-update-007: an account that may write the system Broker's configuration
-// file runs "agent-peer update --yes" without root. The Broker downloads and
+// file runs "peers update --yes" without root. The Broker downloads and
 // replaces the binary, the service manager restarts it on the new version, the
 // binary keeps its owner and mode, the audit log records update_applied, and a
 // session registered before the restart lists Agents again without being
@@ -78,8 +78,8 @@ func TestREQUpdate007_SystemUpdateByAdminGroup(t *testing.T) {
 
 	beforeUID, beforeGID, beforeMode := fileOwnerAndMode(t, selfUpdateBinary)
 	beforeVersion := updateBinaryVersion(t, selfUpdateBinary)
-	if beforeVersion != "agent-peer "+updateOldVersion {
-		t.Fatalf("the install script installed %q, want %q", beforeVersion, "agent-peer "+updateOldVersion)
+	if beforeVersion != "peers "+updateOldVersion {
+		t.Fatalf("the install script installed %q, want %q", beforeVersion, "peers "+updateOldVersion)
 	}
 
 	// Register a session on the old Broker. It must keep working after the
@@ -90,7 +90,7 @@ func TestREQUpdate007_SystemUpdateByAdminGroup(t *testing.T) {
 	res := syscontainer.RunAs(t, installAccount, selfUpdateAPIEnv(fake), "update", "--yes")
 	combined := res.Stdout + res.Stderr
 	if res.ExitCode != 0 {
-		t.Fatalf("agent-peer update --yes as %s exited %d\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("peers update --yes as %s exited %d\nstdout:\n%s\nstderr:\n%s",
 			installAccount, res.ExitCode, res.Stdout, res.Stderr)
 	}
 	if !strings.Contains(combined, updateNewVersion) {
@@ -104,8 +104,8 @@ func TestREQUpdate007_SystemUpdateByAdminGroup(t *testing.T) {
 		t.Errorf("%s owner:mode changed from %d:%d %#o to %d:%d %#o across the update",
 			selfUpdateBinary, beforeUID, beforeGID, beforeMode, afterUID, afterGID, afterMode)
 	}
-	if got := updateBinaryVersion(t, selfUpdateBinary); got != "agent-peer "+updateNewVersion {
-		t.Fatalf("the installed binary reports %q, want %q", got, "agent-peer "+updateNewVersion)
+	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateNewVersion {
+		t.Fatalf("the installed binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 	selfUpdateWaitAuditEvent(t, installAccount)
 	selfUpdateWaitSession(t, session)
@@ -129,7 +129,7 @@ func TestREQUpdate007_SystemUpdateRefusedOutsideAdminGroup(t *testing.T) {
 	res := syscontainer.RunAs(t, "peer", selfUpdateAPIEnv(fake), "update", "--yes")
 	combined := res.Stdout + res.Stderr
 	if res.ExitCode == 0 {
-		t.Fatalf("agent-peer update --yes as peer outside the admin group succeeded\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("peers update --yes as peer outside the admin group succeeded\nstdout:\n%s\nstderr:\n%s",
 			res.Stdout, res.Stderr)
 	}
 	if !strings.Contains(combined, "permission_denied") {
@@ -138,14 +138,14 @@ func TestREQUpdate007_SystemUpdateRefusedOutsideAdminGroup(t *testing.T) {
 	if got := fake.Downloads(); got != downloadsBefore {
 		t.Fatalf("the refused update downloaded %d assets, want none", got-downloadsBefore)
 	}
-	if got := updateBinaryVersion(t, selfUpdateBinary); got != "agent-peer "+updateOldVersion {
-		t.Fatalf("the binary reports %q after the refusal, want %q", got, "agent-peer "+updateOldVersion)
+	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateOldVersion {
+		t.Fatalf("the binary reports %q after the refusal, want %q", got, "peers "+updateOldVersion)
 	}
 }
 
 // TestREQUpdate007_CLIWithoutUserBrokerUsesSystemBroker covers the routing rule
 // for an ordinary account that runs no user-level Broker: the selection order
-// reaches the system-level Broker, so "agent-peer update" delegates to it.
+// reaches the system-level Broker, so "peers update" delegates to it.
 func TestREQUpdate007_CLIWithoutUserBrokerUsesSystemBroker(t *testing.T) {
 	if !syscontainer.InContainer() {
 		selfUpdateStageHostAssets(t, true)
@@ -163,19 +163,19 @@ func TestREQUpdate007_CLIWithoutUserBrokerUsesSystemBroker(t *testing.T) {
 
 	res := syscontainer.RunAs(t, installAccount, selfUpdateAPIEnv(fake), "update", "--yes")
 	if res.ExitCode != 0 {
-		t.Fatalf("agent-peer update --yes as %s without a user-level Broker exited %d\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("peers update --yes as %s without a user-level Broker exited %d\nstdout:\n%s\nstderr:\n%s",
 			installAccount, res.ExitCode, res.Stdout, res.Stderr)
 	}
 	selfUpdateWaitBrokerVersion(t, selfUpdateSystemSocket, updateNewVersion)
-	if got := updateBinaryVersion(t, selfUpdateBinary); got != "agent-peer "+updateNewVersion {
-		t.Fatalf("the system-level binary reports %q, want %q", got, "agent-peer "+updateNewVersion)
+	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateNewVersion {
+		t.Fatalf("the system-level binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 	selfUpdateWaitAuditEvent(t, installAccount)
 }
 
 // TestREQUpdate007_CLIWithUserBrokerUsesUserBroker covers the other half of the
 // selection order: the same admin account also runs a user-level Broker, so
-// "agent-peer update" must reach that Broker and leave the system-level Broker
+// "peers update" must reach that Broker and leave the system-level Broker
 // and its binary untouched.
 func TestREQUpdate007_CLIWithUserBrokerUsesUserBroker(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -200,7 +200,7 @@ func TestREQUpdate007_CLIWithUserBrokerUsesUserBroker(t *testing.T) {
 	// can send the update to the user-level install.
 	res := syscontainer.RunAs(t, installAccount, selfUpdateAPIEnv(fake), "update", "--yes")
 	if res.ExitCode != 0 {
-		t.Fatalf("agent-peer update --yes as %s with a user-level Broker exited %d\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("peers update --yes as %s with a user-level Broker exited %d\nstdout:\n%s\nstderr:\n%s",
 			installAccount, res.ExitCode, res.Stdout, res.Stderr)
 	}
 
@@ -208,8 +208,8 @@ func TestREQUpdate007_CLIWithUserBrokerUsesUserBroker(t *testing.T) {
 	if after := updateFileHash(t, userTarget); after == userBeforeHash {
 		t.Errorf("the user-level binary at %s was not replaced", userTarget)
 	}
-	if got := updateBinaryVersion(t, userTarget); got != "agent-peer "+updateNewVersion {
-		t.Fatalf("the user-level binary reports %q, want %q", got, "agent-peer "+updateNewVersion)
+	if got := updateBinaryVersion(t, userTarget); got != "peers "+updateNewVersion {
+		t.Fatalf("the user-level binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 	if afterPID := selfUpdateUserServiceMainPID(t, installAccount, userEnv); afterPID == beforePID {
 		t.Errorf("the user-level Broker kept MainPID %d, want it restarted on the new version", beforePID)
@@ -218,15 +218,15 @@ func TestREQUpdate007_CLIWithUserBrokerUsesUserBroker(t *testing.T) {
 	if after := updateFileHash(t, selfUpdateBinary); after != systemBeforeHash {
 		t.Errorf("the system-level binary at %s changed during a user-level update", selfUpdateBinary)
 	}
-	if got := updateBinaryVersion(t, selfUpdateBinary); got != "agent-peer "+updateOldVersion {
+	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateOldVersion {
 		t.Fatalf("the system-level binary reports %q after a user-level update, want %q",
-			got, "agent-peer "+updateOldVersion)
+			got, "peers "+updateOldVersion)
 	}
 	selfUpdateWaitBrokerVersion(t, selfUpdateSystemSocket, updateOldVersion)
 }
 
 // TestREQUpdate007_RootUpdateUsesSystemBroker covers the root route: a root
-// caller has no separate user-level Broker, so "agent-peer update" reaches the
+// caller has no separate user-level Broker, so "peers update" reaches the
 // system-level Broker.
 func TestREQUpdate007_RootUpdateUsesSystemBroker(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -243,7 +243,7 @@ func TestREQUpdate007_RootUpdateUsesSystemBroker(t *testing.T) {
 
 	res := syscontainer.RunAs(t, "root", selfUpdateAPIEnv(fake), "update", "--yes")
 	if res.ExitCode != 0 {
-		t.Fatalf("agent-peer update --yes as root exited %d\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("peers update --yes as root exited %d\nstdout:\n%s\nstderr:\n%s",
 			res.ExitCode, res.Stdout, res.Stderr)
 	}
 
@@ -253,15 +253,15 @@ func TestREQUpdate007_RootUpdateUsesSystemBroker(t *testing.T) {
 		t.Errorf("%s owner:mode changed from %d:%d %#o to %d:%d %#o across the update",
 			selfUpdateBinary, beforeUID, beforeGID, beforeMode, afterUID, afterGID, afterMode)
 	}
-	if got := updateBinaryVersion(t, selfUpdateBinary); got != "agent-peer "+updateNewVersion {
-		t.Fatalf("the system-level binary reports %q, want %q", got, "agent-peer "+updateNewVersion)
+	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateNewVersion {
+		t.Fatalf("the system-level binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 	selfUpdateWaitAuditEvent(t, "root")
 }
 
 // TestREQUpdate007_SudoWithUserBrokerUsesSystemBroker covers the routing rule
 // that keeps an administrator's user-level Broker out of the way: an admin-group
-// member who also runs a user-level Broker executes "sudo agent-peer update",
+// member who also runs a user-level Broker executes "sudo peers update",
 // and the system-level Broker is the one upgraded.
 func TestREQUpdate007_SudoWithUserBrokerUsesSystemBroker(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -283,7 +283,7 @@ func TestREQUpdate007_SudoWithUserBrokerUsesSystemBroker(t *testing.T) {
 
 	res := selfUpdateRunSudo(t, installAccount, fake.URL(), "update", "--yes")
 	if res.ExitCode != 0 {
-		t.Fatalf("sudo agent-peer update --yes as %s exited %d\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("sudo peers update --yes as %s exited %d\nstdout:\n%s\nstderr:\n%s",
 			installAccount, res.ExitCode, res.Stdout, res.Stderr)
 	}
 
@@ -297,8 +297,8 @@ func TestREQUpdate007_SudoWithUserBrokerUsesSystemBroker(t *testing.T) {
 	if after := updateFileHash(t, userTarget); after != userBeforeHash {
 		t.Errorf("the user-level binary at %s changed during sudo update", userTarget)
 	}
-	if got := updateBinaryVersion(t, userTarget); got != "agent-peer "+updateOldVersion {
-		t.Fatalf("the user-level binary reports %q, want %q", got, "agent-peer "+updateOldVersion)
+	if got := updateBinaryVersion(t, userTarget); got != "peers "+updateOldVersion {
+		t.Fatalf("the user-level binary reports %q, want %q", got, "peers "+updateOldVersion)
 	}
 	selfUpdateWaitUserBrokerVersion(t, installAccount, updateOldVersion)
 
@@ -307,8 +307,8 @@ func TestREQUpdate007_SudoWithUserBrokerUsesSystemBroker(t *testing.T) {
 		t.Errorf("%s owner:mode changed from %d:%d %#o to %d:%d %#o across the update",
 			selfUpdateBinary, beforeUID, beforeGID, beforeMode, afterUID, afterGID, afterMode)
 	}
-	if got := updateBinaryVersion(t, selfUpdateBinary); got != "agent-peer "+updateNewVersion {
-		t.Fatalf("the system-level binary reports %q, want %q", got, "agent-peer "+updateNewVersion)
+	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateNewVersion {
+		t.Fatalf("the system-level binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 	selfUpdateWaitAuditEvent(t, "root")
 }
@@ -350,8 +350,8 @@ func TestREQUpdate007_TerminalSystemBrokerNeedsServiceManager(t *testing.T) {
 	if after := updateFileHash(t, selfUpdateBinary); after != beforeHash {
 		t.Fatalf("the binary at %s changed after the refused update", selfUpdateBinary)
 	}
-	if got := updateBinaryVersion(t, selfUpdateBinary); got != "agent-peer "+updateOldVersion {
-		t.Fatalf("the binary reports %q after the refusal, want %q", got, "agent-peer "+updateOldVersion)
+	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateOldVersion {
+		t.Fatalf("the binary reports %q after the refusal, want %q", got, "peers "+updateOldVersion)
 	}
 	if got := fake.Downloads(); got != downloadsBefore {
 		t.Fatalf("the refused update downloaded %d assets, want none", got-downloadsBefore)
@@ -410,15 +410,15 @@ func TestREQUpdate007_TerminalBrokerWithInheritedServiceEnvironmentIsRefused(t *
 	if !strings.Contains(text, "failed_precondition") {
 		t.Fatalf("update_broker = %q, want failed_precondition", text)
 	}
-	if !strings.Contains(text, "Run `agent-peer update` in a terminal instead.") {
+	if !strings.Contains(text, "Run `peers update` in a terminal instead.") {
 		t.Fatalf("update_broker = %q, want the terminal alternative", text)
 	}
 
 	if got := fake.Downloads(); got != downloadsBefore {
 		t.Fatalf("the refused updates downloaded %d assets, want none", got-downloadsBefore)
 	}
-	if got := updateBinaryVersion(t, selfUpdateBinary); got != "agent-peer "+updateOldVersion {
-		t.Fatalf("the binary reports %q after the refusal, want %q", got, "agent-peer "+updateOldVersion)
+	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateOldVersion {
+		t.Fatalf("the binary reports %q after the refusal, want %q", got, "peers "+updateOldVersion)
 	}
 }
 
@@ -487,13 +487,13 @@ func TestREQUpdate008_UpdateBrokerAlreadyLatest(t *testing.T) {
 	if got := fake.Downloads(); got != downloadsBefore {
 		t.Fatalf("the up-to-date call downloaded %d assets, want none", got-downloadsBefore)
 	}
-	if got := updateBinaryVersion(t, svc.target); got != "agent-peer "+updateOldVersion {
-		t.Fatalf("the binary reports %q after the up-to-date call, want %q", got, "agent-peer "+updateOldVersion)
+	if got := updateBinaryVersion(t, svc.target); got != "peers "+updateOldVersion {
+		t.Fatalf("the binary reports %q after the up-to-date call, want %q", got, "peers "+updateOldVersion)
 	}
 }
 
 // TestREQUpdate008_UpdateBrokerUnderUserService covers the user-level half of
-// REQ-update-008: a real "agent-peer mcp" session calls update_broker, the user
+// REQ-update-008: a real "peers mcp" session calls update_broker, the user
 // service's Broker replaces the binary and is restarted by the user manager,
 // the tool result names both versions and restarting, and the session reaches
 // the restarted Broker again without being reopened. The result also says the
@@ -520,13 +520,13 @@ func TestREQUpdate008_UpdateBrokerUnderUserService(t *testing.T) {
 	selfUpdateWaitSession(t, session)
 	selfUpdateRequireReopenHint(t, text)
 
-	if got := updateBinaryVersion(t, svc.target); got != "agent-peer "+updateNewVersion {
-		t.Fatalf("the user service binary reports %q, want %q", got, "agent-peer "+updateNewVersion)
+	if got := updateBinaryVersion(t, svc.target); got != "peers "+updateNewVersion {
+		t.Fatalf("the user service binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 }
 
 // TestREQUpdate008_UpdateBrokerUnderSystemService covers the system-level half
-// of REQ-update-008: a real "agent-peer mcp" session of an admin-group account
+// of REQ-update-008: a real "peers mcp" session of an admin-group account
 // calls update_broker, the system Broker replaces the binary and systemd
 // restarts it, the binary keeps its owner and mode, the audit log records the
 // update, and the session reaches the new Broker without being reopened.
@@ -589,8 +589,8 @@ func TestREQUpdate008_UpdateBrokerRefusedOutsideAdminGroup(t *testing.T) {
 	if got := fake.Downloads(); got != downloadsBefore {
 		t.Fatalf("the refused update downloaded %d assets, want none", got-downloadsBefore)
 	}
-	if got := updateBinaryVersion(t, selfUpdateBinary); got != "agent-peer "+updateOldVersion {
-		t.Fatalf("the binary reports %q after the refusal, want %q", got, "agent-peer "+updateOldVersion)
+	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateOldVersion {
+		t.Fatalf("the binary reports %q after the refusal, want %q", got, "peers "+updateOldVersion)
 	}
 }
 
@@ -625,7 +625,7 @@ func selfUpdatePrepareArchive(t *testing.T) string {
 		t.Fatalf("creating the archive directory %s: %v", selfUpdateArchiveDir, err)
 	}
 
-	syscontainer.CopyReleaseArtifact(t, updateOldArtifact, filepath.Join(selfUpdateArchiveDir, "agent-peer"), 0o755)
+	syscontainer.CopyReleaseArtifact(t, updateOldArtifact, filepath.Join(selfUpdateArchiveDir, "peers"), 0o755)
 	staged := syscontainer.ArtifactPath(stagedArchiveRel(t))
 	for _, file := range []struct {
 		name string
@@ -674,8 +674,8 @@ func selfUpdateInstallSystemService(t *testing.T, fake *harness.FakeGitHub) {
 
 	selfUpdateSetSystemUnitEnv(t, fake.URL())
 	harness.Eventually(t, selfUpdateRestartBound, "the system service to answer after the restart", func() (bool, string) {
-		if state := selfUpdateUnitState(t, "root", nil, "agent-peer.service"); state != "active" {
-			return false, "agent-peer.service is " + state
+		if state := selfUpdateUnitState(t, "root", nil, "peers.service"); state != "active" {
+			return false, "peers.service is " + state
 		}
 		if _, err := os.Stat(selfUpdateSystemSocket); err != nil {
 			return false, err.Error()
@@ -704,7 +704,7 @@ func selfUpdateInstallScriptJoinsAdminGroup(t *testing.T) bool {
 func selfUpdateSetSystemUnitEnv(t *testing.T, apiURL string) {
 	t.Helper()
 
-	dir := filepath.Join("/etc/systemd/system", "agent-peer.service.d")
+	dir := filepath.Join("/etc/systemd/system", "peers.service.d")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("creating %s: %v", dir, err)
 	}
@@ -714,7 +714,7 @@ func selfUpdateSetSystemUnitEnv(t *testing.T, apiURL string) {
 		t.Fatalf("writing %s: %v", path, err)
 	}
 	mustRun(t, "root", nil, "systemctl", "daemon-reload")
-	mustRun(t, "root", nil, "systemctl", "restart", "agent-peer.service")
+	mustRun(t, "root", nil, "systemctl", "restart", "peers.service")
 }
 
 // selfUpdateSetUserUnitEnv writes a systemd user drop-in that hands the fake API
@@ -724,7 +724,7 @@ func selfUpdateSetUserUnitEnv(t *testing.T, account string, userEnv []string, ap
 	t.Helper()
 
 	uid, gid, home := selfUpdatePasswd(t, account)
-	dir := filepath.Join(home, ".config", "systemd", "user", "agent-peer.service.d")
+	dir := filepath.Join(home, ".config", "systemd", "user", "peers.service.d")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("creating %s: %v", dir, err)
 	}
@@ -741,10 +741,10 @@ func selfUpdateSetUserUnitEnv(t *testing.T, account string, userEnv []string, ap
 	}
 
 	mustRun(t, account, userEnv, "systemctl", "--user", "daemon-reload")
-	mustRun(t, account, userEnv, "systemctl", "--user", "restart", "agent-peer.service")
+	mustRun(t, account, userEnv, "systemctl", "--user", "restart", "peers.service")
 	harness.Eventually(t, selfUpdateRestartBound, "the user service to answer after the restart", func() (bool, string) {
-		if state := selfUpdateUnitState(t, account, userEnv, "agent-peer.service", "--user"); state != "active" {
-			return false, "agent-peer.service is " + state
+		if state := selfUpdateUnitState(t, account, userEnv, "peers.service", "--user"); state != "active" {
+			return false, "peers.service is " + state
 		}
 		if _, err := os.Stat(syscontainer.UserSocketPath(t, account)); err != nil {
 			return false, err.Error()
@@ -760,7 +760,7 @@ func selfUpdateSetupUserServiceFor(t *testing.T, account string) (string, []stri
 	t.Helper()
 
 	uid, gid, home := selfUpdatePasswd(t, account)
-	target := filepath.Join(home, "bin", "agent-peer")
+	target := filepath.Join(home, "bin", "peers")
 	syscontainer.CopyReleaseArtifact(t, updateOldArtifact, target, 0o755)
 	dir := filepath.Dir(target)
 	if err := os.Chown(dir, int(uid), int(gid)); err != nil {
@@ -772,7 +772,7 @@ func selfUpdateSetupUserServiceFor(t *testing.T, account string) (string, []stri
 	if err := os.Chown(target, int(uid), int(gid)); err != nil {
 		t.Fatalf("chown %s: %v", target, err)
 	}
-	selfUpdateWriteAccountConfig(t, filepath.Join(home, ".agent-peer", "config.yaml"), uid, gid,
+	selfUpdateWriteAccountConfig(t, filepath.Join(home, ".peers", "config.yaml"), uid, gid,
 		fmt.Sprintf("broker:\n  listen: %q\nupdate:\n  check: false\n", selfUpdateUserListen))
 
 	uidString := strconv.FormatUint(uint64(uid), 10)
@@ -786,7 +786,7 @@ func selfUpdateSetupUserServiceFor(t *testing.T, account string) (string, []stri
 
 	install := runWithEnv(t, account, userEnv, target, "service", "install")
 	if install.ExitCode != 0 {
-		t.Fatalf("agent-peer service install as %s: exit %d\nstdout: %s\nstderr: %s\njournal:\n%s",
+		t.Fatalf("peers service install as %s: exit %d\nstdout: %s\nstderr: %s\njournal:\n%s",
 			account, install.ExitCode, strings.TrimSpace(install.Stdout), strings.TrimSpace(install.Stderr),
 			selfUpdateUserJournal(t, account, userEnv))
 	}
@@ -808,7 +808,7 @@ func selfUpdateSetupUserServiceFor(t *testing.T, account string) (string, []stri
 func selfUpdateUserJournal(t *testing.T, account string, userEnv []string) string {
 	t.Helper()
 
-	res := runWithEnv(t, account, userEnv, "journalctl", "--user", "-u", "agent-peer.service", "-n", "50", "--no-pager")
+	res := runWithEnv(t, account, userEnv, "journalctl", "--user", "-u", "peers.service", "-n", "50", "--no-pager")
 	return strings.TrimSpace(res.Stdout + res.Stderr)
 }
 
@@ -817,7 +817,7 @@ func selfUpdateUserJournal(t *testing.T, account string, userEnv []string) strin
 func selfUpdateUserServiceMainPID(t *testing.T, account string, userEnv []string) int {
 	t.Helper()
 
-	res := runWithEnv(t, account, userEnv, "systemctl", "--user", "show", "--property", "MainPID", "--value", "agent-peer.service")
+	res := runWithEnv(t, account, userEnv, "systemctl", "--user", "show", "--property", "MainPID", "--value", "peers.service")
 	if res.ExitCode != 0 {
 		t.Fatalf("systemctl --user show MainPID as %s: exit %d\nstderr: %s",
 			account, res.ExitCode, strings.TrimSpace(res.Stderr))
@@ -888,7 +888,7 @@ func selfUpdateUnitState(t *testing.T, account string, env []string, unit string
 	return strings.TrimSpace(res.Stdout)
 }
 
-// selfUpdateRunSudo runs the system-installed agent-peer through sudo as
+// selfUpdateRunSudo runs the system-installed peers through sudo as
 // account, with the fake API base set in the root command's environment.
 func selfUpdateRunSudo(t *testing.T, account, apiURL string, args ...string) syscontainer.Result {
 	t.Helper()
@@ -1074,7 +1074,7 @@ func selfUpdateWaitAuditEvent(t *testing.T, account string) {
 	harness.Eventually(t, selfUpdateAuditBound, "the audit log to record update_applied by "+account, func() (bool, string) {
 		res := syscontainer.RunAs(t, account, nil, "audit")
 		if res.ExitCode != 0 {
-			return false, fmt.Sprintf("agent-peer audit exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+			return false, fmt.Sprintf("peers audit exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 		}
 		for _, line := range strings.Split(res.Stdout, "\n") {
 			if strings.Contains(line, "update_applied") &&

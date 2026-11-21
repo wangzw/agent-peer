@@ -23,9 +23,9 @@ import (
 
 const (
 	// permConfigPath is the system Broker's configuration file.
-	permConfigPath = "/etc/agent-peer/config.yaml"
+	permConfigPath = "/etc/peers/config.yaml"
 	// permSocketPath is the system Broker's local socket.
-	permSocketPath = "/run/agent-peer/broker.sock"
+	permSocketPath = "/run/peers/broker.sock"
 	// permPeerListen is the user-level Broker's listen address in the pairing
 	// test.
 	permPeerListen = "127.0.0.1:17444"
@@ -131,15 +131,15 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 	for _, command := range []string{"offline", "online"} {
 		res := syscontainer.RunAs(t, "other", nil, command)
 		if res.ExitCode == 0 {
-			t.Errorf("agent-peer %s as other without write permission succeeded: %s", command, res.Stdout)
+			t.Errorf("peers %s as other without write permission succeeded: %s", command, res.Stdout)
 			continue
 		}
 		combined := res.Stdout + res.Stderr
 		if !strings.Contains(combined, "permission_denied") {
-			t.Errorf("agent-peer %s error = %q, want permission_denied", command, combined)
+			t.Errorf("peers %s error = %q, want permission_denied", command, combined)
 		}
 		if !strings.Contains(combined, permConfigPath) {
-			t.Errorf("agent-peer %s error = %q, want it to name %s", command, combined, permConfigPath)
+			t.Errorf("peers %s error = %q, want it to name %s", command, combined, permConfigPath)
 		}
 	}
 
@@ -522,11 +522,11 @@ func TestREQBrokerConfig009_AuditNeedsReadPermissionOnSystemBroker(t *testing.T)
 
 	res := syscontainer.RunAs(t, "other", nil, "audit")
 	if res.ExitCode != 0 {
-		t.Fatalf("agent-peer audit as other exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+		t.Fatalf("peers audit as other exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 	}
 	lines := permNonEmptyLines(res.Stdout)
 	if len(lines) != len(events) {
-		t.Fatalf("agent-peer audit printed %d lines for %d audit records:\n%s", len(lines), len(events), res.Stdout)
+		t.Fatalf("peers audit printed %d lines for %d audit records:\n%s", len(lines), len(events), res.Stdout)
 	}
 	for i, event := range events {
 		if name := permAuditKindName(event.GetEvent()); !strings.Contains(lines[i], name) {

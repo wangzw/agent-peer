@@ -22,9 +22,9 @@ import (
 const (
 	// agGroup is the default administration group a system-level install
 	// provides for the Broker's configuration file.
-	agGroup = "agent-peer"
+	agGroup = "peers"
 	// agConfigPath is the system Broker's configuration file.
-	agConfigPath = "/etc/agent-peer/config.yaml"
+	agConfigPath = "/etc/peers/config.yaml"
 	// agSeedMember is added to the group before the first install, so the
 	// install has an existing membership it must not change.
 	agSeedMember = "peer"
@@ -200,7 +200,7 @@ func TestREQBrokerConfig043_SystemInstallAdminGroup(t *testing.T) {
 
 		res := syscontainer.RunAs(t, installAccount, nil, "pairing-key", "create")
 		if res.ExitCode != 0 {
-			t.Fatalf("agent-peer pairing-key create as %s: exit %d\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers pairing-key create as %s: exit %d\nstdout: %s\nstderr: %s",
 				installAccount, res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
 		if !strings.Contains(res.Stdout, "Key: ") {
@@ -209,7 +209,7 @@ func TestREQBrokerConfig043_SystemInstallAdminGroup(t *testing.T) {
 
 		res = syscontainer.RunAs(t, installAccount, nil, "config", "set", "broker.alias", "admin-e2e")
 		if res.ExitCode != 0 {
-			t.Fatalf("agent-peer config set as %s: exit %d\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers config set as %s: exit %d\nstdout: %s\nstderr: %s",
 				installAccount, res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
 		if !strings.Contains(res.Stdout, "broker.alias:") {
@@ -218,7 +218,7 @@ func TestREQBrokerConfig043_SystemInstallAdminGroup(t *testing.T) {
 
 		res = syscontainer.RunAs(t, installAccount, nil, "peer", "connect", agPeerListen, "--key", key)
 		if res.ExitCode != 0 {
-			t.Fatalf("agent-peer peer connect as %s: exit %d\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers peer connect as %s: exit %d\nstdout: %s\nstderr: %s",
 				installAccount, res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
 		if !strings.Contains(res.Stdout, "Paired with ") {
@@ -242,7 +242,7 @@ func TestREQBrokerConfig043_SystemInstallAdminGroup(t *testing.T) {
 
 		res := syscontainer.RunAs(t, installAccount, nil, "config", "set", "broker.listen", ":"+strconv.Itoa(agPrivilegedPort))
 		if res.ExitCode == 0 {
-			t.Fatalf("agent-peer config set broker.listen :%d as %s succeeded:\n%s",
+			t.Fatalf("peers config set broker.listen :%d as %s succeeded:\n%s",
 				agPrivilegedPort, installAccount, res.Stdout)
 		}
 		combined := res.Stdout + res.Stderr
@@ -281,7 +281,7 @@ func TestREQBrokerConfig043_SystemInstallAdminGroup(t *testing.T) {
 
 		res := syscontainer.RunAs(t, "root", nil, "config", "set", "broker.listen", ":"+strconv.Itoa(agPrivilegedPort))
 		if res.ExitCode == 0 {
-			t.Fatalf("agent-peer config set broker.listen :%d as root succeeded on a group-writable file:\n%s",
+			t.Fatalf("peers config set broker.listen :%d as root succeeded on a group-writable file:\n%s",
 				agPrivilegedPort, res.Stdout)
 		}
 		if combined := res.Stdout + res.Stderr; !strings.Contains(combined, "permission_denied") {
@@ -300,7 +300,7 @@ func TestREQBrokerConfig043_SystemInstallAdminGroup(t *testing.T) {
 
 		res := syscontainer.RunAs(t, "root", nil, "config", "set", "broker.listen", ":"+strconv.Itoa(agRootOnlyPort))
 		if res.ExitCode != 0 {
-			t.Fatalf("agent-peer config set broker.listen :%d as root over a root-only file: exit %d\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers config set broker.listen :%d as root over a root-only file: exit %d\nstdout: %s\nstderr: %s",
 				agRootOnlyPort, res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
 		agWaitPort(t, agLoopback(agRootOnlyPort), true)
@@ -322,16 +322,16 @@ func TestREQBrokerConfig043_SystemInstallAdminGroup(t *testing.T) {
 		} {
 			res := syscontainer.RunAs(t, agNonMember, nil, call.args...)
 			if res.ExitCode == 0 {
-				t.Errorf("agent-peer %s as %s outside %s succeeded:\n%s",
+				t.Errorf("peers %s as %s outside %s succeeded:\n%s",
 					call.name, agNonMember, agGroup, res.Stdout)
 				continue
 			}
 			combined := res.Stdout + res.Stderr
 			if !strings.Contains(combined, "permission_denied") {
-				t.Errorf("agent-peer %s as %s = %q, want permission_denied", call.name, agNonMember, combined)
+				t.Errorf("peers %s as %s = %q, want permission_denied", call.name, agNonMember, combined)
 			}
 			if !strings.Contains(combined, agConfigPath) {
-				t.Errorf("agent-peer %s as %s does not name %s; output:\n%s",
+				t.Errorf("peers %s as %s does not name %s; output:\n%s",
 					call.name, agNonMember, agConfigPath, combined)
 			}
 		}
@@ -603,7 +603,7 @@ func agCreatePairingKey(t *testing.T, account string) string {
 	t.Helper()
 	res := syscontainer.RunAs(t, account, nil, "pairing-key", "create")
 	if res.ExitCode != 0 {
-		t.Fatalf("agent-peer pairing-key create as %s: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers pairing-key create as %s: exit %d\nstdout: %s\nstderr: %s",
 			account, res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 	for _, line := range strings.Split(res.Stdout, "\n") {
@@ -611,7 +611,7 @@ func agCreatePairingKey(t *testing.T, account string) string {
 			return strings.TrimSpace(key)
 		}
 	}
-	t.Fatalf("agent-peer pairing-key create as %s printed no key:\n%s", account, res.Stdout)
+	t.Fatalf("peers pairing-key create as %s printed no key:\n%s", account, res.Stdout)
 	return ""
 }
 

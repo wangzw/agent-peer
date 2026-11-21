@@ -10,13 +10,13 @@ import (
 const (
 	// Label is the launchd label shared by the per-user agent and the system
 	// daemon.
-	Label = "io.github.wangzw.agent-peer"
+	Label = "io.github.wangzw.peers"
 	// UnitName is the systemd unit name shared by the user and system units.
-	UnitName = "agent-peer.service"
+	UnitName = "peers.service"
 )
 
 const systemdUserTemplate = `[Unit]
-Description=agent-peer Broker for this account
+Description=peers Broker for this account
 Documentation=https://github.com/wangzw/peers
 
 [Service]
@@ -31,7 +31,7 @@ WantedBy=default.target
 `
 
 const systemdSystemTemplate = `[Unit]
-Description=agent-peer system Broker
+Description=peers system Broker
 Documentation=https://github.com/wangzw/peers
 Wants=network-online.target
 After=network-online.target
@@ -56,7 +56,7 @@ const launchAgentTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>io.github.wangzw.agent-peer</string>
+	<string>io.github.wangzw.peers</string>
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
@@ -84,7 +84,7 @@ const launchDaemonTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>io.github.wangzw.agent-peer</string>
+	<string>io.github.wangzw.peers</string>
 	<key>ProgramArguments</key>
 	<array>
 		<string>%s</string>
@@ -101,9 +101,9 @@ const launchDaemonTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 	<key>Umask</key>
 	<integer>18</integer>
 	<key>StandardOutPath</key>
-	<string>/var/log/agent-peer/broker.log</string>
+	<string>/var/log/peers/broker.log</string>
 	<key>StandardErrorPath</key>
-	<string>/var/log/agent-peer/broker.log</string>
+	<string>/var/log/peers/broker.log</string>
 </dict>
 </plist>
 `

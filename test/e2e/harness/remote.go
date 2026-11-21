@@ -249,7 +249,7 @@ func (r *remoteNode) workspace(tb testing.TB, kind, origin, projectYAML string) 
 
 // configPath is the account's configuration file inside the container.
 func (r *remoteNode) configPath() string {
-	return r.homeDir + "/.agent-peer/config.yaml"
+	return r.homeDir + "/.peers/config.yaml"
 }
 
 // readFileMaybe reads through the node agent, reporting a missing file

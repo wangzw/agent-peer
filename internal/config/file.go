@@ -585,7 +585,7 @@ func valueEqual(a, b Value) bool {
 // configFileDirMode returns the mode for the directory holding the config
 // file when writeConfigFile has to create it. The deployment mode fixes the
 // file mode: a user Broker writes 0600 under a 0700 data directory, a system
-// Broker writes 0644 under the group-readable /etc/agent-peer (0755).
+// Broker writes 0644 under the group-readable /etc/peers (0755).
 func configFileDirMode(fileMode os.FileMode) os.FileMode {
 	if fileMode.Perm()&0o044 != 0 {
 		return 0o755

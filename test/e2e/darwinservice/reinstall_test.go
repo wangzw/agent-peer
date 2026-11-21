@@ -71,12 +71,12 @@ func reinstallRunningService(t *testing.T, domain, name string, args ...string) 
 	statusArgs := argsForStatus(domain)
 	status := run(t, statusArgs[0], statusArgs[1:]...)
 	if status.exitCode != 0 {
-		t.Fatalf("agent-peer status after the reinstall: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers status after the reinstall: exit %d\nstdout: %s\nstderr: %s",
 			status.exitCode, status.stdout, status.stderr)
 	}
 }
 
-// argsForStatus returns the arguments that run `agent-peer status` against the
+// argsForStatus returns the arguments that run `peers status` against the
 // level's Broker: as root for the system-level service, as this account for the
 // user-level one.
 func argsForStatus(domain string) []string {

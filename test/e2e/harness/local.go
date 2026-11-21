@@ -44,7 +44,7 @@ type localNode struct {
 
 // NewLocalHost starts a node that runs on the test host. Its runtime root and
 // account home are fresh temporary directories, so it shares neither the
-// account lock nor ~/.agent-peer with the developer or with another node. All
+// account lock nor ~/.peers with the developer or with another node. All
 // processes and directories are removed when the test ends.
 func NewLocalHost(t *testing.T, opts LocalOptions) *Node {
 	t.Helper()
@@ -89,7 +89,7 @@ func (l *localNode) brokerSocket() string {
 
 // configPath is the account's configuration file.
 func (l *localNode) configPath() string {
-	return filepath.Join(l.acct, ".agent-peer", "config.yaml")
+	return filepath.Join(l.acct, ".peers", "config.yaml")
 }
 
 func (l *localNode) accountHome() string { return l.acct }
@@ -110,7 +110,7 @@ func (l *localNode) freeAddr(t testing.TB) string {
 
 func (l *localNode) writeConfig(t testing.TB, yaml string) {
 	t.Helper()
-	dir := filepath.Join(l.acct, ".agent-peer")
+	dir := filepath.Join(l.acct, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("harness: node %s: creating config dir %s: %v", l.name, dir, err)
 		return

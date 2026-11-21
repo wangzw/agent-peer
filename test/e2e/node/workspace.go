@@ -10,7 +10,7 @@ import (
 )
 
 // projectConfigName is the project configuration file read from a workspace.
-const projectConfigName = ".agent-peer.yaml"
+const projectConfigName = ".peers.yaml"
 
 // GitWorkspace creates dir when it does not exist, initialises a git
 // repository there and, when origin is not empty, adds origin as the remote of
@@ -37,7 +37,7 @@ func GitWorkspace(dir, origin string, env []string) (string, error) {
 }
 
 // ProjectWorkspace creates dir when it does not exist and writes projectYAML
-// as .agent-peer.yaml in it. When origin is not empty it also initialises a
+// as .peers.yaml in it. When origin is not empty it also initialises a
 // git repository with origin, like GitWorkspace; when origin is empty the
 // directory stays a plain one. It returns the absolute path of the workspace.
 func ProjectWorkspace(dir, projectYAML, origin string, env []string) (string, error) {

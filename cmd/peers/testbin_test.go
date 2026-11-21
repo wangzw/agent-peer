@@ -144,7 +144,7 @@ func (s *sandbox) runtimeDir() string {
 }
 
 func (s *sandbox) configPath() string {
-	return filepath.Join(s.home, ".agent-peer", "config.yaml")
+	return filepath.Join(s.home, ".peers", "config.yaml")
 }
 
 // writeConfig writes the account configuration. The account home is selected

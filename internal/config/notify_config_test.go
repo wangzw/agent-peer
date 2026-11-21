@@ -64,7 +64,7 @@ func newNCCore(t *testing.T, body string, routes addressSource) (*core, string) 
 	if routes != nil {
 		c.routesSrc = routes
 	}
-	dir := filepath.Join(home, ".agent-peer")
+	dir := filepath.Join(home, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

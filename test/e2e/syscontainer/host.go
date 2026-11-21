@@ -20,12 +20,12 @@ import (
 )
 
 const (
-	// agentPeerBinary is the agent-peer build in the base image.
-	agentPeerBinary = "/usr/local/bin/agent-peer"
+	// agentPeerBinary is the peers build in the base image.
+	agentPeerBinary = "/usr/local/bin/peers"
 	// systemConfigPath is the system Broker's configuration file.
-	systemConfigPath = "/etc/agent-peer/config.yaml"
+	systemConfigPath = "/etc/peers/config.yaml"
 	// systemSocketPath is the system Broker's local socket.
-	systemSocketPath = "/run/agent-peer/broker.sock"
+	systemSocketPath = "/run/peers/broker.sock"
 	// accountPath is the environment of every account process.
 	accountPath = "/usr/bin:/bin:/usr/sbin:/sbin"
 	// procStopBound is how long a Broker process gets to exit after SIGTERM,
@@ -60,8 +60,8 @@ type ProcInfo struct {
 }
 
 // StartSystemBroker writes configYAML to the system configuration file when it
-// is non-empty, runs "agent-peer broker --system" as root, and waits for
-// /run/agent-peer/broker.sock. The process is terminated when the test ends.
+// is non-empty, runs "peers broker --system" as root, and waits for
+// /run/peers/broker.sock. The process is terminated when the test ends.
 func StartSystemBroker(t *testing.T, configYAML string) *Proc {
 	t.Helper()
 	return StartSystemBrokerEnv(t, configYAML, nil)
@@ -81,7 +81,7 @@ func StartSystemBrokerEnv(t *testing.T, configYAML string, env []string) *Proc {
 	return startAndWait(t, cmd, systemSocketPath, "the system Broker")
 }
 
-// StartUserBroker runs "agent-peer broker <args>" as account and waits for that
+// StartUserBroker runs "peers broker <args>" as account and waits for that
 // account's user-level socket. The process is terminated when the test ends.
 func StartUserBroker(t *testing.T, account string, args ...string) *Proc {
 	t.Helper()
@@ -106,7 +106,7 @@ func StartUserBrokerPath(t *testing.T, exe, account string, env []string, args .
 func UserSocketPath(t *testing.T, account string) string {
 	t.Helper()
 	uid := AccountUID(t, account)
-	return filepath.Join(fmt.Sprintf("/tmp/agent-peer-%d", uid), "broker.sock")
+	return filepath.Join(fmt.Sprintf("/tmp/peers-%d", uid), "broker.sock")
 }
 
 // startAndWait starts cmd and waits for socket to appear. A process that exits
@@ -241,7 +241,7 @@ func getentUser(account string) (*user.User, error) {
 	}, nil
 }
 
-// RunAs runs the release agent-peer binary as account ("root" is allowed) and
+// RunAs runs the release peers binary as account ("root" is allowed) and
 // returns its output and exit code.
 func RunAs(t *testing.T, account string, env []string, args ...string) Result {
 	t.Helper()

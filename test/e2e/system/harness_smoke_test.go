@@ -47,10 +47,10 @@ func TestHarnessAccountsAndBinary(t *testing.T) {
 
 	version := syscontainer.RunAs(t, "peer", nil, "--version")
 	if version.ExitCode != 0 {
-		t.Fatalf("agent-peer --version as peer: exit %d\n%s", version.ExitCode, version.Stderr)
+		t.Fatalf("peers --version as peer: exit %d\n%s", version.ExitCode, version.Stderr)
 	}
-	if !strings.Contains(version.Stdout, "agent-peer e2e") {
-		t.Errorf("agent-peer --version output = %q, want it to contain %q", version.Stdout, "agent-peer e2e")
+	if !strings.Contains(version.Stdout, "peers e2e") {
+		t.Errorf("peers --version output = %q, want it to contain %q", version.Stdout, "peers e2e")
 	}
 
 	peerUID := syscontainer.AccountUID(t, "peer")
@@ -197,7 +197,7 @@ func assertDialFails(t *testing.T, addr string) {
 
 // TestHarnessSystemBrokerAndSessions starts the system Broker and reaches it
 // from two accounts' sessions. It checks the process and socket the design
-// places under /run/agent-peer.
+// places under /run/peers.
 func TestHarnessSystemBrokerAndSessions(t *testing.T) {
 	if !syscontainer.InContainer() {
 		syscontainer.Run(t, syscontainer.Plain)
@@ -205,17 +205,17 @@ func TestHarnessSystemBrokerAndSessions(t *testing.T) {
 	}
 
 	broker := syscontainer.StartSystemBroker(t, "")
-	if _, err := os.Stat("/run/agent-peer/broker.sock"); err != nil {
-		t.Fatalf("the system Broker socket is not at /run/agent-peer/broker.sock: %v", err)
+	if _, err := os.Stat("/run/peers/broker.sock"); err != nil {
+		t.Fatalf("the system Broker socket is not at /run/peers/broker.sock: %v", err)
 	}
 	found := false
-	for _, proc := range syscontainer.Pids("agent-peer", "broker", "--system") {
+	for _, proc := range syscontainer.Pids("peers", "broker", "--system") {
 		if proc.PID == broker.PID {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("process %d does not appear in Pids(agent-peer, broker, --system)", broker.PID)
+		t.Errorf("process %d does not appear in Pids(peers, broker, --system)", broker.PID)
 	}
 
 	a := syscontainer.NewSession(t, "peer", "a1")
@@ -234,7 +234,7 @@ func TestHarnessSystemBrokerAndSessions(t *testing.T) {
 // TestHarnessSystemService installs the system service through systemd and
 // starts it, so the tests downstream that exercise a managed system Broker can
 // rely on StartSystemService. It checks the unit is active and that the Broker
-// created its socket under /run/agent-peer.
+// created its socket under /run/peers.
 func TestHarnessSystemService(t *testing.T) {
 	if !syscontainer.InContainer() {
 		syscontainer.Run(t, syscontainer.Systemd)
@@ -243,12 +243,12 @@ func TestHarnessSystemService(t *testing.T) {
 
 	syscontainer.StartSystemService(t, "")
 
-	if _, err := os.Stat("/run/agent-peer/broker.sock"); err != nil {
-		t.Fatalf("the system service socket is not at /run/agent-peer/broker.sock: %v", err)
+	if _, err := os.Stat("/run/peers/broker.sock"); err != nil {
+		t.Fatalf("the system service socket is not at /run/peers/broker.sock: %v", err)
 	}
-	active := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	active := runCommandAs(t, "root", "systemctl", "is-active", "peers.service")
 	if state := strings.TrimSpace(active.Stdout); state != "active" {
-		t.Errorf("systemctl is-active agent-peer.service = %q (exit %d), want %q\nstderr: %s",
+		t.Errorf("systemctl is-active peers.service = %q (exit %d), want %q\nstderr: %s",
 			state, active.ExitCode, "active", strings.TrimSpace(active.Stderr))
 	}
 }

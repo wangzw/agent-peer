@@ -194,7 +194,7 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		t.Fatalf("service start with only a system-level install: exit %d, want 1\nstdout: %s\nstderr: %s",
 			res.exitCode, res.stdout, res.stderr)
 	}
-	for _, want := range []string{"no user-level service is installed", "system-level service is installed", "sudo agent-peer service start"} {
+	for _, want := range []string{"no user-level service is installed", "system-level service is installed", "sudo peers service start"} {
 		if !strings.Contains(res.stderr, want) {
 			t.Errorf("stderr = %q, want it to contain %q", strings.TrimSpace(res.stderr), want)
 		}
@@ -210,7 +210,7 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		t.Fatalf("service start as root with nothing installed: exit %d, want 1\nstdout: %s\nstderr: %s",
 			res.exitCode, res.stdout, res.stderr)
 	}
-	for _, want := range []string{"no system-level service is installed", "sudo agent-peer service install --system"} {
+	for _, want := range []string{"no system-level service is installed", "sudo peers service install --system"} {
 		if !strings.Contains(res.stderr, want) {
 			t.Errorf("stderr = %q, want it to contain %q", strings.TrimSpace(res.stderr), want)
 		}
@@ -264,7 +264,7 @@ func TestUserServiceControlDegraded(t *testing.T) {
 	}
 	status := run(t, installedBinary, "status")
 	if status.exitCode != 0 {
-		t.Fatalf("agent-peer status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers status in local-only degradation: exit %d\nstdout: %s\nstderr: %s",
 			status.exitCode, strings.TrimSpace(status.stdout), strings.TrimSpace(status.stderr))
 	}
 	for _, want := range []string{"Broker: degraded (local only):", "Fix:"} {

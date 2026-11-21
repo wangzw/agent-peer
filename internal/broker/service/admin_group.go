@@ -11,12 +11,12 @@ import (
 // DefaultAdminGroup is the group that administers a system-level Broker unless
 // the installation names another one. Its members can read and write the
 // system configuration file without root.
-const DefaultAdminGroup = "agent-peer"
+const DefaultAdminGroup = "peers"
 
 // adminGroupRecordPath records the name of a group the installation created.
 // Uninstall reads it before removing the data directory: a group without a
-// record was not created by agent-peer and is never removed.
-const adminGroupRecordPath = "/var/lib/agent-peer/admin-group"
+// record was not created by peers and is never removed.
+const adminGroupRecordPath = "/var/lib/peers/admin-group"
 
 // adminGroupNameRE matches a group name both Linux and macOS accept: a letter
 // or underscore first, then letters, digits, underscores and hyphens. A name
@@ -148,7 +148,7 @@ func createAdminGroup(opts Options, res *Result, name string) error {
 	case "linux":
 		argv = []string{"groupadd", "--system", name}
 	case "darwin":
-		argv = []string{"dseditgroup", "-o", "create", "-r", "agent-peer administrators", name}
+		argv = []string{"dseditgroup", "-o", "create", "-r", "peers administrators", name}
 	default:
 		return fmt.Errorf("service: unsupported platform %q", opts.GOOS)
 	}

@@ -338,13 +338,13 @@ func TestPrivateTopicNamesStayHome(t *testing.T) {
 			t.Fatalf("hostB's Broker log does not record its own session %q; the absence checks are blind", observerName)
 		}
 
-		status := bNode.Exec(t, []string{"/usr/local/bin/agent-peer", "status"}, nil)
+		status := bNode.Exec(t, []string{"/usr/local/bin/peers", "status"}, nil)
 		if status.ExitCode != 0 {
-			t.Fatalf("agent-peer status on hostB exited %d: %s", status.ExitCode, status.Stderr)
+			t.Fatalf("peers status on hostB exited %d: %s", status.ExitCode, status.Stderr)
 		}
 		secAssertAbsent(t, "hostB status output", status.Stdout+status.Stderr, secretTopic, workerName)
 		secAssertAbsent(t, "hostB Broker log", string(brokerLog), secretTopic, workerName)
-		secAssertAbsent(t, "hostB audit log", string(secReadIfExists(t, bNode, "/home/peer/.agent-peer/audit.log")), secretTopic, workerName)
+		secAssertAbsent(t, "hostB audit log", string(secReadIfExists(t, bNode, "/home/peer/.peers/audit.log")), secretTopic, workerName)
 	})
 
 	t.Run("REQ-topics-014 member list", func(t *testing.T) {
@@ -387,7 +387,7 @@ func secStartRelayAgent(t *testing.T, c *harness.Cluster) *ctl.Client {
 	const socket = "/ctl/relay/ctl.sock"
 	script := "install -d -o peer -g peer /ctl/relay && " +
 		"setsid setpriv --reuid=peer --regid=peer --init-groups env GRPC_ENFORCE_ALPN_ENABLED=false " +
-		"/usr/local/bin/e2e-node serve --ctl " + socket + " --home /home/peer --bin /usr/local/bin/agent-peer " +
+		"/usr/local/bin/e2e-node serve --ctl " + socket + " --home /home/peer --bin /usr/local/bin/peers " +
 		">/dev/null 2>&1 </dev/null &"
 	c.Root(t, "router", "sh", "-c", script)
 
@@ -625,7 +625,7 @@ func secEnvelopeBody(t *testing.T, content string) string {
 // secPeersJSON returns the peer table's bytes, or nil when it does not exist.
 func secPeersJSON(t *testing.T, node *harness.Node) []byte {
 	t.Helper()
-	return secReadIfExists(t, node, filepath.Join(node.AccountHome(), ".agent-peer", "peers.json"))
+	return secReadIfExists(t, node, filepath.Join(node.AccountHome(), ".peers", "peers.json"))
 }
 
 // secReadIfExists reads path on node and returns nil when it is absent.

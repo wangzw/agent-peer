@@ -79,7 +79,7 @@ func TestSystemAccountHelperLifecycle(t *testing.T) {
 // accountHelpers returns the running account helpers of uid.
 func accountHelpers(uid uint32) []syscontainer.ProcInfo {
 	var helpers []syscontainer.ProcInfo
-	for _, proc := range syscontainer.Pids("agent-peer", "internal", "account-helper") {
+	for _, proc := range syscontainer.Pids("peers", "internal", "account-helper") {
 		if proc.UID == uid {
 			helpers = append(helpers, proc)
 		}

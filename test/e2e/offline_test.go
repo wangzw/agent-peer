@@ -236,26 +236,26 @@ func TestBrokerOffline(t *testing.T) {
 
 	t.Run("REQ-broker-config-066 terminal commands", func(t *testing.T) {
 		before := time.Now()
-		res := bNode.Exec(t, []string{"/usr/local/bin/agent-peer", "offline"}, nil)
+		res := bNode.Exec(t, []string{"/usr/local/bin/peers", "offline"}, nil)
 		if res.ExitCode != 0 {
-			t.Fatalf("agent-peer offline exited %d\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+			t.Fatalf("peers offline exited %d\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 		}
 		if res.Stdout != "Broker is now offline\n" {
-			t.Fatalf("agent-peer offline printed %q", res.Stdout)
+			t.Fatalf("peers offline printed %q", res.Stdout)
 		}
 		if status, detail := bNode.Oracle().Status(t); detail != nil || !status.GetOffline() {
-			t.Fatalf("Status after agent-peer offline = %v (detail %v), want offline", status, detail)
+			t.Fatalf("Status after peers offline = %v (detail %v), want offline", status, detail)
 		}
 
-		res = bNode.Exec(t, []string{"/usr/local/bin/agent-peer", "online"}, nil)
+		res = bNode.Exec(t, []string{"/usr/local/bin/peers", "online"}, nil)
 		if res.ExitCode != 0 {
-			t.Fatalf("agent-peer online exited %d\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
+			t.Fatalf("peers online exited %d\nstdout: %s\nstderr: %s", res.ExitCode, res.Stdout, res.Stderr)
 		}
 		if res.Stdout != "Broker is now online\n" {
-			t.Fatalf("agent-peer online printed %q", res.Stdout)
+			t.Fatalf("peers online printed %q", res.Stdout)
 		}
 		if status, detail := bNode.Oracle().Status(t); detail != nil || status.GetOffline() {
-			t.Fatalf("Status after agent-peer online = %v (detail %v), want online", status, detail)
+			t.Fatalf("Status after peers online = %v (detail %v), want online", status, detail)
 		}
 
 		// Each change is audited with the executing account.
@@ -308,25 +308,25 @@ func TestBrokerOffline(t *testing.T) {
 			t.Fatalf("Status = %v (detail %v), want offline", status, detail)
 		}
 
-		const offlineLine = "Broker: offline; messages from other hosts are refused. Run agent-peer online to accept them."
+		const offlineLine = "Broker: offline; messages from other hosts are refused. Run peers online to accept them."
 		for _, command := range [][]string{{"status"}, {"peer", "list"}} {
-			res := bNode.Exec(t, append([]string{"/usr/local/bin/agent-peer"}, command...), nil)
+			res := bNode.Exec(t, append([]string{"/usr/local/bin/peers"}, command...), nil)
 			if res.ExitCode != 0 {
-				t.Fatalf("agent-peer %v exited %d\nstdout: %s\nstderr: %s", command, res.ExitCode, res.Stdout, res.Stderr)
+				t.Fatalf("peers %v exited %d\nstdout: %s\nstderr: %s", command, res.ExitCode, res.Stdout, res.Stderr)
 			}
 			if !strings.Contains(res.Stdout, offlineLine) {
-				t.Fatalf("agent-peer %v does not print %q:\n%s", command, offlineLine, res.Stdout)
+				t.Fatalf("peers %v does not print %q:\n%s", command, offlineLine, res.Stdout)
 			}
 		}
 
 		offSetOnline(t, b1, true)
 		for _, command := range [][]string{{"status"}, {"peer", "list"}} {
-			res := bNode.Exec(t, append([]string{"/usr/local/bin/agent-peer"}, command...), nil)
+			res := bNode.Exec(t, append([]string{"/usr/local/bin/peers"}, command...), nil)
 			if res.ExitCode != 0 {
-				t.Fatalf("agent-peer %v exited %d\nstdout: %s\nstderr: %s", command, res.ExitCode, res.Stdout, res.Stderr)
+				t.Fatalf("peers %v exited %d\nstdout: %s\nstderr: %s", command, res.ExitCode, res.Stdout, res.Stderr)
 			}
 			if strings.Contains(res.Stdout, offlineLine) {
-				t.Fatalf("agent-peer %v still prints the offline line after going online:\n%s", command, res.Stdout)
+				t.Fatalf("peers %v still prints the offline line after going online:\n%s", command, res.Stdout)
 			}
 		}
 	})

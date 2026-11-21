@@ -25,17 +25,17 @@ const (
 	// installedBinary is the root-owned copy of the product the tests run.
 	// The system-level installation refuses binaries outside a root-owned
 	// directory, and a user-level installation accepts the same copy.
-	installedBinary = "/usr/local/libexec/agent-peer-test"
+	installedBinary = "/usr/local/libexec/peers-test"
 	// e2eBinary is a root-owned copy of this test binary. The multi-group test
 	// runs a role as another account, which can execute this copy but may not
 	// be able to traverse the go test temporary directory.
-	e2eBinary = "/usr/local/libexec/agent-peer-e2e"
+	e2eBinary = "/usr/local/libexec/peers-e2e"
 	// serviceLabel is the launchd label of both service levels.
-	serviceLabel = "io.github.wangzw.agent-peer"
+	serviceLabel = "io.github.wangzw.peers"
 	// daemonPlist is where the system-level installation writes its plist.
 	daemonPlist = "/Library/LaunchDaemons/" + serviceLabel + ".plist"
 	// systemSocketPath is the system Broker's local socket.
-	systemSocketPath = "/var/run/agent-peer/broker.sock"
+	systemSocketPath = "/var/run/peers/broker.sock"
 
 	// roleEnv selects an internal helper role of the test binary. The role runs
 	// before the build step, so it also works when sudo re-executes the binary.
@@ -84,7 +84,7 @@ func TestMain(m *testing.M) {
 	case systemUpdateStatusRole:
 		os.Exit(runSystemUpdateStatusRole())
 	}
-	// These tests uninstall the real io.github.wangzw.agent-peer services. A
+	// These tests uninstall the real io.github.wangzw.peers services. A
 	// developer machine may have them installed for everyday use, so refuse to
 	// run outside CI unless the caller opts in explicitly.
 	if os.Getenv("CI") == "" && os.Getenv("AGENT_PEER_E2E_ALLOW_SERVICE_RESET") != "1" {
@@ -154,13 +154,13 @@ func buildAndInstallBinary() error {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.MkdirTemp("", "agent-peer-darwin-")
+	tmp, err := os.MkdirTemp("", "peers-darwin-")
 	if err != nil {
 		return err
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 
-	built := filepath.Join(tmp, "agent-peer")
+	built := filepath.Join(tmp, "peers")
 	build := exec.Command("go", "build", "-o", built, "./cmd/peers")
 	build.Dir = root
 	build.Stdout = os.Stdout

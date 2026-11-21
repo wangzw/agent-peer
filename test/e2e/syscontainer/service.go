@@ -37,9 +37,9 @@ func StartSystemService(t *testing.T, configYAML string) {
 	})
 
 	t.Cleanup(func() {
-		stop := Command("root", nil, "systemctl", "stop", "agent-peer.service")
+		stop := Command("root", nil, "systemctl", "stop", "peers.service")
 		if out, err := stop.CombinedOutput(); err != nil {
-			t.Logf("syscontainer: systemctl stop agent-peer.service: %v\n%s", err, strings.TrimSpace(string(out)))
+			t.Logf("syscontainer: systemctl stop peers.service: %v\n%s", err, strings.TrimSpace(string(out)))
 		}
 	})
 }

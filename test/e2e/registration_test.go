@@ -19,7 +19,7 @@ import (
 
 // TestLocalRegistration covers registration, naming and listing on one host.
 // The Broker runs as a real process and every session is a fakesession record
-// plus, unless the case says otherwise, a real agent-peer mcp process. These
+// plus, unless the case says otherwise, a real peers mcp process. These
 // cases do not send messages, so they need no Broker delivery.
 func TestLocalRegistration(t *testing.T) {
 	host := harness.NewLocalHost(t, harness.LocalOptions{Name: "registration"})

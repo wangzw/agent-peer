@@ -34,7 +34,7 @@ func TestSystemServiceStartsAndRestarts(t *testing.T) {
 
 	// RestartSec=5 in the unit would make the restart outlast the acceptance
 	// bound. A drop-in in /run shortens it for this test only.
-	dropInDir := "/run/systemd/system/agent-peer.service.d"
+	dropInDir := "/run/systemd/system/peers.service.d"
 	if err := os.MkdirAll(dropInDir, 0o755); err != nil {
 		t.Fatalf("creating %s: %v", dropInDir, err)
 	}
@@ -68,11 +68,11 @@ func TestSystemServiceStartsAndRestarts(t *testing.T) {
 				return false, fmt.Sprintf("MainPID = %d, want a new non-zero pid (was %d)", pid, before)
 			}
 			// systemd records the new MainPID when it forks the replacement,
-			// before the child execs agent-peer. Until the exec the child still
+			// before the child execs peers. Until the exec the child still
 			// carries systemd's command line, so the Broker listing can be empty
 			// while MainPID already names the new process. Wait for the pid to
 			// appear rather than scanning once after the wait.
-			procs := syscontainer.Pids("agent-peer", "broker", "--system")
+			procs := syscontainer.Pids("peers", "broker", "--system")
 			if !hasPID(procs, pid) {
 				return false, fmt.Sprintf("MainPID = %d, but the running system Brokers are %v", pid, procs)
 			}
@@ -86,7 +86,7 @@ func TestSystemServiceStartsAndRestarts(t *testing.T) {
 func systemServiceMainPID(t *testing.T) (int, bool) {
 	t.Helper()
 	cmd := syscontainer.Command("root", nil,
-		"systemctl", "show", "--property", "MainPID", "--value", "agent-peer.service")
+		"systemctl", "show", "--property", "MainPID", "--value", "peers.service")
 	out, err := cmd.Output()
 	if err != nil {
 		return 0, false

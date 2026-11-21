@@ -14,19 +14,19 @@ import (
 )
 
 // TestInfraSingleNode starts one container node and checks the properties the
-// remaining container scenarios rely on: the agent-peer binary, the account ids,
+// remaining container scenarios rely on: the peers binary, the account ids,
 // an owned control directory, root commands, and an internal network without a
 // default route.
 func TestInfraSingleNode(t *testing.T) {
 	c := harness.Up(t, harness.TopoSingle)
 	node := c.Node("hostA")
 
-	version := node.Exec(t, []string{"agent-peer", "--version"}, nil)
+	version := node.Exec(t, []string{"peers", "--version"}, nil)
 	if version.ExitCode != 0 {
-		t.Fatalf("agent-peer --version exited %d: %s", version.ExitCode, version.Stderr)
+		t.Fatalf("peers --version exited %d: %s", version.ExitCode, version.Stderr)
 	}
-	if got := strings.TrimSpace(version.Stdout); got != "agent-peer e2e" {
-		t.Fatalf("agent-peer --version printed %q, want %q", got, "agent-peer e2e")
+	if got := strings.TrimSpace(version.Stdout); got != "peers e2e" {
+		t.Fatalf("peers --version printed %q, want %q", got, "peers e2e")
 	}
 
 	// The peer account carries the host uid, so files it writes under the

@@ -62,7 +62,7 @@ func newGapCore(t *testing.T, body, override string) (*core, string, error) {
 	c.accountName = func() (string, error) { return "tester", nil }
 	c.now = func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
 	c.routesSrc = gapNoRoutes{}
-	dir := filepath.Join(home, ".agent-peer")
+	dir := filepath.Join(home, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -363,9 +363,9 @@ func TestREQBrokerConfig022_PathRulesBothModes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	userData := filepath.Join("/home/ana", ".agent-peer")
+	userData := filepath.Join("/home/ana", ".peers")
 	wantUser := PathSet{
-		RuntimeDir: "/tmp/agent-peer-4242",
+		RuntimeDir: "/tmp/peers-4242",
 		ConfigFile: filepath.Join(userData, "config.yaml"),
 		DataDir:    userData,
 		AuditLog:   filepath.Join(userData, "audit.log"),
@@ -380,10 +380,10 @@ func TestREQBrokerConfig022_PathRulesBothModes(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantSystem := PathSet{
-		RuntimeDir: "/tmp/agent-peer-4242",
-		ConfigFile: "/etc/agent-peer/config.yaml",
-		DataDir:    "/var/lib/agent-peer",
-		AuditLog:   "/var/log/agent-peer/audit.log",
+		RuntimeDir: "/tmp/peers-4242",
+		ConfigFile: "/etc/peers/config.yaml",
+		DataDir:    "/var/lib/peers",
+		AuditLog:   "/var/log/peers/audit.log",
 	}
 	if system != wantSystem {
 		t.Errorf("system paths = %+v, want %+v", system, wantSystem)

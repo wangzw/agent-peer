@@ -1,12 +1,12 @@
 [Unit]
-Description=agent-peer system Broker
-Documentation=https://github.com/wangzw/agent-peer
+Description=peers system Broker
+Documentation=https://github.com/wangzw/peers
 Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/agent-peer broker --system --allow-degraded
+ExecStart=/usr/local/bin/peers broker --system --allow-degraded
 Restart=always
 RestartSec=5
 UMask=0022

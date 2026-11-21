@@ -12,7 +12,7 @@ func TestValidAdminGroupName(t *testing.T) {
 		name string
 		want bool
 	}{
-		{"agent-peer", true},
+		{"peers", true},
 		{"broker_ops-1", true},
 		{"_ops", true},
 		{"a", true},
@@ -94,14 +94,14 @@ func TestEnsureAdminGroupDarwinCreatesTheGroup(t *testing.T) {
 		t.Errorf("group id = %d, want 999", gid)
 	}
 	wantCmds := []string{
-		"dscl . -read /Groups/agent-peer",
-		"dseditgroup -o create -r agent-peer administrators agent-peer",
-		"dscl . -read /Groups/agent-peer",
+		"dscl . -read /Groups/peers",
+		"dseditgroup -o create -r peers administrators peers",
+		"dscl . -read /Groups/peers",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
-	if want := []string{"dseditgroup -o create -r agent-peer administrators agent-peer"}; !slices.Equal(res.Commands, want) {
+	if want := []string{"dseditgroup -o create -r peers administrators peers"}; !slices.Equal(res.Commands, want) {
 		t.Errorf("Result.Commands = %q, want %q", res.Commands, want)
 	}
 }
@@ -125,7 +125,7 @@ func TestEnsureAdminGroupDarwinUsesAnExistingGroup(t *testing.T) {
 	if gid != 20 {
 		t.Errorf("group id = %d, want 20", gid)
 	}
-	if want := []string{"dscl . -read /Groups/agent-peer"}; !slices.Equal(cmds, want) {
+	if want := []string{"dscl . -read /Groups/peers"}; !slices.Equal(cmds, want) {
 		t.Errorf("commands = %q, want %q", cmds, want)
 	}
 	if len(res.Commands) != 0 {
@@ -157,7 +157,7 @@ func TestEnsureAdminGroupDarwinNamesTheRequestedGroup(t *testing.T) {
 	}
 	want := []string{
 		"dscl . -read /Groups/broker-ops",
-		"dseditgroup -o create -r agent-peer administrators broker-ops",
+		"dseditgroup -o create -r peers administrators broker-ops",
 	}
 	if !slices.Equal(cmds[:2], want) {
 		t.Errorf("commands = %q, want the first two to be %q", cmds, want)

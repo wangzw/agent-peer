@@ -27,7 +27,7 @@ func TestOtherAccountRejected(t *testing.T) {
 	host := c.Node("hostA")
 
 	peerUID := accountsUID(t, host, "id", "-u")
-	socket := fmt.Sprintf("/tmp/agent-peer-%d/broker.sock", peerUID)
+	socket := fmt.Sprintf("/tmp/peers-%d/broker.sock", peerUID)
 
 	start := host.StartBroker(t, harness.BrokerSpec{})
 	if !start.Running {
@@ -46,40 +46,40 @@ func TestOtherAccountRejected(t *testing.T) {
 
 	t.Run("REQ-broker-config-019 filesystem layer", func(t *testing.T) {
 		status := accountsRunAsOther(t, c, "hostA", "fs-status",
-			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "agent-peer", "status")
+			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "peers", "status")
 		if status.ExitCode != 1 {
-			t.Fatalf("agent-peer status as other exited %d, want 1\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers status as other exited %d, want 1\nstdout: %s\nstderr: %s",
 				status.ExitCode, status.Stdout, status.Stderr)
 		}
 		if !strings.Contains(status.Stderr, "cannot reach the Broker") {
-			t.Fatalf("agent-peer status as other did not report the Broker unreachable: %s", status.Stderr)
+			t.Fatalf("peers status as other did not report the Broker unreachable: %s", status.Stderr)
 		}
 		// The default 0700 runtime directory denies the connection before
 		// anything reaches the Broker.
 		if !strings.Contains(status.Stderr, "may not connect to it") {
-			t.Fatalf("agent-peer status as other did not report the filesystem denial: %s", status.Stderr)
+			t.Fatalf("peers status as other did not report the filesystem denial: %s", status.Stderr)
 		}
 
 		audit := accountsRunAsOther(t, c, "hostA", "fs-audit",
-			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "agent-peer", "audit")
+			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "peers", "audit")
 		if audit.ExitCode != 1 {
-			t.Fatalf("agent-peer audit as other exited %d, want 1\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers audit as other exited %d, want 1\nstdout: %s\nstderr: %s",
 				audit.ExitCode, audit.Stdout, audit.Stderr)
 		}
 		if !strings.Contains(audit.Stderr, "cannot reach the Broker") {
-			t.Fatalf("agent-peer audit as other did not report the Broker unreachable: %s", audit.Stderr)
+			t.Fatalf("peers audit as other did not report the Broker unreachable: %s", audit.Stderr)
 		}
 
 		// Without the explicit socket the other account looks only under its
-		// own runtime directory, /tmp/agent-peer-2000, so it does not discover
+		// own runtime directory, /tmp/peers-2000, so it does not discover
 		// the peer Broker.
-		own := accountsRunAsOther(t, c, "hostA", "fs-own", nil, "agent-peer", "status")
+		own := accountsRunAsOther(t, c, "hostA", "fs-own", nil, "peers", "status")
 		if own.ExitCode != 1 {
-			t.Fatalf("agent-peer status as other without a socket entered %d, want 1\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers status as other without a socket entered %d, want 1\nstdout: %s\nstderr: %s",
 				own.ExitCode, own.Stdout, own.Stderr)
 		}
 		if !strings.Contains(own.Stderr, "no Broker is available") {
-			t.Fatalf("agent-peer status as other did not search only its own runtime directory: %s", own.Stderr)
+			t.Fatalf("peers status as other did not search only its own runtime directory: %s", own.Stderr)
 		}
 	})
 
@@ -87,7 +87,7 @@ func TestOtherAccountRejected(t *testing.T) {
 		// Record the filesystem denial first, so the same test also shows that
 		// the second failure is not that denial.
 		before := accountsRunAsOther(t, c, "hostA", "cred-before",
-			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "agent-peer", "status")
+			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "peers", "status")
 		if !strings.Contains(before.Stderr, "may not connect to it") {
 			t.Fatalf("the filesystem layer did not deny the connection first: %s", before.Stderr)
 		}
@@ -95,7 +95,7 @@ func TestOtherAccountRejected(t *testing.T) {
 		// Let the other account through the filesystem: the runtime directory
 		// becomes traversable and the socket world-writable. Only the account
 		// check can reject the connection now.
-		runtimeDir := fmt.Sprintf("/tmp/agent-peer-%d", peerUID)
+		runtimeDir := fmt.Sprintf("/tmp/peers-%d", peerUID)
 		c.Root(t, "hostA", "chmod", "0711", runtimeDir)
 		c.Root(t, "hostA", "chmod", "0666", socket)
 		t.Cleanup(func() {
@@ -104,19 +104,19 @@ func TestOtherAccountRejected(t *testing.T) {
 		})
 
 		after := accountsRunAsOther(t, c, "hostA", "cred-after",
-			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "agent-peer", "status")
+			map[string]string{"AGENT_PEER_TEST_SOCKET": socket}, "peers", "status")
 		if after.ExitCode != 1 {
-			t.Fatalf("agent-peer status as other exited %d after the filesystem was opened, want 1\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers status as other exited %d after the filesystem was opened, want 1\nstdout: %s\nstderr: %s",
 				after.ExitCode, after.Stdout, after.Stderr)
 		}
 		if !strings.Contains(after.Stderr, "cannot reach the Broker") {
-			t.Fatalf("agent-peer status as other did not report the Broker unreachable: %s", after.Stderr)
+			t.Fatalf("peers status as other did not report the Broker unreachable: %s", after.Stderr)
 		}
 		if strings.Contains(after.Stderr, "may not connect to it") {
-			t.Fatalf("agent-peer status still failed at the filesystem layer: %s", after.Stderr)
+			t.Fatalf("peers status still failed at the filesystem layer: %s", after.Stderr)
 		}
 		if !strings.Contains(after.Stderr, "not this account (2000)") {
-			t.Fatalf("agent-peer status did not reject the other account's credentials: %s", after.Stderr)
+			t.Fatalf("peers status did not reject the other account's credentials: %s", after.Stderr)
 		}
 
 		// The same rejection keeps the other account's session off the Broker:
@@ -179,18 +179,18 @@ func TestOtherAccountRejected(t *testing.T) {
 		if got := strings.TrimSpace(c.Root(t, "hostA", "find", "/home/peer", "-user", "2000")); got != "" {
 			t.Fatalf("files of uid 2000 are under /home/peer: %s", got)
 		}
-		runtimeDir := fmt.Sprintf("/tmp/agent-peer-%d", peerUID)
+		runtimeDir := fmt.Sprintf("/tmp/peers-%d", peerUID)
 		if got := strings.TrimSpace(c.Root(t, "hostA", "stat", "-c", "%u %a", runtimeDir)); got != fmt.Sprintf("%d 700", peerUID) {
 			t.Fatalf("%s is %q, want a 0700 directory of uid %d", runtimeDir, got, peerUID)
 		}
 		if got := strings.TrimSpace(c.Root(t, "hostA", "find", runtimeDir, "-user", "2000")); got != "" {
 			t.Fatalf("files of uid 2000 are under the peer runtime directory: %s", got)
 		}
-		// The other account's own runtime path is /tmp/agent-peer-2000; it
+		// The other account's own runtime path is /tmp/peers-2000; it
 		// either does not exist (no Broker of that account) or belongs to it.
-		if out, err := c.RootOK(t, "hostA", "stat", "-c", "%u", "/tmp/agent-peer-2000"); err == nil {
+		if out, err := c.RootOK(t, "hostA", "stat", "-c", "%u", "/tmp/peers-2000"); err == nil {
 			if got := strings.TrimSpace(out); got != "2000" {
-				t.Fatalf("/tmp/agent-peer-2000 is owned by uid %s, want 2000", got)
+				t.Fatalf("/tmp/peers-2000 is owned by uid %s, want 2000", got)
 			}
 		}
 	})
@@ -262,7 +262,7 @@ func accountsOneshotRejected(t *testing.T, c *harness.Cluster, nodeName, socket,
 		// --env, not the process environment, carries the variables to the MCP
 		// server process: oneshot-session builds that environment itself.
 		out := accountsRunAsOther(t, c, nodeName, "oneshot", nil,
-			"e2e-node", "oneshot-session", "--name", name, "--bin", "agent-peer",
+			"e2e-node", "oneshot-session", "--name", name, "--bin", "peers",
 			"--env", "AGENT_PEER_TEST_SOCKET="+socket)
 		if out.ExitCode != 0 {
 			return false, fmt.Sprintf("oneshot-session exited %d: %s", out.ExitCode, out.Stderr)

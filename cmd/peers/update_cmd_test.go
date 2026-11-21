@@ -431,7 +431,7 @@ func TestUpdateRestartTimeoutNamesTheLog(t *testing.T) {
 	if !strings.Contains(err, "did not report version 0.1.2") {
 		t.Fatalf("stderr = %q, want the timeout version", err)
 	}
-	if !strings.Contains(err, "journalctl -u agent-peer.service") {
+	if !strings.Contains(err, "journalctl -u peers.service") {
 		t.Fatalf("stderr = %q, want the system service log location", err)
 	}
 }
@@ -450,7 +450,7 @@ func TestUpdateRestartTimeoutNamesTheUserLevelLog(t *testing.T) {
 		t.Fatalf("run(update --yes) = %d, want %d", got, exitFailure)
 	}
 	err := stderr.String()
-	if !strings.Contains(err, "check the service log with journalctl --user -u agent-peer.service") {
+	if !strings.Contains(err, "check the service log with journalctl --user -u peers.service") {
 		t.Fatalf("stderr = %q, want the user-level service log location", err)
 	}
 }
@@ -467,10 +467,10 @@ func TestUpdateLogHintPerPlatform(t *testing.T) {
 		userLevel bool
 		want      string
 	}{
-		{"linux", false, "journalctl -u agent-peer.service"},
-		{"linux", true, "journalctl --user -u agent-peer.service"},
-		{"darwin", false, "/var/log/agent-peer/broker.log"},
-		{"darwin", true, "~/Library/Logs/agent-peer/broker.log"},
+		{"linux", false, "journalctl -u peers.service"},
+		{"linux", true, "journalctl --user -u peers.service"},
+		{"darwin", false, "/var/log/peers/broker.log"},
+		{"darwin", true, "~/Library/Logs/peers/broker.log"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.goos+"/user="+fmt.Sprint(tc.userLevel), func(t *testing.T) {
@@ -604,7 +604,7 @@ func TestUpdateQueriesTheLatestReleaseEndpoint(t *testing.T) {
 	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
 		t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
 	}
-	if want := "/repos/wangzw/agent-peer/releases/latest"; len(paths) != 1 || paths[0] != want {
+	if want := "/repos/wangzw/peers/releases/latest"; len(paths) != 1 || paths[0] != want {
 		t.Fatalf("requests = %q, want exactly %q", paths, want)
 	}
 	if len(stub.applyCalls) != 1 || stub.applyCalls[0].Version != "0.1.2" {

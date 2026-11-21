@@ -47,21 +47,21 @@ func uninstallUserPlist() string {
 
 // uninstallUserDataDir is the account's configuration and data directory.
 func uninstallUserDataDir() string {
-	return filepath.Join(os.Getenv("HOME"), ".agent-peer")
+	return filepath.Join(os.Getenv("HOME"), ".peers")
 }
 
 // uninstallUserLogDir is where launchd writes the user Broker's log.
 func uninstallUserLogDir() string {
-	return filepath.Join(os.Getenv("HOME"), "Library", "Logs", "agent-peer")
+	return filepath.Join(os.Getenv("HOME"), "Library", "Logs", "peers")
 }
 
 // uninstallRuntimeDir is the account's runtime directory.
 func uninstallRuntimeDir() string {
-	return fmt.Sprintf("/tmp/agent-peer-%d", os.Getuid())
+	return fmt.Sprintf("/tmp/peers-%d", os.Getuid())
 }
 
 // copyUninstallBinary copies the installed product to a path the test account
-// owns and returns it. The name is agent-peer because uninstall only removes a
+// owns and returns it. The name is peers because uninstall only removes a
 // binary with that name.
 func copyUninstallBinary(t *testing.T) string {
 	t.Helper()
@@ -69,7 +69,7 @@ func copyUninstallBinary(t *testing.T) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("creating %s: %v", dir, err)
 	}
-	dst := filepath.Join(dir, "agent-peer")
+	dst := filepath.Join(dir, "peers")
 	data, err := os.ReadFile(installedBinary)
 	if err != nil {
 		t.Fatalf("reading %s: %v", installedBinary, err)

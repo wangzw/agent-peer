@@ -18,10 +18,10 @@ import (
 const (
 	// systemConfigDir holds the system-level configuration file and the files
 	// an administrator adds beside it.
-	systemConfigDir = "/etc/agent-peer"
+	systemConfigDir = "/etc/peers"
 	// systemDataDir holds the system-level identity, peer table and discovery
 	// records.
-	systemDataDir = "/var/lib/agent-peer"
+	systemDataDir = "/var/lib/peers"
 )
 
 // ServiceBinary returns the binary the service definition of opts' level starts:
@@ -279,11 +279,11 @@ func purgePaths(opts Options) []string {
 		}
 		return paths
 	}
-	paths := []string{filepath.Join(opts.Home, ".agent-peer")}
+	paths := []string{filepath.Join(opts.Home, ".peers")}
 	if opts.GOOS == "linux" {
 		paths = append(paths, filepath.Join(configHome(opts), "systemd", "user", UnitName+".d"))
 	} else {
-		paths = append(paths, filepath.Join(opts.Home, "Library", "Logs", "agent-peer"))
+		paths = append(paths, filepath.Join(opts.Home, "Library", "Logs", "peers"))
 	}
 	return paths
 }
@@ -363,33 +363,28 @@ func currentAdminGroupName(opts Options) (name string, gid int, exists bool, err
 	return name, gid, true, nil
 }
 
-// purgeAdminGroup removes the administration group only when the group is safe
-// to remove: the installation recorded creating it, or it is the default
-// agent-peer group of a v0.2.0 installation whose configuration file belongs to
-// it; the record matches the group that currently owns the configuration file;
-// and the group is neither the root group nor any enumerated account's primary
-// group. Otherwise it returns a kept message with a manual command.
+// purgeAdminGroup removes the administration group only when the installation
+// recorded creating it, the record matches the group that currently owns the
+// configuration file, and the group is neither the root group nor any
+// enumerated account's primary group. Otherwise it returns a kept message with
+// a manual command.
 func purgeAdminGroup(opts Options, record, current string, configGID int, configExists bool) (deletedName, kept string, err error) {
 	if record == "" {
-		// v0.2.0 installations have no record. Only the default group named by
-		// the configuration file is provably this project's; any other name may
-		// be a system or user group.
-		if !configExists || current != DefaultAdminGroup {
-			if configExists && current == "" {
-				// The file's group id is known but has no name in the group
-				// database, so falling back to the default name would point the
-				// command at a group that may not be the file's owner. Report the
-				// id and look the name up by id when the command runs.
-				return "", keptGroupMessageByGID(opts, configGID,
-					"the installation did not record creating it, and the group database does not name the group that owns the configuration file"), nil
-			}
-			name := current
-			if name == "" {
-				name = DefaultAdminGroup
-			}
-			return "", keptGroupMessage(opts, name, "the installation did not record creating it"), nil
+		// Without a record the group may be a system or user group, even when
+		// its name matches the default, so it is always kept.
+		if configExists && current == "" {
+			// The file's group id is known but has no name in the group
+			// database, so falling back to the default name would point the
+			// command at a group that may not be the file's owner. Report the
+			// id and look the name up by id when the command runs.
+			return "", keptGroupMessageByGID(opts, configGID,
+				"the installation did not record creating it, and the group database does not name the group that owns the configuration file"), nil
 		}
-		record = current
+		name := current
+		if name == "" {
+			name = DefaultAdminGroup
+		}
+		return "", keptGroupMessage(opts, name, "the installation did not record creating it"), nil
 	}
 	if !ValidAdminGroupName(record) {
 		return "", keptGroupMessage(opts, record, "the recorded name is not a valid group name"), nil
@@ -558,7 +553,7 @@ func deleteAdminGroup(opts Options, name string) error {
 }
 
 // OtherAccountBrokers lists the accounts other than opts.UID whose user-level
-// Broker answers on /tmp/agent-peer-<uid>/broker.sock.
+// Broker answers on /tmp/peers-<uid>/broker.sock.
 func OtherAccountBrokers(opts Options) (accounts []string, err error) {
 	tmp := rooted(opts, "/tmp")
 	entries, err := os.ReadDir(tmp)
@@ -579,7 +574,7 @@ func OtherAccountBrokers(opts Options) (accounts []string, err error) {
 	var found []broker
 	for _, entry := range entries {
 		name := entry.Name()
-		uidText, ok := strings.CutPrefix(name, "agent-peer-")
+		uidText, ok := strings.CutPrefix(name, "peers-")
 		if !ok {
 			continue
 		}

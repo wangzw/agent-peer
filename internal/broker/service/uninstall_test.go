@@ -25,12 +25,12 @@ func writeInstalledFile(t *testing.T, opts Options, path string) string {
 
 func TestUninstallLinuxUser(t *testing.T) {
 	opts := baseOptions(t)
-	unitPath := "/home/alice/.config/systemd/user/agent-peer.service"
+	unitPath := "/home/alice/.config/systemd/user/peers.service"
 	rootedUnit := writeInstalledFile(t, opts, unitPath)
 
 	// Configuration, identity and audit logs live under the data directory and
 	// must survive the uninstall.
-	dataDir := filepath.Join(opts.Root, "home/alice/.agent-peer")
+	dataDir := filepath.Join(opts.Root, "home/alice/.peers")
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestUninstallLinuxUser(t *testing.T) {
 		t.Fatalf("Uninstall: %v", err)
 	}
 	wantCmds := []string{
-		"systemctl --user disable --now agent-peer.service",
+		"systemctl --user disable --now peers.service",
 		"systemctl --user daemon-reload",
 	}
 	if !slices.Equal(cmds, wantCmds) {
@@ -71,12 +71,12 @@ func TestUninstallLinuxSystemKeepsData(t *testing.T) {
 	opts := baseOptions(t)
 	opts.System = true
 	opts.EUID = 0
-	rootedUnit := writeInstalledFile(t, opts, "/etc/systemd/system/agent-peer.service")
+	rootedUnit := writeInstalledFile(t, opts, "/etc/systemd/system/peers.service")
 
 	for _, path := range []string{
-		"/etc/agent-peer/config.yaml",
-		"/var/lib/agent-peer/identity.json",
-		"/var/log/agent-peer/audit.log",
+		"/etc/peers/config.yaml",
+		"/var/lib/peers/identity.json",
+		"/var/log/peers/audit.log",
 	} {
 		rootedPath := filepath.Join(opts.Root, path)
 		if err := os.MkdirAll(filepath.Dir(rootedPath), 0o755); err != nil {
@@ -95,7 +95,7 @@ func TestUninstallLinuxSystemKeepsData(t *testing.T) {
 		t.Fatalf("Uninstall: %v", err)
 	}
 	wantCmds := []string{
-		"systemctl disable --now agent-peer.service",
+		"systemctl disable --now peers.service",
 		"systemctl daemon-reload",
 	}
 	if !slices.Equal(cmds, wantCmds) {
@@ -108,9 +108,9 @@ func TestUninstallLinuxSystemKeepsData(t *testing.T) {
 		t.Errorf("unit file still exists: %v", err)
 	}
 	for _, path := range []string{
-		"/etc/agent-peer/config.yaml",
-		"/var/lib/agent-peer/identity.json",
-		"/var/log/agent-peer/audit.log",
+		"/etc/peers/config.yaml",
+		"/var/lib/peers/identity.json",
+		"/var/log/peers/audit.log",
 	} {
 		if _, err := os.Stat(filepath.Join(opts.Root, path)); err != nil {
 			t.Errorf("%s was removed: %v", path, err)
@@ -120,7 +120,7 @@ func TestUninstallLinuxSystemKeepsData(t *testing.T) {
 
 func TestUninstallRepeats(t *testing.T) {
 	opts := baseOptions(t)
-	writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/agent-peer.service")
+	writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/peers.service")
 	opts.Run = func(string, ...string) ([]byte, error) { return nil, nil }
 
 	if _, err := Uninstall(opts); err != nil {
@@ -140,8 +140,8 @@ func TestUninstallRepeats(t *testing.T) {
 		t.Error("Removed = true on the second run, want false")
 	}
 	wantCmds := []string{
-		"systemctl --user is-enabled agent-peer.service",
-		"systemctl --user is-active --quiet agent-peer.service",
+		"systemctl --user is-enabled peers.service",
+		"systemctl --user is-active --quiet peers.service",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
@@ -176,9 +176,9 @@ func TestUninstallLinuxServiceStillLoaded(t *testing.T) {
 		t.Error("Removed = false, want true when systemd still has the unit")
 	}
 	wantCmds := []string{
-		"systemctl --user is-enabled agent-peer.service",
-		"systemctl --user is-active --quiet agent-peer.service",
-		"systemctl --user disable --now agent-peer.service",
+		"systemctl --user is-enabled peers.service",
+		"systemctl --user is-active --quiet peers.service",
+		"systemctl --user disable --now peers.service",
 		"systemctl --user daemon-reload",
 	}
 	if !slices.Equal(cmds, wantCmds) {
@@ -188,7 +188,7 @@ func TestUninstallLinuxServiceStillLoaded(t *testing.T) {
 
 func TestUninstallLinuxDaemonReloadFailureRestoresTheUnit(t *testing.T) {
 	opts := baseOptions(t)
-	rootedUnit := writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/agent-peer.service")
+	rootedUnit := writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/peers.service")
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		if slices.Contains(args, "daemon-reload") {
 			return []byte("reload failed"), errors.New("exit status 1")
@@ -210,7 +210,7 @@ func TestUninstallLinuxDaemonReloadFailureRestoresTheUnit(t *testing.T) {
 
 func TestUninstallLinuxDaemonReloadRestoreFailureReported(t *testing.T) {
 	opts := baseOptions(t)
-	rootedUnit := writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/agent-peer.service")
+	rootedUnit := writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/peers.service")
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		if slices.Contains(args, "daemon-reload") {
 			// Replace the removed unit path with a non-empty directory so the
@@ -264,7 +264,7 @@ func TestUninstallDarwinUser(t *testing.T) {
 	opts.EUID = 501
 	opts.UID = 501
 	opts.Home = "/Users/alice"
-	plist := writeInstalledFile(t, opts, "/Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	plist := writeInstalledFile(t, opts, "/Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
 
 	var cmds []string
 	opts.Run = func(name string, args ...string) ([]byte, error) {
@@ -281,7 +281,7 @@ func TestUninstallDarwinUser(t *testing.T) {
 	}
 	wantCmds := []string{
 		"launchctl print gui/501",
-		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl bootout gui/501/io.github.wangzw.peers",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
@@ -303,7 +303,7 @@ func TestUninstallDarwinWithoutGUIDomain(t *testing.T) {
 	opts.EUID = 501
 	opts.UID = 501
 	opts.Home = "/Users/alice"
-	plist := writeInstalledFile(t, opts, "/Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	plist := writeInstalledFile(t, opts, "/Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
 	opts.Run = func(string, ...string) ([]byte, error) {
 		return nil, exitError(t, 113)
 	}
@@ -355,7 +355,7 @@ func TestUninstallDarwinSystem(t *testing.T) {
 	opts.EUID = 0
 	opts.UID = 0
 	opts.Home = "/var/root"
-	plist := writeInstalledFile(t, opts, "/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist")
+	plist := writeInstalledFile(t, opts, "/Library/LaunchDaemons/io.github.wangzw.peers.plist")
 
 	var cmds []string
 	opts.Run = func(name string, args ...string) ([]byte, error) {
@@ -370,7 +370,7 @@ func TestUninstallDarwinSystem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
-	wantCmds := []string{"launchctl bootout system/io.github.wangzw.agent-peer"}
+	wantCmds := []string{"launchctl bootout system/io.github.wangzw.peers"}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
@@ -388,7 +388,7 @@ func TestUninstallDarwinBootoutFailureKeepsThePlistForARetry(t *testing.T) {
 	opts.EUID = 501
 	opts.UID = 501
 	opts.Home = "/Users/alice"
-	plist := writeInstalledFile(t, opts, "/Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	plist := writeInstalledFile(t, opts, "/Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
 
 	bootoutCode := 5
 	var cmds []string
@@ -421,7 +421,7 @@ func TestUninstallDarwinBootoutFailureKeepsThePlistForARetry(t *testing.T) {
 	}
 	wantCmds := []string{
 		"launchctl print gui/501",
-		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl bootout gui/501/io.github.wangzw.peers",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("retry commands = %q, want %q", cmds, wantCmds)
@@ -452,8 +452,8 @@ func TestUninstallDarwinLoadedWithoutFile(t *testing.T) {
 	}
 	wantCmds := []string{
 		"launchctl print gui/501",
-		"launchctl print gui/501/io.github.wangzw.agent-peer",
-		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
+		"launchctl print gui/501/io.github.wangzw.peers",
+		"launchctl bootout gui/501/io.github.wangzw.peers",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
@@ -484,7 +484,7 @@ func TestUninstallDarwinNotInstalled(t *testing.T) {
 	}
 	wantCmds := []string{
 		"launchctl print gui/501",
-		"launchctl print gui/501/io.github.wangzw.agent-peer",
+		"launchctl print gui/501/io.github.wangzw.peers",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
@@ -501,7 +501,7 @@ func TestUninstallDarwinSystemBootoutFailureKeepsThePlist(t *testing.T) {
 	opts.EUID = 0
 	opts.UID = 0
 	opts.Home = "/var/root"
-	plist := writeInstalledFile(t, opts, "/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist")
+	plist := writeInstalledFile(t, opts, "/Library/LaunchDaemons/io.github.wangzw.peers.plist")
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		if len(args) > 0 && args[0] == "bootout" {
 			return []byte("Boot-out failed"), exitError(t, 5)

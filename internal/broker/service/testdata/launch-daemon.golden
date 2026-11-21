@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>io.github.wangzw.agent-peer</string>
+	<string>io.github.wangzw.peers</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/usr/local/bin/agent-peer</string>
+		<string>/usr/local/bin/peers</string>
 		<string>broker</string>
 		<string>--system</string>
 		<string>--allow-degraded</string>
@@ -20,8 +20,8 @@
 	<key>Umask</key>
 	<integer>18</integer>
 	<key>StandardOutPath</key>
-	<string>/var/log/agent-peer/broker.log</string>
+	<string>/var/log/peers/broker.log</string>
 	<key>StandardErrorPath</key>
-	<string>/var/log/agent-peer/broker.log</string>
+	<string>/var/log/peers/broker.log</string>
 </dict>
 </plist>

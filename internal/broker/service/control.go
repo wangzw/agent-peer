@@ -214,7 +214,7 @@ func enableAndBootstrap(opts Options, domain string, res *Result) error {
 func checkDegraded(opts Options, deadline time.Time) error {
 	state, degraded, err := waitStatus(opts, deadline)
 	if err != nil {
-		return fmt.Errorf("service: the service is running but its status could not be read: %w; check it with `agent-peer status`", err)
+		return fmt.Errorf("service: the service is running but its status could not be read: %w; check it with `peers status`", err)
 	}
 	if degraded {
 		return &DegradedError{State: state}

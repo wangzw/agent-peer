@@ -445,17 +445,17 @@ func serviceBinaryIdentity(opts service.Options, binary string) string {
 func keptPaths(opts service.Options) []string {
 	var paths []string
 	if opts.System {
-		paths = append(paths, "/etc/agent-peer", "/var/lib/agent-peer")
+		paths = append(paths, "/etc/peers", "/var/lib/peers")
 		if opts.GOOS == "darwin" {
-			paths = append(paths, "/var/log/agent-peer")
+			paths = append(paths, "/var/log/peers")
 		} else {
-			paths = append(paths, "/var/log/agent-peer/audit.log")
+			paths = append(paths, "/var/log/peers/audit.log")
 		}
 		return paths
 	}
-	paths = append(paths, filepath.Join(opts.Home, ".agent-peer"))
+	paths = append(paths, filepath.Join(opts.Home, ".peers"))
 	if opts.GOOS == "darwin" {
-		paths = append(paths, filepath.Join(opts.Home, "Library", "Logs", "agent-peer"))
+		paths = append(paths, filepath.Join(opts.Home, "Library", "Logs", "peers"))
 	}
 	return paths
 }

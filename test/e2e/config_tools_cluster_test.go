@@ -589,7 +589,7 @@ func ctcGetConfigTool(t *testing.T, s *harness.Session, key string) string {
 
 // ctcAuditLogPath is the audit log path of the node's account.
 func ctcAuditLogPath(n *harness.Node) string {
-	return filepath.Join(n.AccountHome(), ".agent-peer", "audit.log")
+	return filepath.Join(n.AccountHome(), ".peers", "audit.log")
 }
 
 // ctcWaitAuditFileContains waits until the node's audit file carries needle.

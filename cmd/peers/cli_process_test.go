@@ -410,7 +410,7 @@ func TestStatusDoesNotLaunchBroker(t *testing.T) {
 	if res.code != exitFailure {
 		t.Fatalf("exit code = %d, want %d (stderr %q)", res.code, exitFailure, res.stderr)
 	}
-	for _, want := range []string{"no Broker is available", "ask the administrator", "agent-peer service install", "agent-peer broker"} {
+	for _, want := range []string{"no Broker is available", "ask the administrator", "peers service install", "peers broker"} {
 		if !strings.Contains(res.stderr, want) {
 			t.Fatalf("stderr = %q, want it to contain %q", res.stderr, want)
 		}

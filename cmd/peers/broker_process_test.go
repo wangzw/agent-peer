@@ -313,7 +313,7 @@ func TestBrokerUsesTestHome(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find the developer account: %v", err)
 	}
-	realData := filepath.Join(account.HomeDir, ".agent-peer")
+	realData := filepath.Join(account.HomeDir, ".peers")
 	before, beforeErr := os.Stat(realData)
 
 	first, second := newSandbox(t), newSandbox(t)
@@ -325,7 +325,7 @@ func TestBrokerUsesTestHome(t *testing.T) {
 
 	for _, sb := range []*sandbox{first, second} {
 		for _, name := range []string{"identity.key", "identity.crt"} {
-			path := filepath.Join(sb.home, ".agent-peer", name)
+			path := filepath.Join(sb.home, ".peers", name)
 			if _, err := os.Stat(path); err != nil {
 				t.Fatalf("identity file %s: %v", path, err)
 			}

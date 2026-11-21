@@ -85,7 +85,7 @@ func TestPrefixedAdvertiseRejectedAtLoad(t *testing.T) {
 	c.accountName = func() (string, error) { return "tester", nil }
 	c.routesSrc = watchTestRoutes{}
 
-	dir := filepath.Join(home, ".agent-peer")
+	dir := filepath.Join(home, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

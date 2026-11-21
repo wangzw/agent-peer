@@ -88,7 +88,7 @@ func (c *core) dataUnavailable(paths PathSet, err error) error {
 
 // checkRuntimeForLoad creates and checks the runtime directory. Tests replace
 // checkRuntime with a directory under t.TempDir so they never touch
-// /tmp/agent-peer-<uid> or /run/agent-peer.
+// /tmp/peers-<uid> or /run/peers.
 func (c *core) checkRuntimeForLoad() error {
 	if c.checkRuntime != nil {
 		_, err := c.checkRuntime()

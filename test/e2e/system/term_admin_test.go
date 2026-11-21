@@ -70,7 +70,7 @@ const (
 
 	// termAdminSystemConfig is the system Broker's configuration file. A refused
 	// config set must name this path.
-	termAdminSystemConfig = "/etc/agent-peer/config.yaml"
+	termAdminSystemConfig = "/etc/peers/config.yaml"
 
 	// termAdminPeerListen is host B's user-level Broker listen address. It must
 	// not collide with host A's system Broker default :17443.
@@ -159,7 +159,7 @@ func termAdminHostA(t *testing.T) {
 	// The output must carry the key, its expiry and the advertised address host
 	// B can dial.
 	created := syscontainer.RunAs(t, "root", nil, "pairing-key", "create")
-	termAdminRequireOK(t, created, "agent-peer pairing-key create as root")
+	termAdminRequireOK(t, created, "peers pairing-key create as root")
 	key, shown := termAdminPairingKey(t, created.Stdout)
 	address := termAdminAdvertisedAddress(t, shown)
 
@@ -176,21 +176,21 @@ func termAdminHostA(t *testing.T) {
 
 	// Root reads and changes one configuration item of host A.
 	got := syscontainer.RunAs(t, "root", nil, "config", "get", termAdminConfigKey)
-	termAdminRequireOK(t, got, "agent-peer config get as root")
+	termAdminRequireOK(t, got, "peers config get as root")
 	wantGet := termAdminConfigKey + " = " + termAdminConfigOld
 	if !strings.Contains(got.Stdout, wantGet) {
 		t.Fatalf("config get does not print %q:\n%s", wantGet, got.Stdout)
 	}
 
 	set := syscontainer.RunAs(t, "root", nil, "config", "set", termAdminConfigKey, termAdminConfigNew)
-	termAdminRequireOK(t, set, "agent-peer config set as root")
+	termAdminRequireOK(t, set, "peers config set as root")
 	wantSet := termAdminConfigKey + ": " + termAdminConfigOld + " -> " + termAdminConfigNew
 	if got := strings.TrimSpace(set.Stdout); got != wantSet {
 		t.Fatalf("config set printed %q, want %q", got, wantSet)
 	}
 
 	gotAfter := syscontainer.RunAs(t, "root", nil, "config", "get", termAdminConfigKey)
-	termAdminRequireOK(t, gotAfter, "agent-peer config get as root after the change")
+	termAdminRequireOK(t, gotAfter, "peers config get as root after the change")
 	wantGetAfter := termAdminConfigKey + " = " + termAdminConfigNew
 	if !strings.Contains(gotAfter.Stdout, wantGetAfter) {
 		t.Fatalf("config get does not print %q after the change:\n%s", wantGetAfter, gotAfter.Stdout)
@@ -198,7 +198,7 @@ func termAdminHostA(t *testing.T) {
 
 	// Root unpairs host B from host A.
 	disconnected := syscontainer.RunAs(t, "root", nil, "peer", "disconnect", hostAPeer.alias)
-	termAdminRequireOK(t, disconnected, "agent-peer peer disconnect as root")
+	termAdminRequireOK(t, disconnected, "peers peer disconnect as root")
 	wantDisconnect := "Disconnected " + hostAPeer.alias
 	if got := strings.TrimSpace(disconnected.Stdout); got != wantDisconnect {
 		t.Fatalf("peer disconnect printed %q, want %q", got, wantDisconnect)
@@ -234,14 +234,14 @@ func termAdminHostA(t *testing.T) {
 	// The refusal happened before the value was applied: root still reads the
 	// value set earlier.
 	afterDenied := syscontainer.RunAs(t, "root", nil, "config", "get", termAdminConfigKey)
-	termAdminRequireOK(t, afterDenied, "agent-peer config get after the refused change")
+	termAdminRequireOK(t, afterDenied, "peers config get after the refused change")
 	if want := termAdminConfigKey + " = " + termAdminConfigNew; !strings.Contains(afterDenied.Stdout, want) {
 		t.Fatalf("config get after the refused change does not print %q:\n%s", want, afterDenied.Stdout)
 	}
 
 	// Neither refused operation may reach the audit log as an event by other.
 	audit := syscontainer.RunAs(t, "root", nil, "audit")
-	termAdminRequireOK(t, audit, "agent-peer audit as root")
+	termAdminRequireOK(t, audit, "peers audit as root")
 	for _, event := range []string{"pairing_key_created", "config_set"} {
 		if termAdminHasAuditEvent(audit.Stdout, event, "other") {
 			t.Errorf("host A's audit records %s by other, but the call was refused:\n%s", event, audit.Stdout)
@@ -268,7 +268,7 @@ func termAdminHostB(t *testing.T) {
 	data := syscontainer.PairAwait(t, termAdminPairingFile, termAdminPairingWait)
 	address, key := termAdminParsePairing(t, data)
 	connected := syscontainer.RunAs(t, "peer", peerEnv, "peer", "connect", address, "--key", key)
-	termAdminRequireOK(t, connected, "agent-peer peer connect as peer on the other host")
+	termAdminRequireOK(t, connected, "peers peer connect as peer on the other host")
 	pairedAlias, pairedFingerprint := termAdminConnectOutput(t, connected.Stdout)
 
 	// Host B's terminal lists host A as a connected dialer peer, matching what
@@ -321,7 +321,7 @@ type termAdminEvent struct {
 	account string
 }
 
-// termAdminPeerRow is one row of "agent-peer peer list".
+// termAdminPeerRow is one row of "peers peer list".
 type termAdminPeerRow struct {
 	alias       string
 	fingerprint string
@@ -427,7 +427,7 @@ func termAdminAdvertisedAddress(t *testing.T, shown []string) string {
 func termAdminRequireNoBrokers(t *testing.T, account string, env []string, host string) {
 	t.Helper()
 	res := syscontainer.RunAs(t, account, env, "peer", "list")
-	termAdminRequireOK(t, res, "agent-peer peer list as "+account+" on "+host)
+	termAdminRequireOK(t, res, "peers peer list as "+account+" on "+host)
 	if !strings.Contains(res.Stdout, "Brokers: none") {
 		t.Fatalf("%s's peer list does not print \"Brokers: none\":\n%s", host, res.Stdout)
 	}

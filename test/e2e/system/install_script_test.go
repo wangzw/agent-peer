@@ -34,8 +34,8 @@ const (
 	installSystemPrefix = "/usr/local/bin/peers"
 
 	// installArchiveDir is where the inner test assembles a release-shaped
-	// directory from the staged archive files and the image's agent-peer binary.
-	installArchiveDir = "/var/lib/agent-peer-install-archive"
+	// directory from the staged archive files and the image's peers binary.
+	installArchiveDir = "/var/lib/peers-install-archive"
 
 	// installClaudePath is the fake claude the script resolves through PATH.
 	installClaudePath = "/usr/local/bin/claude"
@@ -43,12 +43,12 @@ const (
 	// installStateDir holds the fake claude's invocation log and the marker
 	// that answers claude mcp get peer. It is world-writable because the script
 	// runs claude as the ordinary account in both scenarios.
-	installStateDir = "/var/lib/agent-peer-install-state"
+	installStateDir = "/var/lib/peers-install-state"
 
 	// installSudoersPath grants the ordinary account the passwordless sudo the
 	// system-level scenario needs. The name has no dot, which sudo requires of
 	// a file it reads from /etc/sudoers.d.
-	installSudoersPath = "/etc/sudoers.d/agent-peer-install-script"
+	installSudoersPath = "/etc/sudoers.d/peers-install-script"
 
 	// installPath is the PATH the user-level scenario gives the script. The
 	// image keeps the fake claude in /usr/local/bin, which the default account
@@ -70,10 +70,10 @@ const (
 
 	// installUserConfigDir, installSystemConfigDir and the two unit paths are
 	// the state a refused install must leave untouched.
-	installUserConfigDir   = installHome + "/.agent-peer"
-	installSystemConfigDir = "/etc/agent-peer"
-	installUserUnitPath    = installHome + "/.config/systemd/user/agent-peer.service"
-	installSystemUnitPath  = "/etc/systemd/system/agent-peer.service"
+	installUserConfigDir   = installHome + "/.peers"
+	installSystemConfigDir = "/etc/peers"
+	installUserUnitPath    = installHome + "/.config/systemd/user/peers.service"
+	installSystemUnitPath  = "/etc/systemd/system/peers.service"
 
 	// installLevelPrompt and installUpgradePrompt are the questions the script
 	// asks on the controlling terminal.
@@ -84,14 +84,14 @@ const (
 // installArchiveReadme stands in for the user-facing README a release archive
 // carries. The install script does not read it; its presence keeps the staged
 // directory shaped like the archive.
-const installArchiveReadme = "agent-peer release archive for the install-script end-to-end test.\n"
+const installArchiveReadme = "peers release archive for the install-script end-to-end test.\n"
 
 // installFakeClaudeScript is the stand-in for Claude Code's CLI. It appends one
 // tab-separated line per call to the invocation log and answers claude mcp get
 // peer from a marker file, so the second install sees the registration the
 // first one made.
 const installFakeClaudeScript = `#!/bin/sh
-state=/var/lib/agent-peer-install-state
+state=/var/lib/peers-install-state
 log="$state/invocations"
 registered="$state/registered-peer"
 mkdir -p "$state" 2>/dev/null || true
@@ -256,7 +256,7 @@ func TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser(t *testing.T)
 		if _, err := os.Stat(installSystemUnitPath); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("the user-level install left the system unit %s behind: %v", installSystemUnitPath, err)
 		}
-		if procs := syscontainer.Pids("agent-peer", "broker", "--system"); len(procs) != 0 {
+		if procs := syscontainer.Pids("peers", "broker", "--system"); len(procs) != 0 {
 			t.Errorf("the user-level install started system Brokers: %v", procs)
 		}
 	})
@@ -501,13 +501,13 @@ func TestREQBrokerConfig050_InstallScriptUserSummary(t *testing.T) {
 		}
 		assertInstallScriptSummary(t, res.Stdout, "user-level", "login", map[string]string{
 			"binary:":    installUserPrefix,
-			"config:":    installHome + "/.agent-peer/config.yaml (generated)",
-			"run log:":   "journalctl --user -u agent-peer.service",
-			"audit log:": installHome + "/.agent-peer/audit.log",
-			"start:":     "agent-peer service start",
-			"stop:":      "agent-peer service stop",
-			"restart:":   "agent-peer service restart",
-			"uninstall:": "agent-peer uninstall",
+			"config:":    installHome + "/.peers/config.yaml (generated)",
+			"run log:":   "journalctl --user -u peers.service",
+			"audit log:": installHome + "/.peers/audit.log",
+			"start:":     "peers service start",
+			"stop:":      "peers service stop",
+			"restart:":   "peers service restart",
+			"uninstall:": "peers uninstall",
 		})
 		assertInstallScriptCommandsRun(t, res.Stdout, installAccount,
 			append(installUserEnv(), "PATH="+installHome+"/.local/bin:"+installPath), installHome)
@@ -538,12 +538,12 @@ func TestREQBrokerConfig050_InstallScriptSystemSummary(t *testing.T) {
 		assertInstallScriptSummary(t, res.Stdout, "system-level", "boot", map[string]string{
 			"binary:":    installSystemPrefix,
 			"config:":    installSystemConfigDir + "/config.yaml (generated)",
-			"run log:":   "journalctl -u agent-peer.service",
+			"run log:":   "journalctl -u peers.service",
 			"audit log:": systemAuditPath,
-			"start:":     "sudo agent-peer service start",
-			"stop:":      "sudo agent-peer service stop",
-			"restart:":   "sudo agent-peer service restart",
-			"uninstall:": "agent-peer uninstall",
+			"start:":     "sudo peers service start",
+			"stop:":      "sudo peers service stop",
+			"restart:":   "sudo peers service restart",
+			"uninstall:": "peers uninstall",
 		})
 		assertInstallScriptCommandsRun(t, res.Stdout, "root", nil, "/")
 	})
@@ -590,7 +590,7 @@ type installClaudeCall struct {
 
 // stageInstallArchive copies the install script and the license from the
 // repository into the directory mount the container reads. It runs on the host;
-// the inner run assembles them with the image's agent-peer binary.
+// the inner run assembles them with the image's peers binary.
 func stageInstallArchive(t *testing.T) {
 	t.Helper()
 
@@ -723,7 +723,7 @@ func installFakeClaude(t *testing.T) {
 	}
 }
 
-// removePreinstalledSystemBinary removes the agent-peer binary the image already
+// removePreinstalledSystemBinary removes the peers binary the image already
 // carries at the system-level default path, so the owner and mode checked after
 // the install are the install's own.
 func removePreinstalledSystemBinary(t *testing.T) {
@@ -907,17 +907,17 @@ func assertUserInstall(t *testing.T) {
 
 	assertInstallBinary(t, installUserPrefix, installUID)
 	assertInstallVersion(t, installAccount, installUserEnv(), installUserPrefix)
-	waitInstallSocket(t, "/tmp/agent-peer-"+strconv.FormatUint(uint64(installUID), 10)+"/broker.sock")
+	waitInstallSocket(t, "/tmp/peers-"+strconv.FormatUint(uint64(installUID), 10)+"/broker.sock")
 	waitInstallUnitState(t, installAccount, installUserEnv(), "active", "--user")
 
 	found := false
-	for _, proc := range syscontainer.Pids("agent-peer", "broker") {
+	for _, proc := range syscontainer.Pids("peers", "broker") {
 		if proc.UID == installUID {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("no Broker process runs as uid %d: %v", installUID, syscontainer.Pids("agent-peer", "broker"))
+		t.Fatalf("no Broker process runs as uid %d: %v", installUID, syscontainer.Pids("peers", "broker"))
 	}
 }
 
@@ -937,10 +937,10 @@ func assertSystemInstall(t *testing.T) {
 		t.Errorf("%s mode = %#o, want no group or other write permission", installSystemPrefix, mode)
 	}
 	assertInstallVersion(t, "root", nil, installSystemPrefix)
-	waitInstallSocket(t, "/run/agent-peer/broker.sock")
+	waitInstallSocket(t, "/run/peers/broker.sock")
 	waitInstallUnitState(t, "root", nil, "active")
 
-	if procs := syscontainer.Pids("agent-peer", "broker", "--system"); len(procs) == 0 {
+	if procs := syscontainer.Pids("peers", "broker", "--system"); len(procs) == 0 {
 		t.Fatalf("no system Broker process is running")
 	}
 }
@@ -992,13 +992,13 @@ func waitInstallSocket(t *testing.T, socket string) {
 	})
 }
 
-// waitInstallUnitState waits until systemctl reports want for the agent-peer
+// waitInstallUnitState waits until systemctl reports want for the peers
 // unit. scopeArgs selects the user manager ("--user") or the system manager.
 func waitInstallUnitState(t *testing.T, account string, env []string, want string, scopeArgs ...string) {
 	t.Helper()
 
-	args := append(append([]string{}, scopeArgs...), "is-active", "agent-peer.service")
-	harness.Eventually(t, installServiceStartBound, "agent-peer.service to be "+want, func() (bool, string) {
+	args := append(append([]string{}, scopeArgs...), "is-active", "peers.service")
+	harness.Eventually(t, installServiceStartBound, "peers.service to be "+want, func() (bool, string) {
 		res := runWithEnv(t, account, env, "systemctl", args...)
 		state := strings.TrimSpace(res.Stdout)
 		return state == want, fmt.Sprintf("is-active = %q (exit %d, stderr %s)",

@@ -25,8 +25,8 @@ const (
 	adGID        = 2100
 	adShareGroup = "dirshare"
 	adShareGID   = 2101
-	adSocketPath = "/run/agent-peer/broker.sock"
-	adConfigPath = "/etc/agent-peer/config.yaml"
+	adSocketPath = "/run/peers/broker.sock"
+	adConfigPath = "/etc/peers/config.yaml"
 	// adRegisterBound follows the three-second wait bound most system tests
 	// use for a local event; a local Broker registers well inside it. The
 	// foreign-session test's 13-second bound covers a different wait: the

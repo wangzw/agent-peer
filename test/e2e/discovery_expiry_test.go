@@ -353,7 +353,7 @@ type dxDirectoryKey struct {
 // publisher fingerprint in lowercase hexadecimal and record kind.
 func dxDirectoryRecords(t *testing.T, node *harness.Node) map[dxDirectoryKey]*directorypb.RecordBody {
 	t.Helper()
-	path := filepath.Join(node.AccountHome(), ".agent-peer", "directory.json")
+	path := filepath.Join(node.AccountHome(), ".peers", "directory.json")
 	data := node.ReadFile(t, path)
 	var file dxDirectoryFile
 	if err := json.Unmarshal(data, &file); err != nil {

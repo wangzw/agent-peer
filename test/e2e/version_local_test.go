@@ -28,7 +28,7 @@ const (
 	versionLocalRecoveryBudget = mcpserver.ConnBackoffCap + 5*time.Second
 )
 
-// versionLocalBrokerProcs returns the node's agent-peer broker processes. The
+// versionLocalBrokerProcs returns the node's peers broker processes. The
 // environment is the filter because every process the node starts inherits it,
 // including a Broker a test starts.
 func versionLocalBrokerProcs(n *harness.Node) ([]node.Proc, error) {
@@ -47,7 +47,7 @@ func versionLocalMustBrokerProcs(t *testing.T, n *harness.Node) []node.Proc {
 	t.Helper()
 	procs, err := versionLocalBrokerProcs(n)
 	if err != nil {
-		t.Fatalf("listing the agent-peer broker processes: %v", err)
+		t.Fatalf("listing the peers broker processes: %v", err)
 	}
 	return procs
 }
@@ -175,7 +175,7 @@ func TestLocalVersionMismatchReq016(t *testing.T) {
 
 	procs := versionLocalMustBrokerProcs(t, n)
 	if len(procs) != 1 {
-		t.Fatalf("the node runs %d agent-peer broker processes, want 1: %v", len(procs), procs)
+		t.Fatalf("the node runs %d peers broker processes, want 1: %v", len(procs), procs)
 	}
 	if procs[0].PID != st.PID {
 		t.Fatalf("the Broker process is %d, want the one that was started: %d", procs[0].PID, st.PID)
@@ -229,7 +229,7 @@ func TestLocalVersionMismatchRecoveryReq016(t *testing.T) {
 		if !r.IsError {
 			return false, "list_agents succeeded without a Broker"
 		}
-		for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+		for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
 			if !strings.Contains(r.Text, want) {
 				return false, r.Text
 			}
@@ -260,7 +260,7 @@ func TestLocalVersionMismatchRecoveryReq016(t *testing.T) {
 		return true, ""
 	})
 	if procs := versionLocalMustBrokerProcs(t, n); len(procs) != 1 {
-		t.Fatalf("the node runs %d agent-peer broker processes after recovery, want 1: %v", len(procs), procs)
+		t.Fatalf("the node runs %d peers broker processes after recovery, want 1: %v", len(procs), procs)
 	}
 	if got := versionLocalMCPPIDs(t, n); !slices.Equal(got, mcpBefore) {
 		t.Fatalf("the MCP server processes changed from %v to %v; the session reconnected instead of recovering", mcpBefore, got)

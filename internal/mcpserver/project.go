@@ -12,7 +12,7 @@ import (
 
 // projectConfigFile is the name of the project configuration file that
 // declares the topics to join automatically.
-const projectConfigFile = ".agent-peer.yaml"
+const projectConfigFile = ".peers.yaml"
 
 // projectConfig is the parsed content of a project configuration file found in
 // the session working directory or one of its ancestors.
@@ -56,7 +56,7 @@ var projectOwnerUID = func(path string) (uint32, error) {
 }
 
 // findProjectConfig searches dir and its ancestors up to "/" for a regular file
-// named .agent-peer.yaml. A symbolic link is followed: it counts when its
+// named .peers.yaml. A symbolic link is followed: it counts when its
 // target is a regular file, and a dangling link or a target that is not a
 // regular file is treated as absent, so the search continues upward. found is
 // false when there is none. err is non-nil when the first file found cannot be

@@ -8,7 +8,7 @@ import (
 )
 
 // MainPID returns the pid the service manager reports for the installed
-// agent-peer service at this deployment level, and whether it reports a running
+// peers service at this deployment level, and whether it reports a running
 // one. It asks the same question as the install-time check (serviceMainPID), so
 // "started by the service" means the same thing in both places: on Linux
 // "systemctl [--user] show -p MainPID", on macOS the pid in "launchctl print".

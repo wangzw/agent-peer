@@ -45,7 +45,7 @@ const (
 	ctStaticKeyThr = "static-key-00003"
 )
 
-// TestConfigToolAnnotations covers REQ-broker-config-004. A real agent-peer
+// TestConfigToolAnnotations covers REQ-broker-config-004. A real peers
 // MCP session lists its tools and the read-only hint must be set on exactly the
 // tools with no side effects. A tool that sends a message, changes Broker
 // state, or writes the configuration file must not carry the hint. A missing
@@ -281,11 +281,11 @@ func TestConfigTools(t *testing.T) {
 		}
 		res := host.Exec(t, []string{ctBinary(t), "audit"}, nil)
 		if res.ExitCode != 0 {
-			t.Fatalf("agent-peer audit exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+			t.Fatalf("peers audit exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 		}
 		lines := ctNonEmptyLines(res.Stdout)
 		if len(lines) != len(events) {
-			t.Fatalf("agent-peer audit printed %d lines for %d audit records:\n%s", len(lines), len(events), res.Stdout)
+			t.Fatalf("peers audit printed %d lines for %d audit records:\n%s", len(lines), len(events), res.Stdout)
 		}
 		for i, event := range events {
 			name := ctAuditKindName(event.GetEvent())
@@ -300,11 +300,11 @@ func TestConfigTools(t *testing.T) {
 		}
 		res = host.Exec(t, []string{ctBinary(t), "audit", "--limit", "1"}, nil)
 		if res.ExitCode != 0 {
-			t.Fatalf("agent-peer audit --limit 1 exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+			t.Fatalf("peers audit --limit 1 exited %d: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 		}
 		limited := ctNonEmptyLines(res.Stdout)
 		if len(limited) != 1 {
-			t.Fatalf("agent-peer audit --limit 1 printed %d lines:\n%s", len(limited), res.Stdout)
+			t.Fatalf("peers audit --limit 1 printed %d lines:\n%s", len(limited), res.Stdout)
 		}
 		if name := ctAuditKindName(newest[0].GetEvent()); !strings.Contains(limited[0], name) {
 			t.Fatalf("the limited line is %q, want the newest record %s", limited[0], name)

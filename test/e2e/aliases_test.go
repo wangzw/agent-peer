@@ -524,7 +524,7 @@ func alOnlyPeerFingerprint(t *testing.T, node *harness.Node) string {
 // alIdentityFingerprint derives a node's fingerprint from its certificate.
 func alIdentityFingerprint(t *testing.T, node *harness.Node) string {
 	t.Helper()
-	path := filepath.Join(node.AccountHome(), ".agent-peer", "identity.crt")
+	path := filepath.Join(node.AccountHome(), ".peers", "identity.crt")
 	data := node.ReadFile(t, path)
 	block, _ := pem.Decode(data)
 	if block == nil {

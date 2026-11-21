@@ -169,7 +169,7 @@ func TestREQBrokerConfig040_UserInstallWritesTemplate(t *testing.T) {
 	install := func(t *testing.T) {
 		res := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "install")
 		if res.ExitCode != 0 {
-			t.Fatalf("agent-peer service install as peer: exit %d\nstdout: %s\nstderr: %s",
+			t.Fatalf("peers service install as peer: exit %d\nstdout: %s\nstderr: %s",
 				res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
 	}
@@ -733,7 +733,7 @@ func cteWaitConnected(t *testing.T, session *syscontainer.Session) {
 func cteSystemMainPID(t *testing.T) int {
 	t.Helper()
 
-	res := runCommandAs(t, "root", "systemctl", "show", "--property", "MainPID", "--value", "agent-peer.service")
+	res := runCommandAs(t, "root", "systemctl", "show", "--property", "MainPID", "--value", "peers.service")
 	if res.ExitCode != 0 {
 		t.Fatalf("systemctl show MainPID: exit %d\nstderr: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 	}
@@ -744,7 +744,7 @@ func cteSystemMainPID(t *testing.T) int {
 func cteUserMainPID(t *testing.T, userEnv []string) int {
 	t.Helper()
 
-	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "show", "--property", "MainPID", "--value", "agent-peer.service")
+	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "show", "--property", "MainPID", "--value", "peers.service")
 	if res.ExitCode != 0 {
 		t.Fatalf("systemctl --user show MainPID: exit %d\nstderr: %s", res.ExitCode, strings.TrimSpace(res.Stderr))
 	}
@@ -770,5 +770,5 @@ func cteUserConfigPath(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("looking up account peer: %v", err)
 	}
-	return filepath.Join(u.HomeDir, ".agent-peer", "config.yaml")
+	return filepath.Join(u.HomeDir, ".peers", "config.yaml")
 }

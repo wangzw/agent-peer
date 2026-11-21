@@ -25,7 +25,7 @@ const (
 	// the other's agents across the link.
 	aliasSysTopic = "alias"
 	// aliasSysAliceConfig is the user-level Broker's configuration file.
-	aliasSysAliceConfig = "/home/alice/.agent-peer/config.yaml"
+	aliasSysAliceConfig = "/home/alice/.peers/config.yaml"
 	// aliasSysRelinkBound bounds the user-level Broker's redial after a
 	// restart: link.reconnect_max is 2s and the link is up the moment the
 	// system-level Broker lists alice's agent again, so 2s + 1s covers it.

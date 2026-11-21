@@ -38,7 +38,7 @@ func TestServiceBinaryReadsSystemdUnits(t *testing.T) {
 		{
 			name: "user unit",
 			opts: func(t *testing.T) Options { return baseOptions(t) },
-			exe:  "/opt/agent peer/bin/agent-peer",
+			exe:  "/opt/peer tools/bin/peers",
 			unit: SystemdUserUnit,
 		},
 		{
@@ -48,7 +48,7 @@ func TestServiceBinaryReadsSystemdUnits(t *testing.T) {
 				opts.System = true
 				return opts
 			},
-			exe:  "/usr/local/bin/agent-peer",
+			exe:  "/usr/local/bin/peers",
 			unit: SystemdSystemUnit,
 		},
 		{
@@ -100,9 +100,9 @@ func TestServiceBinaryReadsLaunchdPlists(t *testing.T) {
 				opts.Home = "/Users/alice"
 				return opts
 			},
-			exe: "/Users/alice/bin/agent-peer",
+			exe: "/Users/alice/bin/peers",
 			unit: func(exe string) (string, error) {
-				return LaunchAgentPlist(exe, "/Users/alice/Library/Logs/agent-peer/broker.log")
+				return LaunchAgentPlist(exe, "/Users/alice/Library/Logs/peers/broker.log")
 			},
 		},
 		{
@@ -114,7 +114,7 @@ func TestServiceBinaryReadsLaunchdPlists(t *testing.T) {
 				opts.System = true
 				return opts
 			},
-			exe:  "/usr/local/bin/agent-peer",
+			exe:  "/usr/local/bin/peers",
 			unit: LaunchDaemonPlist,
 		},
 	}
@@ -177,7 +177,7 @@ func TestRemoveRuntimeDir(t *testing.T) {
 		{
 			name:    "linux user",
 			opts:    func(t *testing.T) Options { return baseOptions(t) },
-			runtime: "/tmp/agent-peer-1000",
+			runtime: "/tmp/peers-1000",
 		},
 		{
 			name: "linux system",
@@ -187,7 +187,7 @@ func TestRemoveRuntimeDir(t *testing.T) {
 				opts.EUID = 0
 				return opts
 			},
-			runtime: "/run/agent-peer",
+			runtime: "/run/peers",
 		},
 		{
 			name: "darwin user",
@@ -197,7 +197,7 @@ func TestRemoveRuntimeDir(t *testing.T) {
 				opts.Home = "/Users/alice"
 				return opts
 			},
-			runtime: "/tmp/agent-peer-1000",
+			runtime: "/tmp/peers-1000",
 		},
 		{
 			name: "darwin system",
@@ -209,7 +209,7 @@ func TestRemoveRuntimeDir(t *testing.T) {
 				opts.EUID = 0
 				return opts
 			},
-			runtime: "/var/run/agent-peer",
+			runtime: "/var/run/peers",
 		},
 	}
 	for _, tc := range cases {
@@ -241,16 +241,16 @@ func TestRemoveRuntimeDir(t *testing.T) {
 
 func TestPurgeDataLinuxUser(t *testing.T) {
 	opts := baseOptions(t)
-	writeFileUnder(t, opts.Root, "/home/alice/.agent-peer/config.yaml", "broker: {}\n")
-	writeFileUnder(t, opts.Root, "/home/alice/.agent-peer/identity.key", "key")
-	dropIn := "/home/alice/.config/systemd/user/agent-peer.service.d/proxy.conf"
+	writeFileUnder(t, opts.Root, "/home/alice/.peers/config.yaml", "broker: {}\n")
+	writeFileUnder(t, opts.Root, "/home/alice/.peers/identity.key", "key")
+	dropIn := "/home/alice/.config/systemd/user/peers.service.d/proxy.conf"
 	writeFileUnder(t, opts.Root, dropIn, "[Service]\n")
 
 	removed, err := PurgeData(opts)
 	if err != nil {
 		t.Fatalf("PurgeData: %v", err)
 	}
-	want := []string{"/home/alice/.agent-peer", "/home/alice/.config/systemd/user/agent-peer.service.d"}
+	want := []string{"/home/alice/.peers", "/home/alice/.config/systemd/user/peers.service.d"}
 	if !slices.Equal(removed, want) {
 		t.Errorf("removed = %q, want %q", removed, want)
 	}
@@ -266,12 +266,12 @@ func TestPurgeDataLinuxSystem(t *testing.T) {
 	opts.System = true
 	opts.EUID = 0
 
-	writeFileUnder(t, opts.Root, "/etc/agent-peer/config.yaml", "broker: {}\n")
-	writeFileUnder(t, opts.Root, "/var/lib/agent-peer/identity.key", "key")
-	writeFileUnder(t, opts.Root, "/var/log/agent-peer/audit.log", "audit\n")
-	writeFileUnder(t, opts.Root, "/etc/systemd/system/agent-peer.service.d/proxy.conf", "[Service]\n")
+	writeFileUnder(t, opts.Root, "/etc/peers/config.yaml", "broker: {}\n")
+	writeFileUnder(t, opts.Root, "/var/lib/peers/identity.key", "key")
+	writeFileUnder(t, opts.Root, "/var/log/peers/audit.log", "audit\n")
+	writeFileUnder(t, opts.Root, "/etc/systemd/system/peers.service.d/proxy.conf", "[Service]\n")
 
-	gid := configGID(t, opts, "/etc/agent-peer/config.yaml")
+	gid := configGID(t, opts, "/etc/peers/config.yaml")
 	writeFileUnder(t, opts.Root, adminGroupRecord, "ops\n")
 	var cmds []string
 	opts.Run = func(name string, args ...string) ([]byte, error) {
@@ -295,11 +295,11 @@ func TestPurgeDataLinuxSystem(t *testing.T) {
 		t.Fatalf("PurgeData: %v", err)
 	}
 	want := []string{
-		"/etc/agent-peer",
-		"/var/lib/agent-peer",
-		"/var/log/agent-peer/audit.log",
-		"/etc/systemd/system/agent-peer.service.d",
-		"/var/log/agent-peer",
+		"/etc/peers",
+		"/var/lib/peers",
+		"/var/log/peers/audit.log",
+		"/etc/systemd/system/peers.service.d",
+		"/var/log/peers",
 		"group ops",
 	}
 	if !slices.Equal(removed, want) {
@@ -322,14 +322,14 @@ func TestPurgeDataDarwinUser(t *testing.T) {
 	opts := baseOptions(t)
 	opts.GOOS = "darwin"
 	opts.Home = "/Users/alice"
-	writeFileUnder(t, opts.Root, "/Users/alice/.agent-peer/config.yaml", "broker: {}\n")
-	writeFileUnder(t, opts.Root, "/Users/alice/Library/Logs/agent-peer/broker.log", "log\n")
+	writeFileUnder(t, opts.Root, "/Users/alice/.peers/config.yaml", "broker: {}\n")
+	writeFileUnder(t, opts.Root, "/Users/alice/Library/Logs/peers/broker.log", "log\n")
 
 	removed, err := PurgeData(opts)
 	if err != nil {
 		t.Fatalf("PurgeData: %v", err)
 	}
-	want := []string{"/Users/alice/.agent-peer", "/Users/alice/Library/Logs/agent-peer"}
+	want := []string{"/Users/alice/.peers", "/Users/alice/Library/Logs/peers"}
 	if !slices.Equal(removed, want) {
 		t.Errorf("removed = %q, want %q", removed, want)
 	}
@@ -342,12 +342,12 @@ func TestPurgeDataDarwinSystem(t *testing.T) {
 	opts.System = true
 	opts.EUID = 0
 
-	writeFileUnder(t, opts.Root, "/etc/agent-peer/config.yaml", "broker: {}\n")
-	writeFileUnder(t, opts.Root, "/var/lib/agent-peer/identity.key", "key")
-	writeFileUnder(t, opts.Root, "/var/log/agent-peer/audit.log", "audit\n")
-	writeFileUnder(t, opts.Root, "/var/log/agent-peer/broker.log", "log\n")
+	writeFileUnder(t, opts.Root, "/etc/peers/config.yaml", "broker: {}\n")
+	writeFileUnder(t, opts.Root, "/var/lib/peers/identity.key", "key")
+	writeFileUnder(t, opts.Root, "/var/log/peers/audit.log", "audit\n")
+	writeFileUnder(t, opts.Root, "/var/log/peers/broker.log", "log\n")
 
-	gid := configGID(t, opts, "/etc/agent-peer/config.yaml")
+	gid := configGID(t, opts, "/etc/peers/config.yaml")
 	writeFileUnder(t, opts.Root, adminGroupRecord, "ops\n")
 	var cmds []string
 	opts.Run = func(name string, args ...string) ([]byte, error) {
@@ -369,7 +369,7 @@ func TestPurgeDataDarwinSystem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PurgeData: %v", err)
 	}
-	want := []string{"/etc/agent-peer", "/var/lib/agent-peer", "/var/log/agent-peer", "group ops"}
+	want := []string{"/etc/peers", "/var/lib/peers", "/var/log/peers", "group ops"}
 	if !slices.Equal(removed, want) {
 		t.Errorf("removed = %q, want %q", removed, want)
 	}
@@ -424,11 +424,11 @@ func TestPurgeDataKeepsAnUnrecordedGroupWhenConfigIsGone(t *testing.T) {
 func TestOtherAccountBrokers(t *testing.T) {
 	opts := baseOptions(t)
 	for _, uid := range []int{1000, 2000, 3000, 4000} {
-		writeFileUnder(t, opts.Root, "/tmp/agent-peer-"+strconv.Itoa(uid)+"/broker.sock", "socket")
+		writeFileUnder(t, opts.Root, "/tmp/peers-"+strconv.Itoa(uid)+"/broker.sock", "socket")
 	}
 	opts.Probe = func(path string) (int, bool) {
 		switch path {
-		case "/tmp/agent-peer-1000/broker.sock", "/tmp/agent-peer-2000/broker.sock", "/tmp/agent-peer-4000/broker.sock":
+		case "/tmp/peers-1000/broker.sock", "/tmp/peers-2000/broker.sock", "/tmp/peers-4000/broker.sock":
 			return 4242, true
 		}
 		return 0, false
@@ -478,17 +478,17 @@ func configGID(t *testing.T, opts Options, path string) int {
 }
 
 // adminGroupRecord is where an installation records the group it created.
-const adminGroupRecord = "/var/lib/agent-peer/admin-group"
+const adminGroupRecord = "/var/lib/peers/admin-group"
 
 // purgeGroupOptions prepares a system-level purge whose configuration file is
-// owned by group "agent-peer".
+// owned by group "peers".
 func purgeGroupOptions(t *testing.T) (Options, int) {
 	t.Helper()
 	opts := baseOptions(t)
 	opts.System = true
 	opts.EUID = 0
-	writeFileUnder(t, opts.Root, "/etc/agent-peer/config.yaml", "broker: {}\n")
-	return opts, configGID(t, opts, "/etc/agent-peer/config.yaml")
+	writeFileUnder(t, opts.Root, "/etc/peers/config.yaml", "broker: {}\n")
+	return opts, configGID(t, opts, "/etc/peers/config.yaml")
 }
 
 // purgeGroupRun answers the group database queries PurgeData makes. passwd is
@@ -519,9 +519,9 @@ func groupKept(removed []string, name string) bool {
 	return false
 }
 
-// TestPurgeDataKeepsGroupWithoutInstallRecord covers group names a v0.2.0
-// configuration file may belong to. Only the default agent-peer group is
-// removed without a record; every other name is kept.
+// TestPurgeDataKeepsGroupWithoutInstallRecord covers group names the
+// configuration file of an installation that recorded none may belong to. Only
+// the default group is removed without a record; every other name is kept.
 func TestPurgeDataKeepsGroupWithoutInstallRecord(t *testing.T) {
 	for _, name := range []string{"root", "wheel", "staff", "sudo", "broker-ops"} {
 		t.Run(name, func(t *testing.T) {
@@ -543,9 +543,8 @@ func TestPurgeDataKeepsGroupWithoutInstallRecord(t *testing.T) {
 	}
 }
 
-// TestPurgeDataReportsAnUnresolvableConfigGroupByGID covers a v0.2.0
-// installation whose configuration file belongs to a gid the group database
-// does not name. Falling back to the default group name would point the manual
+// TestPurgeDataReportsAnUnresolvableConfigGroupByGID covers an installation
+// whose configuration file belongs to a gid the group database does not name. Falling back to the default group name would point the manual
 // removal command at a group that is not the file's owner, so the message names
 // the gid and the command resolves the name from it at run time.
 func TestPurgeDataReportsAnUnresolvableConfigGroupByGID(t *testing.T) {
@@ -614,7 +613,7 @@ func writeScript(t *testing.T, dir, name, body string) {
 	}
 }
 
-func TestPurgeDataDeletesUnrecordedDefaultGroup(t *testing.T) {
+func TestPurgeDataKeepsUnrecordedDefaultGroup(t *testing.T) {
 	opts, gid := purgeGroupOptions(t)
 	var cmds []string
 	opts.Run = purgeGroupRun(&cmds, gid, DefaultAdminGroup, "root:x:0:0:root:/root:/bin/sh\n")
@@ -623,17 +622,17 @@ func TestPurgeDataDeletesUnrecordedDefaultGroup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PurgeData: %v", err)
 	}
-	if !slices.Contains(cmds, "groupdel "+DefaultAdminGroup) {
-		t.Errorf("commands = %q, want groupdel %s for an unrecorded default group", cmds, DefaultAdminGroup)
+	if slices.Contains(cmds, "groupdel "+DefaultAdminGroup) {
+		t.Errorf("commands = %q, want no group deletion without a record", cmds)
 	}
-	if !slices.Contains(removed, "group "+DefaultAdminGroup) {
-		t.Errorf("removed = %q, want the default group reported as removed", removed)
+	if !groupKept(removed, DefaultAdminGroup) {
+		t.Errorf("removed = %q, want a kept-group message naming %s", removed, DefaultAdminGroup)
 	}
 }
 
 func TestPurgeDataKeepsGroupWhenRecordDiffers(t *testing.T) {
 	opts, gid := purgeGroupOptions(t)
-	writeFileUnder(t, opts.Root, adminGroupRecord, "agent-peer\n")
+	writeFileUnder(t, opts.Root, adminGroupRecord, "peers\n")
 	var cmds []string
 	opts.Run = purgeGroupRun(&cmds, gid, "wheel", "root:x:0:0:root:/root:/bin/sh\n")
 
@@ -641,10 +640,10 @@ func TestPurgeDataKeepsGroupWhenRecordDiffers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PurgeData: %v", err)
 	}
-	if slices.Contains(cmds, "groupdel wheel") || slices.Contains(cmds, "groupdel agent-peer") {
+	if slices.Contains(cmds, "groupdel wheel") || slices.Contains(cmds, "groupdel peers") {
 		t.Errorf("removed a group that does not match the record; commands = %q", cmds)
 	}
-	if !groupKept(removed, "agent-peer") {
+	if !groupKept(removed, "peers") {
 		t.Errorf("removed = %q, want a kept-group message", removed)
 	}
 }
@@ -675,37 +674,37 @@ func TestPurgeDataKeepsRootGroup(t *testing.T) {
 
 func TestPurgeDataKeepsPrimaryGroup(t *testing.T) {
 	opts, gid := purgeGroupOptions(t)
-	writeFileUnder(t, opts.Root, adminGroupRecord, "agent-peer\n")
+	writeFileUnder(t, opts.Root, adminGroupRecord, "peers\n")
 	var cmds []string
-	opts.Run = purgeGroupRun(&cmds, gid, "agent-peer", "alice:x:1000:"+strconv.Itoa(gid)+":Alice:/home/alice:/bin/sh\n")
+	opts.Run = purgeGroupRun(&cmds, gid, "peers", "alice:x:1000:"+strconv.Itoa(gid)+":Alice:/home/alice:/bin/sh\n")
 	opts.GroupGID = func(string) (int, bool, error) { return gid, true, nil }
 
 	removed, err := PurgeData(opts)
 	if err != nil {
 		t.Fatalf("PurgeData: %v", err)
 	}
-	if slices.Contains(cmds, "groupdel agent-peer") {
+	if slices.Contains(cmds, "groupdel peers") {
 		t.Errorf("removed an account's primary group; commands = %q", cmds)
 	}
-	if !groupKept(removed, "agent-peer") {
+	if !groupKept(removed, "peers") {
 		t.Errorf("removed = %q, want a kept-group message", removed)
 	}
 }
 
 func TestPurgeDataDeletesRecordedGroup(t *testing.T) {
 	opts, gid := purgeGroupOptions(t)
-	writeFileUnder(t, opts.Root, adminGroupRecord, "agent-peer\n")
+	writeFileUnder(t, opts.Root, adminGroupRecord, "peers\n")
 	var cmds []string
-	opts.Run = purgeGroupRun(&cmds, gid, "agent-peer", "root:x:0:0:root:/root:/bin/sh\n")
+	opts.Run = purgeGroupRun(&cmds, gid, "peers", "root:x:0:0:root:/root:/bin/sh\n")
 
 	removed, err := PurgeData(opts)
 	if err != nil {
 		t.Fatalf("PurgeData: %v", err)
 	}
-	if !slices.Contains(cmds, "groupdel agent-peer") {
-		t.Errorf("commands = %q, want groupdel agent-peer", cmds)
+	if !slices.Contains(cmds, "groupdel peers") {
+		t.Errorf("commands = %q, want groupdel peers", cmds)
 	}
-	if !slices.Contains(removed, "group agent-peer") {
+	if !slices.Contains(removed, "group peers") {
 		t.Errorf("removed = %q, want the group reported as removed", removed)
 	}
 }
@@ -728,12 +727,12 @@ func TestServiceBinaryStripsSystemdPrefixes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFileUnder(t, opts.Root, path, "[Service]\nExecStart=-@+/opt/agent-peer broker\n")
+	writeFileUnder(t, opts.Root, path, "[Service]\nExecStart=-@+/opt/peers broker\n")
 	got, ok, err := ServiceBinary(opts)
 	if err != nil {
 		t.Fatalf("ServiceBinary: %v", err)
 	}
-	if !ok || got != "/opt/agent-peer" {
-		t.Errorf("ServiceBinary = %q, %v, want /opt/agent-peer", got, ok)
+	if !ok || got != "/opt/peers" {
+		t.Errorf("ServiceBinary = %q, %v, want /opt/peers", got, ok)
 	}
 }

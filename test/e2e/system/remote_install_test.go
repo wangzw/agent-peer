@@ -66,7 +66,7 @@ const (
 	// remoteInstallFakeClaudeDir holds the fake CLI's call log and its record of
 	// the MCP servers registered so far. It lives under /tmp so the ordinary
 	// account can create it without root.
-	remoteInstallFakeClaudeDir = "/tmp/agent-peer-e2e-fakeclaude"
+	remoteInstallFakeClaudeDir = "/tmp/peers-e2e-fakeclaude"
 
 	// remoteInstallServiceBound bounds the wait for the installed service to
 	// report active. Install starts the service before it returns; the bound
@@ -110,7 +110,7 @@ func TestREQBrokerConfig042_RemoteInstallUser(t *testing.T) {
 	binary := filepath.Join(home, ".local", "bin", "peers")
 	remoteInstallRequireVersion(t, remoteInstallAccount, binary, remoteInstallLatestVersion)
 
-	remoteInstallRequireActive(t, remoteInstallAccount, env, "systemctl", "--user", "is-active", "agent-peer.service")
+	remoteInstallRequireActive(t, remoteInstallAccount, env, "systemctl", "--user", "is-active", "peers.service")
 	syscontainer.WaitFor(t, "the user-level Broker socket "+syscontainer.UserSocketPath(t, remoteInstallAccount), func() bool {
 		_, err := os.Stat(syscontainer.UserSocketPath(t, remoteInstallAccount))
 		return err == nil
@@ -155,9 +155,9 @@ func TestREQBrokerConfig042_RemoteInstallSystem(t *testing.T) {
 	}
 	remoteInstallRequireVersion(t, "root", releaseBinary, remoteInstallLatestVersion)
 
-	active := runWithEnv(t, "root", nil, "systemctl", "is-active", "agent-peer.service")
+	active := runWithEnv(t, "root", nil, "systemctl", "is-active", "peers.service")
 	if state := strings.TrimSpace(active.Stdout); active.ExitCode != 0 || state != "active" {
-		t.Fatalf("systemctl is-active agent-peer.service = %q (exit %d), want %q\nstderr: %s",
+		t.Fatalf("systemctl is-active peers.service = %q (exit %d), want %q\nstderr: %s",
 			state, active.ExitCode, "active", strings.TrimSpace(active.Stderr))
 	}
 	syscontainer.WaitFor(t, "the system Broker socket "+systemSocket, func() bool {
@@ -541,7 +541,7 @@ func remoteInstallModuleRoot(t *testing.T) string {
 // release version in it.
 func remoteInstallBuildAgentPeer(t *testing.T, root, version string) []byte {
 	t.Helper()
-	out := filepath.Join(t.TempDir(), "agent-peer")
+	out := filepath.Join(t.TempDir(), "peers")
 	cmd := exec.Command("go", "build", "-trimpath",
 		"-ldflags", "-X main.version="+version, "-o", out, "./cmd/peers")
 	cmd.Dir = root
@@ -551,11 +551,11 @@ func remoteInstallBuildAgentPeer(t *testing.T, root, version string) []byte {
 		"GOARCH="+runtime.GOARCH,
 	)
 	if combined, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("building agent-peer %s: %v\n%s", version, err, strings.TrimSpace(string(combined)))
+		t.Fatalf("building peers %s: %v\n%s", version, err, strings.TrimSpace(string(combined)))
 	}
 	data, err := os.ReadFile(out)
 	if err != nil {
-		t.Fatalf("reading the built agent-peer %s: %v", version, err)
+		t.Fatalf("reading the built peers %s: %v", version, err)
 	}
 	return data
 }
@@ -711,7 +711,7 @@ func remoteInstallWriteFakeClaude(t *testing.T) {
 // case can run the same "sudo sh -s -- --system" a user would.
 func remoteInstallGrantSudo(t *testing.T) {
 	t.Helper()
-	path := "/etc/sudoers.d/agent-peer-e2e"
+	path := "/etc/sudoers.d/peers-e2e"
 	content := strings.Join([]string{
 		`Defaults env_keep += "AGENT_PEER_TEST_RELEASE_BASE"`,
 		"Defaults !use_pty",
@@ -801,7 +801,7 @@ func remoteInstallRequireUnchanged(t *testing.T, home string, peerUID uint32, tm
 		filepath.Join(home, ".local", "bin", "peers"),
 		userUnitPath(t),
 		systemUnitPath,
-		filepath.Join(home, ".agent-peer", "config.yaml"),
+		filepath.Join(home, ".peers", "config.yaml"),
 		remoteInstallFakeClaudeDir,
 	} {
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
@@ -973,7 +973,7 @@ func remoteInstallMCPCalls(t *testing.T) [][]string {
 // and records a registration from "mcp add".
 const remoteInstallFakeClaudeScript = `#!/bin/sh
 set -u
-dir=/tmp/agent-peer-e2e-fakeclaude
+dir=/tmp/peers-e2e-fakeclaude
 mkdir -p "$dir" || exit 2
 who=$(id -un 2>/dev/null || echo unknown)
 {

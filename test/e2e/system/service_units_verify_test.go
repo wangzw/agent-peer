@@ -37,23 +37,23 @@ func TestSystemServiceUnitsVerify(t *testing.T) {
 
 	install := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "install")
 	if install.ExitCode != 0 {
-		t.Fatalf("agent-peer service install as peer: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers service install as peer: exit %d\nstdout: %s\nstderr: %s",
 			install.ExitCode, strings.TrimSpace(install.Stdout), strings.TrimSpace(install.Stderr))
 	}
 
-	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-enabled", "agent-peer.service")
+	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-enabled", "peers.service")
 	if state := strings.TrimSpace(res.Stdout); res.ExitCode != 0 || state != "enabled" {
-		t.Errorf("systemctl --user is-enabled agent-peer.service = %q (exit %d), want %q\nstderr: %s",
+		t.Errorf("systemctl --user is-enabled peers.service = %q (exit %d), want %q\nstderr: %s",
 			state, res.ExitCode, "enabled", strings.TrimSpace(res.Stderr))
 	} else {
-		t.Logf("systemctl --user is-enabled agent-peer.service = %q", state)
+		t.Logf("systemctl --user is-enabled peers.service = %q", state)
 	}
 
 	u, err := user.Lookup("peer")
 	if err != nil {
 		t.Fatalf("looking up account peer: %v", err)
 	}
-	unitPath := filepath.Join(u.HomeDir, ".config", "systemd", "user", "agent-peer.service")
+	unitPath := filepath.Join(u.HomeDir, ".config", "systemd", "user", "peers.service")
 	res = runWithEnv(t, "peer", userEnv, "systemd-analyze", "--user", "verify", unitPath)
 	if res.ExitCode != 0 || res.Stdout != "" || res.Stderr != "" {
 		t.Errorf("systemd-analyze --user verify %s: exit %d\nstdout: %s\nstderr: %s",

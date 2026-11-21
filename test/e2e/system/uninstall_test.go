@@ -22,24 +22,24 @@ import (
 const (
 	// uninstallSystemCopy is a root-owned copy of the product binary the
 	// system-level tests install. Uninstall removes the binary it installed, so
-	// the image's copy at /usr/local/bin/agent-peer is left for later commands.
-	// It is named agent-peer because uninstall only deletes a binary with that
+	// the image's copy at /usr/local/bin/peers is left for later commands.
+	// It is named peers because uninstall only deletes a binary with that
 	// name.
-	uninstallSystemCopy = "/usr/local/libexec/agent-peer"
+	uninstallSystemCopy = "/usr/local/libexec/peers"
 	// uninstallPeerBinary is a peer-owned copy the user-level tests install.
-	uninstallPeerBinary = "/home/peer/bin/agent-peer"
+	uninstallPeerBinary = "/home/peer/bin/peers"
 
-	uninstallSystemUnit      = "/etc/systemd/system/agent-peer.service"
-	uninstallSystemDropIn    = "/etc/systemd/system/agent-peer.service.d"
-	uninstallSystemConfigDir = "/etc/agent-peer"
-	uninstallSystemDataDir   = "/var/lib/agent-peer"
-	uninstallSystemLogDir    = "/var/log/agent-peer"
-	uninstallSystemSocket    = "/run/agent-peer/broker.sock"
+	uninstallSystemUnit      = "/etc/systemd/system/peers.service"
+	uninstallSystemDropIn    = "/etc/systemd/system/peers.service.d"
+	uninstallSystemConfigDir = "/etc/peers"
+	uninstallSystemDataDir   = "/var/lib/peers"
+	uninstallSystemLogDir    = "/var/log/peers"
+	uninstallSystemSocket    = "/run/peers/broker.sock"
 
 	uninstallPeerHome    = "/home/peer"
-	uninstallUserUnit    = uninstallPeerHome + "/.config/systemd/user/agent-peer.service"
-	uninstallUserDropIn  = uninstallPeerHome + "/.config/systemd/user/agent-peer.service.d"
-	uninstallUserDataDir = uninstallPeerHome + "/.agent-peer"
+	uninstallUserUnit    = uninstallPeerHome + "/.config/systemd/user/peers.service"
+	uninstallUserDropIn  = uninstallPeerHome + "/.config/systemd/user/peers.service.d"
+	uninstallUserDataDir = uninstallPeerHome + "/.peers"
 
 	// uninstallFakeClaudePath is the fake Claude Code CLI the tests put on PATH.
 	// It reports the peer registration from a marker file and removes the
@@ -47,10 +47,10 @@ const (
 	uninstallFakeClaudePath = "/usr/local/bin/claude"
 	// uninstallFakeClaudeState is world-writable because the registration is
 	// read and removed by both root and the ordinary account.
-	uninstallFakeClaudeState = "/var/lib/agent-peer-uninstall-state"
+	uninstallFakeClaudeState = "/var/lib/peers-uninstall-state"
 	// uninstallSudoersPath grants passwordless sudo to the peer account, which
 	// the non-root system-level scenario needs.
-	uninstallSudoersPath = "/etc/sudoers.d/agent-peer-uninstall"
+	uninstallSudoersPath = "/etc/sudoers.d/peers-uninstall"
 	// uninstallPath includes /usr/local/bin, where the fake claude lives.
 	uninstallPath = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 	// uninstallPromptBound bounds the wait for the question to reach the
@@ -62,7 +62,7 @@ const (
 // "mcp get" output has the shape the real command prints: the command path on
 // its own line, without the arguments.
 const uninstallFakeClaudeScript = `#!/bin/sh
-state=/var/lib/agent-peer-uninstall-state
+state=/var/lib/peers-uninstall-state
 registered="$state/registered-peer"
 mkdir -p "$state" 2>/dev/null || true
 
@@ -287,7 +287,7 @@ func installUninstallUserService(t *testing.T, env []string, binary string) {
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 	syscontainer.WaitFor(t, "the peer Broker socket", func() bool {
-		_, err := os.Stat(filepath.Join("/tmp", "agent-peer-"+strconv.FormatUint(uint64(syscontainer.AccountUID(t, "peer")), 10), "broker.sock"))
+		_, err := os.Stat(filepath.Join("/tmp", "peers-"+strconv.FormatUint(uint64(syscontainer.AccountUID(t, "peer")), 10), "broker.sock"))
 		return err == nil
 	})
 }
@@ -386,7 +386,7 @@ func TestUninstallREQBrokerConfig051UserLevel(t *testing.T) {
 			}
 		}
 		requireMissing(t, uninstallUserUnit)
-		requireMissing(t, filepath.Join("/tmp", "agent-peer-"+strconv.FormatUint(uint64(peerUID), 10)))
+		requireMissing(t, filepath.Join("/tmp", "peers-"+strconv.FormatUint(uint64(peerUID), 10)))
 		requireMissing(t, uninstallPeerBinary)
 		if uninstallMCPRegistered(t) {
 			t.Error("the peer MCP registration was not removed")
@@ -531,7 +531,7 @@ func TestUninstallREQBrokerConfig051UnrecordedGroup(t *testing.T) {
 		return
 	}
 
-	t.Run("REQ-broker-config-051: --purge removes an unrecorded agent-peer group", func(t *testing.T) {
+	t.Run("REQ-broker-config-051: --purge removes an unrecorded peers group", func(t *testing.T) {
 		installUninstallBinary(t, releaseBinary, uninstallSystemCopy, 0, 0)
 		installUninstallSystemService(t, uninstallSystemCopy)
 		if !uninstallGroupExists(t) {
@@ -548,7 +548,7 @@ func TestUninstallREQBrokerConfig051UnrecordedGroup(t *testing.T) {
 				res.ExitCode, res.Stdout, res.Stderr)
 		}
 		if uninstallGroupExists(t) {
-			t.Error("the unrecorded agent-peer group still exists after --purge")
+			t.Error("the unrecorded peers group still exists after --purge")
 		}
 		requireMissing(t, uninstallSystemUnit)
 		requireMissing(t, uninstallSystemCopy)
@@ -570,7 +570,7 @@ func TestUninstallREQBrokerConfig051NoService(t *testing.T) {
 		// Without a unit, uninstall only treats the running executable as the
 		// installation when it sits at the default prefix and the MCP
 		// registration points to it.
-		noServiceBinary := "/home/peer/.local/bin/agent-peer"
+		noServiceBinary := "/home/peer/.local/bin/peers"
 		installUninstallBinary(t, releaseBinary, noServiceBinary, peerUID, peerGID)
 		installUninstallFakeClaude(t, noServiceBinary)
 		if err := os.MkdirAll(uninstallUserDataDir, 0o700); err != nil {
@@ -629,7 +629,7 @@ func TestUninstallREQBrokerConfig052NonRootSystemOnly(t *testing.T) {
 		if !strings.Contains(refused.Stdout, "Uninstall the system-level installation (requires sudo)? [y/N]") {
 			t.Errorf("output does not contain the sudo question:\n%s", refused.Stdout)
 		}
-		if !strings.Contains(refused.Stdout, "sudo agent-peer uninstall") {
+		if !strings.Contains(refused.Stdout, "sudo peers uninstall") {
 			t.Errorf("output does not give the sudo command:\n%s", refused.Stdout)
 		}
 		requirePresent(t, uninstallSystemUnit)
@@ -685,7 +685,7 @@ func TestUninstallREQBrokerConfig052TwoLevels(t *testing.T) {
 		if res.ExitCode != 0 {
 			t.Fatalf("uninstall as peer: exit %d\n%s", res.ExitCode, res.Stdout)
 		}
-		if !strings.Contains(res.Stdout, "sudo agent-peer uninstall") {
+		if !strings.Contains(res.Stdout, "sudo peers uninstall") {
 			t.Errorf("output does not name the system-level command:\n%s", res.Stdout)
 		}
 		requireMissing(t, uninstallUserUnit)

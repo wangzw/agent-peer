@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	goldenExe     = "/usr/local/bin/agent-peer"
-	goldenLogPath = "/Users/alice/Library/Logs/agent-peer/broker.log"
+	goldenExe     = "/usr/local/bin/peers"
+	goldenLogPath = "/Users/alice/Library/Logs/peers/broker.log"
 )
 
 func TestUnitsMatchGolden(t *testing.T) {
@@ -56,7 +56,7 @@ func TestSystemdExecStartEscaping(t *testing.T) {
 		want string
 	}{
 		{"/opt/my apps/agent%peer", `ExecStart="/opt/my apps/agent%%peer" broker --allow-degraded`},
-		{"/opt/a$b/agent-peer", `ExecStart=/opt/a$$b/agent-peer broker --allow-degraded`},
+		{"/opt/a$b/peers", `ExecStart=/opt/a$$b/peers broker --allow-degraded`},
 	}
 	for _, tc := range cases {
 		out, err := SystemdUserUnit(tc.exe)
@@ -70,15 +70,15 @@ func TestSystemdExecStartEscaping(t *testing.T) {
 }
 
 func TestPlistEscaping(t *testing.T) {
-	out, err := LaunchAgentPlist("/Users/a&b/bin/agent-peer", "/tmp/agent-peer.log")
+	out, err := LaunchAgentPlist("/Users/a&b/bin/peers", "/tmp/peers.log")
 	if err != nil {
 		t.Fatalf("LaunchAgentPlist: %v", err)
 	}
-	const want = "<string>/Users/a&amp;b/bin/agent-peer</string>"
+	const want = "<string>/Users/a&amp;b/bin/peers</string>"
 	if !strings.Contains(out, want) {
 		t.Errorf("plist does not contain %q:\n%s", want, out)
 	}
-	if strings.Contains(out, "/Users/a&b/bin/agent-peer") {
+	if strings.Contains(out, "/Users/a&b/bin/peers") {
 		t.Errorf("plist contains the unescaped executable path:\n%s", out)
 	}
 
@@ -95,7 +95,7 @@ func TestPlistEscaping(t *testing.T) {
 }
 
 func TestUnitsRejectRelativeOrControlChars(t *testing.T) {
-	bad := []string{"agent-peer", "/usr/bin/a\nb"}
+	bad := []string{"peers", "/usr/bin/a\nb"}
 	for _, exe := range bad {
 		if _, err := SystemdUserUnit(exe); err == nil {
 			t.Errorf("SystemdUserUnit(%q) accepted an invalid path", exe)
@@ -103,7 +103,7 @@ func TestUnitsRejectRelativeOrControlChars(t *testing.T) {
 		if _, err := SystemdSystemUnit(exe); err == nil {
 			t.Errorf("SystemdSystemUnit(%q) accepted an invalid path", exe)
 		}
-		if _, err := LaunchAgentPlist(exe, "/tmp/agent-peer.log"); err == nil {
+		if _, err := LaunchAgentPlist(exe, "/tmp/peers.log"); err == nil {
 			t.Errorf("LaunchAgentPlist(%q) accepted an invalid path", exe)
 		}
 		if _, err := LaunchDaemonPlist(exe); err == nil {

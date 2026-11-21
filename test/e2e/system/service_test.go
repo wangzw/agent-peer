@@ -19,16 +19,16 @@ import (
 
 const (
 	// systemUnitPath is where service install --system writes the unit.
-	systemUnitPath = "/etc/systemd/system/agent-peer.service"
+	systemUnitPath = "/etc/systemd/system/peers.service"
 	// systemConfigPath is the system Broker's configuration file.
-	systemConfigPath = "/etc/agent-peer/config.yaml"
+	systemConfigPath = "/etc/peers/config.yaml"
 	// systemSocket is the system Broker's local socket.
-	systemSocket = "/run/agent-peer/broker.sock"
-	// releaseBinary is the agent-peer build the base image installs.
-	releaseBinary = "/usr/local/bin/agent-peer"
+	systemSocket = "/run/peers/broker.sock"
+	// releaseBinary is the peers build the base image installs.
+	releaseBinary = "/usr/local/bin/peers"
 	// systemAdminGroup is the default group a system-level install delegates
 	// administration to.
-	systemAdminGroup = "agent-peer"
+	systemAdminGroup = "peers"
 )
 
 // TestServiceInstall checks the system-level installation inside a container
@@ -81,9 +81,9 @@ func TestServiceInstall(t *testing.T) {
 			t.Errorf("unit file mode = %#o, want 0644", mode)
 		}
 
-		enabled := runCommandAs(t, "root", "systemctl", "is-enabled", "agent-peer.service")
+		enabled := runCommandAs(t, "root", "systemctl", "is-enabled", "peers.service")
 		if state := strings.TrimSpace(enabled.Stdout); state != "enabled" {
-			t.Errorf("systemctl is-enabled agent-peer.service = %q (exit %d), want %q\nstderr: %s",
+			t.Errorf("systemctl is-enabled peers.service = %q (exit %d), want %q\nstderr: %s",
 				state, enabled.ExitCode, "enabled", enabled.Stderr)
 		}
 
@@ -101,7 +101,7 @@ func TestServiceInstall(t *testing.T) {
 		if strings.TrimSpace(content) == "" {
 			t.Fatalf("%s is empty", systemConfigPath)
 		}
-		if !strings.Contains(content, "agent-peer system Broker configuration") {
+		if !strings.Contains(content, "peers system Broker configuration") {
 			t.Errorf("configuration file does not identify itself:\n%s", content)
 		}
 
@@ -170,7 +170,7 @@ func TestServiceInstall(t *testing.T) {
 	})
 
 	t.Run("--system refuses a binary in the temporary directory", func(t *testing.T) {
-		dst := filepath.Join(t.TempDir(), "agent-peer")
+		dst := filepath.Join(t.TempDir(), "peers")
 		copyBinary(t, dst)
 
 		res := runCommandAs(t, "root", dst, "service", "install", "--system")
@@ -185,7 +185,7 @@ func TestServiceInstall(t *testing.T) {
 
 	t.Run("--system refuses a binary another account owns", func(t *testing.T) {
 		dir := tempDirOutsideTmp(t)
-		dst := filepath.Join(dir, "agent-peer")
+		dst := filepath.Join(dir, "peers")
 		copyBinary(t, dst)
 		if err := os.Chown(dst, 2000, 2000); err != nil {
 			t.Fatalf("chown %s to other: %v", dst, err)
@@ -203,7 +203,7 @@ func TestServiceInstall(t *testing.T) {
 
 	t.Run("--system refuses a group-writable binary", func(t *testing.T) {
 		dir := tempDirOutsideTmp(t)
-		dst := filepath.Join(dir, "agent-peer")
+		dst := filepath.Join(dir, "peers")
 		copyBinary(t, dst)
 		if err := os.Chmod(dst, 0o775); err != nil {
 			t.Fatalf("chmod %s: %v", dst, err)
@@ -242,9 +242,9 @@ func TestServiceUnitsVerify(t *testing.T) {
 	mustRun(t, "root", nil, "systemctl", "start", "user@"+uid+".service")
 	waitUserManager(t, peerUID)
 
-	install := runWithEnv(t, "peer", userEnv, "agent-peer", "service", "install")
+	install := runWithEnv(t, "peer", userEnv, "peers", "service", "install")
 	if install.ExitCode != 0 {
-		t.Fatalf("agent-peer service install as peer: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers service install as peer: exit %d\nstdout: %s\nstderr: %s",
 			install.ExitCode, strings.TrimSpace(install.Stdout), strings.TrimSpace(install.Stderr))
 	}
 
@@ -291,11 +291,11 @@ func TestSystemServiceUninstall(t *testing.T) {
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 
-	active := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	active := runCommandAs(t, "root", "systemctl", "is-active", "peers.service")
 	if state := strings.TrimSpace(active.Stdout); state != "inactive" && state != "failed" {
-		t.Errorf("systemctl is-active agent-peer.service = %q after uninstall, want inactive or failed", state)
+		t.Errorf("systemctl is-active peers.service = %q after uninstall, want inactive or failed", state)
 	}
-	if procs := syscontainer.Pids("agent-peer", "broker", "--system"); len(procs) != 0 {
+	if procs := syscontainer.Pids("peers", "broker", "--system"); len(procs) != 0 {
 		t.Errorf("system Broker still runs after uninstall: %v", procs)
 	}
 	if _, err := os.Stat(systemUnitPath); !errors.Is(err, os.ErrNotExist) {
@@ -325,8 +325,8 @@ func TestSystemServiceUninstallAfterUnitFileRemoved(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		_ = runCommandAs(t, "root", "systemctl", "stop", "agent-peer.service")
-		_ = runCommandAs(t, "root", "systemctl", "disable", "agent-peer.service")
+		_ = runCommandAs(t, "root", "systemctl", "stop", "peers.service")
+		_ = runCommandAs(t, "root", "systemctl", "disable", "peers.service")
 		_ = runCommandAs(t, "root", "systemctl", "daemon-reload")
 		_ = os.Remove(systemUnitPath)
 	})
@@ -341,8 +341,8 @@ func TestSystemServiceUninstallAfterUnitFileRemoved(t *testing.T) {
 		return err == nil
 	})
 
-	enabledBefore := runCommandAs(t, "root", "systemctl", "is-enabled", "agent-peer.service")
-	activeBefore := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	enabledBefore := runCommandAs(t, "root", "systemctl", "is-enabled", "peers.service")
+	activeBefore := runCommandAs(t, "root", "systemctl", "is-active", "peers.service")
 	t.Logf("before removing the unit file: is-enabled=%q (exit %d) is-active=%q (exit %d)",
 		strings.TrimSpace(enabledBefore.Stdout), enabledBefore.ExitCode,
 		strings.TrimSpace(activeBefore.Stdout), activeBefore.ExitCode)
@@ -352,13 +352,13 @@ func TestSystemServiceUninstallAfterUnitFileRemoved(t *testing.T) {
 	if err := os.Remove(systemUnitPath); err != nil {
 		t.Fatalf("removing %s: %v", systemUnitPath, err)
 	}
-	enabledAfter := runCommandAs(t, "root", "systemctl", "is-enabled", "agent-peer.service")
-	activeAfter := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	enabledAfter := runCommandAs(t, "root", "systemctl", "is-enabled", "peers.service")
+	activeAfter := runCommandAs(t, "root", "systemctl", "is-active", "peers.service")
 	t.Logf("after removing the unit file, before uninstall: is-enabled=%q (exit %d) is-active=%q (exit %d)",
 		strings.TrimSpace(enabledAfter.Stdout), enabledAfter.ExitCode,
 		strings.TrimSpace(activeAfter.Stdout), activeAfter.ExitCode)
 
-	if procs := syscontainer.Pids("agent-peer", "broker", "--system"); len(procs) == 0 {
+	if procs := syscontainer.Pids("peers", "broker", "--system"); len(procs) == 0 {
 		t.Fatal("system Broker is not running after the unit file was removed; uninstall would have nothing to stop")
 	}
 
@@ -369,15 +369,15 @@ func TestSystemServiceUninstallAfterUnitFileRemoved(t *testing.T) {
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 
-	procs := syscontainer.Pids("agent-peer", "broker", "--system")
+	procs := syscontainer.Pids("peers", "broker", "--system")
 	if len(procs) != 0 {
 		t.Errorf("system Broker still runs after uninstall: %v", procs)
 	}
-	active := runCommandAs(t, "root", "systemctl", "is-active", "agent-peer.service")
+	active := runCommandAs(t, "root", "systemctl", "is-active", "peers.service")
 	state := strings.TrimSpace(active.Stdout)
 	t.Logf("after uninstall: is-active=%q (exit %d)", state, active.ExitCode)
 	if state == "active" || state == "deactivating" {
-		t.Errorf("systemctl is-active agent-peer.service = %q after uninstall, want it stopped", state)
+		t.Errorf("systemctl is-active peers.service = %q after uninstall, want it stopped", state)
 	}
 }
 
@@ -395,9 +395,9 @@ func TestUserServiceUninstall(t *testing.T) {
 		"XDG_RUNTIME_DIR=/run/user/" + uid,
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/" + uid + "/bus",
 	}
-	socket := "/tmp/agent-peer-" + uid + "/broker.sock"
+	socket := "/tmp/peers-" + uid + "/broker.sock"
 	const configYAML = "broker:\n  listen: \":17445\"\n"
-	writeAccountFile(t, "peer", "/home/peer/.agent-peer/config.yaml", configYAML)
+	writeAccountFile(t, "peer", "/home/peer/.peers/config.yaml", configYAML)
 
 	mustRun(t, "root", nil, "loginctl", "enable-linger", "peer")
 	mustRun(t, "root", nil, "systemctl", "start", "user@"+uid+".service")
@@ -419,9 +419,9 @@ func TestUserServiceUninstall(t *testing.T) {
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 
-	active := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-active", "agent-peer.service")
+	active := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-active", "peers.service")
 	if state := strings.TrimSpace(active.Stdout); state != "inactive" && state != "failed" {
-		t.Errorf("systemctl --user is-active agent-peer.service = %q after uninstall, want inactive or failed", state)
+		t.Errorf("systemctl --user is-active peers.service = %q after uninstall, want inactive or failed", state)
 	}
 	if procs := peerBrokers(peerUID); len(procs) != 0 {
 		t.Errorf("peer Broker still runs after uninstall: %v", procs)
@@ -429,7 +429,7 @@ func TestUserServiceUninstall(t *testing.T) {
 	if _, err := os.Stat(userUnitPath(t)); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("user unit file still exists after uninstall: %v", err)
 	}
-	if got := readFile(t, "/home/peer/.agent-peer/config.yaml"); got != configYAML {
+	if got := readFile(t, "/home/peer/.peers/config.yaml"); got != configYAML {
 		t.Errorf("configuration after uninstall = %q, want %q", got, configYAML)
 	}
 
@@ -449,7 +449,7 @@ func installSystemService(t *testing.T) syscontainer.Result {
 	t.Helper()
 	res := syscontainer.RunAs(t, "root", nil, "service", "install", "--system")
 	if res.ExitCode != 0 {
-		t.Fatalf("agent-peer service install --system: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers service install --system: exit %d\nstdout: %s\nstderr: %s",
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 	return res
@@ -501,7 +501,7 @@ func fileOwnerAndMode(t *testing.T, path string) (uid, gid uint32, mode os.FileM
 	return st.Uid, st.Gid, info.Mode().Perm()
 }
 
-// copyBinary copies the image's agent-peer binary to dst with mode 0755.
+// copyBinary copies the image's peers binary to dst with mode 0755.
 func copyBinary(t *testing.T, dst string) {
 	t.Helper()
 	data, err := os.ReadFile(releaseBinary)
@@ -521,7 +521,7 @@ func copyBinary(t *testing.T, dst string) {
 // test. The directory is removed when the test ends.
 func tempDirOutsideTmp(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/var/lib", "agent-peer-e2e-")
+	dir, err := os.MkdirTemp("/var/lib", "peers-e2e-")
 	if err != nil {
 		t.Fatalf("creating a directory under /var/lib: %v", err)
 	}

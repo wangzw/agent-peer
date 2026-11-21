@@ -68,7 +68,7 @@ func WithSocket(path string) SessionOption {
 
 // NewSession creates a fake session for account under
 // /home/<account>/.claude, hands the configuration directory, registry record
-// and socket to the account, then starts "agent-peer mcp" as the account with
+// and socket to the account, then starts "peers mcp" as the account with
 // CLAUDE_CODE_MESSAGING_SOCKET and CLAUDE_CONFIG_DIR set and connects an MCP
 // client over its standard streams.
 func NewSession(t *testing.T, account, name string, opts ...SessionOption) *Session {

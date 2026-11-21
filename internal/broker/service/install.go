@@ -21,10 +21,10 @@ import (
 )
 
 const (
-	systemConfigPath = "/etc/agent-peer/config.yaml"
+	systemConfigPath = "/etc/peers/config.yaml"
 	systemdUnitDir   = "/etc/systemd/system"
 	launchDaemonDir  = "/Library/LaunchDaemons"
-	systemLogDir     = "/var/log/agent-peer"
+	systemLogDir     = "/var/log/peers"
 
 	// readyBound bounds the wait for the local socket to answer after the
 	// service starts. It covers the Broker's own startup and launchd's default
@@ -365,7 +365,7 @@ func Install(opts Options) (Result, error) {
 	if err != nil {
 		// The service is running but does not answer Status. Leave it alone:
 		// disabling it would take down a Broker that is reachable.
-		return res, fmt.Errorf("service: the service is running but its status could not be read: %w; check it with `agent-peer status`", err)
+		return res, fmt.Errorf("service: the service is running but its status could not be read: %w; check it with `peers status`", err)
 	}
 	if degraded {
 		return res, &DegradedError{State: state}
@@ -394,15 +394,15 @@ func unitPath(opts Options) (string, error) {
 func localSocketPath(opts Options) string {
 	if opts.System {
 		if opts.GOOS == "darwin" {
-			return "/var/run/agent-peer/broker.sock"
+			return "/var/run/peers/broker.sock"
 		}
-		return "/run/agent-peer/broker.sock"
+		return "/run/peers/broker.sock"
 	}
-	return fmt.Sprintf("/tmp/agent-peer-%d/broker.sock", opts.UID)
+	return fmt.Sprintf("/tmp/peers-%d/broker.sock", opts.UID)
 }
 
 // checkExistingBroker refuses the installation when a Broker outside the
-// agent-peer service already answers on this level's local socket. Replacing a
+// peers service already answers on this level's local socket. Replacing a
 // service-managed Broker is fine: the start step restarts it with the new
 // binary. The Broker is the service's own only when the pid the service
 // manager reports equals the socket's peer pid; a loaded unit alone proves
@@ -421,7 +421,7 @@ func checkExistingBroker(opts Options, domain string) error {
 	if opts.System {
 		level = "system-level Broker"
 	}
-	return fmt.Errorf("service: a %s is already answering on %s and was not started by the agent-peer service (service pid %d, socket peer pid %d); stop it before installing", level, path, servicePID, brokerPID)
+	return fmt.Errorf("service: a %s is already answering on %s and was not started by the peers service (service pid %d, socket peer pid %d); stop it before installing", level, path, servicePID, brokerPID)
 }
 
 // listenCheck is what the listen precheck learned about this install's address.
@@ -915,9 +915,9 @@ func firstLine(s string) string {
 // installHint names the command that installs this level's service.
 func installHint(opts Options) string {
 	if opts.System {
-		return "sudo agent-peer service install --system"
+		return "sudo peers service install --system"
 	}
-	return "agent-peer service install"
+	return "peers service install"
 }
 
 // privileged prefixes cmd with sudo when the command belongs to a system-level
@@ -1104,9 +1104,9 @@ func logFile(opts Options) string {
 		return ""
 	}
 	if opts.System {
-		return "/var/log/agent-peer/broker.log"
+		return "/var/log/peers/broker.log"
 	}
-	return filepath.Join(opts.Home, "Library", "Logs", "agent-peer", "broker.log")
+	return filepath.Join(opts.Home, "Library", "Logs", "peers", "broker.log")
 }
 
 // startupFailureReason returns the error of the last startup_failed record
@@ -1224,7 +1224,7 @@ func writeUnit(opts Options) (string, error) {
 		content, err = SystemdSystemUnit(opts.Exe)
 		dirs = []string{systemdUnitDir}
 	case opts.GOOS == "darwin" && !opts.System:
-		logDir := filepath.Join(opts.Home, "Library", "Logs", "agent-peer")
+		logDir := filepath.Join(opts.Home, "Library", "Logs", "peers")
 		logPath := filepath.Join(logDir, "broker.log")
 		content, err = LaunchAgentPlist(opts.Exe, logPath)
 		dirs = []string{logDir, filepath.Dir(path)}
@@ -1240,7 +1240,7 @@ func writeUnit(opts Options) (string, error) {
 	for _, dir := range dirs {
 		mode := fs.FileMode(0o755)
 		switch {
-		case opts.GOOS == "darwin" && !opts.System && dir == filepath.Join(opts.Home, "Library", "Logs", "agent-peer"):
+		case opts.GOOS == "darwin" && !opts.System && dir == filepath.Join(opts.Home, "Library", "Logs", "peers"):
 			mode = 0o700
 		case opts.GOOS == "darwin" && opts.System && dir == systemLogDir:
 			// launchd opens the daemon's log files itself, so their mode is not
@@ -1264,7 +1264,7 @@ func configFilePath(opts Options) string {
 	if opts.System {
 		return systemConfigPath
 	}
-	return filepath.Join(opts.Home, ".agent-peer", "config.yaml")
+	return filepath.Join(opts.Home, ".peers", "config.yaml")
 }
 
 // auditLogPath returns the production path of the audit log for the install's
@@ -1273,7 +1273,7 @@ func auditLogPath(opts Options) string {
 	if opts.System {
 		return filepath.Join(systemLogDir, "audit.log")
 	}
-	return filepath.Join(opts.Home, ".agent-peer", "audit.log")
+	return filepath.Join(opts.Home, ".peers", "audit.log")
 }
 
 // createConfig creates the configuration file for the install's level if it is
@@ -1454,7 +1454,7 @@ func checkSystemBinary(opts Options) error {
 // and renames it over path, replacing any existing file.
 func writeFileAtomic(path, content string, mode fs.FileMode) error {
 	dir := filepath.Dir(path)
-	f, err := os.CreateTemp(dir, ".agent-peer-install-*")
+	f, err := os.CreateTemp(dir, ".peers-install-*")
 	if err != nil {
 		return fmt.Errorf("service: create temporary file in %s: %w", dir, err)
 	}

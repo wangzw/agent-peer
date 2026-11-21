@@ -28,9 +28,9 @@ import (
 
 const (
 	// srSystemSocket is the system Broker's local socket.
-	srSystemSocket = "/run/agent-peer/broker.sock"
+	srSystemSocket = "/run/peers/broker.sock"
 	// srSystemService is the systemd unit of the system-level Broker.
-	srSystemService = "agent-peer.service"
+	srSystemService = "peers.service"
 	// srLaunchBudget bounds the reconnect when the user-level Broker is started
 	// after a selection round that probed a stale system-level socket. That
 	// round first waits mcpserver.SystemRetryDeadline; the next reconnect waits
@@ -84,7 +84,7 @@ func srWriteAccountConfig(t *testing.T, account, content string) {
 	if err != nil {
 		t.Fatalf("account %q has a non-numeric gid %q", account, u.Gid)
 	}
-	dir := filepath.Join(u.HomeDir, ".agent-peer")
+	dir := filepath.Join(u.HomeDir, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("creating %s: %v", dir, err)
 	}
@@ -112,7 +112,7 @@ func srWaitRegistered(t *testing.T, s *syscontainer.Session, what string) {
 	})
 }
 
-// srMustStatus returns the output of agent-peer status as account and fails
+// srMustStatus returns the output of peers status as account and fails
 // when the command does not succeed.
 func srMustStatus(t *testing.T, account string) string {
 	t.Helper()
@@ -142,7 +142,7 @@ func srIdentityHash(t *testing.T, account string) string {
 	if err != nil {
 		t.Fatalf("looking up account %q: %v", account, err)
 	}
-	path := filepath.Join(u.HomeDir, ".agent-peer", "identity.key")
+	path := filepath.Join(u.HomeDir, ".peers", "identity.key")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("reading %s: %v", path, err)
@@ -221,7 +221,7 @@ func srBrokerProcs(t *testing.T, account string) []syscontainer.ProcInfo {
 	t.Helper()
 	uid := syscontainer.AccountUID(t, account)
 	var out []syscontainer.ProcInfo
-	for _, proc := range syscontainer.Pids("agent-peer", "broker") {
+	for _, proc := range syscontainer.Pids("peers", "broker") {
 		if proc.UID == uid {
 			out = append(out, proc)
 		}
@@ -235,7 +235,7 @@ func srMCPPIDs(t *testing.T, account string) []int {
 	t.Helper()
 	uid := syscontainer.AccountUID(t, account)
 	var out []int
-	for _, proc := range syscontainer.Pids("agent-peer", "mcp") {
+	for _, proc := range syscontainer.Pids("peers", "mcp") {
 		if proc.UID == uid {
 			out = append(out, proc.PID)
 		}
@@ -353,7 +353,7 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 		if !isError {
 			return false, "list_agents succeeded without a Broker"
 		}
-		for _, want := range []string{"no Broker is available", "agent-peer service install", "agent-peer broker"} {
+		for _, want := range []string{"no Broker is available", "peers service install", "peers broker"} {
 			if !strings.Contains(text, want) {
 				return false, text
 			}

@@ -12,9 +12,9 @@ import (
 func TestResolvePaths(t *testing.T) {
 	base := t.TempDir()
 	homeErr := errors.New("no home")
-	wantRoot := "/run/agent-peer"
+	wantRoot := "/run/peers"
 	if runtime.GOOS == "darwin" {
-		wantRoot = "/var/run/agent-peer"
+		wantRoot = "/var/run/peers"
 	}
 
 	tests := []struct {
@@ -33,9 +33,9 @@ func TestResolvePaths(t *testing.T) {
 			euid: 1000,
 			want: PathSet{
 				RuntimeDir: runtimeDirPath(1000),
-				ConfigFile: filepath.Join(base, ".agent-peer", "config.yaml"),
-				DataDir:    filepath.Join(base, ".agent-peer"),
-				AuditLog:   filepath.Join(base, ".agent-peer", "audit.log"),
+				ConfigFile: filepath.Join(base, ".peers", "config.yaml"),
+				DataDir:    filepath.Join(base, ".peers"),
+				AuditLog:   filepath.Join(base, ".peers", "audit.log"),
 			},
 		},
 		{
@@ -44,9 +44,9 @@ func TestResolvePaths(t *testing.T) {
 			euid: 0,
 			want: PathSet{
 				RuntimeDir: wantRoot,
-				ConfigFile: "/etc/agent-peer/config.yaml",
-				DataDir:    "/var/lib/agent-peer",
-				AuditLog:   "/var/log/agent-peer/audit.log",
+				ConfigFile: "/etc/peers/config.yaml",
+				DataDir:    "/var/lib/peers",
+				AuditLog:   "/var/log/peers/audit.log",
 			},
 		},
 		{
@@ -97,15 +97,15 @@ func TestResolvePaths(t *testing.T) {
 }
 
 func TestRuntimeDirPath(t *testing.T) {
-	wantRoot := "/run/agent-peer"
+	wantRoot := "/run/peers"
 	if runtime.GOOS == "darwin" {
-		wantRoot = "/var/run/agent-peer"
+		wantRoot = "/var/run/peers"
 	}
 	if got := runtimeDirPath(0); got != wantRoot {
 		t.Errorf("runtimeDirPath(0) = %q, want %q", got, wantRoot)
 	}
-	if got := runtimeDirPath(1000); got != "/tmp/agent-peer-1000" {
-		t.Errorf("runtimeDirPath(1000) = %q, want /tmp/agent-peer-1000", got)
+	if got := runtimeDirPath(1000); got != "/tmp/peers-1000" {
+		t.Errorf("runtimeDirPath(1000) = %q, want /tmp/peers-1000", got)
 	}
 }
 

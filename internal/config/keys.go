@@ -118,7 +118,7 @@ var keyTable = map[string]*keySpec{
 	},
 	"broker.offline": {
 		Name: "broker.offline", Kind: keyBool, Default: boolValue(false),
-		Doc: "Refuse messages from other hosts while keeping links; agent-peer offline / online.",
+		Doc: "Refuse messages from other hosts while keeping links; peers offline / online.",
 	},
 	"broker.advertise": {
 		Name: "broker.advertise", Kind: keyString, Default: stringValue(""),

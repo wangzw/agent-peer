@@ -338,7 +338,7 @@ func TestJourneyConnectPublicBroker(t *testing.T) {
 		// A restarts with a fresh identity at the same address. Its old card
 		// is still in the directory.
 		hostA.StopBroker(t, syscall.SIGTERM)
-		c.Root(t, "hostA", "rm", "-rf", "/home/peer/.agent-peer")
+		c.Root(t, "hostA", "rm", "-rf", "/home/peer/.peers")
 		pairStartBroker(t, hostA, journeyConfig(true, false))
 
 		operator := pairOperator(t, hostA, journeyWorkspace(t, hostA))

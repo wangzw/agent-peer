@@ -26,7 +26,7 @@ func (c *core) resolvePaths() (PathSet, error) {
 		if home == "" {
 			return PathSet{}, errors.New("config: the account has no home directory")
 		}
-		dataDir := filepath.Join(home, ".agent-peer")
+		dataDir := filepath.Join(home, ".peers")
 		return PathSet{
 			RuntimeDir: runtimeDir,
 			ConfigFile: filepath.Join(dataDir, "config.yaml"),
@@ -39,9 +39,9 @@ func (c *core) resolvePaths() (PathSet, error) {
 		}
 		return PathSet{
 			RuntimeDir: runtimeDir,
-			ConfigFile: "/etc/agent-peer/config.yaml",
-			DataDir:    "/var/lib/agent-peer",
-			AuditLog:   "/var/log/agent-peer/audit.log",
+			ConfigFile: "/etc/peers/config.yaml",
+			DataDir:    "/var/lib/peers",
+			AuditLog:   "/var/log/peers/audit.log",
 		}, nil
 	default:
 		return PathSet{}, fmt.Errorf("config: unknown deployment mode %d", c.mode)
@@ -54,11 +54,11 @@ func (c *core) resolvePaths() (PathSet, error) {
 var runtimeRoot = func(euid int) string {
 	if euid == 0 {
 		if runtime.GOOS == "darwin" {
-			return "/var/run/agent-peer"
+			return "/var/run/peers"
 		}
-		return "/run/agent-peer"
+		return "/run/peers"
 	}
-	return fmt.Sprintf("/tmp/agent-peer-%d", euid)
+	return fmt.Sprintf("/tmp/peers-%d", euid)
 }
 
 // runtimeDirPath depends only on the effective account.

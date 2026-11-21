@@ -176,7 +176,7 @@ func TestNodeConfigFile(t *testing.T) {
 		t.Fatalf("ReadConfig returned %q, want %q", got, yaml)
 	}
 
-	path := filepath.Join(host.AccountHome(), ".agent-peer", "config.yaml")
+	path := filepath.Join(host.AccountHome(), ".peers", "config.yaml")
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("stat %s: %v", path, err)
@@ -316,7 +316,7 @@ for arg in "$@"; do
   if [ "$prev" = "--listen" ]; then listen="$arg"; fi
   prev="$arg"
 done
-echo "agent-peer broker: %s" >&2
+echo "peers broker: %s" >&2
 exit 4
 `, failure)
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {

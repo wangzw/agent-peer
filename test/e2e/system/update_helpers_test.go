@@ -155,7 +155,7 @@ func updateBrokerConfig(check bool) string {
 // test-build hook.
 func updateStartPeerBroker(t *testing.T, fake *harness.FakeGitHub, check bool) *syscontainer.Proc {
 	t.Helper()
-	writeAccountFile(t, "peer", "/home/peer/.agent-peer/config.yaml", updateBrokerConfig(check))
+	writeAccountFile(t, "peer", "/home/peer/.peers/config.yaml", updateBrokerConfig(check))
 	env := []string{"AGENT_PEER_TEST_UPDATE_API=" + fake.URL()}
 	return syscontainer.StartUserBrokerPath(t, updateStagedOldBinary(), "peer", env,
 		"--listen", updateBrokerListen)
@@ -274,15 +274,15 @@ func updateRequireFeature(t *testing.T) {
 // updateHint is the sentence a session's first tool result carries when a
 // newer release is available.
 func updateHint(available, current string) string {
-	return fmt.Sprintf("agent-peer %s is available (this Broker runs %s). "+
-		"Ask the agent to call update_broker, or run `agent-peer update` in a terminal.",
+	return fmt.Sprintf("peers %s is available (this Broker runs %s). "+
+		"Ask the agent to call update_broker, or run `peers update` in a terminal.",
 		available, current)
 }
 
 // updateStatusLine is the line the status output carries when a newer release
 // is available.
 func updateStatusLine(available, current string) string {
-	return fmt.Sprintf("Update: %s available (current %s); run agent-peer update", available, current)
+	return fmt.Sprintf("Update: %s available (current %s); run peers update", available, current)
 }
 
 // updatePeerIDs returns the peer account and its numeric ids.
@@ -318,7 +318,7 @@ func updateSetupUserService(t *testing.T) updateUserService {
 	t.Helper()
 
 	u, uid, gid := updatePeerIDs(t)
-	target := filepath.Join(u.HomeDir, "bin", "agent-peer")
+	target := filepath.Join(u.HomeDir, "bin", "peers")
 	syscontainer.CopyReleaseArtifact(t, updateOldArtifact, target, 0o755)
 
 	// The update writes a temporary file next to the target before renaming it,
@@ -335,7 +335,7 @@ func updateSetupUserService(t *testing.T) updateUserService {
 
 	// The restarted service must not call GitHub through the container's
 	// network, which has no egress.
-	writeAccountFile(t, "peer", filepath.Join(u.HomeDir, ".agent-peer", "config.yaml"), "update:\n  check: false\n")
+	writeAccountFile(t, "peer", filepath.Join(u.HomeDir, ".peers", "config.yaml"), "update:\n  check: false\n")
 
 	peerUID := syscontainer.AccountUID(t, "peer")
 	uidString := strconv.FormatUint(uint64(peerUID), 10)
@@ -346,7 +346,7 @@ func updateSetupUserService(t *testing.T) updateUserService {
 
 	install := runWithEnv(t, "peer", userEnv, target, "service", "install")
 	if install.ExitCode != 0 {
-		t.Fatalf("agent-peer service install as peer: exit %d\nstdout: %s\nstderr: %s",
+		t.Fatalf("peers service install as peer: exit %d\nstdout: %s\nstderr: %s",
 			install.ExitCode, strings.TrimSpace(install.Stdout), strings.TrimSpace(install.Stderr))
 	}
 	syscontainer.WaitFor(t, "the user service socket "+syscontainer.UserSocketPath(t, "peer"), func() bool {
@@ -410,6 +410,6 @@ func updateBinaryVersion(t *testing.T, exe string) string {
 // updateServiceState returns systemd's is-active answer for the user unit.
 func updateServiceState(t *testing.T, userEnv []string) string {
 	t.Helper()
-	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-active", "agent-peer.service")
+	res := runWithEnv(t, "peer", userEnv, "systemctl", "--user", "is-active", "peers.service")
 	return strings.TrimSpace(res.Stdout)
 }

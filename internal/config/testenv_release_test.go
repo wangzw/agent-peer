@@ -26,7 +26,7 @@ const (
 // already set.
 func TestTestEnvIgnoredInReleaseBuild(t *testing.T) {
 	if os.Getenv(releaseChildEnv) == "1" {
-		if got, want := runtimeDirPath(1000), "/tmp/agent-peer-1000"; got != want {
+		if got, want := runtimeDirPath(1000), "/tmp/peers-1000"; got != want {
 			t.Errorf("runtimeDirPath(1000) = %q, want %q", got, want)
 		}
 		got, err := homeDirSource()

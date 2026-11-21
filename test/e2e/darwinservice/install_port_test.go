@@ -22,7 +22,7 @@ func TestUserServiceInstallRefusesAnOccupiedListenPort(t *testing.T) {
 		if !t.Failed() {
 			return
 		}
-		logPath := filepath.Join(os.Getenv("HOME"), "Library", "Logs", "agent-peer", "broker.log")
+		logPath := filepath.Join(os.Getenv("HOME"), "Library", "Logs", "peers", "broker.log")
 		if data, err := os.ReadFile(logPath); err == nil {
 			t.Logf("user Broker log %s:\n%s", logPath, data)
 		}
@@ -79,7 +79,7 @@ func occupiedListenAddr(t *testing.T) string {
 func preserveUserConfig(t *testing.T) string {
 	t.Helper()
 
-	path := filepath.Join(os.Getenv("HOME"), ".agent-peer", "config.yaml")
+	path := filepath.Join(os.Getenv("HOME"), ".peers", "config.yaml")
 	data, err := os.ReadFile(path)
 	existed := err == nil
 	if err != nil && !errors.Is(err, os.ErrNotExist) {

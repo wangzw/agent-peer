@@ -72,12 +72,12 @@ func TestStartLinuxUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if want := []string{"systemctl --user start agent-peer.service"}; !slices.Equal(res.Commands, want) {
+	if want := []string{"systemctl --user start peers.service"}; !slices.Equal(res.Commands, want) {
 		t.Errorf("Result.Commands = %q, want %q", res.Commands, want)
 	}
 	wantCmds := []string{
-		"systemctl --user start agent-peer.service",
-		"systemctl --user show --property MainPID --value agent-peer.service",
+		"systemctl --user start peers.service",
+		"systemctl --user show --property MainPID --value peers.service",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
@@ -112,10 +112,10 @@ func TestStartLinuxSystem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if want := []string{"systemctl start agent-peer.service"}; !slices.Equal(res.Commands, want) {
+	if want := []string{"systemctl start peers.service"}; !slices.Equal(res.Commands, want) {
 		t.Errorf("Result.Commands = %q, want %q", res.Commands, want)
 	}
-	if len(cmds) == 0 || cmds[0] != "systemctl start agent-peer.service" {
+	if len(cmds) == 0 || cmds[0] != "systemctl start peers.service" {
 		t.Errorf("commands = %q, want the system-level start first", cmds)
 	}
 }
@@ -131,7 +131,7 @@ func TestStopLinux(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
-	if want := []string{"systemctl --user stop agent-peer.service"}; !slices.Equal(res.Commands, want) {
+	if want := []string{"systemctl --user stop peers.service"}; !slices.Equal(res.Commands, want) {
 		t.Errorf("Result.Commands = %q, want %q", res.Commands, want)
 	}
 	if !slices.Equal(cmds, res.Commands) {
@@ -161,11 +161,11 @@ func TestRestartLinux(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Restart: %v", err)
 	}
-	want := []string{"systemctl --user restart agent-peer.service"}
+	want := []string{"systemctl --user restart peers.service"}
 	if !slices.Equal(res.Commands, want) {
 		t.Errorf("Result.Commands = %q, want %q", res.Commands, want)
 	}
-	wantCmds := append(want, "systemctl --user show --property MainPID --value agent-peer.service")
+	wantCmds := append(want, "systemctl --user show --property MainPID --value peers.service")
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
@@ -248,7 +248,7 @@ func TestStartReadinessTimeoutKeepsTheServiceEnabled(t *testing.T) {
 	if !strings.Contains(err.Error(), "startup_failed record says: bind: address already in use") {
 		t.Errorf("error = %q, want the startup_failed reason", err)
 	}
-	if want := []string{"systemctl --user start agent-peer.service"}; !slices.Equal(res.Commands, want) {
+	if want := []string{"systemctl --user start peers.service"}; !slices.Equal(res.Commands, want) {
 		t.Errorf("Result.Commands = %q, want %q", res.Commands, want)
 	}
 	for _, cmd := range cmds {
@@ -284,7 +284,7 @@ func TestStartReportsDegraded(t *testing.T) {
 	if degraded.State != want {
 		t.Errorf("DegradedError.State = %+v, want %+v", degraded.State, want)
 	}
-	if wantCmds := []string{"systemctl --user start agent-peer.service"}; !slices.Equal(res.Commands, wantCmds) {
+	if wantCmds := []string{"systemctl --user start peers.service"}; !slices.Equal(res.Commands, wantCmds) {
 		t.Errorf("Result.Commands = %q, want the complete result %q", res.Commands, wantCmds)
 	}
 }
@@ -316,7 +316,7 @@ func TestStartReportsStatusProbeError(t *testing.T) {
 	if err == nil {
 		t.Fatal("Start error = nil, want the status probe error")
 	}
-	for _, want := range []string{"connection reset", "could not be read", "agent-peer status"} {
+	for _, want := range []string{"connection reset", "could not be read", "peers status"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Start error = %q, want it to contain %q", err, want)
 		}
@@ -458,7 +458,7 @@ func darwinControlOptions(t *testing.T) (Options, *darwinFake) {
 	opts.Home = "/Users/alice"
 	opts.UID = 501
 	opts.EUID = 501
-	opts.Exe = "/usr/local/bin/agent-peer"
+	opts.Exe = "/usr/local/bin/peers"
 	opts.TempDir = "/tmp"
 	opts.StatusProbe = func(string) (DegradedState, bool, error) {
 		return DegradedState{}, false, nil
@@ -696,7 +696,7 @@ func TestRestartDarwinReadinessFailureKeepsTheServiceEnabled(t *testing.T) {
 	opts.ReadyTimeout = 20 * time.Millisecond
 	opts.Probe = func(string) (int, bool) { return 0, false }
 
-	logPath := rooted(opts, filepath.Join(opts.Home, "Library", "Logs", "agent-peer", "broker.log"))
+	logPath := rooted(opts, filepath.Join(opts.Home, "Library", "Logs", "peers", "broker.log"))
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
 		t.Fatalf("create log directory: %v", err)
 	}

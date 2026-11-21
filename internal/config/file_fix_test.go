@@ -54,7 +54,7 @@ func (hashTestRoutes) DefaultRouteAddresses() ([]netip.Addr, error) {
 func TestLoadStoresHashOfTheBytesItParsed(t *testing.T) {
 	home := t.TempDir()
 	body := "broker:\n  alias: hashed\n"
-	dir := filepath.Join(home, ".agent-peer")
+	dir := filepath.Join(home, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestWriteConfigFileCreatesParentDirWithDeploymentMode(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := filepath.Join(t.TempDir(), "missing", "agent-peer")
+			dir := filepath.Join(t.TempDir(), "missing", "peers")
 			path := filepath.Join(dir, "config.yaml")
 			if err := writeConfigFile(path, []byte("broker:\n  alias: a\n"), tc.fileMode); err != nil {
 				t.Fatalf("writeConfigFile: %v", err)

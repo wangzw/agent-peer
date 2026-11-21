@@ -18,7 +18,7 @@ var runtimeDir = func(euid int) string {
 	if euid == 0 {
 		return systemRuntimeDir(runtime.GOOS)
 	}
-	return "/tmp/agent-peer-" + strconv.Itoa(euid)
+	return "/tmp/peers-" + strconv.Itoa(euid)
 }
 
 // systemRuntimeDir returns the runtime directory of the root account on goos.
@@ -26,9 +26,9 @@ var runtimeDir = func(euid int) string {
 // rule is testable on every host.
 func systemRuntimeDir(goos string) string {
 	if goos == "darwin" {
-		return "/var/run/agent-peer"
+		return "/var/run/peers"
 	}
-	return "/run/agent-peer"
+	return "/run/peers"
 }
 
 // userSocketPath is the local socket of the Broker that runs as the account euid.

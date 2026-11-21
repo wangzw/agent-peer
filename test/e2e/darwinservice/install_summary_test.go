@@ -13,21 +13,21 @@ import (
 )
 
 // systemAuditPath is where the system Broker writes its audit log.
-const systemAuditPath = "/var/log/agent-peer/audit.log"
+const systemAuditPath = "/var/log/peers/audit.log"
 
 // userConfigPath returns the running account's configuration file.
 func userConfigPath() string {
-	return filepath.Join(os.Getenv("HOME"), ".agent-peer", "config.yaml")
+	return filepath.Join(os.Getenv("HOME"), ".peers", "config.yaml")
 }
 
 // userAuditPath returns the running account's audit log.
 func userAuditPath() string {
-	return filepath.Join(os.Getenv("HOME"), ".agent-peer", "audit.log")
+	return filepath.Join(os.Getenv("HOME"), ".peers", "audit.log")
 }
 
 // userRunLogPath returns the log launchd writes for the user-level Broker.
 func userRunLogPath() string {
-	return filepath.Join(os.Getenv("HOME"), "Library", "Logs", "agent-peer", "broker.log")
+	return filepath.Join(os.Getenv("HOME"), "Library", "Logs", "peers", "broker.log")
 }
 
 // TestREQBrokerConfig050_UserServiceInstallPrintsSummary covers the summary a
@@ -55,10 +55,10 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 		"config:":    configPath + " (generated)",
 		"run log:":   userRunLogPath(),
 		"audit log:": userAuditPath(),
-		"start:":     "agent-peer service start",
-		"stop:":      "agent-peer service stop",
-		"restart:":   "agent-peer service restart",
-		"uninstall:": "agent-peer uninstall",
+		"start:":     "peers service start",
+		"stop:":      "peers service stop",
+		"restart:":   "peers service restart",
+		"uninstall:": "peers uninstall",
 	})
 
 	waitForFile(t, userAuditPath(), serviceStartBound)
@@ -113,16 +113,16 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 	assertInstallSummary(t, res.stdout, "system-level", "boot", map[string]string{
 		"binary:":    installedBinary,
 		"config:":    systemConfigPath + " (generated)",
-		"run log:":   "/var/log/agent-peer/broker.log",
+		"run log:":   "/var/log/peers/broker.log",
 		"audit log:": systemAuditPath,
-		"start:":     "sudo agent-peer service start",
-		"stop:":      "sudo agent-peer service stop",
-		"restart:":   "sudo agent-peer service restart",
-		"uninstall:": "agent-peer uninstall",
+		"start:":     "sudo peers service start",
+		"stop:":      "sudo peers service stop",
+		"restart:":   "sudo peers service restart",
+		"uninstall:": "peers uninstall",
 	})
 
 	waitForRootFile(t, systemAuditPath, serviceStartBound)
-	waitForRootFile(t, "/var/log/agent-peer/broker.log", serviceStartBound)
+	waitForRootFile(t, "/var/log/peers/broker.log", serviceStartBound)
 	for _, path := range []string{installedBinary, systemConfigPath, systemAuditPath} {
 		if err := sudo("test", "-e", path); err != nil {
 			t.Errorf("the summary prints %s, but it does not exist: %v", path, err)
@@ -157,7 +157,7 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 // of REQ-broker-config-064 on macOS, at both levels: after a successful
 // installation, making the audit log unusable and reinstalling must keep the
 // installed, running service, name the fault and the repair command, exit 3,
-// print the summary, and leave a Broker that agent-peer status reports as
+// print the summary, and leave a Broker that peers status reports as
 // degraded. The listen-port half is covered by
 // TestUserServiceInstallRefusesAnOccupiedListenPort.
 func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
@@ -196,10 +196,10 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 
 		status := run(t, installedBinary, "status")
 		if status.exitCode == 0 {
-			t.Errorf("agent-peer status exited 0 for a diagnostics-only Broker\nstdout: %s\nstderr: %s", status.stdout, status.stderr)
+			t.Errorf("peers status exited 0 for a diagnostics-only Broker\nstdout: %s\nstderr: %s", status.stdout, status.stderr)
 		}
 		if combined := status.stdout + status.stderr; !strings.Contains(combined, "degraded") {
-			t.Errorf("agent-peer status output = %q, want it to report the degraded run", combined)
+			t.Errorf("peers status output = %q, want it to report the degraded run", combined)
 		}
 	})
 
@@ -234,10 +234,10 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 
 		status := runSudo(t, installedBinary, "status")
 		if status.exitCode == 0 {
-			t.Errorf("agent-peer status as root exited 0 for a diagnostics-only Broker\nstdout: %s\nstderr: %s", status.stdout, status.stderr)
+			t.Errorf("peers status as root exited 0 for a diagnostics-only Broker\nstdout: %s\nstderr: %s", status.stdout, status.stderr)
 		}
 		if combined := status.stdout + status.stderr; !strings.Contains(combined, "degraded") {
-			t.Errorf("agent-peer status output = %q, want it to report the degraded run", combined)
+			t.Errorf("peers status output = %q, want it to report the degraded run", combined)
 		}
 	})
 }
@@ -258,7 +258,7 @@ func assertDegradedOutput(t *testing.T, stderr, auditPath string) {
 	if !strings.Contains(fixLine, auditPath) {
 		t.Errorf("fix line = %q, want the audit log path %s", fixLine, auditPath)
 	}
-	if !strings.Contains(fixLine, "agent-peer service restart") {
+	if !strings.Contains(fixLine, "peers service restart") {
 		t.Errorf("fix line = %q, want the service restart command", fixLine)
 	}
 }
@@ -338,10 +338,10 @@ func assertInstallSummary(t *testing.T, stdout, level, start string, wants map[s
 	}
 	first := strings.TrimSpace(lines[0])
 	suffix := " installed (" + level + ", starts at " + start + ")"
-	if !strings.HasPrefix(first, "agent-peer ") || !strings.HasSuffix(first, suffix) {
-		t.Errorf("summary first line = %q, want %q", first, "agent-peer <version>"+suffix)
+	if !strings.HasPrefix(first, "peers ") || !strings.HasSuffix(first, suffix) {
+		t.Errorf("summary first line = %q, want %q", first, "peers <version>"+suffix)
 	}
-	if version := strings.TrimSuffix(strings.TrimPrefix(first, "agent-peer "), suffix); strings.TrimSpace(version) == "" || strings.Contains(version, " ") {
+	if version := strings.TrimSuffix(strings.TrimPrefix(first, "peers "), suffix); strings.TrimSpace(version) == "" || strings.Contains(version, " ") {
 		t.Errorf("summary first line = %q, want one version word", first)
 	}
 
@@ -354,7 +354,7 @@ func assertInstallSummary(t *testing.T, stdout, level, start string, wants map[s
 
 // printedCommandArgs splits a command from the install summary into the
 // arguments that follow its binary name. The caller runs the arguments with the
-// installed test binary, which is the copy the printed agent-peer names; the
+// installed test binary, which is the copy the printed peers names; the
 // sudo prefix a system-level summary prints is dropped and applied by the
 // caller.
 func printedCommandArgs(t *testing.T, command string) []string {
@@ -364,8 +364,8 @@ func printedCommandArgs(t *testing.T, command string) []string {
 	if len(words) > 0 && words[0] == "sudo" {
 		words = words[1:]
 	}
-	if len(words) == 0 || words[0] != "agent-peer" {
-		t.Fatalf("summary command = %q, want it to name agent-peer", command)
+	if len(words) == 0 || words[0] != "peers" {
+		t.Fatalf("summary command = %q, want it to name peers", command)
 	}
 	return words[1:]
 }

@@ -1,4 +1,4 @@
-# agent-peer system Broker configuration.
+# peers system Broker configuration.
 #
 # Every key is optional; a key that is absent takes its default value.
 # Granting a group read access to this file lets its accounts read the
@@ -19,11 +19,11 @@ broker:
   # Address and port to bind; an empty host listens on every local address, and an empty value means do not listen.
   listen: ":17443"
   # Group owning the local socket; empty keeps the runtime directory's group, and user mode ignores it.
-  # local_socket_group: agent-peer
+  # local_socket_group: peers
   # No fixed default; this example is inactive.
   # File mode of the local socket; user mode always uses 0600.
   local_socket_mode: "0666"
-  # Refuse messages from other hosts while keeping links; agent-peer offline / online.
+  # Refuse messages from other hosts while keeping links; peers offline / online.
   offline: false
   # Whether this Broker is public.
   public: false

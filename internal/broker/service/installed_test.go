@@ -10,7 +10,7 @@ import (
 
 func TestInstalledLinuxUserFileExists(t *testing.T) {
 	opts := baseOptions(t)
-	writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/agent-peer.service")
+	writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/peers.service")
 	opts.Run = func(string, ...string) ([]byte, error) {
 		t.Error("Installed queried the service manager although the unit file exists")
 		return nil, nil
@@ -29,7 +29,7 @@ func TestInstalledLinuxSystemFileExists(t *testing.T) {
 	opts := baseOptions(t)
 	opts.System = true
 	opts.EUID = 0
-	writeInstalledFile(t, opts, "/etc/systemd/system/agent-peer.service")
+	writeInstalledFile(t, opts, "/etc/systemd/system/peers.service")
 
 	installed, err := Installed(opts)
 	if err != nil {
@@ -55,7 +55,7 @@ func TestInstalledLinuxUserStillEnabled(t *testing.T) {
 	if !installed {
 		t.Error("Installed = false, want true when systemd still has the unit")
 	}
-	wantCmds := []string{"systemctl --user is-enabled agent-peer.service"}
+	wantCmds := []string{"systemctl --user is-enabled peers.service"}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
@@ -82,8 +82,8 @@ func TestInstalledLinuxSystemStillActive(t *testing.T) {
 		t.Error("Installed = false, want true when the unit is still active")
 	}
 	wantCmds := []string{
-		"systemctl is-enabled agent-peer.service",
-		"systemctl is-active --quiet agent-peer.service",
+		"systemctl is-enabled peers.service",
+		"systemctl is-active --quiet peers.service",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
@@ -109,7 +109,7 @@ func TestInstalledDarwinFileExists(t *testing.T) {
 	opts.EUID = 501
 	opts.UID = 501
 	opts.Home = "/Users/alice"
-	writeInstalledFile(t, opts, "/Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	writeInstalledFile(t, opts, "/Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
 
 	installed, err := Installed(opts)
 	if err != nil {
@@ -142,7 +142,7 @@ func TestInstalledDarwinStillLoaded(t *testing.T) {
 	if !installed {
 		t.Error("Installed = false, want true when launchd still has the job loaded")
 	}
-	wantCmds := []string{"launchctl print gui/501/io.github.wangzw.agent-peer"}
+	wantCmds := []string{"launchctl print gui/501/io.github.wangzw.peers"}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
@@ -170,7 +170,7 @@ func TestInstalledDarwinNothingLeft(t *testing.T) {
 	if installed {
 		t.Error("Installed = true, want false when neither the plist nor launchd reports the job")
 	}
-	wantCmds := []string{"launchctl print gui/501/io.github.wangzw.agent-peer"}
+	wantCmds := []string{"launchctl print gui/501/io.github.wangzw.peers"}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
@@ -195,7 +195,7 @@ func TestInstalledDarwinWithoutGUIDomain(t *testing.T) {
 	if installed {
 		t.Error("Installed = true, want false without a gui domain")
 	}
-	wantCmds := []string{"launchctl print gui/501/io.github.wangzw.agent-peer"}
+	wantCmds := []string{"launchctl print gui/501/io.github.wangzw.peers"}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
@@ -221,7 +221,7 @@ func TestInstalledDarwinSystemStillLoaded(t *testing.T) {
 	if !installed {
 		t.Error("Installed = false, want true when launchd still has the daemon loaded")
 	}
-	wantCmds := []string{"launchctl print system/io.github.wangzw.agent-peer"}
+	wantCmds := []string{"launchctl print system/io.github.wangzw.peers"}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
@@ -271,7 +271,7 @@ func TestServiceFileExistsReportsInspectionFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exists, err := serviceFileExists(opts, "/home/alice/.config/systemd/user/agent-peer.service")
+	exists, err := serviceFileExists(opts, "/home/alice/.config/systemd/user/peers.service")
 	if err == nil {
 		t.Fatal("serviceFileExists succeeded although the path could not be inspected")
 	}
@@ -283,7 +283,7 @@ func TestServiceFileExistsReportsInspectionFailure(t *testing.T) {
 func TestServiceFileExistsMissing(t *testing.T) {
 	opts := baseOptions(t)
 
-	exists, err := serviceFileExists(opts, "/home/alice/.config/systemd/user/agent-peer.service")
+	exists, err := serviceFileExists(opts, "/home/alice/.config/systemd/user/peers.service")
 	if err != nil {
 		t.Fatalf("serviceFileExists: %v", err)
 	}
@@ -294,9 +294,9 @@ func TestServiceFileExistsMissing(t *testing.T) {
 
 func TestServiceFileExistsPresent(t *testing.T) {
 	opts := baseOptions(t)
-	writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/agent-peer.service")
+	writeInstalledFile(t, opts, "/home/alice/.config/systemd/user/peers.service")
 
-	exists, err := serviceFileExists(opts, "/home/alice/.config/systemd/user/agent-peer.service")
+	exists, err := serviceFileExists(opts, "/home/alice/.config/systemd/user/peers.service")
 	if err != nil {
 		t.Fatalf("serviceFileExists: %v", err)
 	}

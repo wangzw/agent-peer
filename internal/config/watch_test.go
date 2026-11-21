@@ -37,7 +37,7 @@ func newWatchCore(t *testing.T, body string, background bool, routes addressSour
 	if routes != nil {
 		c.routesSrc = routes
 	}
-	dir := filepath.Join(home, ".agent-peer")
+	dir := filepath.Join(home, ".peers")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

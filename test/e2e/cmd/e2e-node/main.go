@@ -42,9 +42,9 @@ const oneshotReadyBound = 3 * time.Second
 // the loop has not classified the Broker yet.
 const oneshotStartingText = "still being set up"
 
-const usage = "usage: e2e-node serve --ctl <socket> --home <dir> --bin <agent-peer> [--runtime-root <dir>] [--path <PATH>]\n" +
+const usage = "usage: e2e-node serve --ctl <socket> --home <dir> --bin <peers> [--runtime-root <dir>] [--path <PATH>]\n" +
 	"       e2e-node probe-hello --addr <host:port>\n" +
-	"       e2e-node oneshot-session --name <name> --bin <agent-peer> [--env NAME=value]..."
+	"       e2e-node oneshot-session --name <name> --bin <peers> [--env NAME=value]..."
 
 func main() {
 	os.Exit(run(os.Args[1:]))
@@ -128,7 +128,7 @@ func runOneshotSession(args []string) int {
 	flags := flag.NewFlagSet("oneshot-session", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	name := flags.String("name", "", "session name")
-	binary := flags.String("bin", "", "agent-peer binary")
+	binary := flags.String("bin", "", "peers binary")
 	env := envFlags{}
 	flags.Var(env, "env", "NAME=value added to the MCP server environment (repeatable)")
 	if err := flags.Parse(args); err != nil {
@@ -202,7 +202,7 @@ func runServe(args []string) int {
 	flags.SetOutput(os.Stderr)
 	socket := flags.String("ctl", "", "control socket path")
 	home := flags.String("home", "", "account home directory")
-	binary := flags.String("bin", "", "agent-peer binary")
+	binary := flags.String("bin", "", "peers binary")
 	runtimeRoot := flags.String("runtime-root", "", "value of AGENT_PEER_TEST_RUNTIME_ROOT")
 	path := flags.String("path", os.Getenv("PATH"), "value of PATH for child processes")
 	if err := flags.Parse(args); err != nil {

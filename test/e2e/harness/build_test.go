@@ -13,8 +13,8 @@ import (
 func TestImageTagCarriesAccountAndOwner(t *testing.T) {
 	current := currentOwner()
 	tag := imageReference("0123456789ab", 1234, 5678, current)
-	if !strings.HasPrefix(tag, "agent-peer-e2e:ape2e-") {
-		t.Fatalf("imageTag = %q, want the agent-peer-e2e repository and owner marker", tag)
+	if !strings.HasPrefix(tag, "peers-e2e:ape2e-") {
+		t.Fatalf("imageTag = %q, want the peers-e2e repository and owner marker", tag)
 	}
 	if !strings.Contains(tag, "-u1234-g5678-") {
 		t.Fatalf("imageTag = %q, want the uid and gid in the tag", tag)
@@ -30,7 +30,7 @@ func TestImageTagCarriesAccountAndOwner(t *testing.T) {
 	if !imageTagOwnerGone(dead) {
 		t.Fatalf("imageTagOwnerGone(%q) = false; want the dead owner reported", dead)
 	}
-	if imageTagOwnerGone("agent-peer-e2e:0123456789ab") {
+	if imageTagOwnerGone("peers-e2e:0123456789ab") {
 		t.Fatalf("a tag without an owner marker was reported as removable")
 	}
 }
@@ -57,8 +57,8 @@ func TestBuildBinaryCachesAndInjectsVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("running %s --version: %v", bin, err)
 	}
-	if got := strings.TrimSpace(string(version)); got != "agent-peer e2e" {
-		t.Fatalf("%s --version printed %q, want %q", bin, got, "agent-peer e2e")
+	if got := strings.TrimSpace(string(version)); got != "peers e2e" {
+		t.Fatalf("%s --version printed %q, want %q", bin, got, "peers e2e")
 	}
 
 	// With go removed from PATH the cached results must still be returned.
@@ -82,8 +82,8 @@ func TestBuildBinaryVersionStampsTheNamedVersion(t *testing.T) {
 		t.Fatalf("BuildBinaryVersion returned the same path %q for two versions", old)
 	}
 	for _, tc := range []struct{ path, want string }{
-		{old, "agent-peer 0.1.0"},
-		{next, "agent-peer 0.1.2"},
+		{old, "peers 0.1.0"},
+		{next, "peers 0.1.2"},
 	} {
 		out, err := exec.Command(tc.path, "--version").Output()
 		if err != nil {

@@ -27,7 +27,7 @@ func baseOptions(t *testing.T) Options {
 		GOOS:     "linux",
 		EUID:     1000,
 		UID:      1000,
-		Exe:      "/usr/local/bin/agent-peer",
+		Exe:      "/usr/local/bin/peers",
 		Home:     "/home/alice",
 		TempDir:  "/tmp",
 		Root:     t.TempDir(),
@@ -174,7 +174,7 @@ func TestInstallLinuxUser(t *testing.T) {
 		t.Fatalf("Install: %v", err)
 	}
 
-	path := filepath.Join(opts.Root, "home/alice/.config/systemd/user/agent-peer.service")
+	path := filepath.Join(opts.Root, "home/alice/.config/systemd/user/peers.service")
 	want, err := SystemdUserUnit(opts.Exe)
 	if err != nil {
 		t.Fatal(err)
@@ -186,9 +186,9 @@ func TestInstallLinuxUser(t *testing.T) {
 
 	wantCmds := []string{
 		"systemctl --user daemon-reload",
-		"systemctl --user enable agent-peer.service",
-		"systemctl --user restart agent-peer.service",
-		"systemctl --user show --property MainPID --value agent-peer.service",
+		"systemctl --user enable peers.service",
+		"systemctl --user restart peers.service",
+		"systemctl --user show --property MainPID --value peers.service",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
@@ -196,13 +196,13 @@ func TestInstallLinuxUser(t *testing.T) {
 	if !slices.Equal(res.Commands, wantCmds[:3]) {
 		t.Errorf("Result.Commands = %q, want %q", res.Commands, wantCmds[:3])
 	}
-	if res.UnitPath != "/home/alice/.config/systemd/user/agent-peer.service" {
+	if res.UnitPath != "/home/alice/.config/systemd/user/peers.service" {
 		t.Errorf("UnitPath = %q", res.UnitPath)
 	}
 	if res.Domain != "" {
 		t.Errorf("Domain = %q, want empty on Linux", res.Domain)
 	}
-	configPath := filepath.Join(opts.Root, "home/alice/.agent-peer/config.yaml")
+	configPath := filepath.Join(opts.Root, "home/alice/.peers/config.yaml")
 	if got, want := mustReadFile(t, configPath), string(config.Template(config.ModeUser)); got != want {
 		t.Errorf("config content = %q, want the user template", got)
 	}
@@ -212,10 +212,10 @@ func TestInstallLinuxUser(t *testing.T) {
 	if !res.ConfigNew {
 		t.Error("ConfigNew = false, want true")
 	}
-	if res.ConfigPath != "/home/alice/.agent-peer/config.yaml" {
+	if res.ConfigPath != "/home/alice/.peers/config.yaml" {
 		t.Errorf("ConfigPath = %q", res.ConfigPath)
 	}
-	if want := "/home/alice/.agent-peer/audit.log"; res.AuditLog != want {
+	if want := "/home/alice/.peers/audit.log"; res.AuditLog != want {
 		t.Errorf("AuditLog = %q, want %q", res.AuditLog, want)
 	}
 }
@@ -236,7 +236,7 @@ func TestInstallLinuxUserHonoursXDGConfigHome(t *testing.T) {
 		opts := baseOptions(t)
 		opts.XDGConfigHome = "/x/cfg"
 		install(t, opts)
-		path := filepath.Join(opts.Root, "x/cfg/systemd/user/agent-peer.service")
+		path := filepath.Join(opts.Root, "x/cfg/systemd/user/peers.service")
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("unit not written under XDG_CONFIG_HOME: %v", err)
 		}
@@ -246,7 +246,7 @@ func TestInstallLinuxUserHonoursXDGConfigHome(t *testing.T) {
 		opts := baseOptions(t)
 		opts.XDGConfigHome = "rel"
 		install(t, opts)
-		path := filepath.Join(opts.Root, "home/alice/.config/systemd/user/agent-peer.service")
+		path := filepath.Join(opts.Root, "home/alice/.config/systemd/user/peers.service")
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("unit not written under Home/.config: %v", err)
 		}
@@ -267,7 +267,7 @@ func TestInstallLinuxSystem(t *testing.T) {
 		t.Fatalf("Install: %v", err)
 	}
 
-	unitPath := filepath.Join(opts.Root, "etc/systemd/system/agent-peer.service")
+	unitPath := filepath.Join(opts.Root, "etc/systemd/system/peers.service")
 	want, err := SystemdSystemUnit(opts.Exe)
 	if err != nil {
 		t.Fatal(err)
@@ -276,7 +276,7 @@ func TestInstallLinuxSystem(t *testing.T) {
 		t.Errorf("unit content mismatch:\n got %q\nwant %q", got, want)
 	}
 
-	configPath := filepath.Join(opts.Root, "etc/agent-peer/config.yaml")
+	configPath := filepath.Join(opts.Root, "etc/peers/config.yaml")
 	if got := mustReadFile(t, configPath); got != string(config.Template(config.ModeSystem)) {
 		t.Errorf("config content = %q, want the system template", got)
 	}
@@ -284,10 +284,10 @@ func TestInstallLinuxSystem(t *testing.T) {
 	if !res.ConfigNew {
 		t.Error("ConfigNew = false, want true")
 	}
-	if res.ConfigPath != "/etc/agent-peer/config.yaml" {
+	if res.ConfigPath != "/etc/peers/config.yaml" {
 		t.Errorf("ConfigPath = %q", res.ConfigPath)
 	}
-	if want := "/var/log/agent-peer/audit.log"; res.AuditLog != want {
+	if want := "/var/log/peers/audit.log"; res.AuditLog != want {
 		t.Errorf("AuditLog = %q, want %q", res.AuditLog, want)
 	}
 	if res.AdminGroup != DefaultAdminGroup {
@@ -296,9 +296,9 @@ func TestInstallLinuxSystem(t *testing.T) {
 
 	wantCmds := []string{
 		"systemctl daemon-reload",
-		"systemctl enable agent-peer.service",
-		"systemctl restart agent-peer.service",
-		"systemctl show --property MainPID --value agent-peer.service",
+		"systemctl enable peers.service",
+		"systemctl restart peers.service",
+		"systemctl show --property MainPID --value peers.service",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
@@ -318,28 +318,28 @@ func TestInstallLinuxStepFailures(t *testing.T) {
 			failing: "systemctl --user daemon-reload",
 			want: []string{
 				"systemctl --user daemon-reload",
-				"systemctl --user disable --now agent-peer.service",
+				"systemctl --user disable --now peers.service",
 			},
 		},
 		{
 			name:    "enable",
 			trigger: "enable",
-			failing: "systemctl --user enable agent-peer.service",
+			failing: "systemctl --user enable peers.service",
 			want: []string{
 				"systemctl --user daemon-reload",
-				"systemctl --user enable agent-peer.service",
-				"systemctl --user disable --now agent-peer.service",
+				"systemctl --user enable peers.service",
+				"systemctl --user disable --now peers.service",
 			},
 		},
 		{
 			name:    "restart",
 			trigger: "restart",
-			failing: "systemctl --user restart agent-peer.service",
+			failing: "systemctl --user restart peers.service",
 			want: []string{
 				"systemctl --user daemon-reload",
-				"systemctl --user enable agent-peer.service",
-				"systemctl --user restart agent-peer.service",
-				"systemctl --user disable --now agent-peer.service",
+				"systemctl --user enable peers.service",
+				"systemctl --user restart peers.service",
+				"systemctl --user disable --now peers.service",
 			},
 		},
 	}
@@ -384,7 +384,7 @@ func TestInstallKeepsExistingSystemConfig(t *testing.T) {
 	started := false
 	opts.Run = recordCommandsUntil(&cmds, &started, "restart")
 	opts.Probe = probeAfterStart(&started, 4242)
-	configPath := filepath.Join(opts.Root, "etc/agent-peer/config.yaml")
+	configPath := filepath.Join(opts.Root, "etc/peers/config.yaml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +416,7 @@ func TestInstallKeepsExistingSystemConfig(t *testing.T) {
 	if res.ConfigNew {
 		t.Error("ConfigNew = true, want false")
 	}
-	if res.ConfigPath != "/etc/agent-peer/config.yaml" {
+	if res.ConfigPath != "/etc/peers/config.yaml" {
 		t.Errorf("ConfigPath = %q", res.ConfigPath)
 	}
 	if res.AdminGroup != DefaultAdminGroup {
@@ -479,25 +479,25 @@ func TestInstallSystemCreatesAdminGroup(t *testing.T) {
 		t.Error("the administration group was not created")
 	}
 	wantCmds := []string{
-		"getent group agent-peer",
-		"groupadd --system agent-peer",
-		"getent group agent-peer",
+		"getent group peers",
+		"groupadd --system peers",
+		"getent group peers",
 		"systemctl daemon-reload",
-		"systemctl enable agent-peer.service",
-		"systemctl restart agent-peer.service",
-		"systemctl show --property MainPID --value agent-peer.service",
+		"systemctl enable peers.service",
+		"systemctl restart peers.service",
+		"systemctl show --property MainPID --value peers.service",
 	}
 	if !slices.Equal(*cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", *cmds, wantCmds)
 	}
-	if want := "groupadd --system agent-peer"; !slices.Contains(res.Commands, want) {
+	if want := "groupadd --system peers"; !slices.Contains(res.Commands, want) {
 		t.Errorf("Result.Commands = %q, want %q", res.Commands, want)
 	}
 	if res.AdminGroup != DefaultAdminGroup {
 		t.Errorf("AdminGroup = %q, want %q", res.AdminGroup, DefaultAdminGroup)
 	}
 
-	configPath := filepath.Join(opts.Root, "etc/agent-peer/config.yaml")
+	configPath := filepath.Join(opts.Root, "etc/peers/config.yaml")
 	want := fmt.Sprintf("%s 0:%d", configPath, gid)
 	if !slices.Equal(chowns, []string{want}) {
 		t.Errorf("chown calls = %q, want %q", chowns, want)
@@ -591,7 +591,7 @@ func TestInstallSystemUsesAnExistingGroup(t *testing.T) {
 	if gotGID != gid {
 		t.Errorf("configuration group = %d, want %d", gotGID, gid)
 	}
-	if got, want := mustReadFile(t, filepath.Join(opts.Root, "etc/agent-peer/config.yaml")), string(config.Template(config.ModeSystem)); got != want {
+	if got, want := mustReadFile(t, filepath.Join(opts.Root, "etc/peers/config.yaml")), string(config.Template(config.ModeSystem)); got != want {
 		t.Errorf("config content = %q, want the system template", got)
 	}
 	if res.AdminGroup != DefaultAdminGroup {
@@ -632,7 +632,7 @@ func TestInstallSystemFailsWhenTheAdminGroupCannotBeCreated(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "cannot create group") {
 		t.Fatalf("Install error = %v, want the groupadd failure", err)
 	}
-	if want := []string{"getent group agent-peer", "groupadd --system agent-peer"}; !slices.Equal(cmds, want) {
+	if want := []string{"getent group peers", "groupadd --system peers"}; !slices.Equal(cmds, want) {
 		t.Errorf("commands = %q, want %q", cmds, want)
 	}
 	assertNoEntries(t, opts.Root)
@@ -697,7 +697,7 @@ func TestInstallKeepsExistingUserConfig(t *testing.T) {
 	started := false
 	opts.Run = recordCommandsUntil(&cmds, &started, "restart")
 	opts.Probe = probeAfterStart(&started, 4242)
-	configPath := filepath.Join(opts.Root, "home/alice/.agent-peer/config.yaml")
+	configPath := filepath.Join(opts.Root, "home/alice/.peers/config.yaml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -716,7 +716,7 @@ func TestInstallKeepsExistingUserConfig(t *testing.T) {
 	if res.ConfigNew {
 		t.Error("ConfigNew = true, want false")
 	}
-	if res.ConfigPath != "/home/alice/.agent-peer/config.yaml" {
+	if res.ConfigPath != "/home/alice/.peers/config.yaml" {
 		t.Errorf("ConfigPath = %q", res.ConfigPath)
 	}
 }
@@ -737,7 +737,7 @@ func TestCreateConfigRemovesPartialFileOnWriteFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("createConfigWith error = nil, want the write failure")
 	}
-	path := filepath.Join(opts.Root, "home/alice/.agent-peer/config.yaml")
+	path := filepath.Join(opts.Root, "home/alice/.peers/config.yaml")
 	// The error must name the reason, not only that the step failed: the path
 	// the write targeted and the write error the read-only handle produced.
 	for _, want := range []string{"write configuration file", path, "bad file descriptor"} {
@@ -835,7 +835,7 @@ func TestInstallSystemChecksResolvedPath(t *testing.T) {
 	opts := baseOptions(t)
 	opts.System = true
 	opts.EUID = 0
-	const resolved = "/home/alice/bin/agent-peer"
+	const resolved = "/home/alice/bin/peers"
 	opts.EvalSymlinks = func(string) (string, error) { return resolved, nil }
 	opts.Owner = fakeOwner(map[string]fakeOwnerEntry{
 		resolved: {uid: 1000, mode: 0o755},
@@ -849,8 +849,8 @@ func TestInstallSystemChecksResolvedPath(t *testing.T) {
 
 func TestInstallDarwinSystemWritesResolvedExecutable(t *testing.T) {
 	const (
-		link     = "/Users/alice/bin/agent-peer"
-		resolved = "/opt/agent-peer/agent-peer"
+		link     = "/Users/alice/bin/peers"
+		resolved = "/opt/peers/peers"
 	)
 	darwinSystem := func(t *testing.T) Options {
 		t.Helper()
@@ -887,7 +887,7 @@ func TestInstallDarwinSystemWritesResolvedExecutable(t *testing.T) {
 		if _, err := Install(opts); err != nil {
 			t.Fatalf("Install: %v", err)
 		}
-		plist := filepath.Join(opts.Root, "Library/LaunchDaemons/io.github.wangzw.agent-peer.plist")
+		plist := filepath.Join(opts.Root, "Library/LaunchDaemons/io.github.wangzw.peers.plist")
 		want, err := LaunchDaemonPlist(resolved)
 		if err != nil {
 			t.Fatal(err)
@@ -920,7 +920,7 @@ func TestInstallRejectsTempBinary(t *testing.T) {
 	}{{"user", false}, {"system", true}} {
 		t.Run(system.name, func(t *testing.T) {
 			opts := baseOptions(t)
-			opts.Exe = "/tmp/go-build123/exe/agent-peer"
+			opts.Exe = "/tmp/go-build123/exe/peers"
 			opts.TempDir = "/tmp"
 			opts.System = system.set
 			if system.set {
@@ -978,8 +978,8 @@ func TestInstallDarwinUser(t *testing.T) {
 		t.Fatalf("Install: %v", err)
 	}
 
-	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
-	want, err := LaunchAgentPlist(opts.Exe, "/Users/alice/Library/Logs/agent-peer/broker.log")
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
+	want, err := LaunchAgentPlist(opts.Exe, "/Users/alice/Library/Logs/peers/broker.log")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -987,7 +987,7 @@ func TestInstallDarwinUser(t *testing.T) {
 		t.Errorf("plist content mismatch:\n got %q\nwant %q", got, want)
 	}
 
-	logDir := filepath.Join(opts.Root, "Users/alice/Library/Logs/agent-peer")
+	logDir := filepath.Join(opts.Root, "Users/alice/Library/Logs/peers")
 	fi, err := os.Stat(logDir)
 	if err != nil {
 		t.Fatalf("log directory missing: %v", err)
@@ -999,20 +999,20 @@ func TestInstallDarwinUser(t *testing.T) {
 
 	wantCmds := []string{
 		"launchctl print gui/501",
-		"launchctl print gui/501/io.github.wangzw.agent-peer",
-		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
-		"launchctl print gui/501/io.github.wangzw.agent-peer",
-		"launchctl enable gui/501/io.github.wangzw.agent-peer",
-		"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
-		"launchctl print gui/501/io.github.wangzw.agent-peer",
+		"launchctl print gui/501/io.github.wangzw.peers",
+		"launchctl bootout gui/501/io.github.wangzw.peers",
+		"launchctl print gui/501/io.github.wangzw.peers",
+		"launchctl enable gui/501/io.github.wangzw.peers",
+		"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist",
+		"launchctl print gui/501/io.github.wangzw.peers",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
 	if !slices.Equal(res.Commands, []string{
-		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
-		"launchctl enable gui/501/io.github.wangzw.agent-peer",
-		"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
+		"launchctl bootout gui/501/io.github.wangzw.peers",
+		"launchctl enable gui/501/io.github.wangzw.peers",
+		"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist",
 	}) {
 		t.Errorf("Result.Commands = %q, want the bootout, enable and bootstrap", res.Commands)
 	}
@@ -1051,7 +1051,7 @@ func TestInstallDarwinBootoutFailure(t *testing.T) {
 	opts.Home = "/Users/alice"
 	// A loaded service has a plist on disk, so this failure must keep it and
 	// disable the label.
-	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
 	if err := os.MkdirAll(filepath.Dir(plist), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1083,9 +1083,9 @@ func TestInstallDarwinBootoutFailure(t *testing.T) {
 	}
 	wantCmds := []string{
 		"launchctl print gui/501",
-		"launchctl print gui/501/io.github.wangzw.agent-peer",
-		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
-		"launchctl disable gui/501/io.github.wangzw.agent-peer",
+		"launchctl print gui/501/io.github.wangzw.peers",
+		"launchctl bootout gui/501/io.github.wangzw.peers",
+		"launchctl disable gui/501/io.github.wangzw.peers",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
@@ -1159,16 +1159,16 @@ func TestInstallDarwinBootstrapFailureRollsBackThePlist(t *testing.T) {
 	}
 	wantCmds := []string{
 		"launchctl print gui/501",
-		"launchctl print gui/501/io.github.wangzw.agent-peer",
-		"launchctl bootout gui/501/io.github.wangzw.agent-peer",
-		"launchctl print gui/501/io.github.wangzw.agent-peer",
-		"launchctl enable gui/501/io.github.wangzw.agent-peer",
-		"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
+		"launchctl print gui/501/io.github.wangzw.peers",
+		"launchctl bootout gui/501/io.github.wangzw.peers",
+		"launchctl print gui/501/io.github.wangzw.peers",
+		"launchctl enable gui/501/io.github.wangzw.peers",
+		"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
-	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
 	if _, err := os.Stat(plist); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("plist was not rolled back: %v", err)
 	}
@@ -1213,7 +1213,7 @@ func TestInstallDarwinBootstrapFailureReportsTheOutputWhenRollbackFails(t *testi
 	opts.UID = 501
 	opts.Home = "/Users/alice"
 	opts.BootstrapTimeout = time.Nanosecond
-	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
 	opts.Run = func(name string, args ...string) ([]byte, error) {
 		switch {
 		case len(args) == 2 && args[0] == "print" && args[1] == "gui/501":
@@ -1279,7 +1279,7 @@ func TestInstallDarwinSystem(t *testing.T) {
 		t.Fatalf("Install: %v", err)
 	}
 
-	plist := filepath.Join(opts.Root, "Library/LaunchDaemons/io.github.wangzw.agent-peer.plist")
+	plist := filepath.Join(opts.Root, "Library/LaunchDaemons/io.github.wangzw.peers.plist")
 	want, err := LaunchDaemonPlist(opts.Exe)
 	if err != nil {
 		t.Fatal(err)
@@ -1288,33 +1288,33 @@ func TestInstallDarwinSystem(t *testing.T) {
 		t.Errorf("plist content mismatch:\n got %q\nwant %q", got, want)
 	}
 
-	logDir := filepath.Join(opts.Root, "var/log/agent-peer")
+	logDir := filepath.Join(opts.Root, "var/log/peers")
 	if fi, err := os.Stat(logDir); err != nil || !fi.IsDir() {
 		t.Errorf("log directory %s: %v", logDir, err)
 	}
 	assertMode(t, logDir, 0o750)
 
-	configPath := filepath.Join(opts.Root, "etc/agent-peer/config.yaml")
+	configPath := filepath.Join(opts.Root, "etc/peers/config.yaml")
 	if got := mustReadFile(t, configPath); got != string(config.Template(config.ModeSystem)) {
 		t.Errorf("config content = %q, want the system template", got)
 	}
 	assertMode(t, configPath, 0o660)
 
 	wantCmds := []string{
-		"launchctl print system/io.github.wangzw.agent-peer",
-		"launchctl bootout system/io.github.wangzw.agent-peer",
-		"launchctl print system/io.github.wangzw.agent-peer",
-		"launchctl enable system/io.github.wangzw.agent-peer",
-		"launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist",
-		"launchctl print system/io.github.wangzw.agent-peer",
+		"launchctl print system/io.github.wangzw.peers",
+		"launchctl bootout system/io.github.wangzw.peers",
+		"launchctl print system/io.github.wangzw.peers",
+		"launchctl enable system/io.github.wangzw.peers",
+		"launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.peers.plist",
+		"launchctl print system/io.github.wangzw.peers",
 	}
 	if !slices.Equal(cmds, wantCmds) {
 		t.Errorf("commands = %q, want %q", cmds, wantCmds)
 	}
 	if !slices.Equal(res.Commands, []string{
-		"launchctl bootout system/io.github.wangzw.agent-peer",
-		"launchctl enable system/io.github.wangzw.agent-peer",
-		"launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.agent-peer.plist",
+		"launchctl bootout system/io.github.wangzw.peers",
+		"launchctl enable system/io.github.wangzw.peers",
+		"launchctl bootstrap system /Library/LaunchDaemons/io.github.wangzw.peers.plist",
 	}) {
 		t.Errorf("Result.Commands = %q, want the bootout, enable and bootstrap", res.Commands)
 	}
@@ -1342,11 +1342,11 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 			t.Fatalf("Install: %v", err)
 		}
 		wantCmds := []string{
-			"systemctl --user show --property MainPID --value agent-peer.service",
+			"systemctl --user show --property MainPID --value peers.service",
 			"systemctl --user daemon-reload",
-			"systemctl --user enable agent-peer.service",
-			"systemctl --user restart agent-peer.service",
-			"systemctl --user show --property MainPID --value agent-peer.service",
+			"systemctl --user enable peers.service",
+			"systemctl --user restart peers.service",
+			"systemctl --user show --property MainPID --value peers.service",
 		}
 		if !slices.Equal(cmds, wantCmds) {
 			t.Errorf("commands = %q, want %q", cmds, wantCmds)
@@ -1367,7 +1367,7 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 		}
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "not started by the agent-peer service") {
+		if err == nil || !strings.Contains(err.Error(), "not started by the peers service") {
 			t.Fatalf("Install error = %v, want the foreign-Broker rejection", err)
 		}
 		for _, want := range []string{"service pid 9999", "socket peer pid 4242", "stop it before installing"} {
@@ -1389,7 +1389,7 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 		}
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "not started by the agent-peer service") {
+		if err == nil || !strings.Contains(err.Error(), "not started by the peers service") {
 			t.Fatalf("Install error = %v, want the foreign-Broker rejection", err)
 		}
 		assertNoEntries(t, opts.Root)
@@ -1400,7 +1400,7 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 		opts.System = true
 		opts.EUID = 0
 		opts.Probe = func(path string) (int, bool) {
-			if path != "/run/agent-peer/broker.sock" {
+			if path != "/run/peers/broker.sock" {
 				t.Errorf("probe path = %q", path)
 			}
 			return 4242, true
@@ -1453,13 +1453,13 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 		}
 		wantCmds := []string{
 			"launchctl print gui/501",
-			"launchctl print gui/501/io.github.wangzw.agent-peer",
-			"launchctl print gui/501/io.github.wangzw.agent-peer",
-			"launchctl bootout gui/501/io.github.wangzw.agent-peer",
-			"launchctl print gui/501/io.github.wangzw.agent-peer",
-			"launchctl enable gui/501/io.github.wangzw.agent-peer",
-			"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
-			"launchctl print gui/501/io.github.wangzw.agent-peer",
+			"launchctl print gui/501/io.github.wangzw.peers",
+			"launchctl print gui/501/io.github.wangzw.peers",
+			"launchctl bootout gui/501/io.github.wangzw.peers",
+			"launchctl print gui/501/io.github.wangzw.peers",
+			"launchctl enable gui/501/io.github.wangzw.peers",
+			"launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist",
+			"launchctl print gui/501/io.github.wangzw.peers",
 		}
 		if !slices.Equal(cmds, wantCmds) {
 			t.Errorf("commands = %q, want %q", cmds, wantCmds)
@@ -1474,14 +1474,14 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 		opts.Home = "/Users/alice"
 		opts.Probe = func(string) (int, bool) { return 4242, true }
 		opts.Run = func(name string, args ...string) ([]byte, error) {
-			if len(args) == 2 && args[1] == "gui/501/io.github.wangzw.agent-peer" {
+			if len(args) == 2 && args[1] == "gui/501/io.github.wangzw.peers" {
 				return []byte("state = running\n\tpid = 9999\n"), nil
 			}
 			return nil, nil
 		}
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "not started by the agent-peer service") {
+		if err == nil || !strings.Contains(err.Error(), "not started by the peers service") {
 			t.Fatalf("Install error = %v, want the foreign-Broker rejection", err)
 		}
 		for _, want := range []string{"service pid 9999", "socket peer pid 4242"} {
@@ -1499,14 +1499,14 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 		opts.Home = "/Users/alice"
 		opts.Probe = func(string) (int, bool) { return 4242, true }
 		opts.Run = func(name string, args ...string) ([]byte, error) {
-			if len(args) == 2 && args[1] == "gui/501/io.github.wangzw.agent-peer" {
+			if len(args) == 2 && args[1] == "gui/501/io.github.wangzw.peers" {
 				return []byte("Could not find service"), exitError(t, 113)
 			}
 			return nil, nil
 		}
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "not started by the agent-peer service") {
+		if err == nil || !strings.Contains(err.Error(), "not started by the peers service") {
 			t.Fatalf("Install error = %v, want the foreign-Broker rejection", err)
 		}
 		if !strings.Contains(err.Error(), "service pid 0") {
@@ -1525,7 +1525,7 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 		}
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "not started by the agent-peer service") {
+		if err == nil || !strings.Contains(err.Error(), "not started by the peers service") {
 			t.Fatalf("Install error = %v, want the foreign-Broker rejection", err)
 		}
 		if !strings.Contains(err.Error(), "socket peer pid 0") {
@@ -1567,7 +1567,7 @@ func TestInstallRejectsAnAnsweringForeignBrokerAtReady(t *testing.T) {
 			if err == nil {
 				t.Fatal("Install succeeded while a foreign Broker answered on the socket")
 			}
-			for _, want := range []string{"not the service's process", "socket peer pid 6666", "journalctl --user -u agent-peer.service"} {
+			for _, want := range []string{"not the service's process", "socket peer pid 6666", "journalctl --user -u peers.service"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("error %q does not contain %q", err, want)
 				}
@@ -1615,10 +1615,10 @@ func TestInstallWaitsForTheBroker(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "did not answer") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
-		if !strings.Contains(err.Error(), "journalctl --user -u agent-peer.service") {
+		if !strings.Contains(err.Error(), "journalctl --user -u peers.service") {
 			t.Errorf("error %q does not name the user service log", err)
 		}
-		if !slices.Contains(cmds, "systemctl --user restart agent-peer.service") {
+		if !slices.Contains(cmds, "systemctl --user restart peers.service") {
 			t.Errorf("commands = %q, want the restart", cmds)
 		}
 	})
@@ -1646,7 +1646,7 @@ func TestInstallWaitsForTheBroker(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "did not answer") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
-		if !strings.Contains(err.Error(), "/var/log/agent-peer/broker.log") {
+		if !strings.Contains(err.Error(), "/var/log/peers/broker.log") {
 			t.Errorf("error %q does not name the system log", err)
 		}
 	})
@@ -1662,7 +1662,7 @@ func TestInstallWaitsForTheBroker(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "did not answer") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
-		if !strings.Contains(err.Error(), "journalctl -u agent-peer.service") {
+		if !strings.Contains(err.Error(), "journalctl -u peers.service") {
 			t.Errorf("error %q does not name the system service log", err)
 		}
 	})
@@ -1692,7 +1692,7 @@ func TestInstallWaitsForTheBroker(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "did not answer") {
 			t.Fatalf("Install error = %v, want the readiness timeout", err)
 		}
-		if !strings.Contains(err.Error(), "/Users/alice/Library/Logs/agent-peer/broker.log") {
+		if !strings.Contains(err.Error(), "/Users/alice/Library/Logs/peers/broker.log") {
 			t.Errorf("error %q does not name the user log", err)
 		}
 	})
@@ -1752,7 +1752,7 @@ func TestInstallRefusesAnOccupiedListenAddress(t *testing.T) {
 	if err == nil {
 		t.Fatal("Install succeeded while broker.listen was held by another process")
 	}
-	for _, want := range []string{addr, "already in use", "/home/alice/.agent-peer/config.yaml", "broker.listen"} {
+	for _, want := range []string{addr, "already in use", "/home/alice/.peers/config.yaml", "broker.listen"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}
@@ -1845,7 +1845,7 @@ func TestInstallDisablesTheServiceWhenThePrecheckStopFails(t *testing.T) {
 		case slices.Contains(args, "show"):
 			return []byte("4242\n"), nil
 		case slices.Contains(args, "stop"):
-			return []byte("Job for agent-peer.service failed"), errors.New("exit status 1")
+			return []byte("Job for peers.service failed"), errors.New("exit status 1")
 		}
 		return nil, nil
 	}
@@ -2059,7 +2059,7 @@ func TestInstallReportsAStoppedServiceWhenTheAddressStaysBusy(t *testing.T) {
 	for _, want := range []string{
 		"already in use",
 		"the existing service was stopped",
-		"systemctl --user enable --now agent-peer.service",
+		"systemctl --user enable --now peers.service",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
@@ -2103,7 +2103,7 @@ func TestInstallReportsTheStartupFailureOnTimeout(t *testing.T) {
 		opts.EUID = 501
 		opts.UID = 501
 		opts.Home = "/Users/alice"
-		logPath := filepath.Join(opts.Root, "Users/alice/Library/Logs/agent-peer/broker.log")
+		logPath := filepath.Join(opts.Root, "Users/alice/Library/Logs/peers/broker.log")
 		if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -2176,7 +2176,7 @@ func TestInstallIgnoresStartupFailuresBeforeTheInstallStarted(t *testing.T) {
 		opts.EUID = 501
 		opts.UID = 501
 		opts.Home = "/Users/alice"
-		logPath := filepath.Join(opts.Root, "Users/alice/Library/Logs/agent-peer/broker.log")
+		logPath := filepath.Join(opts.Root, "Users/alice/Library/Logs/peers/broker.log")
 		if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -2369,7 +2369,7 @@ func TestInstallOverwritesUnit(t *testing.T) {
 	started := false
 	opts.Run = recordCommandsUntil(&cmds, &started, "restart")
 	opts.Probe = probeAfterStart(&started, 4242)
-	path := filepath.Join(opts.Root, "home/alice/.config/systemd/user/agent-peer.service")
+	path := filepath.Join(opts.Root, "home/alice/.config/systemd/user/peers.service")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -2413,7 +2413,7 @@ func TestInstallReportsDegradedAfterReady(t *testing.T) {
 				Level:  localpb.DegradedLevel_DEGRADED_LEVEL_DIAGNOSTICS_ONLY,
 				Step:   "audit",
 				Reason: "the audit log is not writable",
-				Fix:    "fix the permissions of ~/.agent-peer/audit.log",
+				Fix:    "fix the permissions of ~/.peers/audit.log",
 			},
 		},
 	}
@@ -2436,19 +2436,19 @@ func TestInstallReportsDegradedAfterReady(t *testing.T) {
 			if degraded.State != tc.state {
 				t.Errorf("DegradedError.State = %+v, want %+v", degraded.State, tc.state)
 			}
-			if res.UnitPath != "/home/alice/.config/systemd/user/agent-peer.service" {
+			if res.UnitPath != "/home/alice/.config/systemd/user/peers.service" {
 				t.Errorf("UnitPath = %q", res.UnitPath)
 			}
-			if res.ConfigPath != "/home/alice/.agent-peer/config.yaml" {
+			if res.ConfigPath != "/home/alice/.peers/config.yaml" {
 				t.Errorf("ConfigPath = %q", res.ConfigPath)
 			}
 			if res.Binary != opts.Exe {
 				t.Errorf("Binary = %q, want %q", res.Binary, opts.Exe)
 			}
-			if want := "journalctl --user -u agent-peer.service"; res.RunLog != want {
+			if want := "journalctl --user -u peers.service"; res.RunLog != want {
 				t.Errorf("RunLog = %q, want %q", res.RunLog, want)
 			}
-			if want := "/home/alice/.agent-peer/audit.log"; res.AuditLog != want {
+			if want := "/home/alice/.peers/audit.log"; res.AuditLog != want {
 				t.Errorf("AuditLog = %q, want %q", res.AuditLog, want)
 			}
 			for _, cmd := range cmds {
@@ -2506,10 +2506,10 @@ func TestInstallDarwinReportsDegradedAfterReady(t *testing.T) {
 	if res.Binary != opts.Exe {
 		t.Errorf("Binary = %q, want %q", res.Binary, opts.Exe)
 	}
-	if want := "/Users/alice/Library/Logs/agent-peer/broker.log"; res.RunLog != want {
+	if want := "/Users/alice/Library/Logs/peers/broker.log"; res.RunLog != want {
 		t.Errorf("RunLog = %q, want %q", res.RunLog, want)
 	}
-	if want := "/Users/alice/.agent-peer/audit.log"; res.AuditLog != want {
+	if want := "/Users/alice/.peers/audit.log"; res.AuditLog != want {
 		t.Errorf("AuditLog = %q, want %q", res.AuditLog, want)
 	}
 	if cmd := "launchctl disable gui/501/" + Label; slices.Contains(cmds, cmd) {
@@ -2567,7 +2567,7 @@ func TestInstallFailsWhenTheStatusCannotBeRead(t *testing.T) {
 	if errors.As(err, &degraded) {
 		t.Fatalf("Install error = %v, want a plain error, not *DegradedError", err)
 	}
-	for _, want := range []string{"service is running", "status could not be read", "agent-peer status", "connection reset"} {
+	for _, want := range []string{"service is running", "status could not be read", "peers status", "connection reset"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
 		}
@@ -2750,7 +2750,7 @@ func darwinUserReinstall(t *testing.T) Options {
 	opts.Home = "/Users/alice"
 	// A reinstall finds the plist an earlier install wrote. The install records
 	// that it existed, so a failure keeps it and disables its label.
-	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
 	if err := os.MkdirAll(filepath.Dir(plist), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -2761,10 +2761,10 @@ func darwinUserReinstall(t *testing.T) Options {
 }
 
 const (
-	darwinPrintOldCmd  = "launchctl print gui/501/io.github.wangzw.agent-peer"
-	darwinBootoutCmd   = "launchctl bootout gui/501/io.github.wangzw.agent-peer"
-	darwinDisableCmd   = "launchctl disable gui/501/io.github.wangzw.agent-peer"
-	darwinBootstrapCmd = "launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist"
+	darwinPrintOldCmd  = "launchctl print gui/501/io.github.wangzw.peers"
+	darwinBootoutCmd   = "launchctl bootout gui/501/io.github.wangzw.peers"
+	darwinDisableCmd   = "launchctl disable gui/501/io.github.wangzw.peers"
+	darwinBootstrapCmd = "launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist"
 )
 
 func countCommand(cmds []string, want string) int {
@@ -3024,7 +3024,7 @@ func TestInstallDarwinDoesNotTreatAPrintErrorAsUnloaded(t *testing.T) {
 	if !slices.Contains(cmds, darwinDisableCmd) {
 		t.Errorf("commands = %q, want %q so the kept plist does not start at login", cmds, darwinDisableCmd)
 	}
-	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
 	if _, statErr := os.Stat(plist); statErr != nil {
 		t.Errorf("plist was removed while the old service may still be loaded: %v", statErr)
 	}
@@ -3135,8 +3135,8 @@ func TestInstallDarwinReinstallBootstrapFailureKeepsThePlist(t *testing.T) {
 	for _, want := range []string{
 		"the old service was unloaded",
 		"no Broker is running",
-		"agent-peer service install",
-		"launchctl enable gui/501/io.github.wangzw.agent-peer && launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist",
+		"peers service install",
+		"launchctl enable gui/501/io.github.wangzw.peers && launchctl bootstrap gui/501 /Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
@@ -3148,7 +3148,7 @@ func TestInstallDarwinReinstallBootstrapFailureKeepsThePlist(t *testing.T) {
 	if got := countCommandBefore(cmds, darwinBootoutCmd, darwinBootstrapCmd); got != 1 {
 		t.Errorf("bootout calls before the bootstrap = %d, want 1; commands = %q", got, cmds)
 	}
-	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
 	if _, statErr := os.Stat(plist); statErr != nil {
 		t.Errorf("reinstall failure removed the plist: %v", statErr)
 	}
@@ -3162,7 +3162,7 @@ func TestInstallDarwinBootstrapFailureKeepsAnUnloadedPlist(t *testing.T) {
 	opts := darwinUserReinstall(t)
 	opts.BootstrapTimeout = 30 * time.Millisecond
 
-	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.agent-peer.plist")
+	plist := filepath.Join(opts.Root, "Users/alice/Library/LaunchAgents/io.github.wangzw.peers.plist")
 	if err := os.MkdirAll(filepath.Dir(plist), 0o755); err != nil {
 		t.Fatal(err)
 	}
