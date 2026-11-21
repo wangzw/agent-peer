@@ -30,8 +30,8 @@ const (
 
 	// installUserPrefix and installSystemPrefix are the default binary paths at
 	// the two scopes.
-	installUserPrefix   = installHome + "/.local/bin/agent-peer"
-	installSystemPrefix = "/usr/local/bin/agent-peer"
+	installUserPrefix   = installHome + "/.local/bin/peers"
+	installSystemPrefix = "/usr/local/bin/peers"
 
 	// installArchiveDir is where the inner test assembles a release-shaped
 	// directory from the staged archive files and the image's agent-peer binary.
@@ -64,9 +64,9 @@ const (
 	// host stages the files copied from the repository.
 	installStagedDir = "install-script-e2e"
 
-	// installExpectedVersion is what the image's agent-peer reports. The image
+	// installExpectedVersion is what the image's peers binary reports. The image
 	// is built through harness.BuildBinary, which stamps -X main.version=e2e.
-	installExpectedVersion = "agent-peer e2e"
+	installExpectedVersion = "peers e2e"
 
 	// installUserConfigDir, installSystemConfigDir and the two unit paths are
 	// the state a refused install must leave untouched.
@@ -571,9 +571,9 @@ func assertInstallScriptCommandsRun(t *testing.T, output, account string, env []
 	t.Helper()
 	for _, label := range []string{"start:", "stop:", "restart:", "uninstall:"} {
 		args := printedCommandArgs(t, summaryValue(t, output, label))
-		res := runInstallScriptAs(t, account, env, dir, "agent-peer", args...)
+		res := runInstallScriptAs(t, account, env, dir, "peers", args...)
 		if res.ExitCode != 0 {
-			t.Errorf("agent-peer %s from the summary: exit %d\nstdout:\n%s\nstderr:\n%s",
+			t.Errorf("peers %s from the summary: exit %d\nstdout:\n%s\nstderr:\n%s",
 				strings.Join(args, " "), res.ExitCode, res.Stdout, res.Stderr)
 		}
 	}
@@ -655,7 +655,7 @@ func installUserEnv() []string {
 }
 
 // prepareInstallArchive builds a directory shaped like the release archive:
-// the agent-peer binary, the staged install script, the license and a README. It
+// the peers binary, the staged install script, the license and a README. It
 // returns the directory.
 func prepareInstallArchive(t *testing.T) string {
 	t.Helper()
@@ -673,7 +673,7 @@ func prepareInstallArchive(t *testing.T) string {
 		name   string
 		mode   os.FileMode
 	}{
-		{installSystemPrefix, "agent-peer", 0o755},
+		{installSystemPrefix, "peers", 0o755},
 		{filepath.Join(staged, "install.sh"), "install.sh", 0o755},
 		{filepath.Join(staged, "LICENSE"), "LICENSE", 0o644},
 		{filepath.Join(staged, "README.md"), "README.md", 0o644},

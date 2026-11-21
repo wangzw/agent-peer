@@ -1,7 +1,7 @@
 #!/bin/sh
-# Install agent-peer from an extracted release archive.
+# Install peers from an extracted release archive.
 #
-# The archive keeps this script next to the agent-peer binary. The script
+# The archive keeps this script next to the peers binary. The script
 # installs that binary, starts the Broker as a user-level or system-level
 # service, and registers the MCP server for the account that runs it. It never
 # downloads anything, so it works on a host without network access.
@@ -24,7 +24,7 @@
 #   --no-mcp        do not register the MCP server with Claude Code.
 #   --admin-group <name>
 #                   manage the system-level Broker through <name> instead of
-#                   the default agent-peer group; passed to
+#                   the default peers group; passed to
 #                   "service install --system".
 #   --join-admin-group
 #                   add the account that ran sudo to the admin group without
@@ -47,7 +47,7 @@
 # prompt is skipped when the answer cannot be read, and when the account is
 # already in the group.
 #
-# Uninstall with "agent-peer uninstall". This script does not uninstall
+# Uninstall with "peers uninstall". This script does not uninstall
 # anything.
 
 set -eu
@@ -59,7 +59,7 @@ prefix=
 prefix_set=0
 install_service=1
 install_mcp=1
-admin_group=agent-peer
+admin_group=peers
 admin_group_set=0
 join_admin_group=0
 no_admin_group=0
@@ -94,7 +94,7 @@ usage: sh ./install.sh [--system | --user] [--prefix <dir>] [--no-service]
                        [--no-mcp] [--admin-group <name>] [--join-admin-group]
                        [--no-admin-group]
 
-Install agent-peer from the extracted release archive.
+Install peers from the extracted release archive.
 
   --system        install for the whole host; the script runs itself through
                   sudo when it is not root
@@ -107,7 +107,7 @@ Install agent-peer from the extracted release archive.
   --no-mcp        do not register the MCP server with Claude Code
   --admin-group <name>
                   manage the system-level Broker through <name> instead of
-                  the default agent-peer group; passed to
+                  the default peers group; passed to
                   "service install --system"
   --join-admin-group
                   add the account that ran sudo to the admin group without
@@ -117,7 +117,7 @@ Install agent-peer from the extracted release archive.
                   group
   -h, --help      print this usage and exit
 
-Uninstall with "agent-peer uninstall". This script does not uninstall
+Uninstall with "peers uninstall". This script does not uninstall
 anything.
 EOF
 }
@@ -142,7 +142,7 @@ case $_script_path in
 		fi
 		;;
 esac
-archive_binary=$script_dir/agent-peer
+archive_binary=$script_dir/peers
 
 while [ "$#" -gt 0 ]; do
 	case $1 in
@@ -260,8 +260,8 @@ elif [ "$_current_uid" -eq 0 ]; then
 	system=1
 elif true 2>/dev/null </dev/tty; then
 	case $_os in
-		Darwin) _definition=/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist ;;
-		*) _definition=/etc/systemd/system/agent-peer.service ;;
+		Darwin) _definition=/Library/LaunchDaemons/io.github.wangzw.peers.plist ;;
+		*) _definition=/etc/systemd/system/peers.service ;;
 	esac
 	_existing_system=0
 	# stat takes a bare path on both platforms and succeeds only when it exists.
@@ -318,7 +318,7 @@ if [ "$system" -eq 0 ]; then
 fi
 
 if [ ! -f "$archive_binary" ]; then
-	fail "no agent-peer binary next to $0; extract the whole release archive and run sh ./install.sh from it"
+	fail "no peers binary next to $0; extract the whole release archive and run sh ./install.sh from it"
 fi
 
 # A system-level install needs root. Recheck the same script under sudo with the
@@ -442,36 +442,36 @@ if [ "$_os" = "Darwin" ]; then
 fi
 
 # Record the version of a binary already at the target path, so the summary can
-# report an upgrade. Only an agent-peer binary answers with the expected
+# report an upgrade. Only the peers binary answers with the expected
 # prefix; anything else is replaced without claiming an upgrade.
 _previous_version=
-if [ -f "$prefix/agent-peer" ]; then
-	if _previous_output=$("$prefix/agent-peer" --version 2>/dev/null); then
+if [ -f "$prefix/peers" ]; then
+	if _previous_output=$("$prefix/peers" --version 2>/dev/null); then
 		case $_previous_output in
-			"agent-peer "*) _previous_version=${_previous_output#agent-peer } ;;
+			"peers "*) _previous_version=${_previous_output#peers } ;;
 		esac
 	fi
 fi
 
 # 1. Install the binary.
 if [ "$system" -eq 1 ]; then
-	if ! install -o root -g 0 -m 0755 "$archive_binary" "$prefix/agent-peer"; then
+	if ! install -o root -g 0 -m 0755 "$archive_binary" "$prefix/peers"; then
 		fail "installing the binary to $prefix"
 	fi
 else
-	if ! install -m 0755 "$archive_binary" "$prefix/agent-peer"; then
+	if ! install -m 0755 "$archive_binary" "$prefix/peers"; then
 		fail "installing the binary to $prefix"
 	fi
 fi
 
 # 2. Check that the installed binary actually runs and identifies itself. A
 # failure here usually means the archive was built for another platform.
-if ! _version_output=$("$prefix/agent-peer" --version 2>&1); then
-	fail "running $prefix/agent-peer --version; the binary may be built for another platform"
+if ! _version_output=$("$prefix/peers" --version 2>&1); then
+	fail "running $prefix/peers --version; the binary may be built for another platform"
 fi
 case $_version_output in
-	"agent-peer "*) ;;
-	*) fail "unexpected output from $prefix/agent-peer --version: $_version_output" ;;
+	"peers "*) ;;
+	*) fail "unexpected output from $prefix/peers --version: $_version_output" ;;
 esac
 
 # Report the upgrade before the service prints its summary; the service does
@@ -492,12 +492,12 @@ if [ "$install_service" -eq 1 ]; then
 	if [ "$system" -eq 1 ]; then
 		_service_level="system-level"
 		if [ "$admin_group_set" -eq 1 ]; then
-			"$prefix/agent-peer" service install --system --admin-group "$admin_group" || _service_status=$?
+			"$prefix/peers" service install --system --admin-group "$admin_group" || _service_status=$?
 		else
-			"$prefix/agent-peer" service install --system || _service_status=$?
+			"$prefix/peers" service install --system || _service_status=$?
 		fi
 	else
-		"$prefix/agent-peer" service install || _service_status=$?
+		"$prefix/peers" service install || _service_status=$?
 	fi
 	case $_service_status in
 		0) ;;
@@ -575,7 +575,7 @@ if [ "$install_mcp" -eq 1 ]; then
 		if [ -z "$_target_user" ] || [ "$_target_user" = "root" ]; then
 			_mcp_state="skipped (no account to register for)"
 			printf 'install.sh: register the MCP server for your account manually:\n'
-			printf '  claude mcp add --scope user peer -- %s mcp\n' "$prefix/agent-peer"
+			printf '  claude mcp add --scope user peer -- %s mcp\n' "$prefix/peers"
 		else
 			_find_claude=1
 		fi
@@ -607,7 +607,7 @@ if [ "$install_mcp" -eq 1 ]; then
 		if [ -z "$_claude_path" ]; then
 			_mcp_state="skipped (claude not found)"
 			printf 'install.sh: claude was not found; register the MCP server manually:\n'
-			printf '  claude mcp add --scope user peer -- %s mcp\n' "$prefix/agent-peer"
+			printf '  claude mcp add --scope user peer -- %s mcp\n' "$prefix/peers"
 		else
 			if [ "$system" -eq 1 ]; then
 				# The login shell resolved claude to an absolute path, so run
@@ -619,7 +619,7 @@ if [ "$install_mcp" -eq 1 ]; then
 
 			if [ "$_get_status" -eq 0 ]; then
 				_existing=$(printf '%s\n' "$_get_output" | sed -n 's/^[[:space:]]*Command:[[:space:]]*//p' | head -n 1)
-				if [ -n "$_existing" ] && [ "$_existing" != "$prefix/agent-peer" ]; then
+				if [ -n "$_existing" ] && [ "$_existing" != "$prefix/peers" ]; then
 					_mcp_state="already registered with a different command; left unchanged"
 					printf 'install.sh: the peer MCP server is already registered with %s; leaving it unchanged.\n' "$_existing"
 					printf 'install.sh: to point it at this install, run: claude mcp remove -s user peer, then rerun this script.\n'
@@ -629,11 +629,11 @@ if [ "$install_mcp" -eq 1 ]; then
 				fi
 			else
 				if [ "$system" -eq 1 ]; then
-					if ! sudo -u "$_target_user" -H "$_claude_path" mcp add --scope user peer -- "$prefix/agent-peer" mcp; then
+					if ! sudo -u "$_target_user" -H "$_claude_path" mcp add --scope user peer -- "$prefix/peers" mcp; then
 						fail "registering the MCP server for $_target_user"
 					fi
 				else
-					if ! "$_claude_path" mcp add --scope user peer -- "$prefix/agent-peer" mcp; then
+					if ! "$_claude_path" mcp add --scope user peer -- "$prefix/peers" mcp; then
 						fail "registering the MCP server"
 					fi
 				fi
@@ -644,11 +644,11 @@ if [ "$install_mcp" -eq 1 ]; then
 fi
 
 # 6. A user-level prefix is often outside PATH. Say so instead of leaving the
-# caller with "agent-peer: command not found" in the next terminal.
+# caller with "peers: command not found" in the next terminal.
 if [ "$system" -eq 0 ]; then
 	case ":${PATH:-}:" in
 		*":$prefix:"*) ;;
-		*) printf 'install.sh: %s is not on PATH; add it to PATH to run agent-peer by name.\n' "$prefix" ;;
+		*) printf 'install.sh: %s is not on PATH; add it to PATH to run peers by name.\n' "$prefix" ;;
 	esac
 fi
 
@@ -656,8 +656,8 @@ fi
 # version, configuration, logs and service commands. Without a service, the
 # script reports the binary it placed.
 if [ "$install_service" -eq 0 ]; then
-	printf '\nagent-peer %s installed (no service)\n' "${_version_output#agent-peer }"
-	printf '  %-12s%s\n' 'binary:' "$prefix/agent-peer"
+	printf '\npeers %s installed (no service)\n' "${_version_output#peers }"
+	printf '  %-12s%s\n' 'binary:' "$prefix/peers"
 fi
 printf '  %-12s%s\n' 'MCP:' "$_mcp_state"
 if [ -n "$_admin_group_user" ]; then

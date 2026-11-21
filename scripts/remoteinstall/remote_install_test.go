@@ -97,7 +97,7 @@ func (f *fixture) writeRelease(version string) {
 	var checksums strings.Builder
 	for _, osName := range []string{"linux", "darwin"} {
 		for _, arch := range []string{"amd64", "arm64"} {
-			name := fmt.Sprintf("agent-peer_%s_%s_%s.tar.gz", version, osName, arch)
+			name := fmt.Sprintf("peers_%s_%s_%s.tar.gz", version, osName, arch)
 			data := archiveData(f.t, true)
 			mustWriteFile(f.t, filepath.Join(dir, name), data, 0o644)
 			sum := sha256.Sum256(data)
@@ -244,12 +244,12 @@ func TestPlatformMapping(t *testing.T) {
 		machine string
 		archive string
 	}{
-		{"linux amd64", "Linux", "x86_64", "agent-peer_0.1.1_linux_amd64.tar.gz"},
-		{"linux amd64 spelled out", "Linux", "amd64", "agent-peer_0.1.1_linux_amd64.tar.gz"},
-		{"linux arm64", "Linux", "aarch64", "agent-peer_0.1.1_linux_arm64.tar.gz"},
-		{"linux arm64 spelled out", "Linux", "arm64", "agent-peer_0.1.1_linux_arm64.tar.gz"},
-		{"darwin amd64", "Darwin", "x86_64", "agent-peer_0.1.1_darwin_amd64.tar.gz"},
-		{"darwin arm64", "Darwin", "arm64", "agent-peer_0.1.1_darwin_arm64.tar.gz"},
+		{"linux amd64", "Linux", "x86_64", "peers_0.1.1_linux_amd64.tar.gz"},
+		{"linux amd64 spelled out", "Linux", "amd64", "peers_0.1.1_linux_amd64.tar.gz"},
+		{"linux arm64", "Linux", "aarch64", "peers_0.1.1_linux_arm64.tar.gz"},
+		{"linux arm64 spelled out", "Linux", "arm64", "peers_0.1.1_linux_arm64.tar.gz"},
+		{"darwin amd64", "Darwin", "x86_64", "peers_0.1.1_darwin_amd64.tar.gz"},
+		{"darwin arm64", "Darwin", "arm64", "peers_0.1.1_darwin_arm64.tar.gz"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -338,7 +338,7 @@ func TestUsesWgetWhenCurlIsMissing(t *testing.T) {
 		name string
 		url  string
 	}{
-		{"archive", releaseBase + "/download/v0.1.1/agent-peer_0.1.1_linux_amd64.tar.gz"},
+		{"archive", releaseBase + "/download/v0.1.1/peers_0.1.1_linux_amd64.tar.gz"},
 		{"checksums", releaseBase + "/download/v0.1.1/checksums.txt"},
 	}
 	for i, call := range calls[1:] {
@@ -377,7 +377,7 @@ func TestWgetRefusesHTTPRedirect(t *testing.T) {
 	)
 	_, stderr, code := f.run(map[string]string{
 		"PATH":                        dir,
-		"FAKE_WGET_DOWNLOAD_LOCATION": "http://insecure.invalid/agent-peer_0.1.1_linux_amd64.tar.gz",
+		"FAKE_WGET_DOWNLOAD_LOCATION": "http://insecure.invalid/peers_0.1.1_linux_amd64.tar.gz",
 	})
 	if code == 0 {
 		t.Fatalf("exit = 0, want a failure")
@@ -410,7 +410,7 @@ func TestLatestVersionFromRedirect(t *testing.T) {
 	if !strings.Contains(log, releaseBase+"/latest") {
 		t.Fatalf("curl was not asked for %s/latest; log:\n%s", releaseBase, log)
 	}
-	if !strings.Contains(log, releaseBase+"/download/v0.1.1/agent-peer_0.1.1_linux_amd64.tar.gz") {
+	if !strings.Contains(log, releaseBase+"/download/v0.1.1/peers_0.1.1_linux_amd64.tar.gz") {
 		t.Fatalf("curl was not asked for the 0.1.1 archive; log:\n%s", log)
 	}
 }
@@ -487,7 +487,7 @@ func TestExplicitVersionSkipsLatest(t *testing.T) {
 			if strings.Contains(log, "/latest") {
 				t.Fatalf("a fixed version still asked for the latest release; log:\n%s", log)
 			}
-			want := releaseBase + "/download/v1.2.3/agent-peer_1.2.3_linux_amd64.tar.gz"
+			want := releaseBase + "/download/v1.2.3/peers_1.2.3_linux_amd64.tar.gz"
 			if !strings.Contains(log, want) {
 				t.Fatalf("curl was not asked for %s; log:\n%s", want, log)
 			}
@@ -570,7 +570,7 @@ func TestMissingRelease(t *testing.T) {
 	t.Run("archive has no install.sh", func(t *testing.T) {
 		f := newFixture(t)
 		dir := filepath.Join(f.releaseDir, "download", "v0.1.1")
-		name := "agent-peer_0.1.1_linux_amd64.tar.gz"
+		name := "peers_0.1.1_linux_amd64.tar.gz"
 		data := archiveData(t, false)
 		mustWriteFile(t, filepath.Join(dir, name), data, 0o644)
 		sum := sha256.Sum256(data)
@@ -626,7 +626,7 @@ func TestTruncatedScriptDoesNothing(t *testing.T) {
 func TestChecksumMismatch(t *testing.T) {
 	f := newFixture(t)
 	checksumFile := filepath.Join(f.releaseDir, "download", "v0.1.1", "checksums.txt")
-	bad := strings.Repeat("0", 64) + "  agent-peer_0.1.1_linux_amd64.tar.gz\n"
+	bad := strings.Repeat("0", 64) + "  peers_0.1.1_linux_amd64.tar.gz\n"
 	mustWriteFile(t, checksumFile, []byte(bad), 0o644)
 
 	_, stderr, code := f.run(nil, "--version", "0.1.1")
@@ -653,7 +653,7 @@ func TestDuplicateChecksumLines(t *testing.T) {
 	}
 	var duplicate strings.Builder
 	duplicate.Write(original)
-	duplicate.WriteString(strings.Repeat("1", 64) + "  agent-peer_0.1.1_linux_amd64.tar.gz\n")
+	duplicate.WriteString(strings.Repeat("1", 64) + "  peers_0.1.1_linux_amd64.tar.gz\n")
 	mustWriteFile(t, checksumFile, []byte(duplicate.String()), 0o644)
 
 	_, stderr, code := f.run(nil, "--version", "0.1.1")
@@ -671,7 +671,7 @@ func TestDuplicateChecksumLines(t *testing.T) {
 func TestMissingChecksumLine(t *testing.T) {
 	f := newFixture(t)
 	checksumFile := filepath.Join(f.releaseDir, "download", "v0.1.1", "checksums.txt")
-	mustWriteFile(t, checksumFile, []byte(strings.Repeat("1", 64)+"  agent-peer_0.1.1_linux_arm64.tar.gz\n"), 0o644)
+	mustWriteFile(t, checksumFile, []byte(strings.Repeat("1", 64)+"  peers_0.1.1_linux_arm64.tar.gz\n"), 0o644)
 
 	_, stderr, code := f.run(nil, "--version", "0.1.1")
 	if code == 0 {
@@ -687,7 +687,7 @@ func TestMissingChecksumLine(t *testing.T) {
 
 func TestPassesArgumentsToPackagedInstaller(t *testing.T) {
 	f := newFixture(t)
-	want := []string{"--system", "--no-mcp", "--prefix", "/opt/agent-peer", "--no-service"}
+	want := []string{"--system", "--no-mcp", "--prefix", "/opt/peers", "--no-service"}
 	_, stderr, code := f.run(nil, append([]string{"--version", "0.1.1"}, want...)...)
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0; stderr:\n%s", code, stderr)
@@ -890,7 +890,7 @@ func archiveData(t *testing.T, withInstall bool) []byte {
 	if withInstall {
 		add("install.sh", fakePackagedInstall)
 	}
-	add("agent-peer", "#!/bin/sh\nexit 0\n")
+	add("peers", "#!/bin/sh\nexit 0\n")
 	if err := tw.Close(); err != nil {
 		t.Fatalf("closing the tar writer: %v", err)
 	}

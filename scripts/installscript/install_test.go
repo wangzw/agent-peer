@@ -46,7 +46,7 @@ type fixture struct {
 	sudoLog      string
 }
 
-// newFixture builds an archive root with install.sh and a fake agent-peer, and
+// newFixture builds an archive root with install.sh and a fake peers binary, and
 // a fake bin directory holding every command the tests replace.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
@@ -87,10 +87,10 @@ func newFixture(t *testing.T) *fixture {
 	}
 	f.script = filepath.Join(f.archive, "install.sh")
 	writeExecutable(t, f.script, string(data))
-	writeExecutable(t, filepath.Join(f.archive, "agent-peer"), fakeAgentPeer)
+	writeExecutable(t, filepath.Join(f.archive, "peers"), fakePeers)
 
 	writeExecutable(t, filepath.Join(f.fakes, "claude"), fakeClaude)
-	writeExecutable(t, filepath.Join(f.fakes, "agent-peer"), fakePathAgentPeer)
+	writeExecutable(t, filepath.Join(f.fakes, "peers"), fakePathPeers)
 	writeExecutable(t, filepath.Join(f.fakes, "stat"), fakeStat)
 	writeExecutable(t, filepath.Join(f.fakes, "id"), strings.ReplaceAll(fakeID, "@REAL_ID@", shellQuote(realID)))
 	writeExecutable(t, filepath.Join(f.fakes, "uname"), strings.ReplaceAll(fakeUname, "@REAL_UNAME@", shellQuote(realUname)))
@@ -110,7 +110,7 @@ func (f *fixture) environ(overrides map[string]string) []string {
 		"PATH":                    f.fakes + string(os.PathListSeparator) + systemPath,
 		"LC_ALL":                  "C",
 		"FAKE_AGENT_LOG":          f.agentLog,
-		"FAKE_AGENT_VERSION":      "agent-peer test-version",
+		"FAKE_AGENT_VERSION":      "peers test-version",
 		"FAKE_AGENT_SERVICE_EXIT": "0",
 		"FAKE_PATH_AGENT_LOG":     f.pathAgentLog,
 		"FAKE_CLAUDE_LOG":         f.claudeLog,
@@ -297,7 +297,7 @@ func (f *fixture) pathUnderHome(t *testing.T, elems ...string) string {
 // userBinary returns the installed binary path for a user-level prefix, which
 // keeps the caller's spelling.
 func (f *fixture) userBinary(dir string) string {
-	return filepath.Join(dir, "agent-peer")
+	return filepath.Join(dir, "peers")
 }
 
 // installedBinary returns the installed binary path for a prefix directory
@@ -308,7 +308,7 @@ func (f *fixture) installedBinary(t *testing.T, dir string) string {
 	if err != nil {
 		t.Fatalf("resolving %s: %v", dir, err)
 	}
-	return filepath.Join(resolved, "agent-peer")
+	return filepath.Join(resolved, "peers")
 }
 
 // resolvedArchive returns the archive root after the same symlink resolution
@@ -332,7 +332,7 @@ func TestInstallScriptHelpAndUsageErrors(t *testing.T) {
 		for _, want := range []string{
 			"--system", "--user", "--prefix <dir>", "--no-service", "--no-mcp",
 			"--admin-group <name>", "--join-admin-group", "--no-admin-group",
-			"agent-peer uninstall",
+			"peers uninstall",
 		} {
 			mustContain(t, "help output", stdout, want)
 		}
@@ -401,7 +401,7 @@ func TestInstallScriptUserInstall(t *testing.T) {
 		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
 
-	binary := f.pathUnderHome(t, ".local", "bin", "agent-peer")
+	binary := f.pathUnderHome(t, ".local", "bin", "peers")
 	if _, err := os.Stat(binary); err != nil {
 		t.Fatalf("the installed binary is missing: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestInstallScriptUserInstall(t *testing.T) {
 		t.Errorf("mcp add calls = %d, want 1 with %s; calls: %q", got, binary, claude)
 	}
 
-	mustContain(t, "stdout", stdout, "agent-peer test-version installed (user-level, starts at login)")
+	mustContain(t, "stdout", stdout, "peers test-version installed (user-level, starts at login)")
 	mustContain(t, "stdout", stdout, "MCP:        registered")
 	mustContain(t, "stdout", stdout, "Reopen any Claude Code session")
 	mustContain(t, "stdout", stdout, binary[:strings.LastIndex(binary, "/")]+" is not on PATH")
@@ -438,7 +438,7 @@ func TestInstallScriptUserInstall(t *testing.T) {
 
 	// The script must run the installed binary, never one found on PATH.
 	if calls := readLines(t, f.pathAgentLog); len(calls) != 0 {
-		t.Errorf("install.sh called agent-peer from PATH: %q", calls)
+		t.Errorf("install.sh called peers from PATH: %q", calls)
 	}
 }
 
@@ -477,14 +477,14 @@ func TestInstallScriptCustomPrefix(t *testing.T) {
 	if _, err := os.Stat(binary); err != nil {
 		t.Fatalf("the installed binary is missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(f.home, ".local", "bin", "agent-peer")); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(f.home, ".local", "bin", "peers")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the default prefix was used as well: %v", err)
 	}
 	claude := readLines(t, f.claudeLog)
 	if got := countLines(claude, "mcp add --scope user peer -- "+binary+" mcp"); got != 1 {
 		t.Errorf("mcp add calls = %d, want 1 with %s; calls: %q", got, binary, claude)
 	}
-	mustContain(t, "stdout", stdout, "agent-peer test-version installed (no service)")
+	mustContain(t, "stdout", stdout, "peers test-version installed (no service)")
 	mustContain(t, "stdout", stdout, "binary:     "+binary)
 }
 
@@ -509,7 +509,7 @@ func TestInstallScriptClaudeMissing(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
-	binary := f.pathUnderHome(t, ".local", "bin", "agent-peer")
+	binary := f.pathUnderHome(t, ".local", "bin", "peers")
 	combined := stdout + stderr
 	mustContain(t, "output", combined, "claude mcp add --scope user peer -- "+binary+" mcp")
 	mustContain(t, "stdout", stdout, "MCP:        skipped (claude not found)")
@@ -520,7 +520,7 @@ func TestInstallScriptClaudeMissing(t *testing.T) {
 
 func TestInstallScriptClaudeAlreadyRegistered(t *testing.T) {
 	f := newFixture(t)
-	binary := f.pathUnderHome(t, ".local", "bin", "agent-peer")
+	binary := f.pathUnderHome(t, ".local", "bin", "peers")
 	writeRegistered(t, f.claudeState, binary)
 
 	stdout, stderr, code := f.run(nil)
@@ -538,7 +538,7 @@ func TestInstallScriptClaudeAlreadyRegistered(t *testing.T) {
 
 func TestInstallScriptClaudeRegisteredElsewhere(t *testing.T) {
 	f := newFixture(t)
-	writeRegistered(t, f.claudeState, "/opt/other/agent-peer")
+	writeRegistered(t, f.claudeState, "/opt/other/peers")
 
 	stdout, stderr, code := f.run(nil)
 	if code != 0 {
@@ -547,7 +547,7 @@ func TestInstallScriptClaudeRegisteredElsewhere(t *testing.T) {
 	if got := countLines(readLines(t, f.claudeLog), "mcp add"); got != 0 {
 		t.Errorf("mcp add calls = %d, want 0; the existing registration must stay untouched", got)
 	}
-	mustContain(t, "stdout", stdout, "/opt/other/agent-peer")
+	mustContain(t, "stdout", stdout, "/opt/other/peers")
 	mustContain(t, "stdout", stdout, "leaving it unchanged")
 	mustContain(t, "stdout", stdout, "claude mcp remove -s user peer")
 }
@@ -585,14 +585,14 @@ func TestInstallScriptNoServiceNoMCP(t *testing.T) {
 	if calls := readLines(t, f.claudeLog); len(calls) != 0 {
 		t.Errorf("claude was called with --no-mcp: %q", calls)
 	}
-	mustContain(t, "stdout", stdout, "agent-peer test-version installed (no service)")
-	mustContain(t, "stdout", stdout, "binary:     "+f.pathUnderHome(t, ".local", "bin", "agent-peer"))
+	mustContain(t, "stdout", stdout, "peers test-version installed (no service)")
+	mustContain(t, "stdout", stdout, "binary:     "+f.pathUnderHome(t, ".local", "bin", "peers"))
 	mustContain(t, "stdout", stdout, "MCP:        skipped (--no-mcp)")
 }
 
 func TestInstallScriptRejectsUnexpectedVersion(t *testing.T) {
 	f := newFixture(t)
-	_, stderr, code := f.run(map[string]string{"FAKE_AGENT_VERSION": "not agent-peer"})
+	_, stderr, code := f.run(map[string]string{"FAKE_AGENT_VERSION": "not peers"})
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
@@ -604,14 +604,14 @@ func TestInstallScriptRejectsUnexpectedVersion(t *testing.T) {
 
 func TestInstallScriptRequiresTheArchiveBinary(t *testing.T) {
 	f := newFixture(t)
-	if err := os.Remove(filepath.Join(f.archive, "agent-peer")); err != nil {
+	if err := os.Remove(filepath.Join(f.archive, "peers")); err != nil {
 		t.Fatalf("removing the archive binary: %v", err)
 	}
 	_, stderr, code := f.run(nil)
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
-	mustContain(t, "stderr", stderr, "no agent-peer binary")
+	mustContain(t, "stderr", stderr, "no peers binary")
 }
 
 func TestInstallScriptReportsInstallFailure(t *testing.T) {
@@ -642,7 +642,7 @@ func TestInstallScriptAcceptsDegradedService(t *testing.T) {
 	// service install printed the summary; the script kept going through the
 	// MCP registration and its own summary.
 	mustContain(t, "stdout", stdout, "installed (user-level, starts at login)")
-	mustContain(t, "stdout", stdout, "agent-peer test-version installed")
+	mustContain(t, "stdout", stdout, "peers test-version installed")
 	mustContain(t, "stdout", stdout, "MCP:        registered")
 	mustContain(t, "stderr", stderr, "Broker: degraded (local only)")
 	mustContain(t, "stderr", stderr, "Fix:")
@@ -663,8 +663,8 @@ func TestInstallScriptReportsUpgrade(t *testing.T) {
 		if err := os.MkdirAll(prefix, 0o755); err != nil {
 			t.Fatalf("creating %s: %v", prefix, err)
 		}
-		writeExecutable(t, filepath.Join(prefix, "agent-peer"),
-			"#!/bin/sh\nprintf 'agent-peer "+version+"\\n'\n")
+		writeExecutable(t, filepath.Join(prefix, "peers"),
+			"#!/bin/sh\nprintf 'peers "+version+"\\n'\n")
 	}
 
 	t.Run("no service", func(t *testing.T) {
@@ -677,7 +677,7 @@ func TestInstallScriptReportsUpgrade(t *testing.T) {
 			t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 		}
 		mustContain(t, "stdout", stdout, "upgraded from 0.2.0")
-		mustContain(t, "stdout", stdout, "agent-peer test-version installed (no service)")
+		mustContain(t, "stdout", stdout, "peers test-version installed (no service)")
 		mustContain(t, "stdout", stdout, "binary:     "+f.userBinary(prefix))
 		if got := countLines(readLines(t, f.agentLog), "--version"); got != 1 {
 			t.Errorf("new binary --version calls = %d, want 1", got)
@@ -694,7 +694,7 @@ func TestInstallScriptReportsUpgrade(t *testing.T) {
 			t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 		}
 		upgraded := strings.Index(stdout, "upgraded from 0.1.0")
-		summary := strings.Index(stdout, "agent-peer test-version installed")
+		summary := strings.Index(stdout, "peers test-version installed")
 		if upgraded < 0 || summary < 0 || upgraded > summary {
 			t.Errorf("stdout does not report the upgrade before the service summary:\n%s", stdout)
 		}
@@ -706,7 +706,7 @@ func TestInstallScriptReportsUpgrade(t *testing.T) {
 		if err := os.MkdirAll(prefix, 0o755); err != nil {
 			t.Fatalf("creating %s: %v", prefix, err)
 		}
-		writeExecutable(t, filepath.Join(prefix, "agent-peer"), "#!/bin/sh\nprintf 'something else\\n'\n")
+		writeExecutable(t, filepath.Join(prefix, "peers"), "#!/bin/sh\nprintf 'something else\\n'\n")
 
 		stdout, stderr, code := f.run(nil, "--prefix", prefix, "--no-service", "--no-mcp")
 		if code != 0 {
@@ -720,9 +720,9 @@ func TestInstallScriptReportsUpgrade(t *testing.T) {
 // system-level service on this platform.
 func hostSystemDefinitionPath() string {
 	if runtime.GOOS == "darwin" {
-		return "/Library/LaunchDaemons/io.github.wangzw.agent-peer.plist"
+		return "/Library/LaunchDaemons/io.github.wangzw.peers.plist"
 	}
-	return "/etc/systemd/system/agent-peer.service"
+	return "/etc/systemd/system/peers.service"
 }
 
 const (
@@ -1237,7 +1237,7 @@ func TestInstallScriptSystemInstallsIntoRootOwnedDirectory(t *testing.T) {
 	if got := countLines(readLines(t, f.agentLog), "--version"); got != 1 {
 		t.Errorf("--version calls = %d, want 1", got)
 	}
-	mustContain(t, "stdout", stdout, "agent-peer test-version installed (no service)")
+	mustContain(t, "stdout", stdout, "peers test-version installed (no service)")
 	mustContain(t, "stdout", stdout, "binary:     "+binary)
 	mustContain(t, "stdout", stdout, "MCP:        skipped (--no-mcp)")
 }
@@ -1391,12 +1391,12 @@ func TestInstallScriptSystemPromptJoinsAdminGroup(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s\nterminal:\n%s", code, stdout, stderr, tty)
 			}
-			if calls := readLines(t, f.groupLog); len(calls) != 1 || calls[0] != "usermod -aG agent-peer alice" {
+			if calls := readLines(t, f.groupLog); len(calls) != 1 || calls[0] != "usermod -aG peers alice" {
 				t.Fatalf("group command calls = %q, want one usermod call", calls)
 			}
-			mustContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
-			mustContain(t, "terminal", tty, adminGroupPrompt("alice", "agent-peer"))
-			mustNotContain(t, "stdout", stdout, adminGroupJoinCommand("alice", "agent-peer"))
+			mustContain(t, "stdout", stdout, adminGroupHint("alice", "peers"))
+			mustContain(t, "terminal", tty, adminGroupPrompt("alice", "peers"))
+			mustNotContain(t, "stdout", stdout, adminGroupJoinCommand("alice", "peers"))
 		})
 	}
 }
@@ -1426,9 +1426,9 @@ func TestInstallScriptSystemPromptDeclinesAdminGroup(t *testing.T) {
 			if calls := readLines(t, f.groupLog); len(calls) != 0 {
 				t.Fatalf("group command calls = %q, want none", calls)
 			}
-			mustContain(t, "stdout", stdout, adminGroupJoinCommand("alice", "agent-peer"))
-			mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
-			mustContain(t, "terminal", tty, adminGroupPrompt("alice", "agent-peer"))
+			mustContain(t, "stdout", stdout, adminGroupJoinCommand("alice", "peers"))
+			mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "peers"))
+			mustContain(t, "terminal", tty, adminGroupPrompt("alice", "peers"))
 		})
 	}
 }
@@ -1446,9 +1446,9 @@ func TestInstallScriptSystemPromptWithoutTerminal(t *testing.T) {
 	if calls := readLines(t, f.groupLog); len(calls) != 0 {
 		t.Fatalf("group command calls = %q, want none", calls)
 	}
-	mustContain(t, "stdout", stdout, hostAdminGroupJoinCommand("alice", "agent-peer"))
-	mustNotContain(t, "stdout", stdout, adminGroupPrompt("alice", "agent-peer"))
-	mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
+	mustContain(t, "stdout", stdout, hostAdminGroupJoinCommand("alice", "peers"))
+	mustNotContain(t, "stdout", stdout, adminGroupPrompt("alice", "peers"))
+	mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "peers"))
 	mustNotContain(t, "stderr", stderr, "/dev/tty")
 }
 
@@ -1462,11 +1462,11 @@ func TestInstallScriptSystemJoinAdminGroupWithoutPrompt(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 	}
-	if calls := readLines(t, f.groupLog); len(calls) != 1 || calls[0] != hostAdminGroupJoinCall("alice", "agent-peer") {
-		t.Fatalf("group command calls = %q, want %q", calls, hostAdminGroupJoinCall("alice", "agent-peer"))
+	if calls := readLines(t, f.groupLog); len(calls) != 1 || calls[0] != hostAdminGroupJoinCall("alice", "peers") {
+		t.Fatalf("group command calls = %q, want %q", calls, hostAdminGroupJoinCall("alice", "peers"))
 	}
-	mustContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
-	mustNotContain(t, "stdout", stdout, hostAdminGroupJoinCommand("alice", "agent-peer"))
+	mustContain(t, "stdout", stdout, adminGroupHint("alice", "peers"))
+	mustNotContain(t, "stdout", stdout, hostAdminGroupJoinCommand("alice", "peers"))
 }
 
 func TestInstallScriptSystemNoAdminGroup(t *testing.T) {
@@ -1482,9 +1482,9 @@ func TestInstallScriptSystemNoAdminGroup(t *testing.T) {
 	if calls := readLines(t, f.groupLog); len(calls) != 0 {
 		t.Fatalf("group command calls = %q, want none", calls)
 	}
-	mustNotContain(t, "terminal", tty, adminGroupPrompt("alice", "agent-peer"))
-	mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
-	mustNotContain(t, "stdout", stdout, hostAdminGroupJoinCommand("alice", "agent-peer"))
+	mustNotContain(t, "terminal", tty, adminGroupPrompt("alice", "peers"))
+	mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "peers"))
+	mustNotContain(t, "stdout", stdout, hostAdminGroupJoinCommand("alice", "peers"))
 }
 
 func TestInstallScriptSystemAdminGroupFlagsConflict(t *testing.T) {
@@ -1546,7 +1546,7 @@ func TestInstallScriptSystemSkipsAdminGroupWhenAlreadyMember(t *testing.T) {
 	f := newFixture(t)
 	prefix := f.systemPrefix(t)
 	env := f.systemInstallEnv("alice")
-	env["FAKE_ID_GROUPS"] = "alice staff agent-peer"
+	env["FAKE_ID_GROUPS"] = "alice staff peers"
 	stdout, stderr, tty, code := f.runWithTTY(t, "y\n", env, systemInstallArgs(prefix)...)
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s\nterminal:\n%s", code, stdout, stderr, tty)
@@ -1554,8 +1554,8 @@ func TestInstallScriptSystemSkipsAdminGroupWhenAlreadyMember(t *testing.T) {
 	if calls := readLines(t, f.groupLog); len(calls) != 0 {
 		t.Fatalf("group command calls = %q, want none for an existing member", calls)
 	}
-	mustNotContain(t, "terminal", tty, adminGroupPrompt("alice", "agent-peer"))
-	mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
+	mustNotContain(t, "terminal", tty, adminGroupPrompt("alice", "peers"))
+	mustNotContain(t, "stdout", stdout, adminGroupHint("alice", "peers"))
 }
 
 func TestInstallScriptSystemSkipsAdminGroupWithoutSudoUser(t *testing.T) {
@@ -1595,10 +1595,10 @@ func TestInstallScriptSystemAdminGroupOnDarwin(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 		}
-		if calls := readLines(t, f.groupLog); len(calls) != 1 || calls[0] != "dseditgroup -o edit -a alice -t user agent-peer" {
+		if calls := readLines(t, f.groupLog); len(calls) != 1 || calls[0] != "dseditgroup -o edit -a alice -t user peers" {
 			t.Fatalf("group command calls = %q, want one dseditgroup call", calls)
 		}
-		mustContain(t, "stdout", stdout, adminGroupHint("alice", "agent-peer"))
+		mustContain(t, "stdout", stdout, adminGroupHint("alice", "peers"))
 	})
 
 	t.Run("decline", func(t *testing.T) {
@@ -1613,7 +1613,7 @@ func TestInstallScriptSystemAdminGroupOnDarwin(t *testing.T) {
 		if calls := readLines(t, f.groupLog); len(calls) != 0 {
 			t.Fatalf("group command calls = %q, want none", calls)
 		}
-		mustContain(t, "stdout", stdout, darwinAdminGroupJoinCommand("alice", "agent-peer"))
+		mustContain(t, "stdout", stdout, darwinAdminGroupJoinCommand("alice", "peers"))
 		mustNotContain(t, "stdout", stdout, "sudo usermod")
 	})
 }
@@ -1645,7 +1645,7 @@ func TestInstallScriptSystemAdminGroupFailure(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1\nstderr:\n%s", code, stderr)
 	}
-	mustContain(t, "stderr", stderr, "adding alice to the agent-peer group")
+	mustContain(t, "stderr", stderr, "adding alice to the peers group")
 }
 
 func TestInstallScriptRemovesQuarantineOnDarwin(t *testing.T) {
@@ -1654,7 +1654,7 @@ func TestInstallScriptRemovesQuarantineOnDarwin(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0\nstderr:\n%s", code, stderr)
 	}
-	want := "-d com.apple.quarantine " + filepath.Join(f.resolvedArchive(t), "agent-peer")
+	want := "-d com.apple.quarantine " + filepath.Join(f.resolvedArchive(t), "peers")
 	mustContain(t, "xattr log", strings.Join(readLines(t, f.xattrLog), "\n"), want)
 
 	order := readLines(t, f.orderLog)
@@ -1696,7 +1696,7 @@ func TestInstallScriptHasNoNetworkOperations(t *testing.T) {
 	}
 }
 
-const fakeAgentPeer = `#!/bin/sh
+const fakePeers = `#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE_AGENT_LOG"
 case $1 in
 --version)
@@ -1705,9 +1705,9 @@ case $1 in
 service)
 	_exit=${FAKE_AGENT_SERVICE_EXIT:-0}
 	if [ "$_exit" = "0" ] || [ "$_exit" = "3" ]; then
-		printf 'agent-peer %s installed (user-level, starts at login)\n' "${FAKE_AGENT_VERSION#agent-peer }"
-		printf '  binary:     %s\n' "${FAKE_AGENT_BINARY:-/usr/local/bin/agent-peer}"
-		printf '  uninstall:  agent-peer uninstall\n'
+		printf 'peers %s installed (user-level, starts at login)\n' "${FAKE_AGENT_VERSION#peers }"
+		printf '  binary:     %s\n' "${FAKE_AGENT_BINARY:-/usr/local/bin/peers}"
+		printf '  uninstall:  peers uninstall\n'
 	fi
 	if [ "$_exit" = "3" ]; then
 		printf 'Broker: degraded (local only): cannot bind 127.0.0.1:17443\n' >&2
@@ -1721,7 +1721,7 @@ esac
 exit 0
 `
 
-const fakePathAgentPeer = `#!/bin/sh
+const fakePathPeers = `#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE_PATH_AGENT_LOG"
 exit 0
 `

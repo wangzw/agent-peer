@@ -107,7 +107,7 @@ func TestREQBrokerConfig042_RemoteInstallUser(t *testing.T) {
 	}
 
 	home := remoteInstallHome(t)
-	binary := filepath.Join(home, ".local", "bin", "agent-peer")
+	binary := filepath.Join(home, ".local", "bin", "peers")
 	remoteInstallRequireVersion(t, remoteInstallAccount, binary, remoteInstallLatestVersion)
 
 	remoteInstallRequireActive(t, remoteInstallAccount, env, "systemctl", "--user", "is-active", "agent-peer.service")
@@ -191,7 +191,7 @@ func TestREQBrokerConfig042_RemoteInstallPinnedVersion(t *testing.T) {
 			remoteInstallPinnedVersion, res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
 
-	binary := filepath.Join(remoteInstallHome(t), ".local", "bin", "agent-peer")
+	binary := filepath.Join(remoteInstallHome(t), ".local", "bin", "peers")
 	remoteInstallRequireVersion(t, remoteInstallAccount, binary, remoteInstallPinnedVersion)
 }
 
@@ -495,7 +495,7 @@ func (s *remoteInstallReleaseSet) checksums(release *remoteInstallRelease) []byt
 
 // remoteInstallPackageName is the archive name the remote script asks for.
 func remoteInstallPackageName(version string) string {
-	return fmt.Sprintf("agent-peer_%s_linux_%s.tar.gz", version, runtime.GOARCH)
+	return fmt.Sprintf("peers_%s_linux_%s.tar.gz", version, runtime.GOARCH)
 }
 
 // remoteInstallArchiveReadme returns the README the real archive carries. The
@@ -573,7 +573,7 @@ type remoteInstallArchiveFile struct {
 func remoteInstallTarGz(t *testing.T, version string, binary, installScript, readme, license []byte) []byte {
 	t.Helper()
 	files := []remoteInstallArchiveFile{
-		{"agent-peer", 0o755, binary},
+		{"peers", 0o755, binary},
 	}
 	if installScript != nil {
 		files = append(files, remoteInstallArchiveFile{"install.sh", 0o755, installScript})
@@ -798,7 +798,7 @@ func remoteInstallPeerTempDir(t *testing.T, uid uint32) string {
 func remoteInstallRequireUnchanged(t *testing.T, home string, peerUID uint32, tmp string) {
 	t.Helper()
 	for _, path := range []string{
-		filepath.Join(home, ".local", "bin", "agent-peer"),
+		filepath.Join(home, ".local", "bin", "peers"),
 		userUnitPath(t),
 		systemUnitPath,
 		filepath.Join(home, ".agent-peer", "config.yaml"),
@@ -885,7 +885,7 @@ func remoteInstallServerRequests(t *testing.T, base string) []string {
 func remoteInstallRequireVersion(t *testing.T, account, binary, version string) {
 	t.Helper()
 	res := runWithEnv(t, account, nil, binary, "--version")
-	want := "agent-peer " + version
+	want := "peers " + version
 	if got := strings.TrimSpace(res.Stdout); res.ExitCode != 0 || got != want {
 		t.Fatalf("%s --version as %s = %q (exit %d), want %q\nstderr: %s",
 			binary, account, got, res.ExitCode, want, strings.TrimSpace(res.Stderr))

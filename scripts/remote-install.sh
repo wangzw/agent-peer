@@ -1,9 +1,9 @@
 #!/bin/sh
-# Install agent-peer with one command from a published GitHub release.
+# Install peers with one command from a published GitHub release.
 #
 # Usage:
-#   curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
-#   curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version <version>
+#   curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh -s -- --version <version>
 #
 # The packaged install.sh chooses the installation level. It asks on the
 # controlling terminal whether to install at the system level, runs itself
@@ -39,7 +39,7 @@
 
 set -eu
 
-default_release_base=https://github.com/wangzw/agent-peer/releases
+default_release_base=https://github.com/wangzw/peers/releases
 
 # The test hook may point at a local HTTP server, so the scheme of the base
 # decides which transport restriction is applied below.
@@ -237,7 +237,7 @@ main() {
 		*) fail "unsupported architecture '$_machine': this script supports x86_64 and arm64" ;;
 	esac
 
-	archive="agent-peer_${version}_${os}_${arch}.tar.gz"
+	archive="peers_${version}_${os}_${arch}.tar.gz"
 	release_url=$release_base/download/v$version
 
 	# 4. Download into a temporary directory that exists only for this run. The
@@ -246,7 +246,7 @@ main() {
 	# BSD mktemp, unlike GNU mktemp, ignores TMPDIR when it creates a directory
 	# from no template; passing one keeps the directory in TMPDIR on every
 	# supported platform.
-	tmp=$(mktemp -d "${TMPDIR:-/tmp}/agent-peer-install.XXXXXXXXXX") \
+	tmp=$(mktemp -d "${TMPDIR:-/tmp}/peers-install.XXXXXXXXXX") \
 		|| fail "creating a temporary directory"
 	trap 'rm -rf "$tmp"' EXIT
 	trap 'exit 129' HUP
