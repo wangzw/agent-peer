@@ -61,7 +61,7 @@ For a system-level installation the command asks the system-level Broker to upda
 
 A system-level Broker that you started by hand in a terminal cannot update itself: the command reports an error that gives the commands for installing the Broker as a service. Whether a Broker runs under the service manager is decided by the main process PID that the service manager reports.
 
-The command waits until the restarted Broker reports the new version. If it does not within the wait, the command reports a timeout and names where the system-level service writes its log. A failure before the replacement leaves the binary and the service unchanged. If rewriting the service definition fails, the Broker rolls back to the old binary, does not restart, and the command reports the reason.
+The command waits until the restarted Broker reports the new version. If it does not within the wait, the command reports a timeout and names where the system-level service writes its log. A failure before the replacement leaves the binary and the service unchanged. If rewriting the service definition fails or times out, the Broker restores the previous binary and the service definition, does not restart, keeps running the old version, and the command reports the reason.
 
 A system-level update restarts only the system-level service. When other accounts run a user-level Broker from the same binary, each of them must restart its own Broker before it uses the new version.
 
