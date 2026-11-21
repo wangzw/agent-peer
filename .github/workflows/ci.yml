@@ -114,6 +114,13 @@ jobs:
           cache: true
       - name: Run the tests
         run: make test JOBS=4
+      # These tests need root and skip themselves otherwise. The pairing test
+      # changes file ownership, and the config test reads a security ACL that
+      # only root can see. The overrides narrow test-root to those two cases;
+      # PATH keeps the setup-go toolchain visible and HOME keeps the Go caches
+      # in the same place the non-root step used.
+      - name: Run the tests that need root
+        run: sudo --preserve-env=PATH,HOME make test-root JOBS=2 ROOT_TEST_PKGS="./internal/pairing ./internal/config" ROOT_TEST_RUN='^(TestIdentityRejectsForeignOwner|TestConfigFileRootOnlyWritableDarwin)$$' ROOT_TEST_CASES="github.com/wangzw/agent-peer/internal/pairing:TestIdentityRejectsForeignOwner github.com/wangzw/agent-peer/internal/config:TestConfigFileRootOnlyWritableDarwin"
 
   macos-service:
     name: service end-to-end

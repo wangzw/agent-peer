@@ -133,9 +133,11 @@ test:
 
 # Tests that need root: they change file ownership or start a child as another
 # account. Each test skips itself without root, so `make check` still passes on
-# a developer account; CI runs this target under sudo. The test names are
-# asserted to pass, because a skip also makes `go test` succeed and would
-# otherwise hide the regression the step exists to catch.
+# a developer account; CI runs this target under sudo. The three variables
+# below name the default set; a caller may override them to run a different
+# set, as the macOS job does for the two tests that need root there. The test
+# names are asserted to pass, because a skip also makes `go test` succeed and
+# would otherwise hide the regression the step exists to catch.
 ROOT_TEST_PKGS ?= ./internal/broker/helper ./internal/pairing
 ROOT_TEST_RUN ?= ^(TestAccessCheckChildKeepsRootRealIdentity|TestRootHelperReportsTargetIdentity|TestRootAccessCheckUsesTargetCredentials|TestIdentityRejectsForeignOwner)$$
 ROOT_TEST_CASES ?= github.com/wangzw/agent-peer/internal/broker/helper:TestAccessCheckChildKeepsRootRealIdentity github.com/wangzw/agent-peer/internal/broker/helper:TestRootHelperReportsTargetIdentity github.com/wangzw/agent-peer/internal/broker/helper:TestRootAccessCheckUsesTargetCredentials github.com/wangzw/agent-peer/internal/pairing:TestIdentityRejectsForeignOwner
