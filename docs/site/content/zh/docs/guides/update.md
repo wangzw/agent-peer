@@ -44,7 +44,7 @@ peers update
 
 ### 更新用户级安装
 
-本账户的用户级 Broker 在服务管理器下运行时，命令请这个 Broker 自己更新。Broker 下载适用于本平台与架构的发布包，与 `checksums.txt` 比对，运行新二进制核对它报出的版本是否符合预期，在保留原有权限模式与属主的前提下替换自己的二进制，然后退出；服务管理器以新版本重新启动它。命令要等到新 Broker 报出新版本才返回，输出如下：
+本账户的用户级 Broker 在服务管理器下运行时，命令请这个 Broker 自己更新。Broker 下载适用于本平台与架构的发布包，与 `checksums.txt` 比对，运行新二进制核对它报出的版本是否符合预期，在保留原有权限模式与属主的前提下替换自己的二进制，按新版本的格式重写用户级服务定义（systemd 的 drop-in 与 macOS plist 里的 `EnvironmentVariables` 都原样保留），然后退出；服务管理器以新版本重新启动它。重写失败或超时时，二进制与服务定义都恢复为旧版本，Broker 继续以旧版本运行，命令报告原因。命令要等到新 Broker 报出新版本才返回，输出如下：
 
 ```text
 peers <installed> is installed. Update to the latest release? [y/N] y
@@ -57,11 +57,11 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 
 ### 更新系统级安装
 
-对系统级安装，命令请系统级 Broker 自己更新，Broker 做同样的工作：先检查自己能否写入配置文件，再下载并校验发布包，替换自己的二进制，由服务管理器以新版本重新启动。管理组成员不用 `sudo` 就能运行这条命令，见[管理权限]({{< relref "/docs/guides/management-permissions" >}}#管理组)。不在组内的账户会被拒绝，因为 Broker 按配置文件的写权限判定，要改用 `sudo peers update`，或者先加入管理组。本账户同时运行着自己的用户级 Broker 时，命令先选中它，要用 `sudo peers update` 才能到达系统级 Broker。
+对系统级安装，命令请系统级 Broker 自己更新，Broker 做同样的工作：先检查自己能否写入配置文件，再下载并校验发布包，替换自己的二进制，由服务管理器以新版本重新启动。替换二进制之后、重启之前，它会按新版本的格式重写系统级服务定义，systemd 的 drop-in 与 macOS plist 里的 `EnvironmentVariables` 都原样保留。管理组成员不用 `sudo` 就能运行这条命令，见[管理权限]({{< relref "/docs/guides/management-permissions" >}}#管理组)。不在组内的账户会被拒绝，因为 Broker 按配置文件的写权限判定，要改用 `sudo peers update`，或者先加入管理组。本账户同时运行着自己的用户级 Broker 时，命令先选中它，要用 `sudo peers update` 才能到达系统级 Broker。
 
 在终端里手动启动的系统级 Broker 不能自己更新：命令会报错，并给出把 Broker 装成服务的命令。Broker 是否在服务管理器下运行，按服务管理器报告的主进程 PID 判断。
 
-命令要等到重启后的 Broker 报出新版本。超过等待时间仍未报出时，命令报告超时，并给出系统级服务日志的位置。替换之前的任何一步失败，二进制与服务都不改动。
+命令要等到重启后的 Broker 报出新版本。超过等待时间仍未报出时，命令报告超时，并给出系统级服务日志的位置。替换之前的任何一步失败，二进制与服务都不改动。重写服务定义失败时，二进制回滚为旧版本，Broker 不重启，命令报告原因。
 
 系统级更新只重启系统级服务。其他账户如果从同一个二进制运行用户级 Broker，要各自重启自己的 Broker，才会用上新版本。
 
@@ -70,9 +70,9 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 系统级 Broker 从服务环境里读取这些变量：
 
 - Linux：运行 `sudo systemctl edit peers.service`，加入 `[Service]` 与 `Environment=HTTPS_PROXY=http://proxy.example:8080`（需要时加上 `HTTP_PROXY` 与 `NO_PROXY`），然后运行 `sudo peers service restart`。drop-in 在重装后仍然保留。
-- macOS：在 `/Library/LaunchDaemons/io.github.wangzw.peers.plist` 里加入 `EnvironmentVariables` 字典，写入 `HTTPS_PROXY` 等变量，然后运行 `sudo peers service restart`，重启会重新读取 plist。重装会重写 plist，之后要重新加入这个字典。
+- macOS：在 `/Library/LaunchDaemons/io.github.wangzw.peers.plist` 里加入 `EnvironmentVariables` 字典，写入 `HTTPS_PROXY` 等变量，然后运行 `sudo peers service restart`，重启会重新读取 plist。重装会重写 plist，之后要重新加入这个字典；更新则会保留这个字典。
 
-用户级服务的做法相同：Linux 上用 `systemctl --user edit peers.service` 编辑 drop-in，再用 `peers service restart` 重启服务；macOS 上在 `~/Library/LaunchAgents/io.github.wangzw.peers.plist` 里加入字典，再运行 `peers service restart`，重启会重新读取 plist。重装同样会重写这个 plist，之后要重新加入。
+用户级服务的做法相同：Linux 上用 `systemctl --user edit peers.service` 编辑 drop-in，再用 `peers service restart` 重启服务；macOS 上在 `~/Library/LaunchAgents/io.github.wangzw.peers.plist` 里加入字典，再运行 `peers service restart`，重启会重新读取 plist。重装同样会重写这个 plist，之后要重新加入；更新则会保留。
 
 ### 没有正在运行的 Broker
 

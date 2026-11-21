@@ -44,7 +44,7 @@ Add `--yes` to skip the question. When standard input is not a terminal, as in a
 
 ### Update a user-level installation
 
-When this account's user-level Broker is running under the service manager, the command asks that Broker to update itself. The Broker downloads the archive for this platform and architecture, checks it against `checksums.txt`, runs the new binary to confirm that it reports the expected version, replaces its binary while keeping the original mode and owner, and exits; the service manager starts the new version. The command returns only after the new Broker reports the new version, and the output looks like this:
+When this account's user-level Broker is running under the service manager, the command asks that Broker to update itself. The Broker downloads the archive for this platform and architecture, checks it against `checksums.txt`, runs the new binary to confirm that it reports the expected version, replaces its binary while keeping the original mode and owner, rewrites the user-level service definition in the new version's format (a systemd drop-in and the `EnvironmentVariables` in a macOS plist are kept as they are), and exits; the service manager starts the new version. If rewriting the service definition fails or times out, the Broker restores the previous binary and the service definition, does not restart, keeps running the old version, and the command reports the reason. The command returns only after the new Broker reports the new version, and the output looks like this:
 
 ```text
 peers <installed> is installed. Update to the latest release? [y/N] y
@@ -57,11 +57,11 @@ When the user-level Broker does not run under the service manager, the Broker de
 
 ### Update a system-level installation
 
-For a system-level installation the command asks the system-level Broker to update itself, and the Broker does the same work: it checks write permission on its configuration file, downloads and verifies the release, replaces its binary, and the service manager restarts it. Members of the admin group run the command without `sudo`; [Management permissions]({{< relref "/docs/guides/management-permissions" >}}#the-admin-group) describes the group. An account outside the group is refused, because the Broker checks write permission on its configuration file, so use `sudo peers update` instead, or join the group first. When this account also runs its own user-level Broker, the command selects that Broker first, so `sudo peers update` is the way to reach the system-level Broker.
+For a system-level installation the command asks the system-level Broker to update itself, and the Broker does the same work: it checks write permission on its configuration file, downloads and verifies the release, replaces its binary, and the service manager restarts it. After replacing the binary and before the restart, it rewrites the system-level service definition in the new version's format, and a systemd drop-in and a macOS plist's `EnvironmentVariables` are kept as they are. Members of the admin group run the command without `sudo`; [Management permissions]({{< relref "/docs/guides/management-permissions" >}}#the-admin-group) describes the group. An account outside the group is refused, because the Broker checks write permission on its configuration file, so use `sudo peers update` instead, or join the group first. When this account also runs its own user-level Broker, the command selects that Broker first, so `sudo peers update` is the way to reach the system-level Broker.
 
 A system-level Broker that you started by hand in a terminal cannot update itself: the command reports an error that gives the commands for installing the Broker as a service. Whether a Broker runs under the service manager is decided by the main process PID that the service manager reports.
 
-The command waits until the restarted Broker reports the new version. If it does not within the wait, the command reports a timeout and names where the system-level service writes its log. A failure before the replacement leaves the binary and the service unchanged.
+The command waits until the restarted Broker reports the new version. If it does not within the wait, the command reports a timeout and names where the system-level service writes its log. A failure before the replacement leaves the binary and the service unchanged. If rewriting the service definition fails, the Broker rolls back to the old binary, does not restart, and the command reports the reason.
 
 A system-level update restarts only the system-level service. When other accounts run a user-level Broker from the same binary, each of them must restart its own Broker before it uses the new version.
 
@@ -70,9 +70,9 @@ An update the Broker applies downloads through the Broker service process, so it
 A system-level Broker reads them from its service environment:
 
 - Linux: run `sudo systemctl edit peers.service`, add `[Service]` and `Environment=HTTPS_PROXY=http://proxy.example:8080` (plus `HTTP_PROXY` and `NO_PROXY` as needed), then run `sudo peers service restart`. The drop-in survives a reinstall.
-- macOS: add an `EnvironmentVariables` dictionary to `/Library/LaunchDaemons/io.github.wangzw.peers.plist` with `HTTPS_PROXY` and any other variables, then run `sudo peers service restart`, which reads the plist again. A reinstall rewrites the plist, so add the dictionary again afterwards.
+- macOS: add an `EnvironmentVariables` dictionary to `/Library/LaunchDaemons/io.github.wangzw.peers.plist` with `HTTPS_PROXY` and any other variables, then run `sudo peers service restart`, which reads the plist again. A reinstall rewrites the plist, so add the dictionary again afterwards; an update keeps this dictionary.
 
-A user-level service works the same way: on Linux, edit the drop-in with `systemctl --user edit peers.service` and restart the service with `peers service restart`; on macOS, add the dictionary to `~/Library/LaunchAgents/io.github.wangzw.peers.plist` and run `peers service restart`, which reads the plist again. A reinstall rewrites that plist too, so add the dictionary again afterwards.
+A user-level service works the same way: on Linux, edit the drop-in with `systemctl --user edit peers.service` and restart the service with `peers service restart`; on macOS, add the dictionary to `~/Library/LaunchAgents/io.github.wangzw.peers.plist` and run `peers service restart`, which reads the plist again. A reinstall rewrites that plist too, so add the dictionary again afterwards; an update keeps it as well.
 
 ### Update with no running Broker
 
