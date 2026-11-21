@@ -29,7 +29,7 @@ func (a *app) serviceSetOnlineCommand(name string, online bool, short string) *c
 			if err != nil {
 				return err
 			}
-			return a.deps.runSetOnline(cmd.Context(), system, online, a.stdout)
+			return a.deps.runSetOnline(cmd.Context(), system, level.explicit(), online, a.stdout)
 		},
 	}
 	level = addLevelFlags(cmd)

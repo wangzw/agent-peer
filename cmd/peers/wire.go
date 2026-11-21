@@ -36,13 +36,13 @@ var findBroker termcmd.Selector = mcpserver.FindBrokerWithDial
 // use. It is a variable for the same reason as findBroker.
 var findBrokerForLevel = mcpserver.FindBrokerWithDialForLevel
 
-var _ func(context.Context, bool) (string, termcmd.Dialer, error) = findBrokerForLevel
+var _ func(context.Context, bool, bool) (string, termcmd.Dialer, error) = findBrokerForLevel
 
 // selectorForLevel turns the level-aware selector into the termcmd.Selector the
-// shared runners take.
-func selectorForLevel(system bool) termcmd.Selector {
+// shared runners take. explicit says whether a level option named the level.
+func selectorForLevel(system, explicit bool) termcmd.Selector {
 	return func(ctx context.Context) (string, termcmd.Dialer, error) {
-		return findBrokerForLevel(ctx, system)
+		return findBrokerForLevel(ctx, system, explicit)
 	}
 }
 
@@ -72,11 +72,11 @@ func realDeps(version string) deps {
 				LocalProtocolVersion: local,
 			})
 		},
-		runStatus: func(ctx context.Context, system bool, stdout io.Writer) error {
-			return termcmd.RunStatus(ctx, selectorForLevel(system), stdout)
+		runStatus: func(ctx context.Context, system, explicit bool, stdout io.Writer) error {
+			return termcmd.RunStatus(ctx, selectorForLevel(system, explicit), stdout)
 		},
-		runAudit: func(ctx context.Context, system bool, stdout io.Writer, limit uint32) error {
-			return termcmd.RunAudit(ctx, selectorForLevel(system), limit, stdout)
+		runAudit: func(ctx context.Context, system, explicit bool, stdout io.Writer, limit uint32) error {
+			return termcmd.RunAudit(ctx, selectorForLevel(system, explicit), limit, stdout)
 		},
 		runConfigGet: func(ctx context.Context, key string, stdout io.Writer) error {
 			return termcmd.RunConfigGet(ctx, findBroker, key, stdout)
@@ -84,8 +84,8 @@ func realDeps(version string) deps {
 		runConfigSet: func(ctx context.Context, key, value string, stdout io.Writer) error {
 			return termcmd.RunConfigSet(ctx, findBroker, key, value, stdout)
 		},
-		runSetOnline: func(ctx context.Context, system, online bool, stdout io.Writer) error {
-			return termcmd.RunSetOnline(ctx, selectorForLevel(system), online, stdout)
+		runSetOnline: func(ctx context.Context, system, explicit, online bool, stdout io.Writer) error {
+			return termcmd.RunSetOnline(ctx, selectorForLevel(system, explicit), online, stdout)
 		},
 		runPairingKeyCreate: func(ctx context.Context, stdout io.Writer) error {
 			return termcmd.RunPairingKeyCreate(ctx, findBroker, stdout)

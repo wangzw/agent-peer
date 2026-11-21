@@ -12,9 +12,10 @@ import (
 
 // setOnlineCall is one recorded runSetOnline call.
 type setOnlineCall struct {
-	system bool
-	online bool
-	out    io.Writer
+	system   bool
+	explicit bool
+	online   bool
+	out      io.Writer
 }
 
 // serviceSubcommand returns the named child of "peers service".

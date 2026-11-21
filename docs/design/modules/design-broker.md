@@ -156,7 +156,7 @@ service Local {
 
 进程级信号由 `cmd/peers` 统一处理：第一次 SIGINT 或 SIGTERM 取消运行，第二次直接终止进程。
 
-`service status`、`service online`、`service offline` 与 `service audit` 连接所选级别的 Broker，级别由 `--system` 或 `--user` 指定，都不给时 root 为系统级，其他账户为本账户的用户级。`config`、`key`、`broker` 与 `update` 连接哪个 Broker 按调用者身份选择，不提供显式参数：root 连接系统级 Broker；其他账户按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的顺序前三项确定，先找本账户的用户级 Broker，没有再落到系统级。选择只查找正在运行的 Broker，不启动 Broker。`update` 对选出的 Broker 调用 `ApplyUpdate`；返回 `failed_precondition` 且所选的是本账户的用户级 Broker 时，改为在本地替换；选不出正在运行的 Broker 时同样在本地替换（见“更新检查与自我更新”）。其余命令找不到正在运行的 Broker 时报错，报错文字与 `service status` 相同，说明 `peers service install` 与 `peers service run` 两种启动方法。连上后先调用 `Hello`，本机协议版本不同时报 `version_mismatch` 并退出，说明 Broker 与本二进制各自的版本，提示用本二进制重启 Broker。单个一元调用超时 10 秒；`Audit` 的流不设总时限，靠信号取消。会话中的 MCP 服务进程按自己的顺序选择 Broker，与终端命令各自独立。
+`service status`、`service online`、`service offline` 与 `service audit` 连接所选级别的 Broker，级别由 `--system` 或 `--user` 指定，都不给时 root 为系统级，其他账户为本账户的用户级。`config`、`key`、`broker` 与 `update` 连接哪个 Broker 按调用者身份选择，不提供显式参数：root 连接系统级 Broker；其他账户按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的顺序前三项确定，先找本账户的用户级 Broker，没有再落到系统级。选择只查找正在运行的 Broker，不启动 Broker。`--system` 找不到正在运行的 Broker 时报系统级 Broker 不可用；都不给级别而本账户的用户级 Broker 不在、系统级 Broker 在运行时，报错提示加 `--system`。`update` 对选出的 Broker 调用 `ApplyUpdate`；返回 `failed_precondition` 且所选的是本账户的用户级 Broker 时，改为在本地替换；选不出正在运行的 Broker 时同样在本地替换（见“更新检查与自我更新”）。其余命令找不到正在运行的 Broker 时报错，报错文字与 `service status` 相同，说明 `peers service install` 与 `peers service run` 两种启动方法。连上后先调用 `Hello`，本机协议版本不同时报 `version_mismatch` 并退出，说明 Broker 与本二进制各自的版本，提示用本二进制重启 Broker。单个一元调用超时 10 秒；`Audit` 的流不设总时限，靠信号取消。会话中的 MCP 服务进程按自己的顺序选择 Broker，与终端命令各自独立。
 
 `service status` 的输出分 Agent 与对端两段，表格按地址或别名排序，空值写 `-`；topic 按字典序以逗号连接；指纹写完整的 64 位小写十六进制，不截短；枚举取值写去掉前缀的小写蛇形。段内没有条目时写 `Agents: none` 或 `Peers: none`。`service audit` 每个事件输出一行，按到达顺序排列，依次是 RFC 3339 UTC 时间、事件名，以及 `actor`、`account`、`peer`、`key`、`old`、`new`、`count`、`detail` 中的非空字段；值为空或含空格、引号、等号时加引号。
 
@@ -174,7 +174,7 @@ service Local {
 
 服务定义以允许降级运行的方式启动 Broker：Linux 用户级为 `ExecStart=<二进制> service run --user --allow-degraded`，系统级为 `ExecStart=<二进制> service run --system --allow-degraded`；macOS 的 `ProgramArguments` 为 `service run --user` 或 `service run --system`，末尾加 `--allow-degraded`（`REQ-broker-config-063`）。本机 socket 应答之后调用一次 `Status`：处于降级运行时，服务保持已安装并在运行，输出 `Status` 的故障与修复提示，以退出码 3 结束（`REQ-broker-config-064`）。
 
-本机 socket 应答且服务管理器报告的 PID 与 socket 对端 PID 一致之后，服务即视为已安装并在运行。此后读不到 `Status` 时，安装先在就绪等待的剩余时间内重试；仍然失败则以退出码 1 结束，不清理也不禁用服务，报错说明服务在运行、状态读不到，并引导用户执行 `peers service status`。
+本机 socket 应答且服务管理器报告的 PID 与 socket 对端 PID 一致之后，服务即视为已安装并在运行。此后读不到 `Status` 时，安装先在就绪等待的剩余时间内重试；仍然失败则以退出码 1 结束，不清理也不禁用服务，报错说明服务在运行、状态读不到，并引导用户执行 `peers service status`（系统级加 `--system`）。
 
 成功或降级时，`service install` 打印汇总（`REQ-broker-config-050`）：
 

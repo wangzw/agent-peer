@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"google.golang.org/grpc/status"
@@ -33,12 +34,12 @@ const (
 // Texts shown to the model. The local-state texts are format strings; the rest
 // are used verbatim.
 const (
-	textStarting        = "the connection to the Broker is still being set up; retry shortly"
-	textUnavailable     = "the Broker is unavailable: %s; retrying in the background"
-	textNoBroker        = "no Broker is available for this account; if a system-level Broker is installed on this host, ask the administrator to start it. Otherwise start a user-level Broker with `peers service install`, or run `peers service run` in a terminal outside the Claude Code session (a Broker started inside the session exits with code 6)"
-	textNoSystemBroker  = "the system-level Broker is unavailable; ask the administrator to start it"
-	textVersionMismatch = "%s. To fix it, %s"
-	textNotRegistered   = "this session is not registered as an agent: %s"
+	textStarting                  = "the connection to the Broker is still being set up; retry shortly"
+	textUnavailable               = "the Broker is unavailable: %s; retrying in the background"
+	textNoBroker                  = "no Broker is available for this account; if a system-level Broker is installed on this host, ask the administrator to start it. Otherwise start a user-level Broker with `peers service install`, or run `peers service run` in a terminal outside the Claude Code session (a Broker started inside the session exits with code 6)"
+	textNoUserBrokerSystemRunning = "no user-level Broker is running for this account; a system-level Broker is running, so retry with `--system`"
+	textVersionMismatch           = "%s. To fix it, %s"
+	textNotRegistered             = "this session is not registered as an agent: %s"
 
 	textSendLost    = "lost contact with the Broker before it answered; the message may have been delivered, and sending it again may deliver it twice"
 	textConnectLost = "lost contact with the Broker before it answered; the pairing may still have completed, check list_brokers"
@@ -51,9 +52,38 @@ const (
 	textNoDefaultTopic = "this session has no default topic; pass name to choose one"
 )
 
+// The text for an empty system-level selection depends on the account: root is
+// the administrator, so it is told the command to run, while every other
+// account must ask the administrator.
+const (
+	textNoSystemBrokerNonRoot = "the system-level Broker is unavailable; ask the administrator to start it"
+	textNoSystemBrokerRoot    = "the system-level Broker is unavailable; start it with `peers service start --system`"
+)
+
+// systemBrokerText returns the text for an empty system-level selection. Root
+// needs no sudo for the command it names.
+func systemBrokerText(isRoot bool) string {
+	if isRoot {
+		return textNoSystemBrokerRoot
+	}
+	return textNoSystemBrokerNonRoot
+}
+
+// textNoSystemBroker is the text for this account, chosen once at startup.
+var textNoSystemBroker = systemBrokerText(os.Geteuid() == 0)
+
 // errNoBroker is the selection result when no Broker socket answers. Its text
 // names the two ways to start a Broker, so the model can tell the user.
 var errNoBroker = errors.New(textNoBroker)
+
+// errNoSystemBroker is the selection result when the system level was selected,
+// by --system or as root's default, and no system-level Broker answers.
+var errNoSystemBroker = errors.New(textNoSystemBroker)
+
+// errNoUserBrokerSystemRunning is the default-level selection result when this
+// account's user-level Broker is not running but the system-level Broker is.
+// The text names the level option that reaches the running Broker.
+var errNoUserBrokerSystemRunning = errors.New(textNoUserBrokerSystemRunning)
 
 // openingPhrase returns the phrase that starts the error text for a call kind.
 func openingPhrase(tool string, kind callKind) string {

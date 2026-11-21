@@ -187,28 +187,52 @@ func TestPreflight(t *testing.T) {
 // TestPreflightVersionRemedies checks the three remedy clauses for a version
 // mismatch (REQ-broker-config-016): each must tell the reader to restart the
 // Broker, and none may drop the "To fix it" clause.
-// TestNoSystemBrokerTextOmitsUserLevelMethods checks the ruling for
+// TestNoSystemBrokerTextNamesTheRightActor checks the ruling for
 // REQ-broker-config-037: a session that was using the system-level Broker must
-// not be told to install or start a user-level Broker.
-func TestNoSystemBrokerTextOmitsUserLevelMethods(t *testing.T) {
-	st := &statusStore{}
-	st.Update(func(s *Status) {
-		s.Phase = PhaseNoBroker
-		s.Detail = textNoSystemBroker
-	})
-	h := &handlers{st: st}
+// not be told to install or start a user-level Broker. Every other account is
+// told to ask the administrator; root is the administrator, so its text names
+// the command root runs instead.
+func TestNoSystemBrokerTextNamesTheRightActor(t *testing.T) {
+	cases := []struct {
+		name string
+		root bool
+		text string
+	}{
+		{name: "non-root asks the administrator", text: textNoSystemBrokerNonRoot},
+		{name: "root runs the command", root: true, text: textNoSystemBrokerRoot},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := systemBrokerText(tc.root); got != tc.text {
+				t.Fatalf("systemBrokerText(%t) = %q, want %q", tc.root, got, tc.text)
+			}
+			st := &statusStore{}
+			st.Update(func(s *Status) {
+				s.Phase = PhaseNoBroker
+				s.Detail = tc.text
+			})
+			h := &handlers{st: st}
 
-	_, err := h.preflight("list_agents", callGeneric, false)
-	if err == nil {
-		t.Fatal("preflight returned nil for PhaseNoBroker")
-	}
-	if !strings.Contains(err.Error(), "ask the administrator") {
-		t.Fatalf("error = %q, want it to name the administrator", err)
-	}
-	for _, unwanted := range []string{"peers service install", "peers service run"} {
-		if strings.Contains(err.Error(), unwanted) {
-			t.Fatalf("error = %q, must not mention %q", err, unwanted)
-		}
+			_, err := h.preflight("list_agents", callGeneric, false)
+			if err == nil {
+				t.Fatal("preflight returned nil for PhaseNoBroker")
+			}
+			want := "list_agents failed: " + tc.text + " (code: internal)"
+			if got := err.Error(); got != want {
+				t.Fatalf("preflight error = %q, want %q", got, want)
+			}
+			for _, unwanted := range []string{"peers service install", "peers service run"} {
+				if strings.Contains(err.Error(), unwanted) {
+					t.Fatalf("error = %q, must not mention %q", err, unwanted)
+				}
+			}
+			if tc.root && !strings.Contains(err.Error(), "peers service start --system") {
+				t.Fatalf("error = %q, want it to name the command root runs", err)
+			}
+			if !tc.root && !strings.Contains(err.Error(), "ask the administrator") {
+				t.Fatalf("error = %q, want it to name the administrator", err)
+			}
+		})
 	}
 }
 

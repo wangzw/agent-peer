@@ -36,16 +36,18 @@ type peerConnectCall struct {
 
 // termcmdStub records the calls the terminal commands make into deps.
 type termcmdStub struct {
-	statusCalls  int
-	statusSystem bool
-	statusOut    io.Writer
-	statusErr    error
+	statusCalls    int
+	statusSystem   bool
+	statusExplicit bool
+	statusOut      io.Writer
+	statusErr      error
 
-	auditCalls  int
-	auditSystem bool
-	auditOut    io.Writer
-	auditLimit  uint32
-	auditErr    error
+	auditCalls    int
+	auditSystem   bool
+	auditExplicit bool
+	auditOut      io.Writer
+	auditLimit    uint32
+	auditErr      error
 
 	configGetCalls      []configGetCall
 	configGetErr        error
@@ -71,15 +73,17 @@ type termcmdStub struct {
 func (s *termcmdStub) deps() deps {
 	return deps{
 		euid: func() int { return 1000 },
-		runStatus: func(_ context.Context, system bool, stdout io.Writer) error {
+		runStatus: func(_ context.Context, system, explicit bool, stdout io.Writer) error {
 			s.statusCalls++
 			s.statusSystem = system
+			s.statusExplicit = explicit
 			s.statusOut = stdout
 			return s.statusErr
 		},
-		runAudit: func(_ context.Context, system bool, stdout io.Writer, limit uint32) error {
+		runAudit: func(_ context.Context, system, explicit bool, stdout io.Writer, limit uint32) error {
 			s.auditCalls++
 			s.auditSystem = system
+			s.auditExplicit = explicit
 			s.auditOut = stdout
 			s.auditLimit = limit
 			return s.auditErr
@@ -92,8 +96,8 @@ func (s *termcmdStub) deps() deps {
 			s.configSetCalls = append(s.configSetCalls, configSetCall{key: key, value: value, out: stdout})
 			return s.configSetErr
 		},
-		runSetOnline: func(_ context.Context, system, online bool, stdout io.Writer) error {
-			s.setOnlineCalls = append(s.setOnlineCalls, setOnlineCall{system: system, online: online, out: stdout})
+		runSetOnline: func(_ context.Context, system, explicit, online bool, stdout io.Writer) error {
+			s.setOnlineCalls = append(s.setOnlineCalls, setOnlineCall{system: system, explicit: explicit, online: online, out: stdout})
 			return s.setOnlineErr
 		},
 		runPairingKeyCreate: func(_ context.Context, stdout io.Writer) error {
@@ -314,6 +318,51 @@ func TestAuditErrorExitsOne(t *testing.T) {
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+}
+
+// TestLevelCommandsPassTheExplicitLevel checks that the level-aware commands
+// report whether a level option named the level. The selector uses it to choose
+// the error text when no Broker answers.
+func TestLevelCommandsPassTheExplicitLevel(t *testing.T) {
+	cases := []struct {
+		args         []string
+		wantSystem   bool
+		wantExplicit bool
+	}{
+		{[]string{"status"}, false, false},
+		{[]string{"status", "--system"}, true, true},
+		{[]string{"status", "--user"}, false, true},
+		{[]string{"audit", "--system"}, true, true},
+		{[]string{"online", "--system"}, true, true},
+		{[]string{"offline", "--user"}, false, true},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			stub := &termcmdStub{}
+			a, _, stderr := newTermcmdApp(stub)
+			if got := runService(a, tc.args...); got != exitOK {
+				t.Fatalf("service %s = %d, want %d (stderr %q)", strings.Join(tc.args, " "), got, exitOK, stderr)
+			}
+
+			var gotSystem, gotExplicit bool
+			switch tc.args[0] {
+			case "status":
+				gotSystem, gotExplicit = stub.statusSystem, stub.statusExplicit
+			case "audit":
+				gotSystem, gotExplicit = stub.auditSystem, stub.auditExplicit
+			default:
+				if len(stub.setOnlineCalls) != 1 {
+					t.Fatalf("runSetOnline called %d times, want 1", len(stub.setOnlineCalls))
+				}
+				call := stub.setOnlineCalls[0]
+				gotSystem, gotExplicit = call.system, call.explicit
+			}
+			if gotSystem != tc.wantSystem || gotExplicit != tc.wantExplicit {
+				t.Errorf("level passed = (system %v, explicit %v), want (%v, %v)",
+					gotSystem, gotExplicit, tc.wantSystem, tc.wantExplicit)
+			}
+		})
 	}
 }
 

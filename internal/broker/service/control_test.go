@@ -290,43 +290,60 @@ func TestStartReportsDegraded(t *testing.T) {
 }
 
 func TestStartReportsStatusProbeError(t *testing.T) {
-	opts := linuxControlOptions(t)
-	writeInstalledUnit(t, opts)
-	// Leave room for one retry, so the test also proves the probe is retried
-	// within the remaining readiness time.
-	opts.ReadyTimeout = 150 * time.Millisecond
-	started := false
-	opts.Run = func(name string, args ...string) ([]byte, error) {
-		if slices.Contains(args, "start") {
-			started = true
-		}
-		if slices.Contains(args, "show") {
-			return []byte("4242\n"), nil
-		}
-		return nil, nil
+	cases := []struct {
+		name   string
+		system bool
+		want   string
+	}{
+		{"user level", false, "check it with `peers service status`"},
+		{"system level", true, "check it with `peers service status --system`"},
 	}
-	opts.Probe = func(string) (int, bool) { return 4242, started }
-	probes := 0
-	opts.StatusProbe = func(string) (DegradedState, bool, error) {
-		probes++
-		return DegradedState{}, false, errors.New("connection reset")
-	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := linuxControlOptions(t)
+			if tc.system {
+				opts.System = true
+				opts.EUID = 0
+				opts.UID = 0
+			}
+			writeInstalledUnit(t, opts)
+			// Leave room for one retry, so the test also proves the probe is
+			// retried within the remaining readiness time.
+			opts.ReadyTimeout = 150 * time.Millisecond
+			started := false
+			opts.Run = func(name string, args ...string) ([]byte, error) {
+				if slices.Contains(args, "start") {
+					started = true
+				}
+				if slices.Contains(args, "show") {
+					return []byte("4242\n"), nil
+				}
+				return nil, nil
+			}
+			opts.Probe = func(string) (int, bool) { return 4242, started }
+			probes := 0
+			opts.StatusProbe = func(string) (DegradedState, bool, error) {
+				probes++
+				return DegradedState{}, false, errors.New("connection reset")
+			}
 
-	_, err := Start(opts)
-	if err == nil {
-		t.Fatal("Start error = nil, want the status probe error")
-	}
-	for _, want := range []string{"connection reset", "could not be read", "peers service status"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("Start error = %q, want it to contain %q", err, want)
-		}
-	}
-	if probes < 2 {
-		t.Errorf("StatusProbe calls = %d, want it retried until the readiness deadline", probes)
-	}
-	var degraded *DegradedError
-	if errors.As(err, &degraded) {
-		t.Fatalf("Start reported *DegradedError for a probe error: %v", err)
+			_, err := Start(opts)
+			if err == nil {
+				t.Fatal("Start error = nil, want the status probe error")
+			}
+			for _, want := range []string{"connection reset", "could not be read", tc.want} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("Start error = %q, want it to contain %q", err, want)
+				}
+			}
+			if probes < 2 {
+				t.Errorf("StatusProbe calls = %d, want it retried until the readiness deadline", probes)
+			}
+			var degraded *DegradedError
+			if errors.As(err, &degraded) {
+				t.Fatalf("Start reported *DegradedError for a probe error: %v", err)
+			}
+		})
 	}
 }
 

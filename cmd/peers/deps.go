@@ -95,10 +95,11 @@ type deps struct {
 
 	// The three commands below connect to the level the command selected, not
 	// to the Broker of the calling account: their system argument names the
-	// system-level socket when true and the user-level one when false.
-	runStatus    func(ctx context.Context, system bool, stdout io.Writer) error
-	runAudit     func(ctx context.Context, system bool, stdout io.Writer, limit uint32) error
-	runSetOnline func(ctx context.Context, system, online bool, stdout io.Writer) error
+	// system-level socket when true and the user-level one when false, and
+	// explicit says whether a level option named it.
+	runStatus    func(ctx context.Context, system, explicit bool, stdout io.Writer) error
+	runAudit     func(ctx context.Context, system, explicit bool, stdout io.Writer, limit uint32) error
+	runSetOnline func(ctx context.Context, system, explicit, online bool, stdout io.Writer) error
 
 	// Broker configuration and pairing commands. The Broker is selected by the
 	// calling account, with no explicit level; warn carries the warnings of a

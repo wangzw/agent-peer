@@ -448,6 +448,102 @@ func TestFindAtLevelUserDoesNotFallThrough(t *testing.T) {
 	}
 }
 
+// TestFindForLevelExplainsAnEmptySelection checks the error text of an empty
+// selection. A named --system level reports the system-level Broker as
+// unavailable; a defaulted level points at --system when only the system-level
+// Broker answers; a named --user level keeps the generic text.
+func TestFindForLevelExplainsAnEmptySelection(t *testing.T) {
+	userPath := filepath.Join(t.TempDir(), "user.sock")
+	systemPath := filepath.Join(t.TempDir(), "system.sock")
+
+	cases := []struct {
+		name          string
+		system        bool
+		explicit      bool
+		root          bool
+		userOutcome   probeResult
+		systemOutcome probeResult
+		want          error
+	}{
+		{
+			name: "named system level", system: true, explicit: true,
+			userOutcome: probeMissing, systemOutcome: probeMissing,
+			want: errNoSystemBroker,
+		},
+		{
+			// Root's default level is the system level, and root is the
+			// administrator, so an empty selection must report the
+			// system-level Broker rather than the account's user-level one.
+			name: "root default level", system: true, explicit: false, root: true,
+			userOutcome: probeMissing, systemOutcome: probeMissing,
+			want: errNoSystemBroker,
+		},
+		{
+			name: "default level with the system Broker running", system: false, explicit: false,
+			userOutcome: probeMissing, systemOutcome: probeOK,
+			want: errNoUserBrokerSystemRunning,
+		},
+		{
+			name: "named user level", system: false, explicit: true,
+			userOutcome: probeMissing, systemOutcome: probeOK,
+			want: errNoBroker,
+		},
+		{
+			name: "default level with nothing running", system: false, explicit: false,
+			userOutcome: probeMissing, systemOutcome: probeMissing,
+			want: errNoBroker,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			userSocket := userPath
+			if tc.root {
+				// Root's user-level and system-level sockets share one path.
+				userSocket = systemPath
+			}
+			s := &selector{
+				userSocket:   userSocket,
+				systemSocket: systemPath,
+				probe: func(_ context.Context, path string) probeInfo {
+					if path == userSocket {
+						return probeInfo{Outcome: tc.userOutcome}
+					}
+					return probeInfo{Outcome: tc.systemOutcome}
+				},
+			}
+			_, err := s.findForLevel(context.Background(), tc.system, tc.explicit)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("findForLevel error = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestFindForLevelReturnsTheSelectedSocket checks the successful path of the
+// level-aware finder.
+func TestFindForLevelReturnsTheSelectedSocket(t *testing.T) {
+	userPath := filepath.Join(t.TempDir(), "user.sock")
+	systemPath := filepath.Join(t.TempDir(), "system.sock")
+
+	s := &selector{
+		userSocket:   userPath,
+		systemSocket: systemPath,
+		probe: func(_ context.Context, path string) probeInfo {
+			if path == systemPath {
+				return probeInfo{Outcome: probeOK}
+			}
+			return probeInfo{Outcome: probeMissing}
+		},
+	}
+	got, err := s.findForLevel(context.Background(), true, true)
+	if err != nil {
+		t.Fatalf("findForLevel: %v", err)
+	}
+	if got != systemPath {
+		t.Errorf("findForLevel = %q, want %q", got, systemPath)
+	}
+}
+
 // REQ-broker-config-055: --system must not fall through to a running user-level
 // Broker either.
 func TestFindAtLevelSystemDoesNotFallThrough(t *testing.T) {

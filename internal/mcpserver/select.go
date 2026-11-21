@@ -270,17 +270,37 @@ func FindBroker(ctx context.Context) (string, error) {
 
 // FindBrokerForLevel returns the socket path of the running Broker at the
 // selected level. It never starts a Broker and never falls through to the other
-// level, so a command that names a level talks to that level or fails.
-func FindBrokerForLevel(ctx context.Context, system bool) (string, error) {
-	s := productionSelector()
+// level, so a command that names a level talks to that level or fails. explicit
+// reports whether a level option was given rather than resolved from the
+// calling account; it tells a defaulted user level, which names --system when
+// that Broker answers, from a named one.
+func FindBrokerForLevel(ctx context.Context, system, explicit bool) (string, error) {
+	return productionSelector().findForLevel(ctx, system, explicit)
+}
+
+// findForLevel selects a Broker at one level and builds the error for an empty
+// selection. The system level always reports the system-level Broker as
+// unavailable, whether --system named it or root resolved it from the account.
+// The default user level falls back to the account's user-level Broker; when
+// only the system-level Broker is running, the error names --system as the
+// option that reaches it.
+func (s *selector) findForLevel(ctx context.Context, system, explicit bool) (string, error) {
 	t, found, err := s.findAtLevel(ctx, system)
 	if err != nil {
 		return "", err
 	}
-	if !found {
-		return "", errNoBroker
+	if found {
+		return t.Path, nil
 	}
-	return t.Path, nil
+	if system {
+		return "", errNoSystemBroker
+	}
+	if !explicit && s.systemSocket != s.userSocket {
+		if s.probePath(ctx, s.systemSocket, kindSystem).Outcome == probeOK {
+			return "", errNoUserBrokerSystemRunning
+		}
+	}
+	return "", errNoBroker
 }
 
 // UserSocketPath returns the socket path of the calling account's user-level
@@ -306,8 +326,8 @@ func FindBrokerWithDial(ctx context.Context) (string, func() (*grpc.ClientConn, 
 // FindBrokerWithDialForLevel is FindBrokerForLevel together with a function
 // that opens a connection to the selected socket. As with FindBrokerWithDial,
 // the dialer checks the peer of every underlying connection.
-func FindBrokerWithDialForLevel(ctx context.Context, system bool) (string, func() (*grpc.ClientConn, localpb.LocalClient, error), error) {
-	path, err := FindBrokerForLevel(ctx, system)
+func FindBrokerWithDialForLevel(ctx context.Context, system, explicit bool) (string, func() (*grpc.ClientConn, localpb.LocalClient, error), error) {
+	path, err := FindBrokerForLevel(ctx, system, explicit)
 	if err != nil {
 		return "", nil, err
 	}

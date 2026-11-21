@@ -392,7 +392,7 @@ func Install(opts Options) (Result, error) {
 	if err != nil {
 		// The service is running but does not answer Status. Leave it alone:
 		// disabling it would take down a Broker that is reachable.
-		return res, fmt.Errorf("service: the service is running but its status could not be read: %w; check it with `peers service status`", err)
+		return res, fmt.Errorf("service: the service is running but its status could not be read: %w; %s", err, statusHint(opts))
 	}
 	if degraded {
 		return res, &DegradedError{State: state}
@@ -945,6 +945,14 @@ func installHint(opts Options) string {
 		return "sudo peers service install --system"
 	}
 	return "peers service install"
+}
+
+// statusHint names the command that shows the status of this level's service.
+func statusHint(opts Options) string {
+	if opts.System {
+		return "check it with `peers service status --system`"
+	}
+	return "check it with `peers service status`"
 }
 
 // privileged prefixes cmd with sudo when the command belongs to a system-level

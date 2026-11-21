@@ -54,7 +54,7 @@ func startLevelSelection(t *testing.T) (*levelHits, *app, *bytes.Buffer) {
 
 	original := findBrokerForLevel
 	t.Cleanup(func() { findBrokerForLevel = original })
-	findBrokerForLevel = func(ctx context.Context, system bool) (string, termcmd.Dialer, error) {
+	findBrokerForLevel = func(ctx context.Context, system, _ bool) (string, termcmd.Dialer, error) {
 		path := userPath
 		if system {
 			path = systemPath

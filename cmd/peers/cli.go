@@ -81,6 +81,13 @@ func addLevelFlags(cmd *cobra.Command) *levelFlags {
 	return f
 }
 
+// explicit reports whether --system or --user named the level. The command
+// level rules resolve the default from the account; selectors use this to tell
+// an explicit level from a defaulted one when no Broker answers.
+func (f *levelFlags) explicit() bool {
+	return f.systemFlag || f.userFlag
+}
+
 // system reports whether the command runs at the system level: --system means
 // yes, --user means no, and with neither given only root decides yes. Giving
 // both is a usage error.

@@ -38,7 +38,7 @@ func (a *app) serviceStatusCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := a.deps.runStatus(cmd.Context(), system, a.stdout); err != nil {
+			if err := a.deps.runStatus(cmd.Context(), system, level.explicit(), a.stdout); err != nil {
 				// The status already names the cause and the repair; a degraded
 				// Broker that serves diagnostics only makes the command fail
 				// without repeating them on standard error.
@@ -76,7 +76,7 @@ func (a *app) serviceAuditCommand() *cobra.Command {
 			if err != nil {
 				return usageError(err)
 			}
-			return a.deps.runAudit(cmd.Context(), system, a.stdout, uint32(limit))
+			return a.deps.runAudit(cmd.Context(), system, level.explicit(), a.stdout, uint32(limit))
 		},
 	}
 	level = addLevelFlags(cmd)
