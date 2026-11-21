@@ -88,8 +88,11 @@ func TestNoArgumentsPrintsUsageToStderr(t *testing.T) {
 	if got := a.run(context.Background(), nil); got != exitUsage {
 		t.Fatalf("run() = %d, want %d", got, exitUsage)
 	}
-	if !strings.Contains(stderr.String(), "usage: peers") {
+	if !strings.Contains(stderr.String(), "Usage:") {
 		t.Fatalf("stderr = %q, want the usage text", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "peers [command]") {
+		t.Fatalf("stderr = %q, want the command tree in the usage text", stderr.String())
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", stdout.String())
@@ -105,16 +108,64 @@ func TestHelpPrintsUsageToStdout(t *testing.T) {
 				t.Fatalf("run(%s) = %d, want %d", arg, got, exitOK)
 			}
 			out := stdout.String()
-			if !strings.Contains(out, "usage: peers") {
+			if !strings.Contains(out, "Usage:") {
 				t.Fatalf("stdout = %q, want the usage text", out)
 			}
 			if strings.Contains(out, "internal") {
 				t.Fatalf("stdout leaks the hidden internal commands: %q", out)
 			}
+			if strings.Contains(out, "mcp") {
+				t.Fatalf("stdout leaks the hidden mcp command: %q", out)
+			}
 			if stderr.Len() != 0 {
 				t.Fatalf("stderr = %q, want empty", stderr.String())
 			}
 		})
+	}
+}
+
+func TestHelpListsTheThreeCommandGroups(t *testing.T) {
+	a, stdout, stderr, _ := newDispatchApp("dev")
+
+	if got := a.run(context.Background(), []string{"-h"}); got != exitOK {
+		t.Fatalf("run(-h) = %d, want %d", got, exitOK)
+	}
+	out := stdout.String()
+	for _, want := range []string{"Pairing:", "Local Broker:", "Installation:", "completion"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help does not contain %q:\n%s", want, out)
+		}
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestCompletionBashWritesAScript(t *testing.T) {
+	a, stdout, stderr, _ := newDispatchApp("dev")
+
+	if got := a.run(context.Background(), []string{"completion", "bash"}); got != exitOK {
+		t.Fatalf("run(completion bash) = %d, want %d", got, exitOK)
+	}
+	if !strings.Contains(stdout.String(), "bash completion V2 for peers") {
+		t.Fatalf("stdout does not look like a bash completion script:\n%s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestUnknownOptionIsUsageError(t *testing.T) {
+	a, stdout, stderr, _ := newDispatchApp("dev")
+
+	if got := a.run(context.Background(), []string{"--bogus"}); got != exitUsage {
+		t.Fatalf("run(--bogus) = %d, want %d", got, exitUsage)
+	}
+	if !strings.Contains(stderr.String(), "unknown flag") {
+		t.Fatalf("stderr = %q, want it to name the unknown flag", stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
 }
 
@@ -150,6 +201,67 @@ func TestUnknownCommand(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), `unknown command "frobnicate"`) {
 		t.Fatalf("stderr = %q, want it to name the unknown command", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Run 'peers --help' for usage.") {
+		t.Fatalf("stderr = %q, want the help hint for a usage error", stderr.String())
+	}
+}
+
+// TestParentCommandsExitWithUsage covers the fallback for a command that takes
+// subcommands but has no body: the completion group and a missing help topic
+// are usage errors, and completion rejects an unknown shell and an extra
+// argument.
+func TestParentCommandsExitWithUsage(t *testing.T) {
+	cases := []struct {
+		args []string
+		// wantStderr, when set, is the exact diagnostic. Empty means only that
+		// some usage or reason must be written.
+		wantStderr string
+	}{
+		{args: []string{"completion"}},
+		{args: []string{"completion", "bogus"}},
+		{args: []string{"completion", "bash", "x"}},
+		{
+			args:       []string{"help", "bogus"},
+			wantStderr: "peers help: unknown help topic \"bogus\"\nRun 'peers help --help' for usage.\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			a, stdout, stderr, _ := newDispatchApp("dev")
+
+			if got := a.run(context.Background(), tc.args); got != exitUsage {
+				t.Fatalf("run(%q) = %d, want %d (stderr %q)", tc.args, got, exitUsage, stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want empty", stdout.String())
+			}
+			if tc.wantStderr != "" {
+				if got := stderr.String(); got != tc.wantStderr {
+					t.Fatalf("stderr = %q, want %q", got, tc.wantStderr)
+				}
+				return
+			}
+			if stderr.Len() == 0 {
+				t.Fatal("stderr is empty, want the usage or the reason")
+			}
+		})
+	}
+}
+
+// TestCompletionDoesNotOfferHelp checks that the hidden help command stays out
+// of the shell completion candidates.
+func TestCompletionDoesNotOfferHelp(t *testing.T) {
+	a, stdout, stderr, _ := newDispatchApp("dev")
+
+	if got := a.run(context.Background(), []string{"__complete", ""}); got != exitOK {
+		t.Fatalf("run(__complete \"\") = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	}
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		name, _, _ := strings.Cut(line, "\t")
+		if name == "help" || name == "help-topic" {
+			t.Fatalf("completion offered %q:\n%s", name, stdout.String())
+		}
 	}
 }
 

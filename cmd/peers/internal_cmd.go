@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"github.com/wangzw/peers/internal/broker/helper"
 	"github.com/wangzw/peers/internal/broker/service"
 )
@@ -27,11 +28,62 @@ var (
 	launchdReloadFn     = service.LaunchdReload
 )
 
-func init() {
-	subcommands["internal account-helper"] = (*app).accountHelperCmd
-	subcommands["internal access-check"] = (*app).accessCheckCmd
-	subcommands["internal post-update"] = (*app).postUpdateCmd
-	subcommands["internal launchd-reload"] = (*app).launchdReloadCmd
+// addTestInternalCommands lets the peers_testenv build add a hidden internal
+// subcommand. Production builds leave it nil.
+var addTestInternalCommands func(internal *cobra.Command, a *app)
+
+// addInternalCommands hangs the hidden helper commands off the root command.
+// The group is not a user-facing command: it exists for the Broker to launch
+// helpers as the accounts it serves.
+func (a *app) addInternalCommands(root *cobra.Command) {
+	internal := &cobra.Command{
+		Use:    "internal",
+		Hidden: true,
+		RunE: func(_ *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return usageErrorf("internal: unknown command %q", args[0])
+			}
+			return usageErrorf(`internal: unknown command ""`)
+		},
+	}
+	internal.AddCommand(
+		&cobra.Command{
+			Use:                "account-helper",
+			Hidden:             true,
+			DisableFlagParsing: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return commandResult(a.accountHelperCmd(cmd.Context(), args))
+			},
+		},
+		&cobra.Command{
+			Use:                "access-check",
+			Hidden:             true,
+			DisableFlagParsing: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return commandResult(a.accessCheckCmd(cmd.Context(), args))
+			},
+		},
+		&cobra.Command{
+			Use:                "post-update",
+			Hidden:             true,
+			DisableFlagParsing: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return commandResult(a.postUpdateCmd(cmd.Context(), args))
+			},
+		},
+		&cobra.Command{
+			Use:                "launchd-reload",
+			Hidden:             true,
+			DisableFlagParsing: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return commandResult(a.launchdReloadCmd(cmd.Context(), args))
+			},
+		},
+	)
+	if addTestInternalCommands != nil {
+		addTestInternalCommands(internal, a)
+	}
+	root.AddCommand(internal)
 }
 
 // accountHelperCmd is the body of the hidden "internal account-helper"

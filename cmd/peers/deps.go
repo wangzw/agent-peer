@@ -84,6 +84,11 @@ func exitCodeFor(f startFailure) int {
 // function so tests can substitute a stub and the wiring point can be checked
 // by the compiler.
 type deps struct {
+	// euid reports the executing account. The level rules use it when neither
+	// --system nor --user is given; tests substitute it through this field
+	// instead of a package-level seam.
+	euid func() int
+
 	runBroker         func(ctx context.Context, o brokerOptions) error
 	classifyBrokerErr func(err error) startFailure
 	runMCP            func(ctx context.Context) error // MCP over the process's own stdin/stdout

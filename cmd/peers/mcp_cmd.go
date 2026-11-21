@@ -6,12 +6,26 @@ import (
 	"flag"
 	"fmt"
 	"io"
+
+	"github.com/spf13/cobra"
 )
 
 const mcpUsage = "usage: peers mcp"
 
-func init() {
-	subcommands["mcp"] = (*app).mcpCmd
+// addMCPCommand hangs the MCP server off the root command as a hidden command.
+// Claude Code starts it with `peers mcp`, so the name cannot change and the
+// command must not appear in the help listing. Flag parsing is left to mcpCmd
+// so its diagnostics stay exactly as they were.
+func (a *app) addMCPCommand(root *cobra.Command) {
+	root.AddCommand(&cobra.Command{
+		Use:                "mcp",
+		Short:              "run the MCP server for one Claude Code session",
+		Hidden:             true,
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return commandResult(a.mcpCmd(cmd.Context(), args))
+		},
+	})
 }
 
 // mcpCmd runs the MCP server over the process's own stdin and stdout. It must

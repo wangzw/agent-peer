@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 
 	"github.com/wangzw/peers/internal/broker"
 	"github.com/wangzw/peers/internal/broker/update"
@@ -35,6 +36,7 @@ var findBroker termcmd.Selector = mcpserver.FindBrokerWithDial
 // points. It is called once by main before any subcommand runs.
 func realDeps(version string) deps {
 	return deps{
+		euid: os.Geteuid,
 		runBroker: func(ctx context.Context, o brokerOptions) error {
 			local, link := protocolOverrides()
 			opts := broker.RunOptions{

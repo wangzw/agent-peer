@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // mainEntryEnv marks a re-execution of the test binary as the real entry
@@ -20,8 +21,15 @@ const mainEntryEnv = "PEERS_TEST_MAIN_ENTRY"
 // and runs the real entry point with that command. The trigger lives in the
 // test binary only: no build of the product contains it.
 func runMainEntryForTest() {
-	subcommands["internal panic-test"] = func(*app, context.Context, []string) int {
-		panic("test-entry panic")
+	addTestInternalCommands = func(internal *cobra.Command, _ *app) {
+		internal.AddCommand(&cobra.Command{
+			Use:                "panic-test",
+			Hidden:             true,
+			DisableFlagParsing: true,
+			RunE: func(_ *cobra.Command, _ []string) error {
+				panic("test-entry panic")
+			},
+		})
 	}
 	os.Args = []string{"peers", "internal", "panic-test"}
 	main()

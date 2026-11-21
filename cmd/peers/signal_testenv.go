@@ -3,9 +3,10 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 // signalRestoreDone receives one value when signalRestoreHook fires, that is,
@@ -27,15 +28,22 @@ func init() {
 		}
 	}
 
-	subcommands["internal signal-block"] = func(a *app, ctx context.Context, _ []string) int {
-		_, _ = fmt.Fprintln(a.stderr, "ready")
-		<-ctx.Done()
-		// newSignalContext restores the default handler from another goroutine
-		// right after cancelling ctx; wait for the hook so the second signal
-		// cannot race the restore and be swallowed by the notifier.
-		<-signalRestoreDone
-		_, _ = fmt.Fprintln(a.stderr, "cancelled")
-		<-time.After(time.Hour)
-		return exitOK
+	addTestInternalCommands = func(internal *cobra.Command, a *app) {
+		internal.AddCommand(&cobra.Command{
+			Use:    "signal-block",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				_, _ = fmt.Fprintln(a.stderr, "ready")
+				<-cmd.Context().Done()
+				// newSignalContext restores the default handler from another
+				// goroutine right after cancelling ctx; wait for the hook so the
+				// second signal cannot race the restore and be swallowed by the
+				// notifier.
+				<-signalRestoreDone
+				_, _ = fmt.Fprintln(a.stderr, "cancelled")
+				<-time.After(time.Hour)
+				return nil
+			},
+		})
 	}
 }

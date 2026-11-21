@@ -2,46 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+
+	"github.com/spf13/cobra"
 )
-
-const usage = `usage: peers <command> [arguments]
-
-Commands:
-  --version                   print the version and exit
-  broker [--system] [--listen <address>] [--allow-degraded]
-                              run the Broker
-  mcp                         run the MCP server for one Claude Code session
-  status                      show the state of a running Broker
-  audit [--limit <n>]         read the audit log
-  offline                     refuse messages from other hosts, keeping links
-  online                      accept messages from other hosts again
-  config get [<key>]          show all configuration items, or one
-  config set <key> <value>    change a configuration item
-  pairing-key create          create a one-time pairing key
-  peer list                   list known Brokers and their connection state
-  peer connect <address> --key <key> [--alias <alias>]
-                              pair with another Broker
-  peer disconnect <broker>    remove a pairing
-  update [--yes]              update through the selected Broker, or replace
-                              the user-level binary locally; --yes skips the question
-  service install [--system] [--admin-group <name>]
-                              install and start the Broker as a user-level service,
-                              or system-level with --system; --admin-group names the
-                              group that administers the system-level Broker
-  service uninstall [--system]
-                              stop and remove the installed service; configuration,
-                              identity and audit logs are kept
-  service start|stop|restart  start, stop or restart the service of the executing
-                              account (root: system-level, other accounts: user-level)
-  uninstall [--purge]         remove the installation of this account, or the
-                              system-level one when run as root; --purge also removes
-                              configuration, identity and logs
-`
 
 // app holds the process's standard streams, the version to report, and the
 // upstream operations the subcommands dispatch to.
@@ -53,9 +23,10 @@ type app struct {
 	deps    deps
 }
 
-// subcommands maps a command name to its handler. Command implementations
-// register themselves from init so this file stays free of their details.
-// The hidden internal helper commands use keys such as "internal account-helper".
+// subcommands maps a legacy command name to its handler. The four command
+// groups still register here so their existing implementations and tests keep
+// working while the groups are rewritten on top of the cobra tree; the root
+// command no longer dispatches through this map.
 var subcommands = map[string]func(*app, context.Context, []string) int{}
 
 // signalRestoreHook runs after the first signal has cancelled ctx and the
@@ -77,48 +48,165 @@ func newSignalContext(parent context.Context) (context.Context, context.CancelFu
 	return ctx, stop
 }
 
-// run dispatches one command line and returns the process exit code.
+// run executes one command line and returns the process exit code. A failing
+// command is reported as "peers <command path>: <reason>"; a usage error adds a
+// line naming the command's help, which cobra's own diagnostics do not provide
+// once errors are silenced.
 func (a *app) run(ctx context.Context, args []string) int {
-	if len(args) == 0 {
-		_, _ = fmt.Fprint(a.stderr, usage)
-		return exitUsage
+	root := a.newRootCommand()
+	root.SetArgs(args)
+
+	cmd, err := root.ExecuteContextC(ctx)
+	if err == nil {
+		return exitOK
 	}
 
-	switch args[0] {
-	case "-h", "--help", "help":
-		_, _ = fmt.Fprint(a.stdout, usage)
-		return exitOK
-	case "--version":
-		if len(args) > 1 {
-			_, _ = fmt.Fprintln(a.stderr, "peers: --version takes no arguments")
+	path := "peers"
+	if cmd != nil {
+		path = cmd.CommandPath()
+	}
+
+	var exit *exitError
+	if errors.As(err, &exit) {
+		if exit.code == exitUsage {
+			// A nil cause means the command already printed its own usage.
+			if exit.err != nil {
+				_, _ = fmt.Fprintf(a.stderr, "%s: %v\n", path, exit.err)
+				_, _ = fmt.Fprintf(a.stderr, "Run '%s --help' for usage.\n", path)
+			}
 			return exitUsage
 		}
-		_, _ = fmt.Fprintf(a.stdout, "peers %s\n", a.version)
-		return exitOK
-	case "internal":
-		return a.runInternal(ctx, args[1:])
+		if exit.err != nil {
+			_, _ = fmt.Fprintf(a.stderr, "%s: %v\n", path, exit.err)
+		}
+		return exit.code
 	}
 
-	name := args[0]
-	if handler, ok := subcommands[name]; ok {
-		return handler(a, ctx, args[1:])
-	}
-	_, _ = fmt.Fprintf(a.stderr, "peers: unknown command %q\n\n", name)
-	_, _ = fmt.Fprint(a.stderr, usage)
-	return exitUsage
+	_, _ = fmt.Fprintf(a.stderr, "%s: %v\n", path, err)
+	return exitFailure
 }
 
-// runInternal handles the hidden internal helper commands. Their errors never
-// print the top-level usage, because the group is not shown to users.
-func (a *app) runInternal(ctx context.Context, args []string) int {
-	if len(args) == 0 {
-		_, _ = fmt.Fprintln(a.stderr, `peers internal: unknown command ""`)
-		return exitUsage
+// newRootCommand builds the cobra command tree. A fresh tree is built for every
+// invocation, so no parsed state carries over between calls.
+func (a *app) newRootCommand() *cobra.Command {
+	root := &cobra.Command{
+		Use:   "peers",
+		Short: "Run the MCP server, the local Broker and the terminal commands",
+		Long: "peers runs an MCP server for one Claude Code session, the local Broker, " +
+			"and the terminal commands that manage pairings and the installation.",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return usageErrorf("unknown command %q for %q", args[0], cmd.CommandPath())
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if showVersion, _ := cmd.Flags().GetBool("version"); showVersion {
+				_, _ = fmt.Fprintf(a.stdout, "peers %s\n", a.version)
+				return nil
+			}
+			// A bare invocation is a usage error. Print the tree's usage to
+			// standard error, as the hand-written dispatch did.
+			_, _ = fmt.Fprint(a.stderr, cmd.UsageString())
+			return &exitError{code: exitUsage}
+		},
 	}
-	name := "internal " + args[0]
-	if handler, ok := subcommands[name]; ok {
-		return handler(a, ctx, args[1:])
+	root.SetOut(a.stdout)
+	root.SetErr(a.stderr)
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return usageError(err)
+	})
+	root.Flags().Bool("version", false, "print the version and exit")
+
+	root.AddGroup(
+		&cobra.Group{ID: groupPairing, Title: "Pairing:"},
+		&cobra.Group{ID: groupLocal, Title: "Local Broker:"},
+		&cobra.Group{ID: groupInstall, Title: "Installation:"},
+	)
+	// The help command belongs to no product group. It stays hidden, and the
+	// usage template below drops cobra's exemption for a command named "help",
+	// so it appears under none of the three headings and not under "Additional
+	// Commands". Its GroupID is set only so cobra's group check accepts it; it
+	// is never rendered.
+	helpCmd := &cobra.Command{
+		Use:     "help [command]",
+		Short:   "Help about any command",
+		Hidden:  true,
+		GroupID: groupInstall,
+		RunE: func(c *cobra.Command, args []string) error {
+			target, remaining, err := c.Root().Find(args)
+			if err != nil || target == nil || len(remaining) > 0 {
+				return usageErrorf("unknown help topic %q", strings.Join(args, " "))
+			}
+			target.InitDefaultHelpFlag()
+			return target.Help()
+		},
 	}
-	_, _ = fmt.Fprintf(a.stderr, "peers internal: unknown command %q\n", args[0])
-	return exitUsage
+	root.SetHelpCommand(helpCmd)
+	// Cobra's default usage template lists a hidden command named "help" as an
+	// available command. Replace that exemption with the availability check
+	// alone so the headings list only real commands.
+	root.SetUsageTemplate(strings.ReplaceAll(
+		root.UsageTemplate(),
+		`(or .IsAvailableCommand (eq .Name "help"))`,
+		`.IsAvailableCommand`,
+	))
+	// Cobra's completion lists the help command regardless of Hidden, because
+	// the candidate filter admits it by identity rather than by availability.
+	// The command is resolved before this hook runs, so removing it here only
+	// drops it from the candidate list.
+	root.PersistentPreRun = func(cmd *cobra.Command, _ []string) {
+		if cmd.Name() == cobra.ShellCompRequestCmd {
+			root.RemoveCommand(helpCmd)
+		}
+	}
+	root.SetCompletionCommandGroupID(groupInstall)
+
+	addPairingCommands(root, a)
+	addConfigCommands(root, a)
+	addServiceCommands(root, a)
+	addInstallationCommands(root, a)
+	a.addMCPCommand(root)
+	a.addInternalCommands(root)
+
+	// Add the built-in completion command (bash, zsh, fish, powershell).
+	root.InitDefaultCompletionCmd()
+	a.applyExitCodeContract(root)
+	return root
+}
+
+// applyExitCodeContract walks the finished command tree and makes every usage
+// error exit with exitUsage:
+//
+//   - an Args check that fails is wrapped as a usage error, so cobra's own
+//     argument-count and unknown-argument errors are mapped consistently;
+//   - a parent command that takes subcommands and has no body of its own gets
+//     one that names the unknown subcommand, or prints its usage to standard
+//     error when it is invoked bare, and exits with exitUsage.
+//
+// Option parsing errors are handled by the root command's flag error function,
+// which cobra applies to every command below it. The hidden __complete command
+// is added by cobra's ExecuteC, after this walk, so no fallback is installed
+// for it.
+func (a *app) applyExitCodeContract(cmd *cobra.Command) {
+	if cmd.Args != nil {
+		check := cmd.Args
+		cmd.Args = func(c *cobra.Command, args []string) error {
+			return usageError(check(c, args))
+		}
+	}
+	if cmd.HasSubCommands() && !cmd.Runnable() {
+		cmd.RunE = func(c *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return usageErrorf("unknown command %q for %q", args[0], c.CommandPath())
+			}
+			_, _ = fmt.Fprint(a.stderr, c.UsageString())
+			return &exitError{code: exitUsage}
+		}
+	}
+	for _, child := range cmd.Commands() {
+		a.applyExitCodeContract(child)
+	}
 }
