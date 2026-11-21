@@ -72,6 +72,12 @@
 | [旧二进制调用新二进制的更新后契约](adr-post-update-contract.md) |
 | [macOS 的重新加载由脱离任务的辅助进程分两段完成](adr-launchd-detached-reload.md) |
 
+## 命令行
+
+| 决策 |
+|---|
+| [命令行采用 cobra 并按名词与动词分组](adr-cli-framework.md) |
+
 ## 外部依赖
 
 | 决策 |

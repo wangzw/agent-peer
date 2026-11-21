@@ -9,3 +9,4 @@
 | REF-epidemic-algorithms | Epidemic Algorithms for Replicated Database Maintenance | 论文，提出反熵对账、流言式传播与死亡证明（撤回记录） | <https://doi.org/10.1145/41840.41841> | 1987 |
 | REF-crockford-base32 | Base32 Encoding | Douglas Crockford 提出的 Base32 编码，规定去掉易混字母之后的字母表 | <https://www.crockford.com/base32.html> | — |
 | REF-github-rest-api | GitHub REST API | GitHub 的 REST API，规定查询最新正式发布版本的接口、返回内容与分页方式 | <https://docs.github.com/en/rest/releases/releases#get-the-latest-release> | 2022-11-28 |
+| REF-cobra | cobra | Go 命令行库，生成命令树、帮助、用法与 shell 补全，另有 man 页生成 | <https://github.com/spf13/cobra> | v1.10.2 |

@@ -92,7 +92,7 @@ graph TD
 
 图中没有箭头而运行时需要的协作，由 `broker` 以接口注入或转调完成。接口注入用于 `pairing`：它发起握手要拨号，解除配对要关闭链路，拨号与关闭链路由 `link` 实现，`broker` 在装配时以接口的形式交给 `pairing`。其余的协作是转调：配置变更由 `broker` 订阅后分别通知 `link`、`directory`；名片带来的对外地址列表由 `broker` 交给 `pairing` 记入候选地址，本机对外地址列表的变化由 `broker` 通知 `link` 与 `directory`；配对结果与名录的比对、公开 topic 的声明都由 `broker` 依次调用相关的包。
 
-`mcpserver` 只引用 `internal/broker/localpb`，即本机接口的客户端与消息定义所在的 proto 包，从不引用 `broker` 包本身；两者运行在不同进程里。`cmd/peers` 是装配入口，没有自己的设计文档，终端命令的行为记在 [broker](modules/design-broker.md) 的外部接口契约一节。`cmd/peers` 不引用 `localpb`；`status` 与 `audit` 的客户端放在 `mcpserver` 的子包 `termcmd` 中，依赖图不变。
+`mcpserver` 只引用 `internal/broker/localpb`，即本机接口的客户端与消息定义所在的 proto 包，从不引用 `broker` 包本身；两者运行在不同进程里。`cmd/peers` 是装配入口，没有自己的设计文档，终端命令的行为记在 [broker](modules/design-broker.md) 的外部接口契约一节。`cmd/peers` 不引用 `localpb`；`service status` 与 `service audit` 的客户端放在 `mcpserver` 的子包 `termcmd` 中，依赖图不变。命令行用 cobra 构建，命令树、帮助分组、用法与 shell 补全由它生成（[ADR-cli-framework](../adr/adr-cli-framework.md)）；cobra 是 `cmd/peers` 的外部依赖，不出现在项目包的依赖图中。
 
 ## 逻辑部署架构
 
@@ -135,12 +135,12 @@ MCP 服务进程由 Claude Code 作为会话的子进程启动，生命周期与
 
 | 进程 | 启动方式 | 数量 | 监听 |
 |---|---|---|---|
-| 系统级 Broker，`peers broker --system` | 由管理员安装的系统服务启动，以 root 运行 | 每台主机至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
-| 用户级 Broker，`peers broker` | 由用户安装为服务启动（安装后立即启动 Broker，此后随登录启动），或由用户在会话之外的终端启动 | 每个账户至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
+| 系统级 Broker，`peers service run --system` | 由管理员安装的系统服务启动，以 root 运行 | 每台主机至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
+| 用户级 Broker，`peers service run --user` | 由用户安装为服务启动（安装后立即启动 Broker，此后随登录启动），或由用户在会话之外的终端启动 | 每个账户至多一个 | 本机 socket；`broker.listen` 给出的 TCP 地址 |
 | 辅助进程 | 系统级 Broker 按需派生（`peers internal account-helper`），切换到被服务的账户后运行 | 每个被服务的账户一个 | 无 |
 | 权限检查进程 | 系统级 Broker 每次判定调用方对配置文件的权限时派生（`peers internal access-check`），以 root 执行后只把有效身份切换到调用方账户，检查后即退出 | 按需 | 无 |
 | MCP 服务进程，`peers mcp` | Claude Code 按会话的工具配置启动 | 每会话一个 | 无 |
-| 终端命令，例如 `peers status` | 用户执行 | 按需 | 无 |
+| 终端命令，例如 `peers service status` | 用户执行 | 按需 | 无 |
 
 默认配置下 `broker.listen` 是 `:17443`，Broker 在本机全部地址的 17443 端口上监听，启用了 IPv6 时包括 IPv6 地址（[ADR-listen-by-default](../adr/adr-listen-by-default.md)，`REQ-broker-config-028`）；这个端口只是默认配置中的取值，代码不为任何端口设特例。同一主机上第二个账户的 Broker 按默认配置启动时，监听地址已被占用：新装或重装时，预检发现地址被其他进程占用，安装失败且不注册服务（`REQ-broker-config-064`）；已经装好的服务之后再启动，服务进入仅本机降级，在前台启动则启动失败并报告该地址不可用，由用户在启动参数 `--listen` 或配置中改用其他地址或端口（`REQ-broker-config-024`、`REQ-broker-config-025`、`REQ-broker-config-058`）。`--listen` 只作用于本次运行，不读写配置文件，其间经工具修改监听地址的调用失败（`REQ-broker-config-029`）。其他 Broker 连接它时使用它的对外地址，默认是默认路由所在接口的地址，每个地址都配上监听端口（[ADR-advertised-address](../adr/adr-advertised-address.md)，`REQ-broker-config-030`）。
 
@@ -259,7 +259,7 @@ Broker 内每条链路有一个读协程、一个写协程和一个按序处理�
 
 ### 可观测性
 
-Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间、级别、事件名，以及随事件而定的其他字段（`REQ-broker-config-011`）。每次发送记录消息标识、发送方、目标、结果和耗时，不记录正文。审计日志与运行日志分开，见 [config](modules/design-config.md)。终端命令 `peers status` 展示 Agent、成员关系、对端与链路状态；调用方账户对配置文件没有读权限时，只展示该账户自己的 Agent。审计记录带有发起的系统账户。
+Broker 以每行一个 JSON 对象的格式输出运行日志，字段有时间、级别、事件名，以及随事件而定的其他字段（`REQ-broker-config-011`）。每次发送记录消息标识、发送方、目标、结果和耗时，不记录正文。审计日志与运行日志分开，见 [config](modules/design-config.md)。终端命令 `peers service status` 展示 Agent、成员关系、对端与链路状态；调用方账户对配置文件没有读权限时，只展示该账户自己的 Agent。审计记录带有发起的系统账户。
 
 ### 安全边界
 

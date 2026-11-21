@@ -6,7 +6,7 @@
 
 ## 职责
 
-- 按启动参数确定部署形态：带 `--system` 时是系统级 Broker，服务本机多个账户下的 Agent；不带时是用户级 Broker，只服务本账户下的 Agent（[ADR-broker-deployment-modes](../../adr/adr-broker-deployment-modes.md)，`REQ-broker-config-018`）。
+- 按 `service run` 的 `--system` 或 `--user` 确定部署形态：`--system` 时是系统级 Broker，服务本机多个账户下的 Agent；`--user` 时是用户级 Broker，只服务本账户下的 Agent；两者互斥，都不给时 root 为系统级，其他账户为用户级（[ADR-broker-deployment-modes](../../adr/adr-broker-deployment-modes.md)，`REQ-broker-config-018`）。
 - 启动时确认形态与身份，确认自己不在任何会话的进程树内，取得账户锁（保证同一账户至多运行一个 Broker 实例的锁文件），加载配置，装配各包，绑定监听地址，然后在本机 socket 上监听（`REQ-broker-config-013`）。不带 `--allow-degraded` 时任何一步失败都退出（`REQ-broker-config-024`、`REQ-broker-config-056`）；带它时，账户锁之后的监听绑定失败，或数据目录、审计日志不可用，使进程进入降级运行，保留本机 socket 并报告故障，在配置文件变化时与每分钟重试失败的步骤（[ADR-degraded-run](../../adr/adr-degraded-run.md)，`REQ-broker-config-057` 至 `REQ-broker-config-062`）；其余失败照常退出。
 - 在接受本机接口的每个连接时读取本机 socket 另一端进程的凭据（进程凭据），确定调用方的账户；用户级 Broker 拒绝其他账户的连接（`REQ-broker-config-019`）。
 - 按调用方账户对配置文件的访问权限判定每个调用能否执行（[ADR-management-by-config-file-permission](../../adr/adr-management-by-config-file-permission.md)，`REQ-broker-config-021` 至 `REQ-broker-config-023`）。
@@ -60,7 +60,7 @@ service Local {
 }
 ```
 
-本机接口只新增字段与错误码，不提升本机协议版本，与 `UpdateStatus` 的引入方式相同。`ErrorCode` 新增 `broker_offline` 与 `broker_degraded`，两者都映射为 gRPC `FailedPrecondition`。`NotRegisteredReason` 新增 `broker_degraded`，登记流事件的 `detail` 写故障原因。`StatusResponse` 新增 `offline`（布尔；仅诊断时为假，配置不生效）与 `degraded`（档位取 `local_only` 或 `diagnostics_only`，另有步骤、原因与修复提示）。`ListBrokersResponse` 带 `local`，含 `offline` 与 `degraded`（后者含 level、step、reason 与 fix），给 `list_brokers` 与 `peer list` 显示本 Broker 的离线与降级状态。应答必须带 `local`：缺少它属于违反协议的响应，`list_brokers` 返回错误，`peer list` 报错并以非零码退出。
+本机接口只新增字段与错误码，不提升本机协议版本，与 `UpdateStatus` 的引入方式相同。`ErrorCode` 新增 `broker_offline` 与 `broker_degraded`，两者都映射为 gRPC `FailedPrecondition`。`NotRegisteredReason` 新增 `broker_degraded`，登记流事件的 `detail` 写故障原因。`StatusResponse` 新增 `offline`（布尔；仅诊断时为假，配置不生效）与 `degraded`（档位取 `local_only` 或 `diagnostics_only`，另有步骤、原因与修复提示）。`ListBrokersResponse` 带 `local`，含 `offline` 与 `degraded`（后者含 level、step、reason 与 fix），给 `list_brokers` 与 `broker list` 显示本 Broker 的离线与降级状态。应答必须带 `local`：缺少它属于违反协议的响应，`list_brokers` 返回错误，`broker list` 报错并以非零码退出。
 
 仅诊断降级时，本机接口只照常应答 `Hello`；`Status` 返回只含 `current_version` 与 `degraded` 的应答；`Register` 在下行流上发出 `not_registered` 及原因 `broker_degraded`，流保持打开；其余调用返回 `broker_degraded`，说明为 `degraded.reason`。离开仅诊断时，降级服务关闭全部本机连接，同一 socket 路径上换成完整服务，客户端按现有规则重连。
 
@@ -97,7 +97,7 @@ service Local {
 
 `Connect`、`Disconnect`、`CreatePairingKey` 先解析审计发起者，`agent_id` 无效时不产生任何副作用。发起方一侧的 `pairing_key_created`、`pairing_succeeded`、`pairing_failed`、`unpaired` 由 `broker` 写入；`pairing_failed` 只在已开始拨号或握手之后的失败写入，详情为原因与请求中的地址；任何审计都不含配对密钥。接受方一侧的配对审计由 `pairing` 写入（`REQ-broker-config-007`、`REQ-broker-config-008`）。
 
-终端命令的四个写操作 `config set`、`pairing-key create`、`peer connect`、`peer disconnect` 发出的调用 `agent_id` 为空；审计记录的 `account` 是执行命令的账户，`actor` 为空。不新增审计字段。
+终端命令的四个写操作 `config set`、`key create`、`broker connect`、`broker disconnect` 发出的调用 `agent_id` 为空；审计记录的 `account` 是执行命令的账户，`actor` 为空。不新增审计字段。
 
 `Register` 的上行首帧带两项：MCP 服务进程环境中的 inbox socket 路径（可以为空）、环境中的 Claude Code 配置目录（可以为空）；Broker 只读取首帧，其后的上行帧被忽略。首帧的 socket 路径为空时，Broker 立即在下行流上发出 `not_registered` 及原因 `socket_path_missing`，流保持打开，这条登记不会自行完成。Broker 按“登记”一节完成登记后，在下行流上发出登记完成，带 Agent 标识、Agent 地址和 `topics.auto_join` 的当前值；10 秒内未能完成时发出 `not_registered` 及原因，流保持打开，此后条件满足时照常发出登记完成。socket 路径不是绝对路径或含 `..` 元素时按找不到记录处理，10 秒后以 `session_record_not_found` 报告。socket 文件的属主不是调用方账户时，与找不到记录、名字不可用一样等待，10 秒后以 `socket_not_owned` 报告，并随注册表的变化继续尝试。已完成的登记因名字变得不可用、记录消失或记录所载 socket 路径改变而撤销时，下行流立即发出 `not_registered` 及原因。之后下行流还用于通知地址变化：`agent_changed` 只在 Agent 的地址或曾用名变化时发出，带当前状态；本机别名变化后，每条登记流都收到带新地址的 `agent_changed`。同一个 socket 路径上的多个登记连接得到同一个 Agent 标识。
 
@@ -105,29 +105,30 @@ service Local {
 
 | 命令 | 调用 | 用途 |
 |---|---|---|
-| `peers broker [--system] [--listen <地址>] [--allow-degraded]` | — | 在前台运行 Broker。`--system` 选择系统级形态，要求以 root 运行；`--listen` 取代配置中的监听地址，只对本次运行有效，不读写配置文件中的这一项；其间经工具修改监听地址的调用失败（`REQ-broker-config-025`、`REQ-broker-config-029`）。`--allow-degraded` 允许降级运行，见“降级运行”；`service install` 写入的服务定义总带它，前台运行默认不带（`REQ-broker-config-063`） |
+| `peers service run [--system \| --user] [--listen <地址>] [--allow-degraded]` | — | 在前台运行 Broker，由服务定义调用。`--system` 与 `--user` 互斥，选择部署形态；都不给时 root 为系统级，其他账户为用户级。`--listen` 取代配置中的监听地址，只对本次运行有效，不读写配置文件中的这一项；其间经工具修改监听地址的调用失败（`REQ-broker-config-025`、`REQ-broker-config-029`）。`--allow-degraded` 允许降级运行，见“降级运行”；`service install` 写入的服务定义总带它，前台运行默认不带（`REQ-broker-config-063`） |
 | `peers mcp` | — | 作为 MCP 服务进程运行，由 Claude Code 按会话的工具配置启动，见 [mcpserver](design-mcpserver.md) |
-| `peers status` | `Status` | 查看 Agent、成员关系、对端与链路（`REQ-broker-config-010`）。降级运行与下线时先输出状态行，见“列出 Agent 与查看状态”（`REQ-broker-config-068`） |
-| `peers offline` | `SetConfig` | 把 `broker.offline` 设为真（`REQ-broker-config-066`） |
-| `peers online` | `SetConfig` | 把 `broker.offline` 设为假（`REQ-broker-config-066`） |
-| `peers audit [--limit <条数>]` | `Audit` | 以流的方式查看审计日志，`--limit` 指定取最新的多少条，为 0 表示不限条数（`REQ-broker-config-009`） |
-| `peers config get [<key>]` | `GetConfig` | 读取配置：不带 `key` 时列出全部配置项，带 `key` 时只输出该项（`REQ-broker-config-039`） |
+| `peers service status [--system \| --user]` | `Status` | 查看 Agent、成员关系、对端与链路（`REQ-broker-config-010`）。降级运行与下线时先输出状态行，见“列出 Agent 与查看状态”（`REQ-broker-config-068`） |
+| `peers service offline [--system \| --user]` | `SetConfig` | 把 `broker.offline` 设为真（`REQ-broker-config-066`） |
+| `peers service online [--system \| --user]` | `SetConfig` | 把 `broker.offline` 设为假（`REQ-broker-config-066`） |
+| `peers service audit [--system \| --user] [--limit <条数>]` | `Audit` | 以流的方式查看审计日志，`--limit` 指定取最新的多少条，为 0 表示不限条数（`REQ-broker-config-009`） |
+| `peers config list` | `GetConfig` | 列出全部配置项（`REQ-broker-config-039`） |
+| `peers config get <key>` | `GetConfig` | 读取一个配置项（`REQ-broker-config-039`） |
 | `peers config set <key> <value>` | `SetConfig` | 修改配置项（`REQ-broker-config-039`） |
-| `peers pairing-key create` | `CreatePairingKey` | 生成一次性配对密钥，输出密钥、失效时间与本机对外地址（`REQ-broker-config-039`） |
-| `peers peer list` | `ListBrokers` | 列出 Broker 及其连接状态（`REQ-broker-config-039`） |
-| `peers peer connect <address> --key <key> [--alias <alias>]` | `Connect` | 发起配对（`REQ-broker-config-039`） |
-| `peers peer disconnect <broker>` | `Disconnect` | 解除配对（`REQ-broker-config-039`） |
+| `peers key create` | `CreatePairingKey` | 生成一次性配对密钥，输出密钥、失效时间与本机对外地址（`REQ-broker-config-039`） |
+| `peers broker list` | `ListBrokers` | 列出 Broker 及其连接状态（`REQ-broker-config-039`） |
+| `peers broker connect <address> --key <key> [--alias <alias>]` | `Connect` | 发起配对（`REQ-broker-config-039`） |
+| `peers broker disconnect <broker>` | `Disconnect` | 解除配对（`REQ-broker-config-039`） |
 | `peers update [--yes]` | `ApplyUpdate` | 检查并安装本项目的新版本。对选出的 Broker 调用 `ApplyUpdate`；所选的是本账户的用户级 Broker 且它没有在服务管理器下运行时，改为在本地替换。`--yes` 跳过询问（`REQ-update-004` 至 `REQ-update-007`） |
-| `peers service install [--system] [--admin-group <名称>]` | — | 安装并立即启动用户级服务，或系统级服务；此后的登录或系统启动由服务管理器负责。服务定义以 `--allow-degraded` 启动 Broker（`REQ-broker-config-063`）。系统级安装创建管理组并让新配置文件的属组为它（`REQ-broker-config-015`、`REQ-broker-config-043`） |
-| `peers service start` | — | 启动按账户选出的服务（`REQ-broker-config-055`） |
-| `peers service stop` | — | 停止按账户选出的服务，不禁用，下次登录或开机仍启动（`REQ-broker-config-055`） |
-| `peers service restart` | — | 重启按账户选出的服务（`REQ-broker-config-055`） |
-| `peers service uninstall [--system]` | — | 停止并卸载服务，保留配置、身份与审计日志 |
-| `peers uninstall [--purge]` | — | 卸载本系统，见“卸载”（`REQ-broker-config-051` 至 `REQ-broker-config-054`） |
+| `peers service install [--system \| --user] [--admin-group <名称>]` | — | 安装并立即启动用户级服务，或系统级服务；此后的登录或系统启动由服务管理器负责。服务定义以 `--allow-degraded` 启动 Broker（`REQ-broker-config-063`）。系统级安装创建管理组并让新配置文件的属组为它（`REQ-broker-config-015`、`REQ-broker-config-043`） |
+| `peers service start [--system \| --user]` | — | 启动所选级别的服务（`REQ-broker-config-055`） |
+| `peers service stop [--system \| --user]` | — | 停止所选级别的服务，不禁用，下次登录或开机仍启动（`REQ-broker-config-055`） |
+| `peers service restart [--system \| --user]` | — | 重启所选级别的服务（`REQ-broker-config-055`） |
+| `peers service remove [--system \| --user]` | — | 停止并卸载服务，保留配置、身份与审计日志 |
+| `peers uninstall [--purge] [--yes]` | — | 卸载本系统，见“卸载”（`REQ-broker-config-051` 至 `REQ-broker-config-054`） |
 
-`offline` 与 `online` 按终端命令的选择规则连接 Broker，与 `config set broker.offline <值>` 等价，输出一行 `Broker is now offline` 或 `Broker is now online`，审计记录与 `config set` 相同。`service start|stop|restart` 不接受 `--system`，root 作用于系统级服务，其他账户作用于本账户的用户级服务；`service install` 与 `service uninstall` 的 `--system` 保留。
+`service offline` 与 `service online` 按终端命令的选择规则连接 Broker，与 `config set broker.offline <值>` 等价，输出一行 `Broker is now offline` 或 `Broker is now online`，审计记录与 `config set` 相同。service 下的全部子命令接受互斥的 `--system` 与 `--user`，都不给时 root 为系统级服务，其他账户为本账户的用户级服务；服务定义显式写出其中一个。
 
-`peer connect` 的 `<address>` 与 `connect_broker` 工具相同，写成 `address:port` 或 `hostname(address:port)`；`peer disconnect` 的 `<broker>` 与 `disconnect_broker` 工具相同，写别名或 64 位十六进制指纹。每个终端命令都支持 `-h` 与 `--help`；参数错误时打印该命令的用法，并以用法错误的退出码（2）结束。
+`broker connect` 的 `<address>` 与 `connect_broker` 工具相同，写成 `address:port` 或 `hostname(address:port)`；`broker disconnect` 的 `<broker>` 与 `disconnect_broker` 工具相同，写别名或 64 位十六进制指纹。每个终端命令都支持 `-h` 与 `--help`；参数错误时打印该命令的用法，并以用法错误的退出码（2）结束。
 
 失败时进程以非零退出码结束，标准错误的最后一行是 `peers <子命令>: <原因>`，原因取上游错误的原文；用法错误另附该子命令的用法。命令的结果只写标准输出，Broker 的 JSON 运行日志另行写标准错误。退出码按原因区分：
 
@@ -145,30 +146,31 @@ service Local {
 
 `broker.listen` 的端口小于 1024 而配置文件可被组或其他人写入时，拒绝发生在监听绑定一步，退出码为 4，不是 5；作为服务的 Broker 带 `--allow-degraded` 时进入仅本机降级。
 
-`service install`、`service start` 与 `service restart` 另以退出码 3 表示服务已安装并在运行，但 Broker 处于降级运行；它与 `broker` 命令的退出码 3（已有实例持有账户锁）同值，分属不同命令。`service install` 与 `service uninstall` 成功时退出码为 0，安装或卸载失败为 1、原因写在标准错误，用法错误为 2；`--system` 的身份校验失败按一般失败处理，退出码为 1。`uninstall` 成功、没有安装或非 root 拒绝经 sudo 卸载系统级安装时为 0，失败为 1，用法错误为 2。
+`service install`、`service start` 与 `service restart` 另以退出码 3 表示服务已安装并在运行，但 Broker 处于降级运行；它与 `service run` 的退出码 3（已有实例持有账户锁）同值，分属不同命令。`service install` 与 `service remove` 成功时退出码为 0，安装或卸载失败为 1、原因写在标准错误，用法错误为 2；`--system` 的身份校验失败按一般失败处理，退出码为 1。`uninstall` 成功、没有安装时为 0；非 root 而只有系统级安装时报错并以 1 退出，错误信息给出可直接重跑的 `sudo peers uninstall ... --yes`；没有终端又没有 `--yes` 时以 1 退出，说明要加 `--yes`；其余失败为 1，用法错误为 2。
 
 `--listen` 的取值必须非空。要本次运行不监听，把配置中的 `broker.listen` 设为空。地址写法是否合法由 `config` 判定，不合法按用法错误退出。
 
 进程级信号由 `cmd/peers` 统一处理：第一次 SIGINT 或 SIGTERM 取消运行，第二次直接终止进程。
 
-`status`、`audit`、`config`、`pairing-key`、`peer` 与 `update` 连接哪个 Broker，按调用者身份选择，不提供显式参数：root 连接系统级 Broker；其他账户按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的顺序前三项确定，先找本账户的用户级 Broker，没有再落到系统级。选择只查找正在运行的 Broker，不启动 Broker。`update` 对选出的 Broker 调用 `ApplyUpdate`；返回 `failed_precondition` 且所选的是本账户的用户级 Broker 时，改为在本地替换；选不出正在运行的 Broker 时同样在本地替换（见“更新检查与自我更新”）。其余命令找不到正在运行的 Broker 时报错，报错文字与 `status` 相同，说明 `peers service install` 与 `peers broker` 两种启动方法。连上后先调用 `Hello`，本机协议版本不同时报 `version_mismatch` 并退出，说明 Broker 与本二进制各自的版本，提示用本二进制重启 Broker。单个一元调用超时 10 秒；`Audit` 的流不设总时限，靠信号取消。会话中的 MCP 服务进程按自己的顺序选择 Broker，与终端命令各自独立。
+`service status`、`service online`、`service offline` 与 `service audit` 连接所选级别的 Broker，级别由 `--system` 或 `--user` 指定，都不给时 root 为系统级，其他账户为本账户的用户级。`config`、`key`、`broker` 与 `update` 连接哪个 Broker 按调用者身份选择，不提供显式参数：root 连接系统级 Broker；其他账户按 [mcpserver](design-mcpserver.md) 中 MCP 服务进程选择 Broker 的顺序前三项确定，先找本账户的用户级 Broker，没有再落到系统级。选择只查找正在运行的 Broker，不启动 Broker。`update` 对选出的 Broker 调用 `ApplyUpdate`；返回 `failed_precondition` 且所选的是本账户的用户级 Broker 时，改为在本地替换；选不出正在运行的 Broker 时同样在本地替换（见“更新检查与自我更新”）。其余命令找不到正在运行的 Broker 时报错，报错文字与 `service status` 相同，说明 `peers service install` 与 `peers service run` 两种启动方法。连上后先调用 `Hello`，本机协议版本不同时报 `version_mismatch` 并退出，说明 Broker 与本二进制各自的版本，提示用本二进制重启 Broker。单个一元调用超时 10 秒；`Audit` 的流不设总时限，靠信号取消。会话中的 MCP 服务进程按自己的顺序选择 Broker，与终端命令各自独立。
 
-`status` 的输出分 Agent 与对端两段，表格按地址或别名排序，空值写 `-`；topic 按字典序以逗号连接；指纹写完整的 64 位小写十六进制，不截短；枚举取值写去掉前缀的小写蛇形。段内没有条目时写 `Agents: none` 或 `Peers: none`。`audit` 每个事件输出一行，按到达顺序排列，依次是 RFC 3339 UTC 时间、事件名，以及 `actor`、`account`、`peer`、`key`、`old`、`new`、`count`、`detail` 中的非空字段；值为空或含空格、引号、等号时加引号。
+`service status` 的输出分 Agent 与对端两段，表格按地址或别名排序，空值写 `-`；topic 按字典序以逗号连接；指纹写完整的 64 位小写十六进制，不截短；枚举取值写去掉前缀的小写蛇形。段内没有条目时写 `Agents: none` 或 `Peers: none`。`service audit` 每个事件输出一行，按到达顺序排列，依次是 RFC 3339 UTC 时间、事件名，以及 `actor`、`account`、`peer`、`key`、`old`、`new`、`count`、`detail` 中的非空字段；值为空或含空格、引号、等号时加引号。
 
-配置、配对与对端管理命令沿用 `status` 的输出约定：指纹写完整的 64 位小写十六进制，枚举写去掉前缀的小写蛇形，空值写 `-`，表格按各自的排序键排序。各命令的输出：
+配置、配对与对端管理命令沿用 `service status` 的输出约定：指纹写完整的 64 位小写十六进制，枚举写去掉前缀的小写蛇形，空值写 `-`，表格按各自的排序键排序。各命令的输出：
 
-- `config get`：每项一行，写成 `<key> = <value>`，按 `key` 排序；密钥类配置项只写 `set` 或 `unset`，不输出取值。带 `key` 时只输出该项。
+- `config list`：每项一行，写成 `<key> = <value>`，按 `key` 排序；密钥类配置项只写 `set` 或 `unset`，不输出取值。
+- `config get`：只输出一项，写法与 `config list` 相同；未知键返回错误。
 - `config set`：一行，写成 `<key>: <old> -> <new>`。
-- `pairing-key create`：依次输出 `Key: <key>`、`Expires: <RFC 3339 UTC>`、`Addresses:`，之后每个对外地址一行，缩进两格；本次运行不监听时，Broker 以 `invalid_argument` 拒绝，命令以退出码 1 结束。
-- `peer list`：表格，列为 ALIAS、FINGERPRINT、PEER（yes 或 no）、STATUS、DIRECTION、ADDRESSES（逗号连接）。按别名排序；没有任何 Broker 时输出 `Brokers: none`。应答缺少 `local` 时报错并以退出码 1 结束，不输出表格。
-- `peer connect`：一行 `Paired with <alias> (<fingerprint>)`；应答中的 warnings 每条一行写到标准错误，前缀 `warning: `，退出码仍为 0。
-- `peer disconnect`：一行 `Disconnected <broker>`。
+- `key create`：依次输出 `Key: <key>`、`Expires: <RFC 3339 UTC>`、`Addresses:`，之后每个对外地址一行，缩进两格；本次运行不监听时，Broker 以 `invalid_argument` 拒绝，命令以退出码 1 结束。
+- `broker list`：表格，列为 ALIAS、FINGERPRINT、PEER（yes 或 no）、STATUS、DIRECTION、ADDRESSES（逗号连接）。按别名排序；没有任何 Broker 时输出 `Brokers: none`。应答缺少 `local` 时报错并以退出码 1 结束，不输出表格。
+- `broker connect`：一行 `Paired with <alias> (<fingerprint>)`；应答中的 warnings 每条一行写到标准错误，前缀 `warning: `，退出码仍为 0。
+- `broker disconnect`：一行 `Disconnected <broker>`。
 
 `service install` 写入服务定义、启用服务并立即启动 Broker，随后用本机 socket 轮询 Broker 是否应答，上限为 20 秒。上限覆盖 Broker 自身的启动时间与 launchd 默认 10 秒的节流；超时使安装失败，错误给出服务日志的位置，并并入日志中最后一条 `startup_failed` 记录的 `error` 字段：Linux 为 `journalctl --user -u peers.service`（系统级去掉 `--user`），macOS 为 `~/Library/Logs/peers/broker.log`（系统级为 `/var/log/peers/broker.log`）。只采用本次安装开始之后写入的记录：Linux 用 `journalctl --since` 限定查询起点，再按记录时间过滤；macOS 按记录的 `time` 字段过滤。安装前的旧记录描述上一次运行，不并入错误。找不到本次安装开始之后的 `startup_failed` 记录时，改为给出服务管理器报告的状态与最后的退出码：`systemctl [--user] show -p ActiveState -p SubState -p ExecMainStatus peers.service`，或 `launchctl print <域>/<标签>` 中的 `state` 与 `last exit code`（`REQ-broker-config-049`）。
 
-服务定义以允许降级运行的方式启动 Broker：Linux 用户级为 `ExecStart=<二进制> broker --allow-degraded`，系统级为 `ExecStart=<二进制> broker --system --allow-degraded`；macOS 的 `ProgramArguments` 末尾加 `--allow-degraded`（`REQ-broker-config-063`）。本机 socket 应答之后调用一次 `Status`：处于降级运行时，服务保持已安装并在运行，输出 `Status` 的故障与修复提示，以退出码 3 结束（`REQ-broker-config-064`）。
+服务定义以允许降级运行的方式启动 Broker：Linux 用户级为 `ExecStart=<二进制> service run --user --allow-degraded`，系统级为 `ExecStart=<二进制> service run --system --allow-degraded`；macOS 的 `ProgramArguments` 为 `service run --user` 或 `service run --system`，末尾加 `--allow-degraded`（`REQ-broker-config-063`）。本机 socket 应答之后调用一次 `Status`：处于降级运行时，服务保持已安装并在运行，输出 `Status` 的故障与修复提示，以退出码 3 结束（`REQ-broker-config-064`）。
 
-本机 socket 应答且服务管理器报告的 PID 与 socket 对端 PID 一致之后，服务即视为已安装并在运行。此后读不到 `Status` 时，安装先在就绪等待的剩余时间内重试；仍然失败则以退出码 1 结束，不清理也不禁用服务，报错说明服务在运行、状态读不到，并引导用户执行 `peers status`。
+本机 socket 应答且服务管理器报告的 PID 与 socket 对端 PID 一致之后，服务即视为已安装并在运行。此后读不到 `Status` 时，安装先在就绪等待的剩余时间内重试；仍然失败则以退出码 1 结束，不清理也不禁用服务，报错说明服务在运行、状态读不到，并引导用户执行 `peers service status`。
 
 成功或降级时，`service install` 打印汇总（`REQ-broker-config-050`）：
 
@@ -208,7 +210,7 @@ macOS 上，用户级 plist 写到 `~/Library/LaunchAgents/io.github.wangzw.peer
 
 系统级安装创建管理组：组不存在时 Linux 执行 `groupadd --system <名称>`，macOS 用 `dseditgroup` 创建；组已存在时直接使用，不改成员。组名默认为 `peers`，由 `--admin-group` 指定；建组失败时安装失败，并且不改动配置文件。配置文件已存在时，内容、属组与权限都不动，安装输出给出把已有文件交给管理组的命令 `chgrp <组> <路径> && chmod 0660 <路径>`。发布包内的安装脚本询问是否把执行安装的账户加入该组，默认不加入（[ADR-admin-group](../../adr/adr-admin-group.md)，`REQ-broker-config-043`）。
 
-`service uninstall` 先停止并卸载服务，成功后才删除服务定义；停止失败时保留文件并返回错误。Linux 上执行 `systemctl --user disable --now peers.service`，系统级去掉 `--user`，删除单元文件后执行 `daemon-reload`；`daemon-reload` 失败时恢复单元文件，使下一次卸载仍可完成。macOS 上执行 `launchctl bootout <域>/io.github.wangzw.peers`，再删除 plist，bootout 的错误处理与安装相同。判断是否已安装看两样：单元文件或 plist 存在，或服务管理器仍有启用、加载状态；文件已删除但服务仍在加载的照样卸载。配置、身份与审计日志保留。没有安装过时命令直接成功并报告未安装，因此可以重复执行。`--system` 需要 root。
+`service remove` 先停止并卸载服务，成功后才删除服务定义；停止失败时保留文件并返回错误。Linux 上执行 `systemctl --user disable --now peers.service`，系统级去掉 `--user`，删除单元文件后执行 `daemon-reload`；`daemon-reload` 失败时恢复单元文件，使下一次卸载仍可完成。macOS 上执行 `launchctl bootout <域>/io.github.wangzw.peers`，再删除 plist，bootout 的错误处理与安装相同。判断是否已安装看两样：单元文件或 plist 存在，或服务管理器仍有启用、加载状态；文件已删除但服务仍在加载的照样卸载。配置、身份与审计日志保留。没有安装过时命令直接成功并报告未安装，因此可以重复执行。`--system` 需要 root。
 
 `Audit` 是服务端流式调用：审计事件按时间顺序作为一条流逐条到达，读完即结束。请求带一个可选的 `limit`：非 0 时返回最新的 N 条事件，这 N 条仍按时间顺序到达；为 0 表示不限条数。读取不保留游标或分页状态，每次调用各自重新读取，`limit` 只截断这一次流的内容。
 
@@ -518,15 +520,15 @@ Linux 上，账户与组经 `getent` 取自系统的账户数据库，来源由 
 
 `Status` 的全量输出列出本机全部 Agent 及其成员关系，对端与链路另行列出，远端 Agent 不在 Agent 表中。调用方账户对配置文件没有读权限时，只省略其他账户的 Agent，对端与链路照常列出。
 
-`status` 的输出在 Agent 段之前按需加状态行，格式固定：
+`service status` 的输出在 Agent 段之前按需加状态行，格式固定：
 
 ```
 Broker: degraded (local only): listen address :17443 is unavailable: address already in use
 Fix: peers config set broker.listen <free address>, or edit broker.listen in /home/u/.peers/config.yaml
-Broker: offline; messages from other hosts are refused. Run peers online to accept them.
+Broker: offline; messages from other hosts are refused. Run peers service online to accept them.
 ```
 
-正常且上线时不输出状态行，输出与现在相同。仅诊断时第一行写 `Broker: degraded (diagnostics only): <reason>`，只输出前两行，不输出 Agent 段与对端段，`peers status` 以 1 退出；其余情况以 0 退出。`peer list` 在表格之前输出同样的状态行；仅诊断时得到 `broker_degraded`，按现有错误路径以 1 退出（`REQ-broker-config-068`）。
+正常且上线时不输出状态行，输出与现在相同。仅诊断时第一行写 `Broker: degraded (diagnostics only): <reason>`，只输出前两行，不输出 Agent 段与对端段，`peers service status` 以 1 退出；其余情况以 0 退出。`broker list` 在表格之前输出同样的状态行；仅诊断时得到 `broker_degraded`，按现有错误路径以 1 退出（`REQ-broker-config-068`）。
 
 `ListTopics` 返回调用方已加入的 topic 与已知的公开 topic，公开 topic 只列调用方尚未加入的（`REQ-topics-013`）。
 
@@ -536,7 +538,7 @@ Broker: offline; messages from other hosts are refused. Run peers online to acce
 
 版本比较采用语义化版本。当前版本不是合法的正式发布版本时，例如 `dev`、`e2e` 或带 `SNAPSHOT` 的版本，Broker 不检查。可用版本只取 GitHub API 最新正式发布接口返回的版本，预发布与草稿不参与（[REF-github-rest-api](../../references.md)）。
 
-`UpdateStatus` 返回当前版本、可用版本与发布页面地址；没有可用版本时可用版本为空。终端 `status` 的输出在有可用版本时，最后另加一行：
+`UpdateStatus` 返回当前版本、可用版本与发布页面地址；没有可用版本时可用版本为空。终端 `service status` 的输出在有可用版本时，最后另加一行：
 
 ```
 Update: <v> available (current <c>); run peers update
@@ -544,7 +546,7 @@ Update: <v> available (current <c>); run peers update
 
 没有可用版本时不输出这一行（`REQ-update-002`）。
 
-`peers update [--yes]` 先检查当前版本是不是正式发布版本，不是时拒绝执行。没有 `--yes` 时，标准输入不是终端就拒绝，说明可以用 `--yes`；否则显示已安装版本并询问是否更新，用户不确认时以 0 退出，不做任何改动。确认之后才按终端命令的选择规则选出 Broker，对它调用 `ApplyUpdate`。返回 `failed_precondition` 且所选的是本账户的用户级 Broker 时，转到下面的本地替换路径；选不出正在运行的 Broker 时同样在本地替换。管理员账户没有运行自己的用户级 Broker 时，选中的是系统级 Broker，命令直接作用于系统级；同时运行着用户级 Broker 时，选择先落在用户级 Broker，管理系统级要加 `sudo`，使进程属于 root 并直接选中系统级 Broker。
+`peers update [--yes]` 先检查当前版本是不是正式发布版本，不是时拒绝执行。没有 `--yes` 时，标准输入不是终端就报错，说明要加 `--yes`，并以 1 退出；否则显示已安装版本并询问是否更新，用户不确认时以 0 退出，不做任何改动。确认之后才按终端命令的选择规则选出 Broker，对它调用 `ApplyUpdate`。返回 `failed_precondition` 且所选的是本账户的用户级 Broker 时，转到下面的本地替换路径；选不出正在运行的 Broker 时同样在本地替换。管理员账户没有运行自己的用户级 Broker 时，选中的是系统级 Broker，命令直接作用于系统级；同时运行着用户级 Broker 时，选择先落在用户级 Broker，管理系统级要加 `sudo`，使进程属于 root 并直接选中系统级 Broker。
 
 本地替换路径直接查询 GitHub，不在 Broker 中执行替换。前面已经通过了正式发布版本的检查，用户也已确认，以下步骤不再重复这两项检查：
 
@@ -630,7 +632,7 @@ Broker 处理 `ApplyUpdate`：
 
 ### 服务的启动、停止与重启
 
-级别按执行命令的账户确定：root 为系统级，其他账户为本账户的用户级。该级别没有安装服务时以 1 退出，说明没有安装；非 root 账户只装有系统级服务时另给出 `sudo peers service <命令>`。
+级别由 `--system` 或 `--user` 确定，两者互斥；都不给时 root 为系统级，其他账户为本账户的用户级。该级别没有安装服务时以 1 退出，说明没有安装；非 root 账户只装有系统级服务时另给出 `sudo peers service <命令> --system`。
 
 | 命令 | Linux | macOS |
 |---|---|---|
@@ -642,10 +644,10 @@ Broker 处理 `ApplyUpdate`：
 
 ### 卸载
 
-`peers uninstall [--purge]` 的步骤：
+`peers uninstall [--purge] [--yes]` 的步骤：
 
-1. 确定级别。root 为系统级。非 root 账户：本账户有用户级安装时为用户级；否则有系统级安装时询问 `Uninstall the system-level installation (requires sudo)? [y/N]`，回答 y 时以 `sudo <本二进制> uninstall [--purge]` 重新执行，回答其他或无法询问时说明 `sudo peers uninstall` 并以 0 退出；两者都没有时，MCP 注册指向默认安装前缀下的本可执行文件的按用户级卸载，否则报告没有安装并以 0 退出。默认安装前缀为用户级的 `~/.local/bin/peers`、系统级的 `/usr/local/bin/peers`；经 `sudo` 运行的其他位置的副本不算安装。root 同时有用户级与系统级安装时卸载系统级；非 root 同时有时卸载用户级，结束后说明主机上仍有系统级安装及 `sudo peers uninstall`。一次只卸载一个级别。“有安装”的判定沿用 `service uninstall`：服务定义文件存在，或服务管理器仍有启用或加载的状态。
-2. 确定是否删除数据：`--purge` 为删。不带时询问 `Also remove configuration, identity, audit and service logs? [y/N]`，无法询问时按留。系统级的询问在第 1 步经 `sudo` 重新执行之后由 root 进程执行；只有用户自己给出 `--purge` 时才把它传给 root 进程，重新执行时不为用户补上。每句只问一次。`$HOME` 不是绝对路径时，命令在调用 `service.Uninstall` 与删除 MCP 注册之前失败，以 1 退出，不做任何删除。
+1. 确定级别。root 为系统级。非 root 账户：本账户有用户级安装时为用户级；否则有系统级安装时报错并以 1 退出，错误信息给出可以直接重跑的 `sudo peers uninstall [--purge] --yes`；两者都没有时，MCP 注册指向默认安装前缀下的本可执行文件的按用户级卸载，否则报告没有安装并以 0 退出。默认安装前缀为用户级的 `~/.local/bin/peers`、系统级的 `/usr/local/bin/peers`；经 `sudo` 运行的其他位置的副本不算安装。root 同时有用户级与系统级安装时卸载系统级；非 root 同时有时卸载用户级，结束后说明主机上仍有系统级安装及 `sudo peers uninstall`。一次只卸载一个级别。“有安装”的判定沿用 `service remove`：服务定义文件存在，或服务管理器仍有启用或加载的状态。
+2. 确定是否删除数据：`--purge` 为删。不带时询问 `Also remove configuration, identity, audit and service logs? [y/N]`；没有终端又没有 `--yes` 时报错，以 1 退出，不做任何删除。每句只问一次。`$HOME` 不是绝对路径时，命令在调用 `service.Uninstall` 与删除 MCP 注册之前失败，以 1 退出，不做任何删除。
 3. 从服务定义中读出它启动的二进制路径（`ExecStart` 的第一个字段，或 `ProgramArguments` 的第一项）。解析 `ExecStart` 时先去掉 systemd 允许的前缀字符 `-@+!:`。
 4. 调用现有的 `service.Uninstall` 停止并删除服务定义。
 5. 删除 MCP 注册：用户级为执行命令的账户；系统级为 `SUDO_USER`，为空或为 root 时跳过并给出手工命令。只在 `claude mcp get peer` 报告的命令等于第 3 步的二进制路径时执行 `claude mcp remove -s user peer`，与安装脚本只认自己注册的条目相同；找不到 `claude` 时给出手工命令。
@@ -666,7 +668,7 @@ Broker 处理 `ApplyUpdate`：
 
 drop-in 不在服务定义之内，只在删除数据时删除，因为其中可能有用户写入的代理设置。管理组只在安装记录能够证明它由本项目创建时才删除。安装创建组时在 `/var/lib/peers/admin-group` 写入组名，卸载在删除数据目录之前读取。同时满足以下条件才删除：有记录，且记录中的组名与配置文件当前的属组名一致；gid 不为 0；组不是任何账户的主组。没有记录时，组存在就保留它并说明安装没有记录创建它，不论配置文件当前的属组是否恰好是默认的 `peers`，也不论 `--admin-group` 指定的组名；记录存在而配置文件已不存在时，按记录中的组名检查后两项。主组检查枚举平台目录查询返回的账户，查询不到的账户不会被看到，`groupdel` 本身也拒绝删除本地账户的主组。任一条件不满足时保留该组，输出保留原因与手动删除命令（`groupdel <组>`，macOS 上 `dseditgroup -o delete <组>`）。不论有没有记录，组不存在都跳过。
 
-任一步失败时不回滚已完成的步骤，错误写明是哪一步、哪个路径与原因，以 1 退出；再次执行可以继续完成（`REQ-broker-config-049`）。删除数据中途失败时，先逐个输出已经删除的路径再报错。`service uninstall` 的行为不变，只处理服务。
+任一步失败时不回滚已完成的步骤，错误写明是哪一步、哪个路径与原因，以 1 退出；再次执行可以继续完成（`REQ-broker-config-049`）。删除数据中途失败时，先逐个输出已经删除的路径再报错。`service remove` 的行为不变，只处理服务。
 
 ## 错误与失败语义
 
