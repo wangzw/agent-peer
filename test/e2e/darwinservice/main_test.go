@@ -81,6 +81,10 @@ func TestMain(m *testing.M) {
 		os.Exit(runAccessCheckRole())
 	case getConfigRole:
 		os.Exit(runGetConfigRole())
+	case helperRegisterRole:
+		os.Exit(runHelperRegisterRole())
+	case helperRegisterWatchRole:
+		os.Exit(runHelperRegisterWatchRole())
 	case systemUpdateStatusRole:
 		os.Exit(runSystemUpdateStatusRole())
 	}
