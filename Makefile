@@ -21,6 +21,12 @@ GIT ?= git
 # Total timeout of the end-to-end test binary, passed to go test -timeout.
 E2E_TIMEOUT ?= 30m
 
+# Packages the e2e target runs and an optional -run regex selecting top-level
+# tests. The defaults run every e2e package and every test. ci.yml sets both to
+# run one shard; scripts/e2e-shards prints the values for that shard.
+E2E_PKGS ?= ./test/e2e/...
+E2E_RUN ?=
+
 # Hugo version for the website. The site workflow reads this line, so the
 # version is written once.
 HUGO_VERSION := 0.170.1
@@ -197,8 +203,10 @@ SYSTEMD_REBUILD_LEDGER ?= /tmp/ape2e-systemd-rebuilds.log
 e2e:
 	@tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT HUP INT TERM; \
 	status=0; \
+	runarg=""; \
+	if [ -n '$(E2E_RUN)' ]; then runarg="-run '$(E2E_RUN)'"; fi; \
 	if go build -o "$$tmp/testreport" ./scripts/testreport; then \
-		bash -o pipefail -c 'go test -tags e2e -timeout $(E2E_TIMEOUT) -json -p $(JOBS) -parallel $(JOBS) ./test/e2e/... | '"$$tmp"'/testreport -label e2e -progress -' || status=$$?; \
+		bash -o pipefail -c 'go test -tags e2e -timeout $(E2E_TIMEOUT) -json -p $(JOBS) -parallel $(JOBS) '"$$runarg"' $(E2E_PKGS) | '"$$tmp"'/testreport -label e2e -progress -' || status=$$?; \
 	else \
 		status=$$?; \
 	fi; \

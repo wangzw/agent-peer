@@ -1,0 +1,30 @@
+# e2e-shards assigns every package under ./test/e2e/... and every top-level
+# test in the top-level test/e2e package to exactly one CI shard. The table is
+# read by scripts/e2e-shards, which also checks it against the packages and
+# tests the go tool reports.
+#
+# Format, one shard per line:
+#
+#   shard <name> <package> [<package>...] -- [<test>...]
+#
+# Packages before "--" are the packages the shard runs. Tests after "--" are
+# the top-level tests of the top-level test/e2e package that the shard runs;
+# every other test in a listed package runs in that shard as well. A shard
+# without a top-level test/e2e package needs no test list and runs every test
+# in its packages.
+#
+# top-b is the catch-all shard: a new top-level test goes there unless it
+# belongs with the tests in top-a. The coverage check fails until the new test
+# is listed, so a test cannot silently drop out of the gate.
+#
+# The two top-level shards are split by the slowest-test report of CI run
+# 44861386512. The slow tests assigned to top-a sum to 167.72 s; those in
+# top-b sum to 134.01 s and top-b also runs the helper packages, whose slowest
+# test (harness TestBuildBinaryCachesAndInjectsVersion) took 36.32 s in the
+# same report, so the two shards land near 168 s and 170 s. The remaining
+# tests, all below 8.28 s, are split evenly.
+shard top-a ./test/e2e -- TestAliases TestBrokerOfflineDirectory TestBrokerProcessLocal TestCardFollowsAddressChange TestCardShowsConfiguredAddresses TestConfigTools TestContainerSessionFakeProxy TestDirectoryPerLinkLimit TestDirectoryRejectsTamperedCards TestDirectoryTotalLimitKeepsRenewals TestDirectoryUnknownAddressKind TestDiscoveryNoDialToCardHolder TestDiscoveryPrivateByDefault TestDiscoveryPublicWithoutListen TestDiscoveryRevokeWithin60s TestInfraCountersAndCapture TestInfraCutRestore TestInfraMITMRedirect TestInfraNoEgress TestInfraPortForward TestJourneyCollaborateInTopic TestJourneyConnectPublicBroker TestJourneyPairBrokers TestLinks TestLinksRestartWithTwoPeers TestLocalSend TestLocalTopics TestLocalVersionMismatchReq016 TestM1SameHostRoundTrip TestNoDialToCardAddress TestOtherAccountRejected TestPrivateTopicNamesStayHome TestPublicTopicFollowsLastMember TestPublicTopicRejectedOnPrivateBroker TestRegistrationListAgentsAbandonsAStalledCall TestWaitRegisteredRetriesAStalledCall
+
+shard top-b ./test/e2e ./test/e2e/cmd/e2e-node ./test/e2e/ctl ./test/e2e/fakepeer ./test/e2e/fakepeer/fakerec ./test/e2e/harness ./test/e2e/internal/pathcmp ./test/e2e/node ./test/e2e/syscontainer -- TestAdvertisedAddresses TestBrokerOffline TestBrokerProcessInContainer TestCardExpiresAfterSevenDays TestCardRenewedDaily TestConfigToolAnnotations TestConfigToolsCluster TestDegradedRun TestDirectoryRejectsUnpairedSource TestDiscoveryCardReachesWholeNetwork TestDiscoveryPrivateBrokerLearnsCards TestInfraBlock TestInfraFlatV6 TestInfraNAT TestInfraNoNetworkResidue TestInfraSingleNode TestLinkEncrypted TestLinkVersionMismatchAndRecovery TestLocalRegistration TestLocalSessionChanges TestLocalVersionMismatchRecoveryReq016 TestLongHostnameAlias TestMITM TestPairingKeys TestPublicTopicExpiresWithDeclarer TestPublicTopicGoneWhenBrokerPrivate TestPublicTopicVisibleAcrossNetwork TestRegistrationRejectedRetriesAStalledCall TestRemoteSendFaults TestRemoteVisibility TestWaitRegisteredToleratesASlowUpdateCheck
+
+shard system ./test/e2e/system
