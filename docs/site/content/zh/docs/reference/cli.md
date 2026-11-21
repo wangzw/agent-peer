@@ -218,7 +218,7 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 ```text
 agent-peer 0.2.0 is installed. Update to the latest release? [y/N] y
 agent-peer 0.2.0 is installed; version 0.3.0 is available.
-Release: https://github.com/wangzw/agent-peer/releases/tag/v0.3.0
+Release: https://github.com/wangzw/peers/releases/tag/v0.3.0
 The new binary takes effect the next time the Broker starts.
 ```
 

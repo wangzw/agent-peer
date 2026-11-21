@@ -13,7 +13,7 @@ agent-peer 运行在 macOS 与 Linux 上，支持 amd64 和 arm64；不支持原
 ## 安装
 
 ```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh
 ```
 
 重开已经打开的 Claude Code 会话，再用 `claude mcp get peer` 检查注册结果。[安装 agent-peer]({{< relref "guides/install.md" >}})介绍系统级安装以及其他安装方式。

@@ -8,7 +8,7 @@ weight: 8
 The command installs the latest release and registers the MCP server for your account; it asks for the level when it can:
 
 ```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh
 ```
 
 The release archive also contains an `install.sh`; after extracting it, run `sh ./install.sh`, which asks the same question. You can also install the binary by hand. The [Install agent-peer]({{< relref "guides/install.md" >}}) guide covers the level question and every way to install, including system-level installation.

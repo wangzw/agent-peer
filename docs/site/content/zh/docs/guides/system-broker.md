@@ -11,7 +11,7 @@ weight: 6
 把二进制装进 root 拥有、组和其他人不可写的目录，并以 root 安装服务。安装命令会一次完成这两件事：对它的级别询问回答 y。请在需要使用系统级 Broker 的 Claude Code 所属的账户下执行。安装只为执行安装的账户注册 MCP 服务，即使它经 `sudo` 重新执行自己也是这个账户。安装会立即启动 Broker，此后它随开机启动。
 
 ```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh
 ```
 
 [安装 agent-peer]({{< relref "install.md" >}})介绍这个询问以及其他安装方式；手动命令见[把 Broker 安装为服务]({{< relref "run-as-service.md" >}})。

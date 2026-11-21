@@ -18,7 +18,7 @@ layout: hextra-home
 
 <div class="home-hero-actions">
 {{< hextra/hero-button text="Quick start" link="docs/getting-started" >}}
-<a href="https://github.com/wangzw/agent-peer" target="_blank" rel="noreferrer" class="home-secondary-button">{{< icon name="github" attributes="height=18" >}} GitHub</a>
+<a href="https://github.com/wangzw/peers" target="_blank" rel="noreferrer" class="home-secondary-button">{{< icon name="github" attributes="height=18" >}} GitHub</a>
 </div>
 
 {{< home-install label="Copy install command" copied="Copied" >}}

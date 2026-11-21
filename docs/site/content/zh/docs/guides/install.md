@@ -16,7 +16,7 @@ weight: 1
 
 ```sh
 VERSION=0.3.0
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version "$VERSION"
+curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh -s -- --version "$VERSION"
 ```
 
 `--version` 必须写在所有其他参数之前。它指定一个已发布的版本；这个版本没有可安装的发布包时，脚本中止并报 `version <version> not found`。其余参数原样传给发布包里的 `install.sh`，所以下一节的选项在这里同样可用。
@@ -28,7 +28,7 @@ curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install
 把脚本通过管道交给 shell，信任程度与手动从 GitHub Releases 下载发布包相同。发布没有签名，`checksums.txt` 与发布包来自同一个发布，所以校验和相符只能说明下载没有损坏，证明不了这个发布本身可信。想先看过再执行，可以先把脚本下载下来，读一遍，再在它所在的目录执行：
 
 ```sh
-curl -fsSLO https://github.com/wangzw/agent-peer/releases/latest/download/install.sh
+curl -fsSLO https://github.com/wangzw/peers/releases/latest/download/install.sh
 sh install.sh
 ```
 
@@ -36,12 +36,12 @@ sh install.sh
 
 ## 从发布包安装
 
-agent-peer 以 `tar.gz` 发布包的形式放在 [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest) 上。下载对应平台和架构的发布包，以及同一发布里的 `checksums.txt`：
+agent-peer 以 `tar.gz` 发布包的形式放在 [GitHub Releases](https://github.com/wangzw/peers/releases/latest) 上。下载对应平台和架构的发布包，以及同一发布里的 `checksums.txt`：
 
 ```sh
 VERSION=0.3.0
-curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/agent-peer_${VERSION}_<os>_<arch>.tar.gz
-curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/checksums.txt
+curl -LO https://github.com/wangzw/peers/releases/download/v${VERSION}/agent-peer_${VERSION}_<os>_<arch>.tar.gz
+curl -LO https://github.com/wangzw/peers/releases/download/v${VERSION}/checksums.txt
 ```
 
 把 `<os>_<arch>` 换成 `darwin_amd64`、`darwin_arm64`、`linux_amd64` 或 `linux_arm64`。下面的校验与解压示例用 arm64 发布包；在 amd64 主机上，把 `arm64` 换成 `amd64`。
@@ -185,8 +185,8 @@ agent-peer broker
 
 ```sh
 VERSION=0.3.0
-git clone https://github.com/wangzw/agent-peer
-cd agent-peer
+git clone https://github.com/wangzw/peers
+cd peers
 go build -trimpath -ldflags "-X main.version=$VERSION" -o agent-peer ./cmd/agent-peer
 ```
 

@@ -13,7 +13,7 @@ agent-peer runs on macOS and Linux, on amd64 and arm64; native Windows is not su
 ## Install
 
 ```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh
 ```
 
 Reopen any Claude Code session that is already open, then check the registration with `claude mcp get peer`. [Install agent-peer]({{< relref "guides/install.md" >}}) covers system-level installation and the other ways to install.

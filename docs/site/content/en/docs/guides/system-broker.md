@@ -11,7 +11,7 @@ A system Broker runs as a service with root privileges and serves agents of seve
 Install the binary in a directory that root owns and that group and others cannot write, and install the service as root. The install command does both: answer y to its level question. Run it from the account whose Claude Code should use the system Broker. The install registers the MCP server only for the account that ran it, including when it re-runs itself through `sudo`. It starts the Broker immediately, and it starts at boot from then on.
 
 ```sh
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh
 ```
 
 [Install agent-peer]({{< relref "install.md" >}}) covers the question and the other ways to install; [Run the Broker as a service]({{< relref "run-as-service.md" >}}) gives the manual commands.

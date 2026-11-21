@@ -1,4 +1,4 @@
-baseURL: https://zhanwei.wang/agent-peer/
+baseURL: https://zhanwei.wang/peers/
 title: agent-peer
 locale: en
 
@@ -25,7 +25,7 @@ params:
     type: flexsearch
   editURL:
     enable: true
-    base: https://github.com/wangzw/agent-peer/edit/main/docs/site/content
+    base: https://github.com/wangzw/peers/edit/main/docs/site/content
   footer:
     displayCopyright: false
     displayPoweredBy: false
@@ -57,7 +57,7 @@ languages:
             type: language-switch
         - name: GitHub
           weight: 4
-          url: https://github.com/wangzw/agent-peer
+          url: https://github.com/wangzw/peers
           params:
             icon: github
   zh:
@@ -83,6 +83,6 @@ languages:
             type: language-switch
         - name: GitHub
           weight: 4
-          url: https://github.com/wangzw/agent-peer
+          url: https://github.com/wangzw/peers
           params:
             icon: github

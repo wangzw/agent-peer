@@ -16,7 +16,7 @@ To install a particular version, set it first and pass `--version`:
 
 ```sh
 VERSION=0.3.0
-curl -fsSL https://github.com/wangzw/agent-peer/releases/latest/download/install.sh | sh -s -- --version "$VERSION"
+curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh -s -- --version "$VERSION"
 ```
 
 `--version` must come before every other argument. It names a published version to install; when that version has no release archive to install, the script stops with `version <version> not found`. Every other argument is passed unchanged to the archive's `install.sh`, so the options in the next section work here as well.
@@ -28,7 +28,7 @@ Unless `--version` names a release, the script resolves the latest stable releas
 Piping a script into a shell trusts it to the same degree as downloading the archive by hand from GitHub Releases. Releases are not signed, and `checksums.txt` comes from the same release as the archive, so a matching checksum catches a damaged download but does not prove that the release is trustworthy. To inspect the script first, download it, read it, and run it from the directory that holds it:
 
 ```sh
-curl -fsSLO https://github.com/wangzw/agent-peer/releases/latest/download/install.sh
+curl -fsSLO https://github.com/wangzw/peers/releases/latest/download/install.sh
 sh install.sh
 ```
 
@@ -36,12 +36,12 @@ The script does the same work as the `install.sh` in the archive, described in t
 
 ## Install from the release archive
 
-agent-peer is distributed as a `tar.gz` archive on [GitHub Releases](https://github.com/wangzw/agent-peer/releases/latest). Download the archive for your platform and architecture together with `checksums.txt` from the same release:
+agent-peer is distributed as a `tar.gz` archive on [GitHub Releases](https://github.com/wangzw/peers/releases/latest). Download the archive for your platform and architecture together with `checksums.txt` from the same release:
 
 ```sh
 VERSION=0.3.0
-curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/agent-peer_${VERSION}_<os>_<arch>.tar.gz
-curl -LO https://github.com/wangzw/agent-peer/releases/download/v${VERSION}/checksums.txt
+curl -LO https://github.com/wangzw/peers/releases/download/v${VERSION}/agent-peer_${VERSION}_<os>_<arch>.tar.gz
+curl -LO https://github.com/wangzw/peers/releases/download/v${VERSION}/checksums.txt
 ```
 
 Replace `<os>_<arch>` with `darwin_amd64`, `darwin_arm64`, `linux_amd64` or `linux_arm64`. The checksum and extraction examples below use the arm64 archive; replace `arm64` with `amd64` on an amd64 host.
@@ -185,8 +185,8 @@ To build from source you need Go 1.27. Clone the repository and build:
 
 ```sh
 VERSION=0.3.0
-git clone https://github.com/wangzw/agent-peer
-cd agent-peer
+git clone https://github.com/wangzw/peers
+cd peers
 go build -trimpath -ldflags "-X main.version=$VERSION" -o agent-peer ./cmd/agent-peer
 ```
 
