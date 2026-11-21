@@ -77,9 +77,12 @@ MCP 服务的使用说明随工具一起进入会话上下文。下列要点是�
 
 - 带 `@` 的发送方名字是 Agent 地址。回复时用 `send_message`，把来信署名中的地址原样填入 `to`；Claude Code 自带的会话间发送工具到不了这类地址（`REQ-agent-messaging-025`）。
 - 地址带 `@` 的 Agent 用本服务的工具联系，不论它在本机还是在别的主机上；没有登记到本系统的本机会话用 Claude Code 自带的工具联系。
+- 用户要求给所有 Agent 发消息或广播、且没有提到 peers 时，只用 Claude Code 自带的会话间发送工具发给本机会话，不经本服务发送；发送后用一句话提示用户还可以用 peers 通知其他主机上的 Agent（`REQ-agent-messaging-042`）。
+- 只有用户明确要求用 peers 广播或通知时，才用 `send_message` 逐个发给 `list_agents` 列出的每个 Agent（`REQ-agent-messaging-043`）。
+- 本会话没有 Claude Code 自带的会话间发送工具时，不用本服务代发，告诉用户本机群发无法进行，并附上同一句提示（`REQ-agent-messaging-044`）。
 - `send_message` 成功只表示消息已到达对方会话，不表示对方已读或同意；对方的会话可能把消息留待用户批准，对方也可能不回复。
 - 结果为 `Delivery unknown` 时消息可能已经送达，重发可能使对方收到两份。
-- 向多个 Agent 发送时逐个调用。不为致谢或确认收到而回复。
+- 向按地址指定的多个 Agent 发送时逐个调用。不为致谢或确认收到而回复。
 - 不要在短时间内向同一个 Agent 重复发送内容完全相同的消息：接收方会丢弃重复的那一条，而发送照样返回成功（[ADR-no-broker-rate-limiting](../../adr/adr-no-broker-rate-limiting.md)）。
 - 本会话中遭到拒绝或会遭到拦截的操作，不得请其他 Agent 代做。
 - 结果带 `broker_offline` 时对方 Broker 已下线，不要重发同一条消息。

@@ -6,12 +6,12 @@
 
 ## 范围
 
-本文档覆盖会话如何登记为 [Agent](../../glossary.md)、Agent 的命名与地址、Agent 列表、点对点消息的发送与投递结果，以及 Broker 下线时对端消息的拒绝。
+本文档覆盖会话如何登记为 [Agent](../../glossary.md)、Agent 的命名与地址、Agent 列表、点对点消息的发送与投递结果、用户要求给所有 Agent 发消息或广播时消息的发送范围，以及 Broker 下线时对端消息的拒绝。
 
 ### 范围外
 
 - 可见性规则本身，由 [topic](prd-topics.md) 规定。
-- 群发、文件传递、送达之后的状态回报、离线补发、发送限速与循环检测。
+- 系统自身的群发能力、文件传递、送达之后的状态回报、离线补发、发送限速与循环检测。
 
 ## 参与者
 
@@ -349,6 +349,30 @@ Broker 下线不得影响本机 Agent 之间的发送，也不得影响本机 Ag
 - **验收**：B 下线后，B 上的两个 Agent 互发消息成功；B 上的 Agent 向 A 上的 Agent 发送成功；A 上的 Agent 回复 B 上的 Agent，被 `REQ-agent-messaging-039` 拒绝。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/offline_test.go` 的 `TestBrokerOffline/REQ-agent-messaging-041 local and outgoing sends continue`
+
+### REQ-agent-messaging-042
+
+用户要求给所有 Agent 发消息或广播、且没有提到 peers 时，系统必须使这次群发只到达本机会话，不经本系统发给任何 Agent，并在群发之后给用户一句提示：还可以用 peers 通知其他主机上的 Agent。
+
+- **验收**：在一个有内置会话间发送工具的会话里要求给所有 Agent 发消息，本机会话收到这条消息，与发送方同在 topic 的对端 Broker 上的 Agent 没有收到，本系统也没有发出这条消息；随后出现一句提示，说明还可以用 peers 通知其他主机上的 Agent。
+- **状态**：已实现
+- **端到端测试**：不适用：这一行为由模型按使用说明执行，无法确定性验证；使用说明的内容由 `internal/mcpserver/tools_test.go` 的 `TestInstructions` 断言
+
+### REQ-agent-messaging-043
+
+用户明确要求用 peers 广播或通知时，系统必须把消息逐个发给列表中的每个 Agent，每个 Agent 只发一次。
+
+- **验收**：两台已连接的主机上各有一个与发送方可见的 Agent，用户明确要求用 peers 广播，两个 Agent 的会话各收到一份这条消息。
+- **状态**：已实现
+- **端到端测试**：不适用：这一行为由模型按使用说明执行，无法确定性验证；使用说明的内容由 `internal/mcpserver/tools_test.go` 的 `TestInstructions` 断言
+
+### REQ-agent-messaging-044
+
+本会话没有 Claude Code 内置的会话间发送工具时，用户要求给所有 Agent 发消息或广播、且没有提到 peers，系统不得经本系统代发，必须告诉用户本机群发无法进行，并附上同一句提示：还可以用 peers 通知其他主机上的 Agent。
+
+- **验收**：在一个没有内置会话间发送工具的会话里要求给所有 Agent 发消息，本系统没有发出这条消息，用户看到一句说明本机群发无法进行的话，以及还可以用 peers 通知其他主机上的 Agent 的提示。
+- **状态**：已实现
+- **端到端测试**：不适用：这一行为由模型按使用说明执行，无法确定性验证；使用说明的内容由 `internal/mcpserver/tools_test.go` 的 `TestInstructions` 断言
 
 ## 数据需求
 
