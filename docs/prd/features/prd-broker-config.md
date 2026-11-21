@@ -393,9 +393,9 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 ### REQ-broker-config-047
 
-主机上已安装系统级服务时，`REQ-broker-config-044` 的询问必须改为 `Upgrade the system installation? [Y/n]`，直接回车或回答 y 时经 sudo 升级系统级安装；回答 n 时不得改动主机，命令以 0 退出，并提示另装用户级时带 `--user`。
+主机上已安装系统级服务时，`REQ-broker-config-044` 的询问必须改为 `Upgrade the system installation? [Y/n]`，直接回车或回答 y 时经 sudo 升级系统级安装；回答 n 时不得改动主机，命令以 0 退出，并说明系统安装没有改动。
 
-- **验收**：在已安装旧版本系统级服务的主机上，以普通账户执行一条在线安装命令：询问为这一句；直接回车并输入 sudo 密码后，系统级 Broker 以新版本运行，配置文件内容不变。在另一台同样的主机上回答 n：命令以 0 退出，二进制、服务与配置都没有变化，输出提示另装用户级时带 `--user`。
+- **验收**：在已安装旧版本系统级服务的主机上，以普通账户执行一条在线安装命令：询问为这一句；直接回车并输入 sudo 密码后，系统级 Broker 以新版本运行，配置文件内容不变。在另一台同样的主机上回答 n：命令以 0 退出，二进制、服务与配置都没有变化，输出说明系统安装没有改动，不提示改用 `--user`。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/install_script_test.go` 的 `TestREQBrokerConfig047_InstallScriptUpgradePrompt`
 

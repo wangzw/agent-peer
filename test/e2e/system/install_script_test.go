@@ -1011,7 +1011,7 @@ func assertUserInstallCompletions(t *testing.T, output string) {
 		t.Errorf("the user install wrote the zsh completion: %v", err)
 	}
 	if output != "" {
-		for _, want := range []string{"zsh completion was not installed", "completion zsh"} {
+		for _, want := range []string{"the zsh completion was not installed", "completion zsh"} {
 			if !strings.Contains(output, want) {
 				t.Errorf("output does not contain %q:\n%s", want, output)
 			}

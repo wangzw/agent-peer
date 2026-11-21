@@ -436,7 +436,7 @@ func TestInstallScriptUserInstall(t *testing.T) {
 
 	mustContain(t, "stdout", stdout, "peers test-version installed (user service, starts at login)")
 	mustContain(t, "stdout", stdout, "MCP:        registered")
-	mustContain(t, "stdout", stdout, "Reopen any Claude Code session")
+	mustContain(t, "stdout", stdout, "Restart any Claude Code session that is already running so it loads the peer MCP server")
 	mustContain(t, "stdout", stdout, binary[:strings.LastIndex(binary, "/")]+" is not on PATH")
 
 	// The binary, version, service state and status belong to service install;
@@ -472,7 +472,7 @@ func TestInstallScriptUserCompletions(t *testing.T) {
 	if _, err := os.Stat(zsh); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the user install wrote the zsh completion %s: %v", zsh, err)
 	}
-	mustContain(t, "stdout", stdout, "zsh completion was not installed")
+	mustContain(t, "stdout", stdout, "the zsh completion was not installed")
 	mustContain(t, "stdout", stdout, "completion zsh")
 
 	if _, err := os.Stat(f.pathUnderHome(t, ".local", "share", "man")); !errors.Is(err, os.ErrNotExist) {
@@ -546,7 +546,7 @@ func TestInstallScriptSystemCompletionsAndManPages(t *testing.T) {
 			t.Errorf("%q calls = %d, want 1; calls: %q", want, got, agent)
 		}
 	}
-	mustNotContain(t, "stdout", stdout, "zsh completion was not installed")
+	mustNotContain(t, "stdout", stdout, "the zsh completion was not installed")
 }
 
 // TestInstallScriptSystemSkipsFishWhenFishIsMissing checks that a system
@@ -816,7 +816,7 @@ func TestInstallScriptReportsInstallFailure(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
-	mustContain(t, "stderr", stderr, "installing the binary to")
+	mustContain(t, "stderr", stderr, "cannot install the binary to")
 }
 
 func TestInstallScriptReportsServiceFailure(t *testing.T) {
@@ -825,7 +825,7 @@ func TestInstallScriptReportsServiceFailure(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
-	mustContain(t, "stderr", stderr, "installing the user service")
+	mustContain(t, "stderr", stderr, "cannot install the user service")
 }
 
 func TestInstallScriptAcceptsDegradedService(t *testing.T) {
@@ -1539,7 +1539,7 @@ func adminGroupPrompt(user, group string) string {
 
 // adminGroupHint is the closing notice after the account joined the group.
 func adminGroupHint(user, group string) string {
-	return user + " was added to " + group + "; log in again or run `newgrp " + group + "` before managing the Broker without sudo."
+	return user + " was added to the " + group + " group; log in again or run `newgrp " + group + "` to manage the Broker without sudo."
 }
 
 // adminGroupJoinCommand is the command the script prints when the account is
@@ -1847,7 +1847,7 @@ func TestInstallScriptSystemAdminGroupFailure(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1\nstderr:\n%s", code, stderr)
 	}
-	mustContain(t, "stderr", stderr, "adding alice to the peers group")
+	mustContain(t, "stderr", stderr, "cannot add alice to the peers group")
 }
 
 func TestInstallScriptRemovesQuarantineOnDarwin(t *testing.T) {

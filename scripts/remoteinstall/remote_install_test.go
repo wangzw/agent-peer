@@ -633,8 +633,10 @@ func TestChecksumMismatch(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("exit = 0, want a failure")
 	}
-	if !strings.Contains(stderr, "checksum mismatch") {
-		t.Fatalf("stderr does not report the mismatch:\n%s", stderr)
+	for _, want := range []string{"checksum mismatch for", "checksums.txt lists", "but the download hashes to"} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stderr does not report the mismatch with %q:\n%s", want, stderr)
+		}
 	}
 	if args := f.installArgsLines(); args != nil {
 		t.Fatalf("install.sh ran after a checksum mismatch with %q", args)

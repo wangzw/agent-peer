@@ -211,7 +211,7 @@ main() {
 	# this avoids the GitHub API.
 	if [ "$version_requested" -eq 0 ]; then
 		if ! _effective=$(effective_url "$release_base/latest"); then
-			fail "resolving the latest release from $release_base/latest"
+			fail "cannot resolve the latest release from $release_base/latest"
 		fi
 		_effective=${_effective%/}
 		_tag=${_effective##*/}
@@ -223,14 +223,14 @@ main() {
 	fi
 
 	# 3. Select the release for this platform.
-	_os_name=$(uname -s) || fail "determining the operating system"
+	_os_name=$(uname -s) || fail "cannot determine the operating system"
 	case $_os_name in
 		Darwin) os=darwin ;;
 		Linux) os=linux ;;
 		*) fail "unsupported operating system '$_os_name': this script supports macOS and Linux" ;;
 	esac
 
-	_machine=$(uname -m) || fail "determining the machine architecture"
+	_machine=$(uname -m) || fail "cannot determine the machine architecture"
 	case $_machine in
 		x86_64|amd64) arch=amd64 ;;
 		arm64|aarch64) arch=arm64 ;;
@@ -247,7 +247,7 @@ main() {
 	# from no template; passing one keeps the directory in TMPDIR on every
 	# supported platform.
 	tmp=$(mktemp -d "${TMPDIR:-/tmp}/peers-install.XXXXXXXXXX") \
-		|| fail "creating a temporary directory"
+		|| fail "cannot create a temporary directory"
 	trap 'rm -rf "$tmp"' EXIT
 	trap 'exit 129' HUP
 	trap 'exit 130' INT
@@ -264,9 +264,9 @@ main() {
 	# lines mean the release does not cover this platform, and more than one is
 	# an ambiguity this script will not guess through.
 	if command -v sha256sum >/dev/null 2>&1; then
-		_actual=$(sha256sum "$tmp/$archive") || fail "computing the SHA-256 checksum of $archive"
+		_actual=$(sha256sum "$tmp/$archive") || fail "cannot compute the SHA-256 checksum of $archive"
 	elif command -v shasum >/dev/null 2>&1; then
-		_actual=$(shasum -a 256 "$tmp/$archive") || fail "computing the SHA-256 checksum of $archive"
+		_actual=$(shasum -a 256 "$tmp/$archive") || fail "cannot compute the SHA-256 checksum of $archive"
 	else
 		fail "neither sha256sum nor shasum is installed; cannot verify the download"
 	fi
@@ -295,7 +295,7 @@ main() {
 	_actual=$(printf '%s' "$_actual" | tr '[:upper:]' '[:lower:]')
 	_expected=$(printf '%s' "$_expected" | tr '[:upper:]' '[:lower:]')
 	if [ "$_actual" != "$_expected" ]; then
-		fail "checksum mismatch for $archive: checksums.txt lists $_expected, the download is $_actual"
+		fail "checksum mismatch for $archive: checksums.txt lists $_expected, but the download hashes to $_actual"
 	fi
 
 	# 6. Extract and hand over to the packaged install.sh. Its exit status is
@@ -303,7 +303,7 @@ main() {
 	# shell with the same value, and the EXIT trap still removes the temporary
 	# directory.
 	if ! tar -xzf "$tmp/$archive" -C "$tmp"; then
-		fail "extracting $archive"
+		fail "cannot extract $archive"
 	fi
 	if [ ! -f "$tmp/install.sh" ]; then
 		fail "version $version not found"

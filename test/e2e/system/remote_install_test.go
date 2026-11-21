@@ -304,9 +304,11 @@ func TestREQBrokerConfig042_RemoteInstallChecksumMismatch(t *testing.T) {
 		t.Fatalf("remote install with a mismatched checksum exited 0\nstdout:\n%s\nstderr:\n%s",
 			strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
-	if !strings.Contains(res.Stderr, "checksum mismatch") {
-		t.Fatalf("the failure did not name the checksum mismatch\nstdout:\n%s\nstderr:\n%s",
-			strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
+	for _, want := range []string{"checksum mismatch for", "but the download hashes to"} {
+		if !strings.Contains(res.Stderr, want) {
+			t.Fatalf("the failure did not report the checksum mismatch with %q\nstdout:\n%s\nstderr:\n%s",
+				want, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
+		}
 	}
 	t.Logf("the mismatched checksum was refused with exit %d: %s",
 		res.ExitCode, strings.TrimSpace(res.Stderr))

@@ -32,7 +32,7 @@
 #   --no-admin-group
 #                   do not ask to add the account that ran sudo to the admin
 #                   group.
-#   -h, --help      print this usage and exit.
+#   -h, --help      print this help and exit.
 #
 # Without --system or --user the script chooses the level itself. Root installs
 # for every account without asking. An account without a controlling terminal
@@ -115,7 +115,7 @@ Install peers from the extracted release archive.
   --no-admin-group
                   do not ask to add the account that ran sudo to the admin
                   group
-  -h, --help      print this usage and exit
+  -h, --help      print this help and exit
 
 Uninstall with "peers uninstall". This script does not uninstall
 anything.
@@ -240,11 +240,11 @@ if [ "$join_admin_group" -eq 1 ] && [ "$no_admin_group" -eq 1 ]; then
 fi
 
 if ! _current_uid=$(id -u); then
-	fail "determining the current user id"
+	fail "cannot determine the current user id"
 fi
 
 if ! _os=$(uname -s); then
-	fail "determining the operating system"
+	fail "cannot determine the operating system"
 fi
 
 # Choose the install level. An explicit option wins. Root installs for every
@@ -373,7 +373,7 @@ else
 		prefix=$HOME/.local/bin
 	fi
 	if ! mkdir -p "$prefix"; then
-		fail "creating the install directory $prefix"
+		fail "cannot create the install directory $prefix"
 	fi
 fi
 
@@ -385,7 +385,7 @@ if [ "$system" -eq 1 ]; then
 		fail "the system install directory $prefix does not exist; create it first (for example with 'sudo mkdir -p $prefix') or pass --prefix"
 	fi
 	if ! prefix=$(CDPATH='' cd -P "$prefix" && pwd); then
-		fail "resolving the install directory $prefix"
+		fail "cannot resolve the install directory $prefix"
 	fi
 
 	# check_system_dir fails unless one directory is root-owned and cannot be
@@ -456,18 +456,18 @@ fi
 # 1. Install the binary.
 if [ "$system" -eq 1 ]; then
 	if ! install -o root -g 0 -m 0755 "$archive_binary" "$prefix/peers"; then
-		fail "installing the binary to $prefix"
+		fail "cannot install the binary to $prefix"
 	fi
 else
 	if ! install -m 0755 "$archive_binary" "$prefix/peers"; then
-		fail "installing the binary to $prefix"
+		fail "cannot install the binary to $prefix"
 	fi
 fi
 
 # 2. Check that the installed binary actually runs and identifies itself. A
 # failure here usually means the archive was built for another platform.
 if ! _version_output=$("$prefix/peers" --version 2>&1); then
-	fail "running $prefix/peers --version; the binary may be built for another platform"
+	fail "cannot run $prefix/peers --version: the binary may have been built for another platform"
 fi
 case $_version_output in
 	"peers "*) ;;
@@ -502,7 +502,7 @@ if [ "$install_service" -eq 1 ]; then
 	case $_service_status in
 		0) ;;
 		3) _service_degraded=1 ;;
-		*) fail "installing the $_service_level service" ;;
+		*) fail "cannot install the $_service_level service" ;;
 	esac
 fi
 
@@ -581,7 +581,7 @@ if [ "$system" -eq 1 ]; then
 		done
 	fi
 else
-	printf 'install.sh: zsh completion was not installed; enable it with: %s completion zsh > ~/.zfunc/_peers (create ~/.zfunc and add it to fpath).\n' "$prefix/peers"
+	printf 'install.sh: the zsh completion was not installed; enable it with: %s completion zsh > ~/.zfunc/_peers (create ~/.zfunc and add it to fpath).\n' "$prefix/peers"
 fi
 
 # 5. The system service creates the admin group. Put the account that ran
@@ -596,7 +596,7 @@ if [ "$system" -eq 1 ] && [ "$install_service" -eq 1 ] && [ "$no_admin_group" -e
 	_sudo_user=${SUDO_USER:-}
 	if [ -n "$_sudo_user" ] && [ "$_sudo_user" != "root" ]; then
 		if ! _user_groups=$(id -Gn "$_sudo_user" 2>/dev/null); then
-			fail "listing the groups of $_sudo_user"
+			fail "cannot list the groups of $_sudo_user"
 		fi
 		case " $_user_groups " in
 			*" $admin_group "*) _in_admin_group=1 ;;
@@ -622,11 +622,11 @@ if [ "$system" -eq 1 ] && [ "$install_service" -eq 1 ] && [ "$no_admin_group" -e
 			if [ "$_join" -eq 1 ]; then
 				if [ "$_os" = "Darwin" ]; then
 					if ! dseditgroup -o edit -a "$_sudo_user" -t user "$admin_group"; then
-						fail "adding $_sudo_user to the $admin_group group"
+						fail "cannot add $_sudo_user to the $admin_group group"
 					fi
 				else
 					if ! usermod -aG "$admin_group" "$_sudo_user"; then
-						fail "adding $_sudo_user to the $admin_group group"
+						fail "cannot add $_sudo_user to the $admin_group group"
 					fi
 				fi
 				_admin_group_user=$_sudo_user
@@ -659,7 +659,7 @@ if [ "$install_mcp" -eq 1 ]; then
 		fi
 	else
 		if ! _target_user=$(id -un); then
-			fail "determining the current user"
+			fail "cannot determine the current user"
 		fi
 		_find_claude=1
 	fi
@@ -700,7 +700,7 @@ if [ "$install_mcp" -eq 1 ]; then
 				if [ -n "$_existing" ] && [ "$_existing" != "$prefix/peers" ]; then
 					_mcp_state="already registered with a different command; left unchanged"
 					printf 'install.sh: the peer MCP server is already registered with %s; leaving it unchanged.\n' "$_existing"
-					printf 'install.sh: to point it at this install, run: claude mcp remove -s user peer, then rerun this script.\n'
+					printf 'install.sh: to point it at this install, run "claude mcp remove -s user peer", then rerun this script.\n'
 				else
 					_mcp_state="already registered"
 					printf 'install.sh: the peer MCP server is already registered; leaving it unchanged.\n'
@@ -708,11 +708,11 @@ if [ "$install_mcp" -eq 1 ]; then
 			else
 				if [ "$system" -eq 1 ]; then
 					if ! sudo -u "$_target_user" -H "$_claude_path" mcp add --scope user peer -- "$prefix/peers" mcp; then
-						fail "registering the MCP server for $_target_user"
+						fail "cannot register the MCP server for $_target_user"
 					fi
 				else
 					if ! "$_claude_path" mcp add --scope user peer -- "$prefix/peers" mcp; then
-						fail "registering the MCP server"
+						fail "cannot register the MCP server"
 					fi
 				fi
 				_mcp_state="registered"
@@ -739,10 +739,10 @@ if [ "$install_service" -eq 0 ]; then
 fi
 printf '  %-12s%s\n' 'MCP:' "$_mcp_state"
 if [ -n "$_admin_group_user" ]; then
-	printf "\n%s was added to %s; log in again or run \`newgrp %s\` before managing the Broker without sudo.\n" \
+	printf "\n%s was added to the %s group; log in again or run \`newgrp %s\` to manage the Broker without sudo.\n" \
 		"$_admin_group_user" "$admin_group" "$admin_group"
 fi
-printf '\nReopen any Claude Code session that is already open to load the peer MCP server.\n'
+printf '\nRestart any Claude Code session that is already running so it loads the peer MCP server.\n'
 
 # A degraded service is installed and running, so the installation succeeded;
 # the exit status tells the caller that the Broker needs attention.
