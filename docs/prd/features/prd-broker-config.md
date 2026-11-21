@@ -425,7 +425,7 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 ### REQ-broker-config-051
 
-`peers uninstall` 必须判别已安装的级别，并删除该级别的服务定义、服务定义所启动的二进制、执行卸载的账户在 Claude Code 中的 MCP 注册，以及该级别的运行时目录。
+`peers uninstall` 必须判别已安装的级别，并删除该级别的服务定义、服务定义所启动的二进制、执行卸载的账户在 Claude Code 中的 MCP 注册、该级别的运行时目录，以及安装脚本写入的补全文件；系统级还要删除本项目的 man 页。
 
 - **验收**：在完成用户级安装的主机上执行 `peers uninstall` 并对数据询问直接回车：之后该账户的 Broker 进程不存在，服务定义文件、二进制、运行时目录都不存在，`claude mcp get peer` 报告未注册；配置文件、身份、审计日志与服务日志仍在。对系统级安装执行，结果相同。主机上同时有系统级与用户级安装时，非 root 账户只卸载用户级，结束后输出说明主机上仍有系统级安装及 `sudo peers uninstall`。再执行一次，命令成功并报告没有安装。
 - **状态**：已实现
@@ -433,15 +433,15 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 ### REQ-broker-config-052
 
-非 root 账户只有系统级安装时，`peers uninstall` 必须报错并以状态 1 退出，错误信息给出可以直接重跑的 `sudo peers uninstall ... --yes`。
+非 root 账户只有系统级安装时，`peers uninstall` 必须经 sudo 重跑：给了 `--yes` 时直接重跑；有终端时先询问，回答 y 后重跑。没有终端又没有 `--yes` 时报错并以状态 1 退出，错误信息给出可以直接重跑的 `sudo peers uninstall ... --yes`。
 
-- **验收**：主机上只有系统级安装，以普通账户执行 `peers uninstall`：命令报错，状态为 1，错误信息含 `sudo peers uninstall` 与 `--yes`，主机上没有改动；照抄这条命令执行并输入 sudo 密码后，系统级安装按 `REQ-broker-config-051` 删除。
+- **验收**：主机上只有系统级安装，以普通账户在没有终端的情况下执行 `peers uninstall`：命令报错，状态为 1，错误信息含 `sudo peers uninstall` 与 `--yes`，主机上没有改动；照抄这条命令执行并输入 sudo 密码后，系统级安装按 `REQ-broker-config-051` 删除。在终端上执行同一命令，回答 y 后命令经 sudo 重跑，系统级安装同样删除；以 `--yes` 执行时不提问，直接经 sudo 重跑。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/uninstall_test.go` 的 `TestUninstallREQBrokerConfig052NonRootSystemOnly`、`TestUninstallREQBrokerConfig052TwoLevels`
 
 ### REQ-broker-config-053
 
-卸载必须询问 `Also remove configuration, identity, audit and service logs? [y/N]`，只有回答 y 时才删除这些数据，系统级安装同时删除其安装记录能够证明由本项目创建的管理组；没有安装记录时保留管理组，并输出保留原因与手动删除命令。不带 `--purge` 的卸载在其他情况下不得删除它们。没有终端又没有 `--yes` 时，命令报错并以状态 1 退出，不做任何删除。
+卸载必须询问 `Also remove configuration, identity, audit and service logs? [y/N]`，只有回答 y 时才删除这些数据；`--yes` 跳过询问并保留这些数据。系统级安装同时删除其安装记录能够证明由本项目创建的管理组；没有安装记录时保留管理组，并输出保留原因与手动删除命令。不带 `--purge` 的卸载在其他情况下不得删除它们。没有终端又没有 `--yes` 时，命令报错并以状态 1 退出，不做任何删除，`--purge` 也一样。
 
 - **验收**：在系统级安装的主机上卸载，对这句询问直接回车：配置文件、身份与对端表、审计日志都在，管理组仍存在；重新安装后，Broker 的指纹与卸载前相同，原有对端仍是对端。另一台主机上回答 y：这些数据都不存在；有安装记录时管理组也不存在，没有记录时管理组保留并输出保留原因与手动删除命令。没有终端又没有 `--yes` 时，命令以状态 1 退出，不做任何删除。
 - **状态**：已实现

@@ -125,12 +125,16 @@ service Local {
 | `peers service restart [--system \| --user]` | — | 重启所选级别的服务（`REQ-broker-config-055`） |
 | `peers service remove [--system \| --user]` | — | 停止并卸载服务，保留配置、身份与审计日志 |
 | `peers uninstall [--purge] [--yes]` | — | 卸载本系统，见“卸载”（`REQ-broker-config-051` 至 `REQ-broker-config-054`） |
+| `peers completion [bash \| zsh \| fish \| powershell]` | — | 输出对应 shell 的补全脚本；安装脚本用它写入补全文件 |
+| `peers --version` | — | 输出本二进制报告的版本并以 0 退出 |
+
+帮助按配对、本机 Broker 与安装三组显示；`help` 命令本身不进帮助列表，`mcp` 与 `internal` 隐藏。`--admin-group` 只接受与 `--system` 一起使用，单独给出或以用户级给出时按用法错误退出。
 
 `service offline` 与 `service online` 连接所选级别的 Broker，与 `config set broker.offline <值>` 等价，输出一行 `Broker is now offline` 或 `Broker is now online`，审计记录与 `config set` 相同。service 下的全部子命令接受互斥的 `--system` 与 `--user`，都不给时 root 为系统级，其他账户为本账户的用户级；服务定义显式写出其中一个。
 
-`broker connect` 的 `<address>` 与 `connect_broker` 工具相同，写成 `address:port` 或 `hostname(address:port)`；`broker disconnect` 的 `<broker>` 与 `disconnect_broker` 工具相同，写别名或 64 位十六进制指纹。每个终端命令都支持 `-h` 与 `--help`；参数错误时打印该命令的用法，并以用法错误的退出码（2）结束。
+`broker connect` 的 `<address>` 与 `connect_broker` 工具相同，写成 `address:port` 或 `hostname(address:port)`；`broker disconnect` 的 `<broker>` 与 `disconnect_broker` 工具相同，写别名或 64 位十六进制指纹。每个终端命令都支持 `-h` 与 `--help`。参数错误时先输出 `<path>: <原因>`，再输出 `Run '<path> --help' for usage.`，以用法错误的退出码（2）结束；只有不带动词地执行命令组时才打印完整的用法文本。
 
-失败时进程以非零退出码结束，标准错误的最后一行是 `peers <子命令>: <原因>`，原因取上游错误的原文；用法错误另附该子命令的用法。命令的结果只写标准输出，Broker 的 JSON 运行日志另行写标准错误。退出码按原因区分：
+失败时进程以非零退出码结束，标准错误的最后一行是 `peers <子命令>: <原因>`，原因取上游错误的原文；用法错误另附 `Run '<path> --help' for usage.` 一行。命令的结果只写标准输出，Broker 的 JSON 运行日志另行写标准错误。退出码按原因区分：
 
 | 退出码 | 含义 |
 |---|---|
@@ -146,7 +150,7 @@ service Local {
 
 `broker.listen` 的端口小于 1024 而配置文件可被组或其他人写入时，拒绝发生在监听绑定一步，退出码为 4，不是 5；作为服务的 Broker 带 `--allow-degraded` 时进入仅本机降级。
 
-`service install`、`service start` 与 `service restart` 另以退出码 3 表示服务已安装并在运行，但 Broker 处于降级运行；它与 `service run` 的退出码 3（已有实例持有账户锁）同值，分属不同命令。`service install` 与 `service remove` 成功时退出码为 0，安装或卸载失败为 1、原因写在标准错误，用法错误为 2；`--system` 的身份校验失败按一般失败处理，退出码为 1。`uninstall` 成功、没有安装时为 0；非 root 而只有系统级安装时报错并以 1 退出，错误信息给出可直接重跑的 `sudo peers uninstall ... --yes`；没有终端又没有 `--yes` 时以 1 退出，说明要加 `--yes`；其余失败为 1，用法错误为 2。
+`service install`、`service start` 与 `service restart` 另以退出码 3 表示服务已安装并在运行，但 Broker 处于降级运行；它与 `service run` 的退出码 3（已有实例持有账户锁）同值，分属不同命令。`service install` 与 `service remove` 成功时退出码为 0，安装或卸载失败为 1、原因写在标准错误，用法错误为 2；`--system` 的身份校验失败按一般失败处理，退出码为 1。`uninstall` 成功、没有安装时为 0；非 root 而只有系统级安装时，给了 `--yes` 或终端上确认后经 sudo 重跑，没有终端又没有 `--yes` 时报错并以 1 退出，错误信息给出可直接重跑的 `sudo peers uninstall ... --yes`。没有终端又没有 `--yes` 的其他卸载也以 1 退出，说明要加 `--yes`；其余失败为 1，用法错误为 2。
 
 `--listen` 的取值必须非空。要本次运行不监听，把配置中的 `broker.listen` 设为空。地址写法是否合法由 `config` 判定，不合法按用法错误退出。
 
@@ -534,7 +538,7 @@ Broker: offline; messages from other hosts are refused. Run peers service online
 
 ### 更新检查与自我更新
 
-周期检查在 Broker 进程内进行。启动后先等待 1 分钟，然后立即检查一次，此后按 `update.check_interval` 周期检查；`update.check` 为假时不检查。修改 `update.check` 或 `update.check_interval` 后，当前周期不中断，新值从下一个周期起生效。`update.check` 变为假时，已经在内存中的可用版本立刻清除，`status` 与会话提示不再报告该版本，不必等到下一个周期或重启；变回真后，从下一个周期开始的检查重新填充结果。检查结果只保存在内存中，不落盘，Broker 重启后重新检查。检查请求失败或应答无法解析时，只记一条 Debug 级运行日志，不写审计，也不影响其他功能；当前版本不是正式发布版本时根本不检查，也不记日志（`REQ-update-001`）。结果由一把互斥锁保护，读取方看到的是上一份完整结果或新的一份。
+周期检查在 Broker 进程内进行。启动后先等待 1 分钟，然后立即检查一次，此后按 `update.check_interval` 周期检查；`update.check` 为假时不检查。修改 `update.check` 或 `update.check_interval` 后，当前周期不中断，新值从下一个周期起生效。`update.check` 变为假时，已经在内存中的可用版本立刻清除，`service status` 与会话提示不再报告该版本，不必等到下一个周期或重启；变回真后，从下一个周期开始的检查重新填充结果。检查结果只保存在内存中，不落盘，Broker 重启后重新检查。检查请求失败或应答无法解析时，只记一条 Debug 级运行日志，不写审计，也不影响其他功能；当前版本不是正式发布版本时根本不检查，也不记日志（`REQ-update-001`）。结果由一把互斥锁保护，读取方看到的是上一份完整结果或新的一份。
 
 版本比较采用语义化版本。当前版本不是合法的正式发布版本时，例如 `dev`、`e2e` 或带 `SNAPSHOT` 的版本，Broker 不检查。可用版本只取 GitHub API 最新正式发布接口返回的版本，预发布与草稿不参与（[REF-github-rest-api](../../references.md)）。
 
@@ -646,15 +650,16 @@ Broker 处理 `ApplyUpdate`：
 
 `peers uninstall [--purge] [--yes]` 的步骤：
 
-1. 确定级别。root 为系统级。非 root 账户：本账户有用户级安装时为用户级；否则有系统级安装时报错并以 1 退出，错误信息给出可以直接重跑的 `sudo peers uninstall [--purge] --yes`；两者都没有时，MCP 注册指向默认安装前缀下的本可执行文件的按用户级卸载，否则报告没有安装并以 0 退出。默认安装前缀为用户级的 `~/.local/bin/peers`、系统级的 `/usr/local/bin/peers`；经 `sudo` 运行的其他位置的副本不算安装。root 同时有用户级与系统级安装时卸载系统级；非 root 同时有时卸载用户级，结束后说明主机上仍有系统级安装及 `sudo peers uninstall`。一次只卸载一个级别。“有安装”的判定沿用 `service remove`：服务定义文件存在，或服务管理器仍有启用或加载的状态。
-2. 确定是否删除数据：`--purge` 为删。不带时询问 `Also remove configuration, identity, audit and service logs? [y/N]`；没有终端又没有 `--yes` 时报错，以 1 退出，不做任何删除。每句只问一次。`$HOME` 不是绝对路径时，命令在调用 `service.Uninstall` 与删除 MCP 注册之前失败，以 1 退出，不做任何删除。
+1. 确定级别。root 为系统级。非 root 账户：本账户有用户级安装时为用户级；否则有系统级安装时经 sudo 重跑，给了 `--yes` 就直接重跑，有终端时先询问是否经 sudo 卸载（问句写到标准错误），回答 y 后重跑，没有终端又没有 `--yes` 时报错并以 1 退出，错误信息给出可以直接重跑的 `sudo peers uninstall [--purge] --yes`；两者都没有时，MCP 注册指向默认安装前缀下的本可执行文件的按用户级卸载，否则报告没有安装并以 0 退出。默认安装前缀为用户级的 `~/.local/bin/peers`、系统级的 `/usr/local/bin/peers`；经 `sudo` 运行的其他位置的副本不算安装。root 同时有用户级与系统级安装时卸载系统级；非 root 同时有时卸载用户级，结束后说明主机上仍有系统级安装及 `sudo peers uninstall`。一次只卸载一个级别。“有安装”的判定沿用 `service remove`：服务定义文件存在，或服务管理器仍有启用或加载的状态。
+2. 确定是否删除数据：`--purge` 为删；`--yes` 跳过询问并保留数据。不带 `--purge` 且不带 `--yes` 时询问 `Also remove configuration, identity, audit and service logs? [y/N]`。没有终端又没有 `--yes` 时报错，`--purge` 也一样，以 1 退出，不做任何删除。每句只问一次。`$HOME` 不是绝对路径时，命令在调用 `service.Uninstall` 与删除 MCP 注册之前失败，以 1 退出，不做任何删除。
 3. 从服务定义中读出它启动的二进制路径（`ExecStart` 的第一个字段，或 `ProgramArguments` 的第一项）。解析 `ExecStart` 时先去掉 systemd 允许的前缀字符 `-@+!:`。
 4. 调用现有的 `service.Uninstall` 停止并删除服务定义。
 5. 删除 MCP 注册：用户级为执行命令的账户；系统级为 `SUDO_USER`，为空或为 root 时跳过并给出手工命令。只在 `claude mcp get peer` 报告的命令等于第 3 步的二进制路径时执行 `claude mcp remove -s user peer`，与安装脚本只认自己注册的条目相同；找不到 `claude` 时给出手工命令。
-6. 删除运行时目录：系统级为 Linux 的 `/run/peers/` 或 macOS 的 `/var/run/peers/`，用户级为 `/tmp/peers-<uid>/`（[config](design-config.md) 的路径表）。
-7. 删除数据（第 2 步为删时）：配置文件与配置目录、数据目录、审计日志、服务日志，系统级另按下面的规则删除管理组与 systemd 的 drop-in 目录 `peers.service.d`。完整位置如下表。
-8. 删除系统级二进制之前，查看 `/tmp/peers-*/broker.sock`；有其他账户的 Broker 在应答时列出这些账户并提示，照常删除。
-9. 最后删除第 3 步的二进制。只删除同时满足以下条件的文件：绝对路径；文件名为 `peers`；与当前进程的可执行文件是同一文件（同设备同 inode）。任一条件不满足时保留该文件，输出保留原因与手动删除命令 `rm <路径>`；命令不执行这个文件来判断它的版本。没有服务定义时，只有第 1 步按默认安装前缀认定安装的情况下，才把当前可执行文件当作第 3 步的路径；经 `sudo` 运行的其他位置的副本保留。
+6. 删除安装脚本写入的补全文件，以及系统级的 man 页。补全文件为系统级的 `/usr/local/share/bash-completion/completions/peers`、`/usr/local/share/zsh/site-functions/_peers`、`/usr/local/share/fish/vendor_completions.d/peers.fish`，用户级的 `~/.local/share/bash-completion/completions/peers` 与 `~/.config/fish/completions/peers.fish`。删除前读取内容，只有带 cobra 为本程序生成的标记（bash 的 `# bash completion V2 for peers`、zsh 的 `#compdef peers`、fish 的 `# fish completion for peers`）才删除，否则保留并输出原因。man 页只匹配 `peers.1` 与 `peers-*.1`，不删 `peerstat.1` 这类别人的文件。与这些文件同名的目录一律保留并输出原因。
+7. 删除运行时目录：系统级为 Linux 的 `/run/peers/` 或 macOS 的 `/var/run/peers/`，用户级为 `/tmp/peers-<uid>/`（[config](design-config.md) 的路径表）。
+8. 删除数据（第 2 步为删时）：配置文件与配置目录、数据目录、审计日志、服务日志，系统级另按下面的规则删除管理组与 systemd 的 drop-in 目录 `peers.service.d`。完整位置如下表。
+9. 删除系统级二进制之前，查看 `/tmp/peers-*/broker.sock`；有其他账户的 Broker 在应答时列出这些账户并提示，照常删除。
+10. 最后删除第 3 步的二进制。只删除同时满足以下条件的文件：绝对路径；文件名为 `peers`；与当前进程的可执行文件是同一文件（同设备同 inode）。任一条件不满足时保留该文件，输出保留原因与手动删除命令 `rm <路径>`；命令不执行这个文件来判断它的版本。没有服务定义时，只有第 1 步按默认安装前缀认定安装的情况下，才把当前可执行文件当作第 3 步的路径；经 `sudo` 运行的其他位置的副本保留。
 
 | 内容 | Linux 用户级 | Linux 系统级 | macOS 用户级 | macOS 系统级 |
 |---|---|---|---|---|
@@ -768,9 +773,9 @@ Agent 表由一把读写锁保护。发送过程只在解析地址时短暂读�
 | 终端命令 | 已实现 | `cmd/peers`、`internal/mcpserver/termcmd`、`cmd/peers/service_cmd.go` |
 | 更新检查与自我更新 | 已实现 | `internal/broker/updatecheck.go`（`startUpdateChecks`、`checkForUpdate`、`UpdateStatus`）、`internal/broker/update/`（`Latest`、`Newer`、`Apply`、`Install`、`RunPostUpdate`）、`internal/broker/update_rpc.go`（`ApplyUpdate`、`detectServiceManager`、`runningUnderServiceManager`）、`internal/broker/service/postupdate.go`（`PostUpdate`、`LaunchdReload`）、`internal/broker/service/mainpid.go`（`MainPID`）、`cmd/peers/update_cmd.go`、`cmd/peers/update_rpc.go`、`cmd/peers/internal_cmd.go`（`postUpdateCmd`、`launchdReloadCmd`） |
 | 降级运行 | 已实现 | `internal/broker/run.go`（`Run` 的降级分支与仅诊断重试）、`internal/broker/degradedstate.go`（`degradedStateFor`、降级状态）、`internal/broker/degradedsvc.go`（仅诊断服务）、`internal/broker/listenretry.go`（监听重试）、`internal/broker/diagwatch.go`（配置文件目录监视）、`internal/broker/datafault.go`（数据目录类失败） |
-| 状态行输出 | 已实现 | `internal/mcpserver/termcmd/format.go`（`WriteStatus`）、`internal/mcpserver/termcmd/client.go`（`ErrDiagnosticsOnly`、`RunStatus`、`RunPeerList`）、`cmd/peers/termcmd_cmd.go`（`statusCmd`） |
+| 状态行输出 | 已实现 | `internal/mcpserver/termcmd/format.go`（`WriteStatus`）、`internal/mcpserver/termcmd/client.go`（`ErrDiagnosticsOnly`、`RunStatus`、`RunPeerList`）、`cmd/peers/termcmd_cmd.go`（`serviceStatusCommand`） |
 | 下线时拒绝投递 | 已实现 | `internal/broker/receive.go`（`handleDeliver` 的下线检查、`logDeliveryRefusedOffline`、`EvDeliveryRefusedOffline`）、`internal/broker/delivery_wire.go`（`configSettings.Offline`、`readFailed`）、`internal/broker/status.go`（`Status.Offline`）、`internal/broker/listbrokers.go`（`ListBrokers.Local.Offline`） |
-| `offline` 与 `online` 命令 | 已实现 | `cmd/peers/offline_cmd.go`、`internal/mcpserver/termcmd/client.go`（`RunSetOnline`） |
+| `service offline` 与 `service online` 命令 | 已实现 | `cmd/peers/offline_cmd.go`、`internal/mcpserver/termcmd/client.go`（`RunSetOnline`） |
 | `service start`、`stop`、`restart` | 已实现 | `internal/broker/service/control.go`（`Start`、`Stop`、`Restart`、`ErrNotInstalled`）、`cmd/peers/service_cmd.go` |
 | `uninstall` | 已实现 | `cmd/peers/uninstall_cmd.go`、`internal/broker/service/remove.go`、`internal/broker/service/admin_group.go` |
 | 安装汇总与降级检查 | 已实现 | `internal/broker/service/install.go`（`Install` 的降级检查、`waitStatus`、`waitReady` 的 `serviceManagerState`、`Result` 的 `Binary`/`RunLog`/`AuditLog`、`auditLogPath`）、`cmd/peers/service_cmd.go`（`printInstalled`、`printServiceDegraded`） |
