@@ -86,7 +86,7 @@ func TestApplyUpdateAlreadyLatest(t *testing.T) {
 		d.Version = "0.1.1"
 		d.ServiceManager = func() bool { return true }
 		d.LatestRelease = fixedRelease("0.1.1")
-		d.ApplyRelease = func(context.Context, update.ApplyOptions) error {
+		d.InstallRelease = func(context.Context, update.ApplyOptions, string) error {
 			applied = true
 			return nil
 		}
@@ -125,8 +125,8 @@ func TestApplyUpdateAlreadyLatest(t *testing.T) {
 
 // TestApplyUpdateApplyFailure checks that a failed install leaves the running
 // process alone: no shutdown, no applied record, and an update_failed record
-// with the cause. The binary is untouched because update.Apply only renames a
-// verified file into place.
+// with the cause. The binary is untouched because update.Install restores it
+// when any step fails.
 func TestApplyUpdateApplyFailure(t *testing.T) {
 	shutdown := false
 	installs := 0
@@ -134,7 +134,7 @@ func TestApplyUpdateApplyFailure(t *testing.T) {
 		d.Version = "0.1.1"
 		d.ServiceManager = func() bool { return true }
 		d.LatestRelease = fixedRelease("0.1.2")
-		d.ApplyRelease = func(context.Context, update.ApplyOptions) error {
+		d.InstallRelease = func(context.Context, update.ApplyOptions, string) error {
 			installs++
 			return errors.New("checksum mismatch for peers_0.1.2_linux_amd64.tar.gz")
 		}
@@ -194,7 +194,7 @@ func TestApplyUpdateSucceeds(t *testing.T) {
 		d.Version = "0.1.1"
 		d.ServiceManager = func() bool { return true }
 		d.LatestRelease = fixedRelease("0.1.2")
-		d.ApplyRelease = func(_ context.Context, o update.ApplyOptions) error {
+		d.InstallRelease = func(_ context.Context, o update.ApplyOptions, _ string) error {
 			if o.Version != "0.1.2" {
 				t.Errorf("Apply version = %q, want 0.1.2", o.Version)
 			}
@@ -269,6 +269,93 @@ func shutdownCount(mu *sync.Mutex, count *int) int {
 	return *count
 }
 
+// TestApplyUpdatePassesServiceLevel checks that the post-update step runs at
+// the level of the Broker whose unit it rewrites.
+func TestApplyUpdatePassesServiceLevel(t *testing.T) {
+	for _, tc := range []struct {
+		system bool
+		want   string
+	}{
+		{system: false, want: "user"},
+		{system: true, want: "system"},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			var level string
+			tb := newTestBroker(t, func(d *Deps) {
+				d.Version = "0.1.1"
+				d.System = tc.system
+				d.ServiceManager = func() bool { return true }
+				d.LatestRelease = fixedRelease("0.1.2")
+				d.InstallRelease = func(_ context.Context, _ update.ApplyOptions, got string) error {
+					level = got
+					return nil
+				}
+				d.RequestShutdown = func() {}
+			})
+
+			if _, err := tb.b.ApplyUpdate(accessCallerContext(1000, "alice"), &localpb.ApplyUpdateRequest{}); err != nil {
+				t.Fatalf("ApplyUpdate: %v", err)
+			}
+			if level != tc.want {
+				t.Errorf("post-update level = %q, want %q", level, tc.want)
+			}
+		})
+	}
+}
+
+// TestApplyUpdatePostUpdateFailure checks that a failed post-update step
+// reaches the caller with its reason, leaves the old binary in place, writes
+// update_failed, and does not restart the Broker.
+func TestApplyUpdatePostUpdateFailure(t *testing.T) {
+	shutdown := false
+	installs := 0
+	tb := newTestBroker(t, func(d *Deps) {
+		d.Version = "0.1.1"
+		d.ServiceManager = func() bool { return true }
+		d.LatestRelease = fixedRelease("0.1.2")
+		d.InstallRelease = func(context.Context, update.ApplyOptions, string) error {
+			installs++
+			return errors.New("the post-update step failed: exit status 3; the previous binary was restored")
+		}
+		d.RequestShutdown = func() { shutdown = true }
+	})
+
+	_, err := tb.b.ApplyUpdate(accessCallerContext(1000, "alice"), &localpb.ApplyUpdateRequest{})
+	if err == nil {
+		t.Fatal("ApplyUpdate succeeded although the post-update step failed")
+	}
+	if !strings.Contains(err.Error(), "post-update") {
+		t.Errorf("message %q does not name the post-update step", err)
+	}
+	if !strings.Contains(err.Error(), "previous binary was restored") {
+		t.Errorf("message %q does not say the binary was restored", err)
+	}
+
+	audits := applyUpdateAudits(tb)
+	if len(audits) != 1 {
+		t.Fatalf("wrote %d audit events, want 1", len(audits))
+	}
+	if audits[0].Event != config.EventUpdateFailed {
+		t.Errorf("event = %q, want update_failed", audits[0].Event)
+	}
+	if !strings.Contains(audits[0].Detail, "post-update") {
+		t.Errorf("detail = %q, want the post-update failure", audits[0].Detail)
+	}
+
+	tb.clock.Advance(updateShutdownGrace)
+	if shutdown {
+		t.Error("a failed post-update step asked the Broker to shut down")
+	}
+
+	// The slot was released, so a retry reaches the installer again.
+	if _, err := tb.b.ApplyUpdate(accessCallerContext(1000, "alice"), &localpb.ApplyUpdateRequest{}); err == nil {
+		t.Fatal("the retry succeeded, want the post-update failure again")
+	}
+	if installs != 2 {
+		t.Errorf("installer called %d times, want 2", installs)
+	}
+}
+
 // TestApplyUpdateConcurrentIsAborted checks that a second request while one
 // installs gets aborted instead of racing the first.
 func TestApplyUpdateConcurrentIsAborted(t *testing.T) {
@@ -278,7 +365,7 @@ func TestApplyUpdateConcurrentIsAborted(t *testing.T) {
 		d.Version = "0.1.1"
 		d.ServiceManager = func() bool { return true }
 		d.LatestRelease = fixedRelease("0.1.2")
-		d.ApplyRelease = func(context.Context, update.ApplyOptions) error {
+		d.InstallRelease = func(context.Context, update.ApplyOptions, string) error {
 			close(entered)
 			<-release
 			return nil

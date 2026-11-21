@@ -23,11 +23,12 @@ import (
 // so the service manager starts the new binary promptly.
 const updateShutdownGrace = 500 * time.Millisecond
 
-// ApplyUpdate installs the newest formal release over the running binary and
-// arranges the restart that makes it take effect. The request names neither a
-// version nor a source. Access is enforced by the interceptor, not here: the
-// system Broker requires write permission on the configuration file, and the
-// user-level Broker allows every local caller, as it does for SetConfig.
+// ApplyUpdate installs the newest formal release over the running binary,
+// has the new binary rewrite its level's service unit, and arranges the
+// restart that makes it take effect. The request names neither a version nor
+// a source. Access is enforced by the interceptor, not here: the system Broker
+// requires write permission on the configuration file, and the user-level
+// Broker allows every local caller, as it does for SetConfig.
 //
 // The Broker refuses when no service manager runs it, because nothing would
 // start the new binary after it exits. Only one update may run at a time.
@@ -82,18 +83,22 @@ func (b *Broker) ApplyUpdate(ctx context.Context, _ *localpb.ApplyUpdateRequest)
 		b.auditUpdateFailed(caller.Username, err.Error())
 		return nil, toStatus(Errorf(localpb.ErrorCode_ERROR_CODE_INTERNAL, "%v", err))
 	}
-	apply := b.deps.ApplyRelease
-	if apply == nil {
-		apply = update.Apply
+	install := b.deps.InstallRelease
+	if install == nil {
+		install = update.Install
 	}
-	if err := apply(ctx, update.ApplyOptions{
+	// The new binary rewrites the unit of the level this Broker runs at. The
+	// step runs before the restart below; a failure rolls the binary back and
+	// leaves the process running, so the caller learns why instead of losing
+	// the working version.
+	if err := install(ctx, update.ApplyOptions{
 		Target:  target,
 		Version: release.Version,
 		API:     b.deps.UpdateAPI,
 		Client:  b.deps.UpdateHTTPClient,
 		GOOS:    runtime.GOOS,
 		GOARCH:  runtime.GOARCH,
-	}); err != nil {
+	}, serviceLevel(b.deps.System)); err != nil {
 		b.auditUpdateFailed(caller.Username, "installing "+release.Version+": "+err.Error())
 		return nil, toStatus(Errorf(localpb.ErrorCode_ERROR_CODE_INTERNAL,
 			"installing %s failed: %v", release.Version, err))
@@ -110,6 +115,15 @@ func (b *Broker) ApplyUpdate(ctx context.Context, _ *localpb.ApplyUpdateRequest)
 		ToVersion:   release.Version,
 		Restarting:  true,
 	}, nil
+}
+
+// serviceLevel is the --level value of "peers internal post-update" for the
+// service level this Broker runs at.
+func serviceLevel(system bool) string {
+	if system {
+		return "system"
+	}
+	return "user"
 }
 
 // installedExecutable returns the running binary with symbolic links resolved,

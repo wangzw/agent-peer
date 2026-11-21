@@ -139,9 +139,10 @@ type Deps struct {
 	UpdateHTTPClient *http.Client
 	// LatestRelease looks up the latest formal release; nil: update.Latest.
 	LatestRelease func(ctx context.Context, c *http.Client, api string) (update.Release, error)
-	// ApplyRelease installs a release over the running binary; nil:
-	// update.Apply. ApplyUpdate uses it so tests can substitute an installer.
-	ApplyRelease func(ctx context.Context, o update.ApplyOptions) error
+	// InstallRelease installs a release over the running binary and runs the
+	// new binary's post-update step at the given service level; nil:
+	// update.Install. ApplyUpdate uses it so tests can substitute an installer.
+	InstallRelease func(ctx context.Context, o update.ApplyOptions, level string) error
 	// ServiceManager reports whether this process runs under a service manager
 	// (systemd or launchd), which starts the Broker again after it exits. nil:
 	// detected from the process environment. ApplyUpdate refuses when it
