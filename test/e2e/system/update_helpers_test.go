@@ -47,7 +47,7 @@ const (
 )
 
 const (
-	// updateBrokerListen is the user-level Broker's listen address in the
+	// updateBrokerListen is the user Broker's listen address in the
 	// update scenarios. One Broker runs per container, so no other listener
 	// competes for it.
 	updateBrokerListen = "127.0.0.1:17461"
@@ -142,7 +142,7 @@ func updateLoadRelease(t *testing.T, version, archiveArtifact, checksumsArtifact
 	}
 }
 
-// updateBrokerConfig is a user-level Broker configuration with the given update
+// updateBrokerConfig is a user Broker configuration with the given update
 // check setting. The interval is the smallest the design permits; the first
 // check follows the startup delay, not the interval.
 func updateBrokerConfig(check bool) string {
@@ -151,7 +151,7 @@ func updateBrokerConfig(check bool) string {
 }
 
 // updateStartPeerBroker writes the configuration and starts the old release as
-// peer's user-level Broker. The fake API base is handed to it through the
+// peer's user Broker. The fake API base is handed to it through the
 // test-build hook.
 func updateStartPeerBroker(t *testing.T, fake *harness.FakeGitHub, check bool) *syscontainer.Proc {
 	t.Helper()
@@ -184,7 +184,7 @@ func updateStatus(t *testing.T, exe string) syscontainer.Result {
 const updateStatusClientRole = "update-status-client"
 
 // updateBrokerVersion runs the test binary as account in the update-status
-// client role and returns the version the Broker reports. A user-level Broker
+// client role and returns the version the Broker reports. A user Broker
 // admits only its own account's peer credentials, so the read runs as that
 // account instead of the root test process.
 func updateBrokerVersion(t *testing.T, account string) (string, error) {
@@ -303,7 +303,7 @@ func updatePeerIDs(t *testing.T) (*user.User, int, int) {
 	return u, uid, gid
 }
 
-// updateUserService is one installed user-level service running the old
+// updateUserService is one installed user service running the old
 // release from a peer-owned directory.
 type updateUserService struct {
 	target    string

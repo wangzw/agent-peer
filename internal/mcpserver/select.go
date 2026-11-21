@@ -18,9 +18,9 @@ const (
 	// kindTest means the test build hook named the socket. A release build
 	// never produces this kind.
 	kindTest targetKind = iota
-	// kindUser means the user-level Broker of this account was chosen.
+	// kindUser means the user Broker of this account was chosen.
 	kindUser
-	// kindSystem means the system-level Broker was chosen.
+	// kindSystem means the system Broker was chosen.
 	kindSystem
 )
 
@@ -30,13 +30,13 @@ type target struct {
 	Kind targetKind
 }
 
-// SystemRetryDeadline is how long step two keeps retrying a system-level
+// SystemRetryDeadline is how long step two keeps retrying a system
 // socket that exists and may be connected to but has no process answering. It
 // is exported so end-to-end tests can derive their wait bounds from it rather
 // than repeat the number.
 const SystemRetryDeadline = 10 * time.Second
 
-// systemRetryWaits are the waits between probes of a refused system-level
+// systemRetryWaits are the waits between probes of a refused system
 // socket. The remaining time up to SystemRetryDeadline is waited last, so the
 // total is exactly the deadline.
 var systemRetryWaits = []time.Duration{
@@ -82,14 +82,14 @@ func (s *selector) find(ctx context.Context) (target, bool, error) {
 	case probeOK:
 		return target{Path: s.userSocket, Kind: kindUser}, true, nil
 	case probeWrongPeer:
-		// The socket at the user-level path is served by someone else. Falling
+		// The socket at the user path is served by someone else. Falling
 		// through would either use that process or launch a Broker that cannot
 		// bind the path; report the socket as unusable instead.
 		return target{}, false, peerMismatchError(s.userSocket, kindUser, r.PeerUID)
 	}
 
-	// For root the user-level and system-level sockets share one path, so the
-	// probe above already covered the system-level Broker.
+	// For root the user and system sockets share one path, so the
+	// probe above already covered the system Broker.
 	if s.systemSocket != s.userSocket {
 		ok, err := s.probeSystemWithRetry(ctx)
 		if err != nil {
@@ -121,8 +121,8 @@ func (s *selector) findAtLevel(ctx context.Context, system bool) (target, bool, 
 		return target{}, false, nil
 	}
 
-	// For root the user-level and system-level sockets share one path, so the
-	// system-level probe is the only one needed.
+	// For root the user and system sockets share one path, so the
+	// system probe is the only one needed.
 	if s.systemSocket == s.userSocket {
 		switch r := s.probePath(ctx, s.systemSocket, kindSystem); r.Outcome {
 		case probeOK:
@@ -140,7 +140,7 @@ func (s *selector) findAtLevel(ctx context.Context, system bool) (target, bool, 
 		return target{}, false, peerMismatchError(s.systemSocket, kindSystem, r.PeerUID)
 	case probeRefused:
 		// A service manager may be restarting the Broker, so the refused
-		// system-level socket is retried before selection gives up.
+		// system socket is retried before selection gives up.
 		ok, err := s.probeSystemWithRetry(ctx)
 		if err != nil {
 			return target{}, false, err
@@ -152,7 +152,7 @@ func (s *selector) findAtLevel(ctx context.Context, system bool) (target, bool, 
 	return target{}, false, nil
 }
 
-// probeSystemWithRetry probes the system-level socket. A refused connection is
+// probeSystemWithRetry probes the system socket. A refused connection is
 // retried for SystemRetryDeadline, because a service manager may be restarting
 // the Broker; a socket the account may not use, a missing socket and any other
 // failure are not retried.
@@ -212,7 +212,7 @@ func (s *selector) probePath(ctx context.Context, path string, kind targetKind) 
 }
 
 // peerAllowed reports whether uid may serve the Broker socket of kind: root for
-// the system-level Broker, this account for the user-level one, and either for
+// the system Broker, this account for the user one, and either for
 // the socket named by the test build hook.
 func peerAllowed(kind targetKind, uid uint32) bool {
 	switch kind {
@@ -225,15 +225,15 @@ func peerAllowed(kind targetKind, uid uint32) bool {
 	}
 }
 
-// peerMismatchError names a user-level or system-level socket and the account
+// peerMismatchError names a user or system socket and the account
 // that answered it. The text is shown to the model, so it must carry both
 // facts. A test-named socket builds its own message in the test build.
 func peerMismatchError(path string, kind targetKind, uid uint32) error {
 	switch kind {
 	case kindSystem:
-		return fmt.Errorf("the system-level Broker socket %s is served by uid %d, not root", path, uid)
+		return fmt.Errorf("the system Broker socket %s is served by uid %d, not root", path, uid)
 	default:
-		return fmt.Errorf("the user-level Broker socket %s is served by uid %d, not this account (%d)",
+		return fmt.Errorf("the user Broker socket %s is served by uid %d, not this account (%d)",
 			path, uid, os.Geteuid())
 	}
 }
@@ -272,17 +272,17 @@ func FindBroker(ctx context.Context) (string, error) {
 // selected level. It never starts a Broker and never falls through to the other
 // level, so a command that names a level talks to that level or fails. explicit
 // reports whether a level option was given rather than resolved from the
-// calling account; it tells a defaulted user level, which names --system when
+// calling account; it tells a defaulted user selection, which names --system when
 // that Broker answers, from a named one.
 func FindBrokerForLevel(ctx context.Context, system, explicit bool) (string, error) {
 	return productionSelector().findForLevel(ctx, system, explicit)
 }
 
 // findForLevel selects a Broker at one level and builds the error for an empty
-// selection. The system level always reports the system-level Broker as
+// selection. The system installation always reports the system Broker as
 // unavailable, whether --system named it or root resolved it from the account.
-// The default user level falls back to the account's user-level Broker; when
-// only the system-level Broker is running, the error names --system as the
+// The default user selection falls back to the account's user Broker; when
+// only the system Broker is running, the error names --system as the
 // option that reaches it.
 func (s *selector) findForLevel(ctx context.Context, system, explicit bool) (string, error) {
 	t, found, err := s.findAtLevel(ctx, system)
@@ -303,8 +303,8 @@ func (s *selector) findForLevel(ctx context.Context, system, explicit bool) (str
 	return "", errNoBroker
 }
 
-// UserSocketPath returns the socket path of the calling account's user-level
-// Broker. For root it is the same path as the system-level socket.
+// UserSocketPath returns the socket path of the calling account's user
+// Broker. For root it is the same path as the system socket.
 func UserSocketPath() string {
 	return userSocketPath(os.Geteuid())
 }

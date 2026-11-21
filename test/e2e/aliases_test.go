@@ -79,9 +79,9 @@ func TestAliases(t *testing.T) {
 	alWaitConnected(t, yNode, "hostA.alice", alRelinkBound)
 
 	t.Run("REQ-broker-pairing-002 default alias", func(t *testing.T) {
-		// The system-level form (the hostname label alone) is covered in
-		// test/e2e/system, which can run a system-level Broker as root. This
-		// user-level Broker takes the hostname label and the account: alice is
+		// The system form (the hostname label alone) is covered in
+		// test/e2e/system, which can run a system Broker as root. This
+		// user Broker takes the hostname label and the account: alice is
 		// the account running it, and the domain is dropped.
 		alWaitAgentSuffix(t, y1, "x1", "@hostA.alice", alWaitBound)
 

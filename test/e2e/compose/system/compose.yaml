@@ -48,7 +48,7 @@ services:
           - hostA
   # The second host of a pair. It is host A's equal: systemd as process 1 and
   # the extrausers accounts from the image, so either side can run a system or
-  # user-level Broker. It is started only by syscontainer.RunPairTest.
+  # user Broker. It is started only by syscontainer.RunPairTest.
   hostB:
     image: ${PEERS_E2E_SYSTEM_IMAGE:?}
     privileged: true

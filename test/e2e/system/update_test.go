@@ -366,7 +366,7 @@ func TestREQUpdate005_FailedUpdateKeepsBinaryAndService(t *testing.T) {
 
 // TestREQUpdate006_UpdateRequiresWritePermission covers REQ-update-006: an
 // ordinary account updating a binary in a root-owned directory fails before
-// any download and names sudo as the way to update a system-level install.
+// any download and names sudo as the way to update a system install.
 func TestREQUpdate006_UpdateRequiresWritePermission(t *testing.T) {
 	if !syscontainer.InContainer() {
 		updateStageAssets(t)

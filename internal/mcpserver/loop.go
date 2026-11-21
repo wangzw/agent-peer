@@ -224,13 +224,13 @@ func loopReconnect(ctx context.Context, d loopDeps, conn *loopConnBackoff) bool 
 	return loopWait(ctx, d.after, conn.next())
 }
 
-// loopFailureStatus chooses the phase for a failed attempt at t. A user-level
+// loopFailureStatus chooses the phase for a failed attempt at t. A user
 // socket that is missing or refuses connections has no Broker listening, so it
 // is reported as no Broker with the same text as a session that never found
 // one; that includes a Broker killed without removing its socket. A socket
-// that answers and then fails is reported as unavailable. A system-level
-// Broker that was selected and now fails is reported as no system-level
-// Broker, so the user is sent to the administrator rather than to a user-level
+// that answers and then fails is reported as unavailable. A system
+// Broker that was selected and now fails is reported as no system
+// Broker, so the user is sent to the administrator rather than to a user
 // Broker (REQ-broker-config-037, REQ-broker-config-038).
 func loopFailureStatus(ctx context.Context, d loopDeps, t target, detail string) (Phase, string) {
 	switch t.Kind {

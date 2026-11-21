@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	// agGroup is the default administration group a system-level install
+	// agGroup is the default administration group a system install
 	// provides for the Broker's configuration file.
 	agGroup = "peers"
 	// agConfigPath is the system Broker's configuration file.
@@ -30,7 +30,7 @@ const (
 	agSeedMember = "peer"
 	// agNonMember is an ordinary account that never joins the group.
 	agNonMember = "other"
-	// agPeerListen is the listen address of the user-level Broker the system
+	// agPeerListen is the listen address of the user Broker the system
 	// Broker pairs with.
 	agPeerListen = "127.0.0.1:17445"
 	// agServiceBound bounds the wait for the installed system Broker to answer.
@@ -51,7 +51,7 @@ const (
 )
 
 // TestREQBrokerConfig043_SystemInstallAdminGroup covers REQ-broker-config-043:
-// a system-level install provides the administration group, gives a new
+// a system install provides the administration group, gives a new
 // configuration file to that group with mode 0660, and asks the account that
 // ran sudo whether to join the group, defaulting to no. A member manages the
 // Broker without sudo, except for a privileged listen port, which needs root

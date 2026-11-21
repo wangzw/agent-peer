@@ -67,7 +67,7 @@ func newUpdateCommand(a *app) *cobra.Command {
 }
 
 // updateCmd implements "peers update [--yes]". It asks the selected
-// Broker to install the newest release and restart itself. A user-level Broker
+// Broker to install the newest release and restart itself. A user Broker
 // that declines (it cannot replace and restart itself) leaves the command to
 // replace that account's binary in place.
 func (a *app) updateCmd(ctx context.Context, yes bool) error {
@@ -97,7 +97,7 @@ func (a *app) updateCmd(ctx context.Context, yes bool) error {
 	return a.reportBrokerUpdate(ctx, result)
 }
 
-// updateLocal replaces a user-level binary in place. It starts and stops
+// updateLocal replaces a user binary in place. It starts and stops
 // nothing: a Broker restarting itself does that through its service manager,
 // and an installed service may have been stopped on purpose. The user has
 // already confirmed the update.
@@ -109,7 +109,7 @@ func (a *app) updateLocal(ctx context.Context, current string) error {
 	if err := checkTargetDirWritable(filepath.Dir(target)); err != nil {
 		// The framework prefixes the first line with the command path; the
 		// sudo hint is a separate line, as the design writes it.
-		return fmt.Errorf("%w\nrun \"sudo peers update\" to update a system-level installation", err)
+		return fmt.Errorf("%w\nrun \"sudo peers update\" to update a system installation", err)
 	}
 
 	api := a.deps.updateAPIBase()

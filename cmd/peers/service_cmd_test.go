@@ -97,9 +97,9 @@ func TestServiceInstallMapsSystemFlag(t *testing.T) {
 			if optionsSystem != tc.wantSystem || installed.System != tc.wantSystem {
 				t.Fatalf("system = %v (options) / %v (install), want %v", optionsSystem, installed.System, tc.wantSystem)
 			}
-			level := "user-level, starts at login"
+			level := "user service, starts at login"
 			if tc.wantSystem {
-				level = "system-level, starts at boot"
+				level = "system service, starts at boot"
 			}
 			if want := "peers dev installed (" + level + ")\n"; !strings.HasPrefix(stdout.String(), want) {
 				t.Fatalf("stdout = %q, want it to start with %q", stdout.String(), want)
@@ -147,7 +147,7 @@ func TestServiceInstallMapsAdminGroup(t *testing.T) {
 // TestServiceInstallPrintsTheSummary checks the summary printed after a
 // successful install: level and start time, then the paths, the commands and
 // the configuration state. The administration-group hint follows a kept
-// system-level configuration.
+// system configuration.
 func TestServiceInstallPrintsTheSummary(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -156,7 +156,7 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 		want   string
 	}{
 		{
-			name: "user-level generated configuration",
+			name: "user generated configuration",
 			result: service.Result{
 				Binary:     "/usr/local/bin/peers",
 				ConfigPath: "/home/alice/.peers/config.yaml",
@@ -164,7 +164,7 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 				RunLog:     "journalctl --user -u peers.service",
 				AuditLog:   "/home/alice/.peers/audit.log",
 			},
-			want: "peers 0.1.2 installed (user-level, starts at login)\n" +
+			want: "peers 0.1.2 installed (user service, starts at login)\n" +
 				"  binary:     /usr/local/bin/peers\n" +
 				"  config:     /home/alice/.peers/config.yaml (generated)\n" +
 				"  run log:    journalctl --user -u peers.service\n" +
@@ -175,14 +175,14 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 				"  uninstall:  peers uninstall\n",
 		},
 		{
-			name: "user-level kept configuration",
+			name: "user kept configuration",
 			result: service.Result{
 				Binary:     "/usr/local/bin/peers",
 				ConfigPath: "/home/alice/.peers/config.yaml",
 				RunLog:     "journalctl --user -u peers.service",
 				AuditLog:   "/home/alice/.peers/audit.log",
 			},
-			want: "peers 0.1.2 installed (user-level, starts at login)\n" +
+			want: "peers 0.1.2 installed (user service, starts at login)\n" +
 				"  binary:     /usr/local/bin/peers\n" +
 				"  config:     /home/alice/.peers/config.yaml (kept)\n" +
 				"  run log:    journalctl --user -u peers.service\n" +
@@ -193,7 +193,7 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 				"  uninstall:  peers uninstall\n",
 		},
 		{
-			name:   "system-level generated configuration",
+			name:   "system generated configuration",
 			system: true,
 			result: service.Result{
 				Binary:     "/usr/local/bin/peers",
@@ -203,7 +203,7 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 				RunLog:     "journalctl -u peers.service",
 				AuditLog:   "/var/log/peers/audit.log",
 			},
-			want: "peers 0.1.2 installed (system-level, starts at boot)\n" +
+			want: "peers 0.1.2 installed (system service, starts at boot)\n" +
 				"  binary:     /usr/local/bin/peers\n" +
 				"  config:     /etc/peers/config.yaml (generated)\n" +
 				"  run log:    journalctl -u peers.service\n" +
@@ -214,7 +214,7 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 				"  uninstall:  peers uninstall\n",
 		},
 		{
-			name:   "system-level kept configuration",
+			name:   "system kept configuration",
 			system: true,
 			result: service.Result{
 				Binary:     "/usr/local/bin/peers",
@@ -223,7 +223,7 @@ func TestServiceInstallPrintsTheSummary(t *testing.T) {
 				RunLog:     "journalctl -u peers.service",
 				AuditLog:   "/var/log/peers/audit.log",
 			},
-			want: "peers 0.1.2 installed (system-level, starts at boot)\n" +
+			want: "peers 0.1.2 installed (system service, starts at boot)\n" +
 				"  binary:     /usr/local/bin/peers\n" +
 				"  config:     /etc/peers/config.yaml (kept)\n" +
 				"  run log:    journalctl -u peers.service\n" +
@@ -272,7 +272,7 @@ func TestServiceInstallReportsDegraded(t *testing.T) {
 		RunLog:     "journalctl --user -u peers.service",
 		AuditLog:   "/home/alice/.peers/audit.log",
 	}
-	summary := "peers 0.1.2 installed (user-level, starts at login)\n" +
+	summary := "peers 0.1.2 installed (user service, starts at login)\n" +
 		"  binary:     /usr/local/bin/peers\n" +
 		"  config:     /home/alice/.peers/config.yaml (generated)\n" +
 		"  run log:    journalctl --user -u peers.service\n" +

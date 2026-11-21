@@ -54,7 +54,7 @@ const (
 )
 
 // TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate covers REQ-update-007 on
-// macOS: a system-level LaunchDaemon replaces its own binary through
+// macOS: a system LaunchDaemon replaces its own binary through
 // ApplyUpdate, launchd starts the new binary under KeepAlive, the binary keeps
 // its root ownership and permissions, and the restarted Broker still serves.
 //
@@ -210,7 +210,7 @@ func preserveInstalledBinary(t *testing.T) {
 }
 
 // installRootBinary installs src at dst as a root-owned, world-executable
-// binary, the ownership a system-level installation requires.
+// binary, the ownership a system installation requires.
 func installRootBinary(t *testing.T, src, dst string) {
 	t.Helper()
 	if err := sudo("install", "-o", "root", "-g", "wheel", "-m", "0755", src, dst); err != nil {

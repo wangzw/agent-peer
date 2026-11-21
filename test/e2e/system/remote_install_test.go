@@ -43,8 +43,8 @@ const (
 	// Asking for it must report that the version was not found.
 	remoteInstallUnknownVersion = "0.9.9"
 
-	// remoteInstallAccount is the ordinary account that runs the user-level
-	// install, and the SUDO_USER of the system-level install.
+	// remoteInstallAccount is the ordinary account that runs the user
+	// install, and the SUDO_USER of the system install.
 	remoteInstallAccount = "peer"
 
 	// remoteInstallReleasePath is the path prefix the fake service serves. The
@@ -54,13 +54,12 @@ const (
 
 	// remoteInstallScriptPath is where the inner test writes the fetched remote
 	// script. The two accepted invocations run it from a file: "sh <file>" for
-	// the user-level install and "sudo sh -s -- --system" for the system-level
-	// one.
+	// the user install and "sudo sh -s -- --system" for the system installation.
 	remoteInstallScriptPath = "/tmp/remote-install.sh"
 
 	// remoteInstallFakeClaudePath is the fake Claude Code CLI. It must be in
 	// /usr/local/bin because install.sh looks it up through a login shell in the
-	// system-level case.
+	// system case.
 	remoteInstallFakeClaudePath = "/usr/local/bin/claude"
 
 	// remoteInstallFakeClaudeDir holds the fake CLI's call log and its record of
@@ -81,8 +80,8 @@ const (
 
 // TestRemoteInstallUser installs through the remote script as an ordinary
 // account, using "sh <script>", and checks the outcome the in-package install
-// script promises for a user-level install: the binary lands in ~/.local/bin,
-// the user-level service runs, and the fake Claude Code CLI receives exactly
+// script promises for a user install: the binary lands in ~/.local/bin,
+// the user service runs, and the fake Claude Code CLI receives exactly
 // one "mcp add --scope user peer -- <path> mcp". A second run must succeed and
 // must not add the MCP server again.
 func TestREQBrokerConfig042_RemoteInstallUser(t *testing.T) {
@@ -111,7 +110,7 @@ func TestREQBrokerConfig042_RemoteInstallUser(t *testing.T) {
 	remoteInstallRequireVersion(t, remoteInstallAccount, binary, remoteInstallLatestVersion)
 
 	remoteInstallRequireActive(t, remoteInstallAccount, env, "systemctl", "--user", "is-active", "peers.service")
-	syscontainer.WaitFor(t, "the user-level Broker socket "+syscontainer.UserSocketPath(t, remoteInstallAccount), func() bool {
+	syscontainer.WaitFor(t, "the user Broker socket "+syscontainer.UserSocketPath(t, remoteInstallAccount), func() bool {
 		_, err := os.Stat(syscontainer.UserSocketPath(t, remoteInstallAccount))
 		return err == nil
 	})
@@ -121,9 +120,9 @@ func TestREQBrokerConfig042_RemoteInstallUser(t *testing.T) {
 
 // TestREQBrokerConfig042_RemoteInstallSystem installs through the remote script
 // as an ordinary account, answers the level question with y, and checks the
-// system-level outcome: the packaged script reruns itself through sudo inside
+// system installation outcome: the packaged script reruns itself through sudo inside
 // the temporary directory, the binary is root-owned in /usr/local/bin and
-// reports the release version, the system-level service runs, and the fake
+// reports the release version, the system service runs, and the fake
 // Claude Code CLI receives one registration for SUDO_USER with the system
 // binary.
 func TestREQBrokerConfig042_RemoteInstallSystem(t *testing.T) {
@@ -143,7 +142,7 @@ func TestREQBrokerConfig042_RemoteInstallSystem(t *testing.T) {
 
 	res := runInstallScriptWithTerminal(t, remoteInstallAccount, env, remoteInstallHome(t), "y\n", "sh", script)
 	if res.ExitCode != 0 {
-		t.Fatalf("system-level remote install: exit %d\n%s", res.ExitCode, res.Output)
+		t.Fatalf("system remote install: exit %d\n%s", res.ExitCode, res.Output)
 	}
 	if !strings.Contains(res.Output, installLevelPrompt) {
 		t.Errorf("the terminal did not show %q:\n%s", installLevelPrompt, res.Output)
@@ -675,7 +674,7 @@ func remoteInstallHome(t *testing.T) string {
 	return u.HomeDir
 }
 
-// remoteInstallPeerEnv is the environment of the user-level install. The
+// remoteInstallPeerEnv is the environment of the user install. The
 // runtime directory and the bus are what let the in-package install script's
 // "service install" reach the account's user manager.
 func remoteInstallPeerEnv(uid uint32, base string) []string {
@@ -707,7 +706,7 @@ func remoteInstallWriteFakeClaude(t *testing.T) {
 }
 
 // remoteInstallGrantSudo gives the ordinary account passwordless sudo in this
-// container and keeps the test hook in its environment, so the system-level
+// container and keeps the test hook in its environment, so the system
 // case can run the same "sudo sh -s -- --system" a user would.
 func remoteInstallGrantSudo(t *testing.T) {
 	t.Helper()

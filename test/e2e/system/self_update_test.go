@@ -22,7 +22,7 @@ const (
 	// selfUpdateArchiveDir is where the inner test assembles a release-shaped
 	// archive around the old release binary.
 	selfUpdateArchiveDir = "/var/lib/peers-self-update-archive"
-	// selfUpdateBinary is the system-level binary the install script writes.
+	// selfUpdateBinary is the system binary the install script writes.
 	selfUpdateBinary = "/usr/local/bin/peers"
 	// selfUpdateConfigPath is the system Broker's configuration file.
 	selfUpdateConfigPath = "/etc/peers/config.yaml"
@@ -31,7 +31,7 @@ const (
 	// selfUpdateAdminGroup is the group the admin-group unit will grant. Until
 	// that unit is merged, the test performs the same chgrp and chmod itself.
 	selfUpdateAdminGroup = "peers-admins"
-	// selfUpdateUserListen is the user-level Broker's address when the system
+	// selfUpdateUserListen is the user Broker's address when the system
 	// Broker is also running. The configuration template would otherwise give
 	// both the same port and the second Broker would refuse to start.
 	selfUpdateUserListen = "127.0.0.1:17463"
@@ -144,8 +144,8 @@ func TestREQUpdate007_SystemUpdateRefusedOutsideAdminGroup(t *testing.T) {
 }
 
 // TestREQUpdate007_CLIWithoutUserBrokerUsesSystemBroker covers the routing rule
-// for an ordinary account that runs no user-level Broker: the selection order
-// reaches the system-level Broker, so "peers update" delegates to it.
+// for an ordinary account that runs no user Broker: the selection order
+// reaches the system Broker, so "peers update" delegates to it.
 func TestREQUpdate007_CLIWithoutUserBrokerUsesSystemBroker(t *testing.T) {
 	if !syscontainer.InContainer() {
 		selfUpdateStageHostAssets(t, true)
@@ -158,24 +158,24 @@ func TestREQUpdate007_CLIWithoutUserBrokerUsesSystemBroker(t *testing.T) {
 	selfUpdateInstallSystemService(t, fake)
 
 	if _, err := os.Stat(syscontainer.UserSocketPath(t, installAccount)); err == nil {
-		t.Fatalf("a user-level Broker socket exists, so the case would not test the fallback to the system-level Broker")
+		t.Fatalf("a user Broker socket exists, so the case would not test the fallback to the system Broker")
 	}
 
 	res := syscontainer.RunAs(t, installAccount, selfUpdateAPIEnv(fake), "update", "--yes")
 	if res.ExitCode != 0 {
-		t.Fatalf("peers update --yes as %s without a user-level Broker exited %d\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("peers update --yes as %s without a user Broker exited %d\nstdout:\n%s\nstderr:\n%s",
 			installAccount, res.ExitCode, res.Stdout, res.Stderr)
 	}
 	selfUpdateWaitBrokerVersion(t, selfUpdateSystemSocket, updateNewVersion)
 	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateNewVersion {
-		t.Fatalf("the system-level binary reports %q, want %q", got, "peers "+updateNewVersion)
+		t.Fatalf("the system binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 	selfUpdateWaitAuditEvent(t, installAccount)
 }
 
 // TestREQUpdate007_CLIWithUserBrokerUsesUserBroker covers the other half of the
-// selection order: the same admin account also runs a user-level Broker, so
-// "peers update" must reach that Broker and leave the system-level Broker
+// selection order: the same admin account also runs a user Broker, so
+// "peers update" must reach that Broker and leave the system Broker
 // and its binary untouched.
 func TestREQUpdate007_CLIWithUserBrokerUsesUserBroker(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -197,37 +197,37 @@ func TestREQUpdate007_CLIWithUserBrokerUsesUserBroker(t *testing.T) {
 	selfUpdateWaitBrokerVersion(t, selfUpdateSystemSocket, updateOldVersion)
 
 	// The command is the system-installed binary, so only the Broker selection
-	// can send the update to the user-level install.
+	// can send the update to the user install.
 	res := syscontainer.RunAs(t, installAccount, selfUpdateAPIEnv(fake), "update", "--yes")
 	if res.ExitCode != 0 {
-		t.Fatalf("peers update --yes as %s with a user-level Broker exited %d\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("peers update --yes as %s with a user Broker exited %d\nstdout:\n%s\nstderr:\n%s",
 			installAccount, res.ExitCode, res.Stdout, res.Stderr)
 	}
 
 	selfUpdateWaitUserBrokerVersion(t, installAccount, updateNewVersion)
 	if after := updateFileHash(t, userTarget); after == userBeforeHash {
-		t.Errorf("the user-level binary at %s was not replaced", userTarget)
+		t.Errorf("the user binary at %s was not replaced", userTarget)
 	}
 	if got := updateBinaryVersion(t, userTarget); got != "peers "+updateNewVersion {
-		t.Fatalf("the user-level binary reports %q, want %q", got, "peers "+updateNewVersion)
+		t.Fatalf("the user binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 	if afterPID := selfUpdateUserServiceMainPID(t, installAccount, userEnv); afterPID == beforePID {
-		t.Errorf("the user-level Broker kept MainPID %d, want it restarted on the new version", beforePID)
+		t.Errorf("the user Broker kept MainPID %d, want it restarted on the new version", beforePID)
 	}
 
 	if after := updateFileHash(t, selfUpdateBinary); after != systemBeforeHash {
-		t.Errorf("the system-level binary at %s changed during a user-level update", selfUpdateBinary)
+		t.Errorf("the system binary at %s changed during a user update", selfUpdateBinary)
 	}
 	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateOldVersion {
-		t.Fatalf("the system-level binary reports %q after a user-level update, want %q",
+		t.Fatalf("the system binary reports %q after a user update, want %q",
 			got, "peers "+updateOldVersion)
 	}
 	selfUpdateWaitBrokerVersion(t, selfUpdateSystemSocket, updateOldVersion)
 }
 
 // TestREQUpdate007_RootUpdateUsesSystemBroker covers the root route: a root
-// caller has no separate user-level Broker, so "peers update" reaches the
-// system-level Broker.
+// caller has no separate user Broker, so "peers update" reaches the
+// system Broker.
 func TestREQUpdate007_RootUpdateUsesSystemBroker(t *testing.T) {
 	if !syscontainer.InContainer() {
 		selfUpdateStageHostAssets(t, true)
@@ -254,15 +254,15 @@ func TestREQUpdate007_RootUpdateUsesSystemBroker(t *testing.T) {
 			selfUpdateBinary, beforeUID, beforeGID, beforeMode, afterUID, afterGID, afterMode)
 	}
 	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateNewVersion {
-		t.Fatalf("the system-level binary reports %q, want %q", got, "peers "+updateNewVersion)
+		t.Fatalf("the system binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 	selfUpdateWaitAuditEvent(t, "root")
 }
 
 // TestREQUpdate007_SudoWithUserBrokerUsesSystemBroker covers the routing rule
-// that keeps an administrator's user-level Broker out of the way: an admin-group
-// member who also runs a user-level Broker executes "sudo peers update",
-// and the system-level Broker is the one upgraded.
+// that keeps an administrator's user Broker out of the way: an admin-group
+// member who also runs a user Broker executes "sudo peers update",
+// and the system Broker is the one upgraded.
 func TestREQUpdate007_SudoWithUserBrokerUsesSystemBroker(t *testing.T) {
 	if !syscontainer.InContainer() {
 		selfUpdateStageHostAssets(t, true)
@@ -289,16 +289,16 @@ func TestREQUpdate007_SudoWithUserBrokerUsesSystemBroker(t *testing.T) {
 
 	selfUpdateWaitBrokerVersion(t, selfUpdateSystemSocket, updateNewVersion)
 
-	// The user-level Broker and the binary it runs must be exactly as they were.
+	// The user Broker and the binary it runs must be exactly as they were.
 	if afterPID := selfUpdateUserServiceMainPID(t, installAccount, userEnv); afterPID != beforePID {
-		t.Errorf("the user-level Broker MainPID changed from %d to %d; sudo updated the wrong Broker",
+		t.Errorf("the user Broker MainPID changed from %d to %d; sudo updated the wrong Broker",
 			beforePID, afterPID)
 	}
 	if after := updateFileHash(t, userTarget); after != userBeforeHash {
-		t.Errorf("the user-level binary at %s changed during sudo update", userTarget)
+		t.Errorf("the user binary at %s changed during sudo update", userTarget)
 	}
 	if got := updateBinaryVersion(t, userTarget); got != "peers "+updateOldVersion {
-		t.Fatalf("the user-level binary reports %q, want %q", got, "peers "+updateOldVersion)
+		t.Fatalf("the user binary reports %q, want %q", got, "peers "+updateOldVersion)
 	}
 	selfUpdateWaitUserBrokerVersion(t, installAccount, updateOldVersion)
 
@@ -308,7 +308,7 @@ func TestREQUpdate007_SudoWithUserBrokerUsesSystemBroker(t *testing.T) {
 			selfUpdateBinary, beforeUID, beforeGID, beforeMode, afterUID, afterGID, afterMode)
 	}
 	if got := updateBinaryVersion(t, selfUpdateBinary); got != "peers "+updateNewVersion {
-		t.Fatalf("the system-level binary reports %q, want %q", got, "peers "+updateNewVersion)
+		t.Fatalf("the system binary reports %q, want %q", got, "peers "+updateNewVersion)
 	}
 	selfUpdateWaitAuditEvent(t, "root")
 }
@@ -492,7 +492,7 @@ func TestREQUpdate008_UpdateBrokerAlreadyLatest(t *testing.T) {
 	}
 }
 
-// TestREQUpdate008_UpdateBrokerUnderUserService covers the user-level half of
+// TestREQUpdate008_UpdateBrokerUnderUserService covers the user half of
 // REQ-update-008: a real "peers mcp" session calls update_broker, the user
 // service's Broker replaces the binary and is restarted by the user manager,
 // the tool result names both versions and restarting, and the session reaches
@@ -525,7 +525,7 @@ func TestREQUpdate008_UpdateBrokerUnderUserService(t *testing.T) {
 	}
 }
 
-// TestREQUpdate008_UpdateBrokerUnderSystemService covers the system-level half
+// TestREQUpdate008_UpdateBrokerUnderSystemService covers the system half
 // of REQ-update-008: a real "peers mcp" session of an admin-group account
 // calls update_broker, the system Broker replaces the binary and systemd
 // restarts it, the binary keeps its owner and mode, the audit log records the
@@ -595,7 +595,7 @@ func TestREQUpdate008_UpdateBrokerRefusedOutsideAdminGroup(t *testing.T) {
 }
 
 // selfUpdateStageHostAssets builds the two release versions and, when
-// withInstallScript is set, stages the install script the system-level
+// withInstallScript is set, stages the install script the system
 // scenarios run. It runs on the host.
 func selfUpdateStageHostAssets(t *testing.T, withInstallScript bool) {
 	t.Helper()
@@ -762,7 +762,7 @@ func selfUpdateSetUserUnitEnv(t *testing.T, account string, userEnv []string, ap
 }
 
 // selfUpdateSetupUserServiceFor installs the old release as the account's
-// user-level service. It returns the target binary and the environment its user
+// user service. It returns the target binary and the environment its user
 // manager commands need.
 func selfUpdateSetupUserServiceFor(t *testing.T, account string) (string, []string) {
 	t.Helper()
@@ -770,7 +770,7 @@ func selfUpdateSetupUserServiceFor(t *testing.T, account string) (string, []stri
 }
 
 // selfUpdateSetupUserServiceFrom is selfUpdateSetupUserServiceFor for a caller
-// that installs another staged artifact as the account's user-level service.
+// that installs another staged artifact as the account's user service.
 func selfUpdateSetupUserServiceFrom(t *testing.T, account, artifact string) (string, []string) {
 	t.Helper()
 

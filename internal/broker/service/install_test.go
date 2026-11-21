@@ -18,7 +18,7 @@ import (
 	"github.com/wangzw/peers/internal/config"
 )
 
-// baseOptions returns user-level Linux options rooted in a temporary directory.
+// baseOptions returns user Linux options rooted in a temporary directory.
 // Probe reports no Broker and ReadyTimeout keeps the readiness wait short; a
 // test that exercises the start overrides both.
 func baseOptions(t *testing.T) Options {
@@ -1413,7 +1413,7 @@ func TestInstallRejectsForeignBroker(t *testing.T) {
 		}
 
 		_, err := Install(opts)
-		if err == nil || !strings.Contains(err.Error(), "system-level Broker") {
+		if err == nil || !strings.Contains(err.Error(), "system Broker") {
 			t.Fatalf("Install error = %v, want the foreign system Broker rejection", err)
 		}
 	})
@@ -2682,16 +2682,16 @@ func TestInstallReportsTheServiceManagerStateOnTimeout(t *testing.T) {
 }
 
 // TestServiceManagerStateQueryArguments checks the query the readiness timeout
-// makes: the user level asks systemd for this account's unit with --user, and
-// the system level asks about the system unit without it.
+// makes: the user installation asks systemd for this account's unit with --user, and
+// the system installation asks about the system unit without it.
 func TestServiceManagerStateQueryArguments(t *testing.T) {
 	cases := []struct {
 		name     string
 		system   bool
 		wantUser bool
 	}{
-		{name: "user level", system: false, wantUser: true},
-		{name: "system level", system: true, wantUser: false},
+		{name: "user installation", system: false, wantUser: true},
+		{name: "system installation", system: true, wantUser: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2738,7 +2738,7 @@ func TestInstallUnsupportedOS(t *testing.T) {
 	}
 }
 
-// darwinUserReinstall returns darwin user-level options for a service that is
+// darwinUserReinstall returns darwin user options for a service that is
 // already installed and loaded. A test's Run decides when launchd finishes
 // unloading it.
 func darwinUserReinstall(t *testing.T) Options {

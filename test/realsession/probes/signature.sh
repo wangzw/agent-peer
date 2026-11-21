@@ -80,7 +80,7 @@ rs_status_runner() {
 }
 
 # rs_status_hosta prints the peer host Broker's Agent table. The container
-# Broker runs as root, so its socket is the system-level one; rsprobe's default
+# Broker runs as root, so its socket is the system one; rsprobe's default
 # would look under /tmp instead.
 rs_status_hosta() {
 	docker compose -f "$RS_COMPOSE" exec -T hosta \

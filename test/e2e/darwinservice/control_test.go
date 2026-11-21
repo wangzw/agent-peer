@@ -25,7 +25,7 @@ const (
 	controlObservationWindow = 30 * time.Second
 )
 
-// TestUserServiceControl stops, starts and restarts the user-level service and
+// TestUserServiceControl stops, starts and restarts the user service and
 // checks launchd's view after each step. Stop unloads the job but keeps the
 // plist, so the service still starts at the next login.
 func TestUserServiceControl(t *testing.T) {
@@ -44,7 +44,7 @@ func TestUserServiceControl(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("service stop: exit %d\nstdout: %s\nstderr: %s", res.exitCode, res.stdout, res.stderr)
 	}
-	if want := "Broker service stopped (user-level)\n"; res.stdout != want {
+	if want := "The user Broker service has stopped.\n"; res.stdout != want {
 		t.Errorf("stdout = %q, want %q", res.stdout, want)
 	}
 	// Stop waits for launchd to unload the job, so the service must already be
@@ -62,7 +62,7 @@ func TestUserServiceControl(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("service start: exit %d\nstdout: %s\nstderr: %s", res.exitCode, res.stdout, res.stderr)
 	}
-	if want := "Broker service started (user-level)\n"; res.stdout != want {
+	if want := "The user Broker service has started.\n"; res.stdout != want {
 		t.Errorf("stdout = %q, want %q", res.stdout, want)
 	}
 	second := waitForNewPID(t, domain, first, serviceStartBound)
@@ -72,7 +72,7 @@ func TestUserServiceControl(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("service restart: exit %d\nstdout: %s\nstderr: %s", res.exitCode, res.stdout, res.stderr)
 	}
-	if want := "Broker service restarted (user-level)\n"; res.stdout != want {
+	if want := "The user Broker service has restarted.\n"; res.stdout != want {
 		t.Errorf("stdout = %q, want %q", res.stdout, want)
 	}
 	third := waitForNewPID(t, domain, second, restartBound)
@@ -126,7 +126,7 @@ func TestUserServiceRestartWithoutPlist(t *testing.T) {
 	}
 }
 
-// TestSystemServiceControl is the system-level counterpart: stop unloads the
+// TestSystemServiceControl is the system counterpart: stop unloads the
 // daemon from launchd but keeps the plist, and start and restart bring it back
 // with a new pid.
 func TestSystemServiceControl(t *testing.T) {
@@ -142,7 +142,7 @@ func TestSystemServiceControl(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("service stop as root: exit %d\nstdout: %s\nstderr: %s", res.exitCode, res.stdout, res.stderr)
 	}
-	if want := "Broker service stopped (system-level)\n"; res.stdout != want {
+	if want := "The system Broker service has stopped.\n"; res.stdout != want {
 		t.Errorf("stdout = %q, want %q", res.stdout, want)
 	}
 	// Stop waits for launchd to unload the job, so the service must already be
@@ -159,7 +159,7 @@ func TestSystemServiceControl(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("service start as root: exit %d\nstdout: %s\nstderr: %s", res.exitCode, res.stdout, res.stderr)
 	}
-	if want := "Broker service started (system-level)\n"; res.stdout != want {
+	if want := "The system Broker service has started.\n"; res.stdout != want {
 		t.Errorf("stdout = %q, want %q", res.stdout, want)
 	}
 	second := waitForNewPID(t, "system", first, serviceStartBound)
@@ -168,14 +168,14 @@ func TestSystemServiceControl(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("service restart as root: exit %d\nstdout: %s\nstderr: %s", res.exitCode, res.stdout, res.stderr)
 	}
-	if want := "Broker service restarted (system-level)\n"; res.stdout != want {
+	if want := "The system Broker service has restarted.\n"; res.stdout != want {
 		t.Errorf("stdout = %q, want %q", res.stdout, want)
 	}
 	waitForNewPID(t, "system", second, restartBound)
 }
 
 // TestServiceControlNotInstalled checks the messages for a level without a
-// service and for an account that only has the system-level installation.
+// service and for an account that only has the system installation.
 func TestServiceControlNotInstalled(t *testing.T) {
 	resetUserService(t)
 	resetSystemService(t)
@@ -191,10 +191,10 @@ func TestServiceControlNotInstalled(t *testing.T) {
 
 	res := run(t, installedBinary, "service", "start")
 	if res.exitCode != 1 {
-		t.Fatalf("service start with only a system-level install: exit %d, want 1\nstdout: %s\nstderr: %s",
+		t.Fatalf("service start with only a system install: exit %d, want 1\nstdout: %s\nstderr: %s",
 			res.exitCode, res.stdout, res.stderr)
 	}
-	for _, want := range []string{"no user-level service is installed", "system-level service is installed", "sudo peers service start --system"} {
+	for _, want := range []string{"no user service is installed", "system service is installed", "sudo peers service start --system"} {
 		if !strings.Contains(res.stderr, want) {
 			t.Errorf("stderr = %q, want it to contain %q", strings.TrimSpace(res.stderr), want)
 		}
@@ -210,7 +210,7 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		t.Fatalf("service start as root with nothing installed: exit %d, want 1\nstdout: %s\nstderr: %s",
 			res.exitCode, res.stdout, res.stderr)
 	}
-	for _, want := range []string{"no system-level service is installed", "sudo peers service install --system"} {
+	for _, want := range []string{"no system service is installed", "sudo peers service install --system"} {
 		if !strings.Contains(res.stderr, want) {
 			t.Errorf("stderr = %q, want it to contain %q", strings.TrimSpace(res.stderr), want)
 		}
@@ -259,7 +259,7 @@ func TestUserServiceControlDegraded(t *testing.T) {
 		t.Fatalf("service start with the port taken: exit %d, want 3\nstdout: %s\nstderr: %s",
 			res.exitCode, res.stdout, res.stderr)
 	}
-	if want := "Broker service started (user-level)\n"; res.stdout != want {
+	if want := "The user Broker service has started.\n"; res.stdout != want {
 		t.Errorf("stdout = %q, want %q", res.stdout, want)
 	}
 	status := run(t, installedBinary, "service", "status")

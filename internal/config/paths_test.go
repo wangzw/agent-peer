@@ -157,7 +157,7 @@ func TestCheckRuntimeDir_NonRootPermissionRule(t *testing.T) {
 func TestCheckRuntimeDir_RootPermissionRule(t *testing.T) {
 	// A root runtime directory is 0755 but may be tightened. Group or world
 	// write access is the only forbidden part, because root's directory is
-	// shared by the system Broker and root's user-level Broker.
+	// shared by the system Broker and root's user Broker.
 	tests := []struct {
 		perm    os.FileMode
 		wantErr bool

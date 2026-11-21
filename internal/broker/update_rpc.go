@@ -27,7 +27,7 @@ const updateShutdownGrace = 500 * time.Millisecond
 // has the new binary rewrite its level's service unit, and arranges the
 // restart that makes it take effect. The request names neither a version nor
 // a source. Access is enforced by the interceptor, not here: the system Broker
-// requires write permission on the configuration file, and the user-level
+// requires write permission on the configuration file, and the user
 // Broker allows every local caller, as it does for SetConfig.
 //
 // The Broker refuses when no service manager runs it, because nothing would

@@ -78,7 +78,7 @@ func TestPostUpdateCmdMapsLevel(t *testing.T) {
 }
 
 // TestPostUpdateCmdSystemNeedsNoHome runs the command with HOME unset, as a
-// system service does. The system level must not read the account home, so the
+// system service does. The system installation must not read the account home, so the
 // command reaches the rewrite; the rewrite is a stand-in, so the test observes
 // only the options it was given.
 func TestPostUpdateCmdSystemNeedsNoHome(t *testing.T) {
@@ -97,10 +97,10 @@ func TestPostUpdateCmdSystemNeedsNoHome(t *testing.T) {
 		t.Fatal("PostUpdate did not run")
 	}
 	if !got.System {
-		t.Errorf("System = false, want the system level")
+		t.Errorf("System = false, want the system installation")
 	}
 	if got.Home != "" {
-		t.Errorf("Home = %q, want empty: the system level must not read the account home", got.Home)
+		t.Errorf("Home = %q, want empty: the system installation must not read the account home", got.Home)
 	}
 	if got.Exe == "" {
 		t.Error("Exe is empty, so the rewritten definition would not name a binary")
@@ -110,7 +110,7 @@ func TestPostUpdateCmdSystemNeedsNoHome(t *testing.T) {
 	}
 }
 
-// TestPostUpdateCmdUserNeedsHome keeps the user level reading the account
+// TestPostUpdateCmdUserNeedsHome keeps the user installation reading the account
 // home: without HOME it reports the failure instead of rewriting a definition
 // for a directory it cannot find.
 func TestPostUpdateCmdUserNeedsHome(t *testing.T) {
@@ -126,7 +126,7 @@ func TestPostUpdateCmdUserNeedsHome(t *testing.T) {
 		t.Fatalf("run(internal post-update --level user) = %d, want %d", code, exitFailure)
 	}
 	if called {
-		t.Fatal("PostUpdate ran without a home directory at the user level")
+		t.Fatal("PostUpdate ran without a home directory for the user installation")
 	}
 	if !strings.Contains(stderr.String(), "locate home directory") {
 		t.Errorf("stderr = %q, want it to name the missing home directory", stderr.String())

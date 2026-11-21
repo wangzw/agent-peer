@@ -103,7 +103,7 @@ var cteCommentedKeys = map[string]bool{
 }
 
 // cteLevel names one deployment level and the operations that differ between
-// the system and user levels.
+// the system and user installations.
 type cteLevel struct {
 	name       string
 	configPath string
@@ -111,7 +111,7 @@ type cteLevel struct {
 	mainPID    func(*testing.T) int
 }
 
-// TestREQBrokerConfig040_SystemInstallWritesTemplate installs the system-level
+// TestREQBrokerConfig040_SystemInstallWritesTemplate installs the system
 // service into a container whose process 1 is systemd and checks the
 // configuration file the installation generates.
 func TestREQBrokerConfig040_SystemInstallWritesTemplate(t *testing.T) {
@@ -141,7 +141,7 @@ func TestREQBrokerConfig040_SystemInstallWritesTemplate(t *testing.T) {
 	})
 }
 
-// TestREQBrokerConfig040_UserInstallWritesTemplate installs the user-level
+// TestREQBrokerConfig040_UserInstallWritesTemplate installs the user
 // service as the peer account and checks the configuration file the
 // installation generates in the account's home.
 func TestREQBrokerConfig040_UserInstallWritesTemplate(t *testing.T) {
@@ -762,7 +762,7 @@ func cteParsePID(t *testing.T, text string) int {
 }
 
 // cteUserConfigPath returns the configuration path of the peer account's
-// user-level Broker.
+// user Broker.
 func cteUserConfigPath(t *testing.T) string {
 	t.Helper()
 

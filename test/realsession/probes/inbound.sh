@@ -261,7 +261,7 @@ usage_total() {
 		sed -n 's/^total //p' | tail -n 1
 }
 
-# find_broker_pid prints the pid of the user-level Broker rs_start_broker
+# find_broker_pid prints the pid of the user Broker rs_start_broker
 # started. It runs as "<exe> service run"; the executable and the first two
 # arguments are matched instead of a command-line substring, so another
 # Broker's arguments cannot make the choice ambiguous.

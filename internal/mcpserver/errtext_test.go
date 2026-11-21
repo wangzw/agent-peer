@@ -75,7 +75,7 @@ func TestPreflight(t *testing.T) {
 			want:   "list_agents failed: " + textNoBroker + " (code: internal)",
 		},
 		{
-			// REQ-broker-config-037: a system-level Broker that fails sends the
+			// REQ-broker-config-037: a system Broker that fails sends the
 			// user to the administrator only.
 			name:   "no system Broker",
 			status: Status{Phase: PhaseNoBroker, Detail: textNoSystemBroker},
@@ -188,8 +188,8 @@ func TestPreflight(t *testing.T) {
 // mismatch (REQ-broker-config-016): each must tell the reader to restart the
 // Broker, and none may drop the "To fix it" clause.
 // TestNoSystemBrokerTextNamesTheRightActor checks the ruling for
-// REQ-broker-config-037: a session that was using the system-level Broker must
-// not be told to install or start a user-level Broker. Every other account is
+// REQ-broker-config-037: a session that was using the system Broker must
+// not be told to install or start a user Broker. Every other account is
 // told to ask the administrator; root is the administrator, so its text names
 // the command root runs instead.
 func TestNoSystemBrokerTextNamesTheRightActor(t *testing.T) {

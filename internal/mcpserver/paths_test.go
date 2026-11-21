@@ -53,7 +53,7 @@ func TestSystemSocketPath(t *testing.T) {
 	}
 
 	// Both path functions must go through runtimeDir, so the build-tag seam
-	// replaces the runtime directory for user-level and system-level sockets
+	// replaces the runtime directory for user and system sockets
 	// alike.
 	orig := runtimeDir
 	t.Cleanup(func() { runtimeDir = orig })

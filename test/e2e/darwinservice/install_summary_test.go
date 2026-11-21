@@ -25,13 +25,13 @@ func userAuditPath() string {
 	return filepath.Join(os.Getenv("HOME"), ".peers", "audit.log")
 }
 
-// userRunLogPath returns the log launchd writes for the user-level Broker.
+// userRunLogPath returns the log launchd writes for the user Broker.
 func userRunLogPath() string {
 	return filepath.Join(os.Getenv("HOME"), "Library", "Logs", "peers", "broker.log")
 }
 
 // TestREQBrokerConfig050_UserServiceInstallPrintsSummary covers the summary a
-// user-level installation prints on macOS: no sudo prefix, starts at login, the
+// user installation prints on macOS: no sudo prefix, starts at login, the
 // account's configuration file and log locations, the control commands and the
 // uninstall command. The paths it prints must exist. A second installation over
 // the kept configuration says (kept).
@@ -50,7 +50,7 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("service install: exit %d\nstdout: %s\nstderr: %s", res.exitCode, res.stdout, res.stderr)
 	}
-	assertInstallSummary(t, res.stdout, "user-level", "login", map[string]string{
+	assertInstallSummary(t, res.stdout, "user service", "login", map[string]string{
 		"binary:":    installedBinary,
 		"config:":    configPath + " (generated)",
 		"run log:":   userRunLogPath(),
@@ -73,7 +73,7 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 	if again.exitCode != 0 {
 		t.Fatalf("reinstalling the user service: exit %d\nstdout: %s\nstderr: %s", again.exitCode, again.stdout, again.stderr)
 	}
-	assertInstallSummary(t, again.stdout, "user-level", "login", map[string]string{
+	assertInstallSummary(t, again.stdout, "user service", "login", map[string]string{
 		"config:": configPath + " (kept)",
 	})
 
@@ -102,7 +102,7 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 }
 
 // TestREQBrokerConfig050_SystemServiceInstallPrintsSummary covers the same
-// summary for a system-level installation: the sudo prefix, starts at boot, and
+// summary for a system installation: the sudo prefix, starts at boot, and
 // the system paths.
 func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 	resetSystemService(t)
@@ -119,7 +119,7 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 	if res.exitCode != 0 {
 		t.Fatalf("service install --system: exit %d\nstdout: %s\nstderr: %s", res.exitCode, res.stdout, res.stderr)
 	}
-	assertInstallSummary(t, res.stdout, "system-level", "boot", map[string]string{
+	assertInstallSummary(t, res.stdout, "system service", "boot", map[string]string{
 		"binary:":    installedBinary,
 		"config:":    systemConfigPath + " (generated)",
 		"run log:":   "/var/log/peers/broker.log",
@@ -142,7 +142,7 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 	if again.exitCode != 0 {
 		t.Fatalf("reinstalling the system service: exit %d\nstdout: %s\nstderr: %s", again.exitCode, again.stdout, again.stderr)
 	}
-	assertInstallSummary(t, again.stdout, "system-level", "boot", map[string]string{
+	assertInstallSummary(t, again.stdout, "system service", "boot", map[string]string{
 		"config:": systemConfigPath + " (kept)",
 	})
 
@@ -179,7 +179,7 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 // degraded. The listen-port half is covered by
 // TestUserServiceInstallRefusesAnOccupiedListenPort.
 func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
-	t.Run("user level", func(t *testing.T) {
+	t.Run("user installation", func(t *testing.T) {
 		resetUserService(t)
 		preserveUserAudit(t)
 		t.Cleanup(func() { resetUserService(t) })
@@ -199,7 +199,7 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 			t.Fatalf("reinstalling with an unusable audit log: exit %d, want 3\nstdout: %s\nstderr: %s",
 				res.exitCode, res.stdout, res.stderr)
 		}
-		assertInstallSummary(t, res.stdout, "user-level", "login", map[string]string{
+		assertInstallSummary(t, res.stdout, "user service", "login", map[string]string{
 			"binary:":    installedBinary,
 			"config:":    userConfigPath() + " (kept)",
 			"audit log:": userAuditPath(),
@@ -221,7 +221,7 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 		}
 	})
 
-	t.Run("system level", func(t *testing.T) {
+	t.Run("system installation", func(t *testing.T) {
 		resetSystemService(t)
 		preserveSystemFile(t, systemAuditPath)
 		t.Cleanup(func() { resetSystemService(t) })
@@ -239,7 +239,7 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 			t.Fatalf("reinstalling the system service with an unusable audit log: exit %d, want 3\nstdout: %s\nstderr: %s",
 				res.exitCode, res.stdout, res.stderr)
 		}
-		assertInstallSummary(t, res.stdout, "system-level", "boot", map[string]string{
+		assertInstallSummary(t, res.stdout, "system service", "boot", map[string]string{
 			"binary:":    installedBinary,
 			"audit log:": systemAuditPath,
 		})
@@ -282,7 +282,7 @@ func assertDegradedOutput(t *testing.T, stderr, auditPath string) {
 }
 
 // breakAuditPath replaces path with a directory, which cannot be opened for
-// appending even by root. root selects the sudo path for a system-level file.
+// appending even by root. root selects the sudo path for a system file.
 func breakAuditPath(t *testing.T, path string, root bool) {
 	t.Helper()
 
@@ -373,7 +373,7 @@ func assertInstallSummary(t *testing.T, stdout, level, start string, wants map[s
 // printedCommandArgs splits a command from the install summary into the
 // arguments that follow its binary name. The caller runs the arguments with the
 // installed test binary, which is the copy the printed peers names; the
-// sudo prefix a system-level summary prints is dropped and applied by the
+// sudo prefix a system summary prints is dropped and applied by the
 // caller.
 func printedCommandArgs(t *testing.T, command string) []string {
 	t.Helper()

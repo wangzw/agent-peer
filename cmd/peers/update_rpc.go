@@ -9,25 +9,25 @@ import (
 )
 
 // errUserLevelUpdateUnsupported reports that the selected Broker is this
-// account's user-level Broker and declined to apply the update itself. The
-// command then replaces the user-level binary in place, which is the route
+// account's user Broker and declined to apply the update itself. The
+// command then replaces the user binary in place, which is the route
 // that existed before Brokers could apply updates.
-var errUserLevelUpdateUnsupported = errors.New("the user-level Broker does not apply updates itself")
+var errUserLevelUpdateUnsupported = errors.New("the user Broker does not apply updates itself")
 
 // errNoRunningBroker reports that no Broker could be selected or reached, so
 // there is nothing to ask for an update. The command replaces the binary
 // locally instead.
 var errNoRunningBroker = errors.New("no running Broker")
 
-// updateUserSocketPath is the socket path of this account's user-level Broker.
+// updateUserSocketPath is the socket path of this account's user Broker.
 // It is a variable so a test can decide which selected Broker counts as
-// user-level without depending on the account running the test.
+// this account's own without depending on the account running the test.
 var updateUserSocketPath = mcpserver.UserSocketPath
 
 // applyUpdateThroughBroker asks the selected Broker to install the newest
 // release itself. The request carries no version: the Broker decides what is
 // newer and refuses a downgrade. When the selected Broker is this account's
-// user-level Broker and refuses with failed_precondition, the command falls
+// user Broker and refuses with failed_precondition, the command falls
 // back to a local replacement.
 func applyUpdateThroughBroker(ctx context.Context, euid func() int) (brokerUpdateResult, error) {
 	var selectedPath string

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// StartSystemService installs and starts the system-level Broker through
+// StartSystemService installs and starts the system Broker through
 // systemd. When configYAML is non-empty it is written to the system
 // configuration file (owner root, mode 0600) before the installation, so the
 // Broker starts with it. The service is stopped when the test ends. Use

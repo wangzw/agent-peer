@@ -31,7 +31,7 @@ func writeInstalledUnit(t *testing.T, opts Options) string {
 	return path
 }
 
-// linuxControlOptions returns user-level Linux options whose StatusProbe
+// linuxControlOptions returns user Linux options whose StatusProbe
 // reports a healthy Broker. A test that exercises commands starts from these.
 func linuxControlOptions(t *testing.T) Options {
 	t.Helper()
@@ -116,7 +116,7 @@ func TestStartLinuxSystem(t *testing.T) {
 		t.Errorf("Result.Commands = %q, want %q", res.Commands, want)
 	}
 	if len(cmds) == 0 || cmds[0] != "systemctl start peers.service" {
-		t.Errorf("commands = %q, want the system-level start first", cmds)
+		t.Errorf("commands = %q, want the system start first", cmds)
 	}
 }
 
@@ -186,9 +186,9 @@ func TestStartNotInstalled(t *testing.T) {
 			if !errors.Is(err, ErrNotInstalled) {
 				t.Fatalf("Start error = %v, want ErrNotInstalled", err)
 			}
-			level := "user-level"
+			level := "user service"
 			if system {
-				level = "system-level"
+				level = "system service"
 			}
 			if !strings.Contains(err.Error(), level) {
 				t.Errorf("error %q does not name the %s level", err, level)
@@ -295,8 +295,8 @@ func TestStartReportsStatusProbeError(t *testing.T) {
 		system bool
 		want   string
 	}{
-		{"user level", false, "check it with `peers service status`"},
-		{"system level", true, "check it with `peers service status --system`"},
+		{"user installation", false, "check it with `peers service status`"},
+		{"system installation", true, "check it with `peers service status --system`"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

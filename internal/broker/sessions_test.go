@@ -9,8 +9,8 @@ import (
 	"github.com/wangzw/peers/internal/inbox"
 )
 
-// Compile-time checks: the user-level backend satisfies SessionBackend, the
-// user-level router satisfies SessionRouter, and every inbox function the
+// Compile-time checks: the user backend satisfies SessionBackend, the
+// user router satisfies SessionRouter, and every inbox function the
 // backend forwards to has the signature sessions.go assumes. A change in the
 // inbox API breaks this file at compile time instead of silently leaving a
 // wrapper that calls the wrong thing.
@@ -28,7 +28,7 @@ var (
 // exists so the signature check has a named test in the suite.
 func TestSessionBackendSignatures(t *testing.T) {}
 
-// TestUserRouterServesAnyUID checks that the user-level router hands out a
+// TestUserRouterServesAnyUID checks that the user router hands out a
 // backend for any account without an extra check, and that the backend really
 // forwards to inbox.
 func TestUserRouterServesAnyUID(t *testing.T) {

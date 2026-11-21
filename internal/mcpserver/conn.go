@@ -61,8 +61,8 @@ type probeInfo struct {
 var peerUID = systemPeerUID
 
 // peerMayServe reports whether uid may serve a Broker at all: the account of
-// this process, or root. The per-step rules (the system-level Broker must be
-// root, the user-level one must be this account) are applied by the selector.
+// this process, or root. The per-step rules (the system Broker must be
+// root, the user one must be this account) are applied by the selector.
 func peerMayServe(uid uint32) bool {
 	return uid == uint32(os.Geteuid()) || uid == 0
 }

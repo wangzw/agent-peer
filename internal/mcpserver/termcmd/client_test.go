@@ -131,7 +131,7 @@ func TestRunStatusDiagnosticsOnly(t *testing.T) {
 }
 
 func TestRunStatusSelectorError(t *testing.T) {
-	const noBroker = "no Broker is available for this account; if a system-level Broker is installed on this host, ask the administrator to start it. Otherwise start a user-level Broker with `peers service install`, or run `peers service run` in a terminal outside the Claude Code session (a Broker started inside the session exits with code 6)"
+	const noBroker = "no Broker is available for this account; if a system Broker is installed on this host, ask the administrator to start it. Otherwise start a user Broker with `peers service install`, or run `peers service run` in a terminal outside the Claude Code session (a Broker started inside the session exits with code 6)"
 	want := "cannot reach the Broker: " + noBroker
 	var got bytes.Buffer
 	err := RunStatus(t.Context(), func(context.Context) (string, Dialer, error) {

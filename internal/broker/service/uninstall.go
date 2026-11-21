@@ -24,7 +24,7 @@ func Uninstall(opts Options) (Result, error) {
 		return res, errors.New("service remove --system must run as root")
 	}
 	if !opts.System && opts.EUID == 0 {
-		return res, errors.New("service remove without --system must not run as root; the user-level unit belongs to one account")
+		return res, errors.New("service remove without --system must not run as root; the user unit belongs to one account")
 	}
 
 	path, err := unitPath(opts)
@@ -112,7 +112,7 @@ func uninstallDarwin(opts Options, path string, res *Result) (Result, error) {
 	if err != nil {
 		return *res, err
 	}
-	// Without a gui domain a user-level service cannot be loaded, so there is
+	// Without a gui domain a user service cannot be loaded, so there is
 	// nothing to uninstall and no label to ask about. Answer here instead of
 	// letting the missing domain stand in for a missing service.
 	if !fileExists && (domain == "" || !launchctlDomainLoaded(opts, domain)) {

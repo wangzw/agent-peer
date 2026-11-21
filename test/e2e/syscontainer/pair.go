@@ -1,4 +1,4 @@
-// Package syscontainer runs the system-level end-to-end tests inside
+// Package syscontainer runs the system end-to-end tests inside
 // containers. This file carries no e2e build tag so that the role parsing and
 // the shared-directory exchange compile and run on the host without one.
 package syscontainer

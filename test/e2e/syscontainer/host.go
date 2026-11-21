@@ -82,7 +82,7 @@ func StartSystemBrokerEnv(t *testing.T, configYAML string, env []string) *Proc {
 }
 
 // StartUserBroker runs "peers service run --user <args>" as account and waits
-// for that account's user-level socket. The process is terminated when the
+// for that account's user socket. The process is terminated when the
 // test ends.
 func StartUserBroker(t *testing.T, account string, args ...string) *Proc {
 	t.Helper()
@@ -102,7 +102,7 @@ func StartUserBrokerPath(t *testing.T, exe, account string, env []string, args .
 	return startAndWait(t, cmd, socket, "the "+account+" user Broker")
 }
 
-// UserSocketPath returns the local socket path a user-level Broker of account
+// UserSocketPath returns the local socket path a user Broker of account
 // binds.
 func UserSocketPath(t *testing.T, account string) string {
 	t.Helper()

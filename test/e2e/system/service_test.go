@@ -26,12 +26,12 @@ const (
 	systemSocket = "/run/peers/broker.sock"
 	// releaseBinary is the peers build the base image installs.
 	releaseBinary = "/usr/local/bin/peers"
-	// systemAdminGroup is the default group a system-level install delegates
+	// systemAdminGroup is the default group a system install delegates
 	// administration to.
 	systemAdminGroup = "peers"
 )
 
-// TestServiceInstall checks the system-level installation inside a container
+// TestServiceInstall checks the system installation inside a container
 // whose process 1 is systemd: the unit file and the configuration file it
 // writes, the enablement systemd records, and the path checks that guard the
 // binary. The subtests share one container; install is idempotent, so each one
@@ -42,20 +42,20 @@ func TestServiceInstall(t *testing.T) {
 		return
 	}
 
-	t.Run("root without a level flag installs the system level", func(t *testing.T) {
-		// Neither --system nor --user: root selects the system level, and both
+	t.Run("root without a level flag installs the system installation", func(t *testing.T) {
+		// Neither --system nor --user: root selects the system installation, and both
 		// the summary and the written unit must show it.
 		res := runCommandAs(t, "root", releaseBinary, "service", "install")
 		if res.ExitCode != 0 {
 			t.Fatalf("service install as root: exit %d\nstdout: %s\nstderr: %s",
 				res.ExitCode, res.Stdout, res.Stderr)
 		}
-		if want := "installed (system-level, starts at boot)\n"; !strings.Contains(res.Stdout, want) {
-			t.Errorf("summary does not report the system level:\n%s", res.Stdout)
+		if want := "installed (system service, starts at boot)\n"; !strings.Contains(res.Stdout, want) {
+			t.Errorf("summary does not report the system installation:\n%s", res.Stdout)
 		}
 		if content := readFile(t, systemUnitPath); !strings.Contains(content,
 			"ExecStart="+releaseBinary+" service run --system --allow-degraded") {
-			t.Errorf("the installed unit is not the system-level one:\n%s", content)
+			t.Errorf("the installed unit is not the system one:\n%s", content)
 		}
 	})
 
@@ -165,7 +165,7 @@ func TestServiceInstall(t *testing.T) {
 	})
 
 	t.Run("user install as root is refused", func(t *testing.T) {
-		// Without a level flag root installs at the system level, so the
+		// Without a level flag root installs the system installation, so the
 		// refused request is the explicit --user one.
 		res := runCommandAs(t, "root", releaseBinary, "service", "install", "--user")
 		if res.ExitCode == 0 {
@@ -239,7 +239,7 @@ func TestServiceInstall(t *testing.T) {
 	})
 }
 
-// TestServiceUnitsVerify installs the user-level unit through the product's
+// TestServiceUnitsVerify installs the user unit through the product's
 // subcommand and checks that systemd records it as enabled and accepts it
 // without a warning.
 func TestServiceUnitsVerify(t *testing.T) {

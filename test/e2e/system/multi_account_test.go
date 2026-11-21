@@ -15,7 +15,7 @@ import (
 	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
 
-// e2eSystemSocketPath is the system-level Broker's local socket.
+// e2eSystemSocketPath is the system Broker's local socket.
 const e2eSystemSocketPath = "/run/peers/broker.sock"
 
 // TestREQBrokerConfig018_TwoAccountsShareSystemBroker registers one session as

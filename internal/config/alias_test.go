@@ -75,8 +75,8 @@ func TestREQBrokerPairing028_HostnameSanitized(t *testing.T) {
 	})
 }
 
-// REQ-broker-pairing-002: with no configured alias, a system-level Broker's
-// default alias is the first label of the system hostname, and a user-level
+// REQ-broker-pairing-002: with no configured alias, a system Broker's
+// default alias is the first label of the system hostname, and a user
 // Broker's alias is that label, a dot and the account name. The listen
 // address, the listen port and the advertised address play no part.
 func TestREQBrokerPairing002_DefaultAlias(t *testing.T) {
@@ -87,9 +87,9 @@ func TestREQBrokerPairing002_DefaultAlias(t *testing.T) {
 		account  string
 		want     string
 	}{
-		{"system level uses the hostname", ModeSystem, "hostA", "alice", "hostA"},
-		{"system level ignores the account", ModeSystem, "hostA", "", "hostA"},
-		{"user level appends the account", ModeUser, "hostA", "alice", "hostA.alice"},
+		{"system mode uses the hostname", ModeSystem, "hostA", "alice", "hostA"},
+		{"system mode ignores the account", ModeSystem, "hostA", "", "hostA"},
+		{"user mode appends the account", ModeUser, "hostA", "alice", "hostA.alice"},
 		{"a domain name keeps its first label", ModeSystem, "hostA.example.com", "alice", "hostA"},
 		{"a domain name keeps its first label in user mode", ModeUser, "hostA.example.com", "alice", "hostA.alice"},
 		{"the hostname case is kept", ModeUser, "HostA.example.com", "Alice", "HostA.Alice"},
@@ -122,13 +122,13 @@ func TestREQBrokerPairing037_AliasTruncation(t *testing.T) {
 		want     string
 	}{
 		{
-			name:     "system level cuts the hostname at 24",
+			name:     "system mode cuts the hostname at 24",
 			mode:     ModeSystem,
 			hostname: longHost,
 			want:     strings.Repeat("a", 24),
 		},
 		{
-			name:     "user level makes room for the account",
+			name:     "user mode makes room for the account",
 			mode:     ModeUser,
 			hostname: longHost,
 			account:  "alice",
@@ -244,7 +244,7 @@ func TestEffectiveAlias(t *testing.T) {
 		}
 	})
 
-	t.Run("user level combines the hostname and the account regardless of the listener", func(t *testing.T) {
+	t.Run("user mode combines the hostname and the account regardless of the listener", func(t *testing.T) {
 		c := &core{
 			mode:            ModeUser,
 			hostname:        func() (string, error) { return "hostA.example.com", nil },
@@ -258,7 +258,7 @@ func TestEffectiveAlias(t *testing.T) {
 		}
 	})
 
-	t.Run("system level uses the hostname and never looks up an account", func(t *testing.T) {
+	t.Run("system mode uses the hostname and never looks up an account", func(t *testing.T) {
 		c := &core{
 			mode:        ModeSystem,
 			hostname:    func() (string, error) { return "hostA.example.com", nil },

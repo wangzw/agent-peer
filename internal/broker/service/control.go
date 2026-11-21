@@ -68,7 +68,7 @@ func Stop(opts Options) (Result, error) {
 		}
 	case "darwin":
 		if domain == "" {
-			// A user-level service can only be loaded in gui/<uid>. Without that
+			// A user service can only be loaded in gui/<uid>. Without that
 			// domain nothing is loaded, so stopping it is already done; the plist
 			// stays installed.
 			return res, nil
@@ -139,7 +139,7 @@ func Restart(opts Options) (Result, error) {
 
 // serviceTarget validates the platform and the installation and returns the
 // launchd domain for macOS. needsDomain reports whether the command must load
-// the job: a user-level macOS service has no domain without a graphical login
+// the job: a user service on macOS has no domain without a graphical login
 // session, and then Stop has nothing to unload.
 func serviceTarget(opts Options, needsDomain bool) (Result, string, error) {
 	var res Result
@@ -175,9 +175,9 @@ func serviceTarget(opts Options, needsDomain bool) (Result, string, error) {
 // notInstalledError names the level that has no service, so the command can
 // tell the operator which install command creates one.
 func notInstalledError(opts Options) error {
-	level := "user-level"
+	level := "user service"
 	if opts.System {
-		level = "system-level"
+		level = "system service"
 	}
 	return fmt.Errorf("%w (%s)", ErrNotInstalled, level)
 }

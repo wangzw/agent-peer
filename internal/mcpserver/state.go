@@ -20,8 +20,8 @@ const (
 	// PhaseUnavailable means Broker selection or connection failed; Detail says why.
 	PhaseUnavailable
 	// PhaseNoBroker means no Broker is available for this account; Detail is
-	// empty for the general text and holds the system-level text when the
-	// session was using the system-level Broker.
+	// empty for the general text and holds the text for a system Broker when
+	// the session was using the system Broker.
 	PhaseNoBroker
 	// PhaseVersionMismatch means Hello found an incompatible local protocol
 	// version; Detail names both versions and Remedy says how to fix it.

@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	// systemConfigDir holds the system-level configuration file and the files
+	// systemConfigDir holds the system configuration file and the files
 	// an administrator adds beside it.
 	systemConfigDir = "/etc/peers"
-	// systemDataDir holds the system-level identity, peer table and discovery
+	// systemDataDir holds the system identity, peer table and discovery
 	// records.
 	systemDataDir = "/var/lib/peers"
 )
@@ -196,7 +196,7 @@ func RemoveRuntimeDir(opts Options) ([]string, error) {
 }
 
 // PurgeData removes the configuration, data, audit log and service log of opts'
-// level, the systemd drop-in directory, and at the system level the admin group
+// level, the systemd drop-in directory, and for the system installation the admin group
 // when the installation recorded that it created the group. removed lists the
 // paths removed, "group <name>" for a deleted group, and "kept group <name>:
 // <reason>" for a group that was left in place. A group that does not exist is
@@ -538,7 +538,7 @@ func deleteAdminGroup(opts Options, name string) error {
 	return nil
 }
 
-// OtherAccountBrokers lists the accounts other than opts.UID whose user-level
+// OtherAccountBrokers lists the accounts other than opts.UID whose user
 // Broker answers on /tmp/peers-<uid>/broker.sock.
 func OtherAccountBrokers(opts Options) (accounts []string, err error) {
 	tmp := rooted(opts, "/tmp")

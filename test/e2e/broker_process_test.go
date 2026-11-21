@@ -38,7 +38,7 @@ const (
 	brokerAbsenceWindow = 500 * time.Millisecond
 )
 
-// TestBrokerProcessLocal covers the user-level Broker process on the test
+// TestBrokerProcessLocal covers the user Broker process on the test
 // host: a session with no Broker, the account lock that keeps a single
 // instance, the --listen override, and the process exit codes and standard
 // error line.

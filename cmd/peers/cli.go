@@ -76,8 +76,8 @@ type levelFlags struct {
 // flag-group errors cannot be mapped to exitUsage reliably.
 func addLevelFlags(cmd *cobra.Command) *levelFlags {
 	f := &levelFlags{}
-	cmd.Flags().BoolVar(&f.systemFlag, "system", false, "operate on the system-level installation")
-	cmd.Flags().BoolVar(&f.userFlag, "user", false, "operate on the user-level installation")
+	cmd.Flags().BoolVar(&f.systemFlag, "system", false, "operate on the system installation")
+	cmd.Flags().BoolVar(&f.userFlag, "user", false, "operate on this account's installation")
 	return f
 }
 
@@ -88,7 +88,7 @@ func (f *levelFlags) explicit() bool {
 	return f.systemFlag || f.userFlag
 }
 
-// system reports whether the command runs at the system level: --system means
+// system reports whether the command acts on the system installation: --system means
 // yes, --user means no, and with neither given only root decides yes. Giving
 // both is a usage error.
 func (f *levelFlags) system(euid int) (bool, error) {

@@ -148,8 +148,8 @@ func TestBrokerPassesSystemFlag(t *testing.T) {
 	}
 }
 
-// TestBrokerPassesUserFlag checks that --user selects the user level even for
-// root, where the default would be the system level.
+// TestBrokerPassesUserFlag checks that --user selects the user installation even for
+// root, where the default would be the system installation.
 func TestBrokerPassesUserFlag(t *testing.T) {
 	stub := &stubDeps{euid: func() int { return 0 }}
 	a, _, _ := newBrokerCmdApp(stub)

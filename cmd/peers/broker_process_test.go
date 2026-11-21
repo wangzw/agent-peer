@@ -81,7 +81,7 @@ func hasBrokerStarted(p *brokerProc, pid int) bool {
 
 // startBrokerTerminal runs "peers service run" the way a terminal launch does.
 // The returned process has no reader, so readiness is observed in standard
-// error. Unless args names a level, the command runs at the user level so the
+// error. Unless args names a level, the command acts on the user installation so the
 // test does not depend on the account that runs it.
 func startBrokerTerminal(t *testing.T, sb *sandbox, args ...string) *brokerProc {
 	t.Helper()

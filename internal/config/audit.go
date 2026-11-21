@@ -35,14 +35,14 @@ import (
 
 const (
 	// auditFileMode is the mode used when the audit log is created. Both
-	// deployment modes use it: the user-level log belongs to the account that
-	// runs the Broker, and the system-level log is writable only by root.
+	// deployment modes use it: the user log belongs to the account that
+	// runs the Broker, and the system log is writable only by root.
 	auditFileMode os.FileMode = 0o600
 
 	// auditDirMode is the fallback mode for the audit log's parent directory.
 	// Load creates the parent with the mode the deployment requires before it
 	// opens the audit log; this value only matters when the directory has
-	// disappeared in between, so it uses the stricter user-level mode.
+	// disappeared in between, so it uses the stricter user mode.
 	auditDirMode os.FileMode = 0o700
 
 	// auditMergeWindow is the interval within which repeated mergeable events

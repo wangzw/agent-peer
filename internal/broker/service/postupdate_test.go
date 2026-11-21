@@ -710,7 +710,7 @@ func TestPostUpdateLinuxReportsAReloadFailure(t *testing.T) {
 
 // TestPostUpdateOptionsSystemNeedsNoHome covers the systemd case: the system
 // service runs with no HOME, and rewriting its definition must not read the
-// account home. The user level still reads it.
+// account home. The user installation still reads it.
 func TestPostUpdateOptionsSystemNeedsNoHome(t *testing.T) {
 	t.Setenv("HOME", "")
 	opts, err := PostUpdateOptions(true)
@@ -718,10 +718,10 @@ func TestPostUpdateOptionsSystemNeedsNoHome(t *testing.T) {
 		t.Fatalf("PostUpdateOptions(true): %v", err)
 	}
 	if !opts.System {
-		t.Error("System = false, want the system level")
+		t.Error("System = false, want the system installation")
 	}
 	if opts.Home != "" {
-		t.Errorf("Home = %q, want empty: the system level must not read the account home", opts.Home)
+		t.Errorf("Home = %q, want empty: the system installation must not read the account home", opts.Home)
 	}
 	if opts.Exe == "" {
 		t.Error("Exe is empty, so the rewritten definition would not name a binary")

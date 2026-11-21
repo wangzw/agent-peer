@@ -1,4 +1,4 @@
-# Container image for the system-level Broker end-to-end tests.
+# Container image for the system Broker end-to-end tests.
 #
 # It derives from the image built by test/e2e/compose/Dockerfile, which provides
 # the release builds of peers and e2e-node and the peer and other accounts.

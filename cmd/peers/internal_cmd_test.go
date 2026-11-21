@@ -229,7 +229,7 @@ func TestLaunchdReloadPassesItsArguments(t *testing.T) {
 		t.Fatalf("run(%q) = %d, want %d (stderr %q)", args, got, exitOK, stderr.String())
 	}
 	if !gotOpts.System {
-		t.Error("the helper ran at the user level, want system")
+		t.Error("the helper ran for the user installation, want system")
 	}
 	if gotDomain != "system" {
 		t.Errorf("domain = %q, want system", gotDomain)

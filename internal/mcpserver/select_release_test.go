@@ -12,7 +12,7 @@ import (
 // TestReleaseBuildIgnoresSocketEnvironment proves that a release build reads
 // neither the removed AGENT_PEER_SOCKET nor the test hook
 // PEERS_TEST_SOCKET. The selector's environment seam records every
-// lookup, and selection must complete without one: the account's user-level
+// lookup, and selection must complete without one: the account's user
 // Broker wins even though both variables name another live socket.
 func TestReleaseBuildIgnoresSocketEnvironment(t *testing.T) {
 	envPath := fakelocal.SocketPath(t)

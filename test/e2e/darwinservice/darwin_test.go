@@ -21,9 +21,9 @@ import (
 	"github.com/wangzw/peers/test/e2e/node"
 )
 
-// TestSystemService installs the system-level Broker with the real subcommand,
+// TestSystemService installs the system Broker with the real subcommand,
 // checks that launchd runs it, kills it to see launchd start a new process, and
-// uninstalls it. The system-level and user-level tests run serially.
+// uninstalls it. The system and user tests run serially.
 func TestSystemService(t *testing.T) {
 	resetSystemService(t)
 	t.Cleanup(func() { resetSystemService(t) })
@@ -58,7 +58,7 @@ func TestSystemService(t *testing.T) {
 	}
 }
 
-// TestUserService installs the user-level Broker in the account's launchd
+// TestUserService installs the user Broker in the account's launchd
 // domain, checks that it runs and answers `peers service status`, and uninstalls
 // it.
 func TestUserService(t *testing.T) {
@@ -108,20 +108,20 @@ func TestUserService(t *testing.T) {
 	}
 }
 
-// userDomain returns the launchd domain the user-level service uses. The
+// userDomain returns the launchd domain the user service uses. The
 // product installs only into gui/<uid>; a runner without that domain cannot
-// install a user-level service at all.
+// install a user service at all.
 func userDomain(t *testing.T) string {
 	t.Helper()
 	uid := os.Getuid()
 	domain := fmt.Sprintf("gui/%d", uid)
 	if _, err := exec.Command("launchctl", "print", domain).Output(); err != nil {
-		t.Fatalf("the runner has no %s, so a user-level install must fail", domain)
+		t.Fatalf("the runner has no %s, so a user install must fail", domain)
 	}
 	return domain
 }
 
-// resetSystemService removes any system-level installation left by an earlier
+// resetSystemService removes any system installation left by an earlier
 // run. It is called before the test and from t.Cleanup.
 func resetSystemService(t *testing.T) {
 	t.Helper()
@@ -130,7 +130,7 @@ func resetSystemService(t *testing.T) {
 	_ = sudo("rm", "-f", daemonPlist)
 }
 
-// resetUserService removes any user-level installation left by an earlier run.
+// resetUserService removes any user installation left by an earlier run.
 func resetUserService(t *testing.T) {
 	t.Helper()
 	_ = exec.Command(installedBinary, "service", "remove").Run()
@@ -152,7 +152,7 @@ const (
 	mutationEnv = "PEERS_E2E_MUTATION"
 )
 
-// TestUserServiceRestoresLinkAfterRelogin installs the user-level service,
+// TestUserServiceRestoresLinkAfterRelogin installs the user service,
 // pairs it with a system Broker that the test runs directly, and then reloads
 // the single user plist with bootout and bootstrap. That reload is what launchd
 // does at login. The test asserts a new Broker pid and a CONNECTED link.

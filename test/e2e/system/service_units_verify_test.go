@@ -12,7 +12,7 @@ import (
 	"github.com/wangzw/peers/test/e2e/syscontainer"
 )
 
-// TestSystemServiceUnitsVerify installs the user-level unit through the
+// TestSystemServiceUnitsVerify installs the user unit through the
 // product's subcommand and checks that systemd records it as enabled and
 // accepts it without a warning. The name keeps it distinct from
 // TestServiceUnitsVerify in the service work, which covers the same criteria.

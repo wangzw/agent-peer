@@ -442,7 +442,7 @@ socket_owner_pid() {
 		}'
 }
 
-# rs_start_broker starts the account's user-level Broker and waits for the
+# rs_start_broker starts the account's user Broker and waits for the
 # socket that process serves. The MCP server no longer starts a Broker, so every
 # probe that uses one calls this before it starts a session. The log goes to
 # $OUT/broker.log, and the Broker is stopped when the probe exits.

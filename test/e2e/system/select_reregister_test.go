@@ -30,10 +30,10 @@ import (
 const (
 	// srSystemSocket is the system Broker's local socket.
 	srSystemSocket = "/run/peers/broker.sock"
-	// srSystemService is the systemd unit of the system-level Broker.
+	// srSystemService is the systemd unit of the system Broker.
 	srSystemService = "peers.service"
-	// srLaunchBudget bounds the reconnect when the user-level Broker is started
-	// after a selection round that probed a stale system-level socket. That
+	// srLaunchBudget bounds the reconnect when the user Broker is started
+	// after a selection round that probed a stale system socket. That
 	// round first waits mcpserver.SystemRetryDeadline; the next reconnect waits
 	// at most mcpserver.ConnBackoffCap. The margin covers the dial, Hello and
 	// registration: SystemRetryDeadline + ConnBackoffCap + 5s.
@@ -60,7 +60,7 @@ func srInit(t *testing.T) bool {
 	return true
 }
 
-// srSetup starts the system service and peer's user-level Broker at :17444,
+// srSetup starts the system service and peer's user Broker at :17444,
 // with peer's configuration naming the same address.
 func srSetup(t *testing.T) *syscontainer.Proc {
 	t.Helper()
@@ -153,7 +153,7 @@ func srIdentityHash(t *testing.T, account string) string {
 }
 
 // srAgentID returns the agent ID the Broker of account reports for the agent
-// at address. A user-level Broker admits only its own account's peer
+// at address. A user Broker admits only its own account's peer
 // credentials, so the read runs in the status-client role as that account; the
 // role takes the ID from the Oracle's Status RPC.
 func srAgentID(t *testing.T, account, address string) string {
@@ -262,9 +262,9 @@ func srMainPID() (int, error) {
 }
 
 // TestSelectOrderReq026 checks REQ-broker-config-026: with the system Broker
-// on :17443 and peer's user-level Broker on :17444 both available, peer's
-// session uses the user-level Broker; a peer session opened after that Broker
-// stops uses the system Broker; an account without a user-level Broker uses
+// on :17443 and peer's user Broker on :17444 both available, peer's
+// session uses the user Broker; a peer session opened after that Broker
+// stops uses the system Broker; an account without a user Broker uses
 // the system Broker; and AGENT_PEER_SOCKET has no effect on the choice.
 func TestSelectOrderReq026(t *testing.T) {
 	if !srInit(t) {
@@ -272,18 +272,18 @@ func TestSelectOrderReq026(t *testing.T) {
 	}
 	userBroker := srSetup(t)
 
-	// 1. peer's session: peer's user-level Broker, ahead of the system Broker.
+	// 1. peer's session: peer's user Broker, ahead of the system Broker.
 	s1 := syscontainer.NewSession(t, "peer", "s1")
 	srWaitRegistered(t, s1, "s1")
 	if strings.Contains(srMustStatus(t, "root"), "s1") {
-		t.Fatal("s1 registered on the system Broker although peer's user-level Broker was running")
+		t.Fatal("s1 registered on the system Broker although peer's user Broker was running")
 	}
 	if !strings.Contains(srMustStatus(t, "peer"), "s1") {
-		t.Fatal("s1 is not on peer's user-level Broker")
+		t.Fatal("s1 is not on peer's user Broker")
 	}
 
 	// 2. AGENT_PEER_SOCKET names the system Broker; the choice does not change,
-	// so the session still registers on peer's user-level Broker.
+	// so the session still registers on peer's user Broker.
 	s2 := syscontainer.NewSession(t, "peer", "s2",
 		syscontainer.WithEnv("AGENT_PEER_SOCKET="+srSystemSocket))
 	srWaitRegistered(t, s2, "s2")
@@ -291,33 +291,33 @@ func TestSelectOrderReq026(t *testing.T) {
 		t.Fatal("s2 registered on the system Broker because AGENT_PEER_SOCKET named it")
 	}
 	if !strings.Contains(srMustStatus(t, "peer"), "s2") {
-		t.Fatal("s2 is not on peer's user-level Broker")
+		t.Fatal("s2 is not on peer's user Broker")
 	}
 
-	// 3. peer's user-level Broker stops; a session opened afterwards uses the
+	// 3. peer's user Broker stops; a session opened afterwards uses the
 	// system Broker.
 	userBroker.Stop(t)
 	s3 := syscontainer.NewSession(t, "peer", "s3")
 	srWaitRegistered(t, s3, "s3")
 	if !strings.Contains(srMustStatus(t, "root"), "s3") {
-		t.Fatal("s3 is not on the system Broker after peer's user-level Broker stopped")
+		t.Fatal("s3 is not on the system Broker after peer's user Broker stopped")
 	}
 	if procs := srBrokerProcs(t, "peer"); len(procs) != 0 {
-		t.Fatalf("peer runs a user-level Broker although it was stopped: %v", procs)
+		t.Fatalf("peer runs a user Broker although it was stopped: %v", procs)
 	}
 
-	// 4. an account without a user-level Broker: the system Broker.
+	// 4. an account without a user Broker: the system Broker.
 	s4 := syscontainer.NewSession(t, "other", "s4")
 	srWaitRegistered(t, s4, "s4")
 	if !strings.Contains(srMustStatus(t, "root"), "s4") {
 		t.Fatal("s4 is not on the system Broker")
 	}
 	if procs := srBrokerProcs(t, "other"); len(procs) != 0 {
-		t.Fatalf("other runs a user-level Broker although the system Broker was available: %v", procs)
+		t.Fatalf("other runs a user Broker although the system Broker was available: %v", procs)
 	}
 }
 
-// TestReregisterUserBrokerReq037 checks the user-level half of
+// TestReregisterUserBrokerReq037 checks the user half of
 // REQ-broker-config-037: after its Broker is killed, the session reports that
 // no Broker is available and the MCP server process starts nothing; once the
 // user starts a Broker again, the session registers with the same identity and
@@ -343,7 +343,7 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 	wantKey := srIdentityHash(t, "peer")
 
 	if err := procsig.SendSignal(userBroker.PID, syscall.SIGKILL); err != nil {
-		t.Fatalf("killing peer's user-level Broker %d: %v", userBroker.PID, err)
+		t.Fatalf("killing peer's user Broker %d: %v", userBroker.PID, err)
 	}
 
 	harness.EventuallyPoll(t, srLaunchBudget, "s1 reports that no Broker is available", func(deadline time.Time) (bool, string) {
@@ -361,7 +361,7 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 		}
 		for _, proc := range srBrokerProcs(t, "peer") {
 			if proc.PID != userBroker.PID {
-				return false, fmt.Sprintf("a new user-level Broker process %d appeared", proc.PID)
+				return false, fmt.Sprintf("a new user Broker process %d appeared", proc.PID)
 			}
 		}
 		return true, ""
@@ -370,7 +370,7 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 	// The user starts the Broker again in a terminal. The session reconnects to
 	// it without reconnecting the MCP server process.
 	syscontainer.StartUserBroker(t, "peer", "--listen", ":17444")
-	harness.EventuallyPoll(t, srLaunchBudget, "s1 registers again with the restarted user-level Broker", func(deadline time.Time) (bool, string) {
+	harness.EventuallyPoll(t, srLaunchBudget, "s1 registers again with the restarted user Broker", func(deadline time.Time) (bool, string) {
 		_, isError, err := s1.PollCall(t, deadline, "list_agents", map[string]any{})
 		if err != nil {
 			return false, err.Error()
@@ -395,13 +395,13 @@ func TestReregisterUserBrokerReq037(t *testing.T) {
 		t.Fatalf("s1's Agent ID after the restart is %q, want %q", got, wantAgentID)
 	}
 	if strings.Contains(srMustStatus(t, "root"), "s1") {
-		t.Fatal("s1 moved to the system Broker after its user-level Broker was killed")
+		t.Fatal("s1 moved to the system Broker after its user Broker was killed")
 	}
 }
 
 // TestReregisterSystemBrokerReq037 checks the system half of
 // REQ-broker-config-037: systemd restarts the system Broker, the session
-// registers again with it, and the session never starts a user-level Broker
+// registers again with it, and the session never starts a user Broker
 // while the system Broker is down.
 func TestReregisterSystemBrokerReq037(t *testing.T) {
 	if !srInit(t) {
@@ -415,7 +415,7 @@ func TestReregisterSystemBrokerReq037(t *testing.T) {
 		t.Fatal("s3 is not on the system Broker")
 	}
 	if procs := srBrokerProcs(t, "other"); len(procs) != 0 {
-		t.Fatalf("other runs a user-level Broker although the system Broker was available: %v", procs)
+		t.Fatalf("other runs a user Broker although the system Broker was available: %v", procs)
 	}
 
 	oldPID, err := srMainPID()
@@ -469,6 +469,6 @@ func TestReregisterSystemBrokerReq037(t *testing.T) {
 		t.Fatal("s3 is not registered on the restarted system Broker")
 	}
 	if procs := srBrokerProcs(t, "other"); len(procs) != 0 {
-		t.Fatalf("other started a user-level Broker while the system Broker was down: %v", procs)
+		t.Fatalf("other started a user Broker while the system Broker was down: %v", procs)
 	}
 }

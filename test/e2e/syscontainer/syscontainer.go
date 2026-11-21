@@ -1,6 +1,6 @@
 //go:build e2e
 
-// Package syscontainer runs the system-level end-to-end tests inside
+// Package syscontainer runs the system end-to-end tests inside
 // containers. The host test process forwards each test to a fresh container of
 // the requested service, so tests that need root, several accounts, or systemd
 // see the environment the system Broker is designed for.

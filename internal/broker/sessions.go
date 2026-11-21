@@ -20,8 +20,8 @@ func sessionCallContext(ctx context.Context) (context.Context, context.CancelFun
 	return context.WithTimeout(ctx, sessionCallTimeout)
 }
 
-// SessionBackend performs inbox operations for one account. A user-level
-// Broker calls the inbox package directly in the same process; a system-level
+// SessionBackend performs inbox operations for one account. A user
+// Broker calls the inbox package directly in the same process; a system
 // Broker routes every call to a helper process running as the target account.
 // Callers pass the ctx of the Local RPC being served; implementations that talk
 // to a helper process must propagate it, and implementations that call inbox
@@ -42,14 +42,14 @@ type SessionRouter interface {
 	Acquire(ctx context.Context, uid uint32) (b SessionBackend, release func(), err error)
 }
 
-// UserRouter returns the router of a user-level Broker, which serves exactly
+// UserRouter returns the router of a user Broker, which serves exactly
 // one account and therefore drives the inbox package in-process.
 // It is used when Deps.Sessions is nil.
 func UserRouter() SessionRouter {
 	return userRouter{}
 }
 
-// userBackend is the SessionBackend of a user-level Broker. Every method calls
+// userBackend is the SessionBackend of a user Broker. Every method calls
 // the corresponding inbox function and returns its result unchanged.
 type userBackend struct{}
 

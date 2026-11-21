@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// DefaultAdminGroup is the group that administers a system-level Broker unless
+// DefaultAdminGroup is the group that administers a system Broker unless
 // the installation names another one. Its members can read and write the
 // system configuration file without root.
 const DefaultAdminGroup = "peers"
@@ -40,7 +40,7 @@ func adminGroupName(opts Options) string {
 
 // ensureAdminGroup returns the group id of the administration group, creating
 // the group when it does not exist. An existing group is used as it is; its
-// members are never changed. A system-level installation runs this before it
+// members are never changed. A system installation runs this before it
 // writes any file, so a failure to create the group leaves no configuration
 // behind.
 func ensureAdminGroup(opts Options, res *Result) (int, error) {

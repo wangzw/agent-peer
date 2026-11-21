@@ -184,7 +184,7 @@ func TestUninstallHelp(t *testing.T) {
 	}
 }
 
-// Recorded root uninstall: the system-level steps run and the data is purged.
+// Recorded root uninstall: the system steps run and the data is purged.
 func TestUninstallRootSystemLevel(t *testing.T) {
 	root := t.TempDir()
 	binary := "/usr/local/libexec/peers"
@@ -255,7 +255,7 @@ func TestUninstallRootSystemLevel(t *testing.T) {
 	}
 	for _, want := range []string{
 		"stopped and removed the service /etc/systemd/system/peers.service",
-		"other accounts run a user-level Broker: other",
+		"Other accounts run a user Broker: other",
 		"removed the binary " + binary,
 		"each account that registered the peer MCP server",
 	} {
@@ -762,7 +762,7 @@ func TestUninstallAccountOnlySystemRefused(t *testing.T) {
 			if len(rec.steps) != 0 {
 				t.Errorf("steps = %q, want nothing changed", rec.steps)
 			}
-			if !strings.Contains(stderr.String(), "only a system-level installation is present") {
+			if !strings.Contains(stderr.String(), "only a system installation is present") {
 				t.Errorf("stderr = %q, want it to explain the situation", stderr)
 			}
 			if !strings.Contains(stderr.String(), tc.want) {
@@ -810,7 +810,7 @@ func TestUninstallAccountOnlySystemDoesNotRunSudo(t *testing.T) {
 }
 
 // onlySystemSudoSeams installs the seams for an account whose only
-// installation is a system-level one. sudo records the call it receives.
+// installation is a system installation. sudo records the call it receives.
 func onlySystemSudoSeams(t *testing.T, exe string, sudo func(context.Context, string, []string, io.Reader, io.Writer, io.Writer) error) {
 	t.Helper()
 	withUninstallSeams(t, uninstallSeams{
@@ -898,7 +898,7 @@ func TestUninstallAccountOnlySystemTerminalAnswersYesRunsSudo(t *testing.T) {
 				t.Errorf("sudo args = %q, want %q", gotArgs, tc.want)
 			}
 			if !strings.Contains(stderr.String(), uninstallSystemPrompt) {
-				t.Errorf("stderr = %q, want the system-level question", stderr)
+				t.Errorf("stderr = %q, want the system uninstall question", stderr)
 			}
 			if strings.Contains(stdout.String(), "Run: sudo") {
 				t.Errorf("stdout = %q, want the command to run instead of being printed", stdout)
@@ -924,7 +924,7 @@ func TestUninstallAccountOnlySystemTerminalDeclines(t *testing.T) {
 		t.Errorf("stdout = %q, want the rerunnable command", stdout)
 	}
 	if !strings.Contains(stderr.String(), uninstallSystemPrompt) {
-		t.Errorf("stderr = %q, want the system-level question", stderr)
+		t.Errorf("stderr = %q, want the system uninstall question", stderr)
 	}
 }
 
@@ -1134,7 +1134,7 @@ func TestYesAnswer(t *testing.T) {
 	}
 }
 
-// runBinaryDeletion runs a system-level uninstall whose service definition
+// runBinaryDeletion runs a system uninstall whose service definition
 // names binary and whose executable seam returns exe. It reports whether the
 // binary was removed and the command's output.
 func runBinaryDeletion(t *testing.T, binary, exe string) (removed bool, output string) {
@@ -1363,8 +1363,8 @@ func TestUninstallWithoutTerminalNeedsYes(t *testing.T) {
 		euid   int
 		args   []string
 	}{
-		{"root system level", true, 0, []string{"uninstall"}},
-		{"account user level", false, 1000, []string{"uninstall"}},
+		{"root system installation", true, 0, []string{"uninstall"}},
+		{"account user installation", false, 1000, []string{"uninstall"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1422,8 +1422,8 @@ func TestUninstallPurgeWithoutTerminalNeedsYes(t *testing.T) {
 		system bool
 		euid   int
 	}{
-		{"root system level", true, 0},
-		{"account user level", false, 1000},
+		{"root system installation", true, 0},
+		{"account user installation", false, 1000},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1519,7 +1519,7 @@ func TestUninstallAnswersYesToTheDataQuestion(t *testing.T) {
 }
 
 func TestUninstallRemovesCompletionsAndManPages(t *testing.T) {
-	t.Run("system level", func(t *testing.T) {
+	t.Run("system installation", func(t *testing.T) {
 		root := t.TempDir()
 		installed := []string{
 			"/usr/local/share/bash-completion/completions/peers",
@@ -1582,7 +1582,7 @@ func TestUninstallRemovesCompletionsAndManPages(t *testing.T) {
 		}
 	})
 
-	t.Run("user level", func(t *testing.T) {
+	t.Run("user installation", func(t *testing.T) {
 		root := t.TempDir()
 		installed := []string{
 			"/home/alice/.local/share/bash-completion/completions/peers",
@@ -1591,7 +1591,7 @@ func TestUninstallRemovesCompletionsAndManPages(t *testing.T) {
 		for _, path := range installed {
 			writeUnderRootWith(t, root, path, completionMarker(path))
 		}
-		// The install script never writes the user-level zsh completion, so
+		// The install script never writes the user zsh completion, so
 		// uninstall must leave a file at that path alone.
 		untouched := "/home/alice/.local/share/zsh/site-functions/_peers"
 		writeUnderRoot(t, root, untouched)
@@ -1626,7 +1626,7 @@ func TestUninstallRemovesCompletionsAndManPages(t *testing.T) {
 			}
 		}
 		if _, err := os.Stat(filepath.Join(root, untouched)); err != nil {
-			t.Errorf("removed the user-level zsh completion: %v", err)
+			t.Errorf("removed the user zsh completion: %v", err)
 		}
 	})
 }

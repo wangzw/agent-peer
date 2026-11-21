@@ -46,11 +46,11 @@ const (
 	installStateDir = "/var/lib/peers-install-state"
 
 	// installSudoersPath grants the ordinary account the passwordless sudo the
-	// system-level scenario needs. The name has no dot, which sudo requires of
+	// system scenario needs. The name has no dot, which sudo requires of
 	// a file it reads from /etc/sudoers.d.
 	installSudoersPath = "/etc/sudoers.d/peers-install-script"
 
-	// installPath is the PATH the user-level scenario gives the script. The
+	// installPath is the PATH the user scenario gives the script. The
 	// image keeps the fake claude in /usr/local/bin, which the default account
 	// PATH in syscontainer.Command omits.
 	installPath = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -87,7 +87,7 @@ const (
 	// installLevelPrompt and installUpgradePrompt are the questions the script
 	// asks on the controlling terminal.
 	installLevelPrompt   = "Install for every account on this host? [y/N]"
-	installUpgradePrompt = "Upgrade the system-level installation? [Y/n]"
+	installUpgradePrompt = "Upgrade the system installation? [Y/n]"
 )
 
 // installManPage and installUpdateManPage stand in for the man pages a release
@@ -142,7 +142,7 @@ exit 0
 
 // TestREQBrokerConfig041_UserInstallScript runs the release archive's install
 // script as the ordinary account and checks that it installs the binary at the
-// user-level default path, starts the user-level service and registers the MCP
+// user default path, starts the user service and registers the MCP
 // server once. It runs the script a second time and checks that the install
 // succeeds again without adding the MCP server a second time.
 func TestREQBrokerConfig041_UserInstallScript(t *testing.T) {
@@ -192,7 +192,7 @@ func TestREQBrokerConfig041_SystemInstallScript(t *testing.T) {
 	removePreinstalledSystemBinary(t)
 	configureInstallSudo(t)
 
-	t.Run("REQ-broker-config-041 root user-level install is refused", func(t *testing.T) {
+	t.Run("REQ-broker-config-041 root user install is refused", func(t *testing.T) {
 		assertInstallScriptRefusesRoot(t, archive)
 	})
 
@@ -215,7 +215,7 @@ func TestREQBrokerConfig041_SystemInstallScript(t *testing.T) {
 
 // TestREQBrokerConfig041_InstallScriptFilesRemovedByUninstall installs through
 // the script at both levels and checks that uninstall removes the completion
-// files it wrote, and the system-level man pages with them.
+// files it wrote, and the system man pages with them.
 func TestREQBrokerConfig041_InstallScriptFilesRemovedByUninstall(t *testing.T) {
 	if !syscontainer.InContainer() {
 		stageInstallArchive(t)
@@ -228,10 +228,10 @@ func TestREQBrokerConfig041_InstallScriptFilesRemovedByUninstall(t *testing.T) {
 	archive := prepareInstallArchive(t)
 	startInstallUserManager(t)
 
-	t.Run("REQ-broker-config-041 user-level files are removed", func(t *testing.T) {
+	t.Run("REQ-broker-config-041 user files are removed", func(t *testing.T) {
 		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive, "sh", "./install.sh", "--user")
 		if res.ExitCode != 0 {
-			t.Fatalf("user-level install: exit %d\nstdout:\n%s\nstderr:\n%s",
+			t.Fatalf("user install: exit %d\nstdout:\n%s\nstderr:\n%s",
 				res.ExitCode, res.Stdout, res.Stderr)
 		}
 		assertUserInstallCompletions(t, res.Stdout+res.Stderr)
@@ -239,13 +239,13 @@ func TestREQBrokerConfig041_InstallScriptFilesRemovedByUninstall(t *testing.T) {
 		env := append(installUserEnv(), "PATH="+installHome+"/.local/bin:"+installPath)
 		res = runInstallScriptAs(t, installAccount, env, "/", installUserPrefix, "uninstall", "--yes")
 		if res.ExitCode != 0 {
-			t.Fatalf("user-level uninstall: exit %d\nstdout:\n%s\nstderr:\n%s",
+			t.Fatalf("user uninstall: exit %d\nstdout:\n%s\nstderr:\n%s",
 				res.ExitCode, res.Stdout, res.Stderr)
 		}
 		assertUserInstallCompletionsRemoved(t)
 	})
 
-	t.Run("REQ-broker-config-041 system-level files are removed", func(t *testing.T) {
+	t.Run("REQ-broker-config-041 system files are removed", func(t *testing.T) {
 		removePreinstalledSystemBinary(t)
 		configureInstallSudo(t)
 		runSystemInstallScript(t, archive)
@@ -253,7 +253,7 @@ func TestREQBrokerConfig041_InstallScriptFilesRemovedByUninstall(t *testing.T) {
 
 		res := runInstallScriptAs(t, "root", nil, "/", installSystemPrefix, "uninstall", "--purge", "--yes")
 		if res.ExitCode != 0 {
-			t.Fatalf("system-level uninstall: exit %d\nstdout:\n%s\nstderr:\n%s",
+			t.Fatalf("system uninstall: exit %d\nstdout:\n%s\nstderr:\n%s",
 				res.ExitCode, res.Stdout, res.Stderr)
 		}
 		assertSystemInstallCompletionsAndManRemoved(t)
@@ -261,7 +261,7 @@ func TestREQBrokerConfig041_InstallScriptFilesRemovedByUninstall(t *testing.T) {
 }
 
 // TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemLevel answers the
-// level question with y and checks that the ordinary account gets a system-level
+// level question with y and checks that the ordinary account gets a system
 // install, with the MCP server registered for that account.
 func TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemLevel(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -275,7 +275,7 @@ func TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemLevel(t *testin
 	removePreinstalledSystemBinary(t)
 	configureInstallSudo(t)
 
-	t.Run("REQ-broker-config-044 y installs at the system level", func(t *testing.T) {
+	t.Run("REQ-broker-config-044 y installs for every account", func(t *testing.T) {
 		res := runInstallScriptWithTerminal(t, installAccount, installUserEnv(), archive, "y\n", "sh", "./install.sh")
 		if res.ExitCode != 0 {
 			t.Fatalf("install with y on the terminal: exit %d\n%s", res.ExitCode, res.Output)
@@ -300,7 +300,7 @@ func TestREQBrokerConfig044_InstallScriptLevelPromptAcceptsSystemLevel(t *testin
 }
 
 // TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser presses Enter at the
-// level question and checks that the account gets a user-level install.
+// level question and checks that the account gets a user install.
 func TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser(t *testing.T) {
 	if !syscontainer.InContainer() {
 		stageInstallArchive(t)
@@ -312,7 +312,7 @@ func TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser(t *testing.T)
 	archive := prepareInstallArchive(t)
 	startInstallUserManager(t)
 
-	t.Run("REQ-broker-config-044 enter installs user-level", func(t *testing.T) {
+	t.Run("REQ-broker-config-044 enter installs for this account", func(t *testing.T) {
 		res := runInstallScriptWithTerminal(t, installAccount, installUserEnv(), archive, "\n", "sh", "./install.sh")
 		if res.ExitCode != 0 {
 			t.Fatalf("install with Enter on the terminal: exit %d\n%s", res.ExitCode, res.Output)
@@ -323,16 +323,16 @@ func TestREQBrokerConfig044_InstallScriptLevelPromptDefaultsToUser(t *testing.T)
 		assertUserInstall(t)
 		assertInstallMCPAdd(t, 1, installUserPrefix, installUID, installHome)
 		if _, err := os.Stat(installSystemUnitPath); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("the user-level install left the system unit %s behind: %v", installSystemUnitPath, err)
+			t.Errorf("the user install left the system unit %s behind: %v", installSystemUnitPath, err)
 		}
 		if procs := syscontainer.Pids("peers", "service", "run", "--system"); len(procs) != 0 {
-			t.Errorf("the user-level install started system Brokers: %v", procs)
+			t.Errorf("the user install started system Brokers: %v", procs)
 		}
 	})
 }
 
 // TestREQBrokerConfig045_InstallScriptRootDoesNotAsk runs the script as root without
-// any arguments and checks that it installs at the system level without a
+// any arguments and checks that it installs for every account without a
 // level question.
 func TestREQBrokerConfig045_InstallScriptRootDoesNotAsk(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -345,7 +345,7 @@ func TestREQBrokerConfig045_InstallScriptRootDoesNotAsk(t *testing.T) {
 	archive := prepareInstallArchive(t)
 	removePreinstalledSystemBinary(t)
 
-	t.Run("REQ-broker-config-045 root installs at the system level without asking", func(t *testing.T) {
+	t.Run("REQ-broker-config-045 root installs for every account without asking", func(t *testing.T) {
 		res := runInstallScriptAs(t, "root", nil, archive, "sh", "./install.sh")
 		if res.ExitCode != 0 {
 			t.Fatalf("root install: exit %d\nstdout:\n%s\nstderr:\n%s",
@@ -365,7 +365,7 @@ func TestREQBrokerConfig045_InstallScriptRootDoesNotAsk(t *testing.T) {
 }
 
 // TestREQBrokerConfig046_InstallScriptWithoutTerminal runs the script in a new session
-// without a controlling terminal and checks that it installs user-level without
+// without a controlling terminal and checks that it installs for this account without
 // waiting for input.
 func TestREQBrokerConfig046_InstallScriptWithoutTerminal(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -378,7 +378,7 @@ func TestREQBrokerConfig046_InstallScriptWithoutTerminal(t *testing.T) {
 	archive := prepareInstallArchive(t)
 	startInstallUserManager(t)
 
-	t.Run("REQ-broker-config-046 no terminal installs user-level", func(t *testing.T) {
+	t.Run("REQ-broker-config-046 no terminal installs for this account", func(t *testing.T) {
 		// runInstallScriptAs starts the command in a new session with stdin on
 		// /dev/null, the same shape as "setsid sh ./install.sh </dev/null".
 		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive, "sh", "./install.sh")
@@ -397,7 +397,7 @@ func TestREQBrokerConfig046_InstallScriptWithoutTerminal(t *testing.T) {
 	})
 }
 
-// TestREQBrokerConfig047_InstallScriptUpgradePrompt installs the system-level service first,
+// TestREQBrokerConfig047_InstallScriptUpgradePrompt installs the system service first,
 // then checks the upgrade question: Enter upgrades it and keeps the existing
 // configuration, while n leaves everything unchanged.
 func TestREQBrokerConfig047_InstallScriptUpgradePrompt(t *testing.T) {
@@ -417,7 +417,7 @@ func TestREQBrokerConfig047_InstallScriptUpgradePrompt(t *testing.T) {
 	configPath := filepath.Join(installSystemConfigDir, "config.yaml")
 	configBefore := readFile(t, configPath)
 
-	t.Run("REQ-broker-config-047 enter upgrades the system-level install", func(t *testing.T) {
+	t.Run("REQ-broker-config-047 enter upgrades the system install", func(t *testing.T) {
 		res := runInstallScriptWithTerminal(t, installAccount, installUserEnv(), archive, "\n", "sh", "./install.sh")
 		if res.ExitCode != 0 {
 			t.Fatalf("upgrade with Enter on the terminal: exit %d\n%s", res.ExitCode, res.Output)
@@ -519,7 +519,7 @@ func TestREQBrokerConfig048_InstallScriptUserFlag(t *testing.T) {
 }
 
 // TestREQBrokerConfig048_InstallScriptSystemFlag checks that --system skips the
-// level question, runs the script through sudo and installs at the system level.
+// level question, runs the script through sudo and installs for every account.
 func TestREQBrokerConfig048_InstallScriptSystemFlag(t *testing.T) {
 	if !syscontainer.InContainer() {
 		stageInstallArchive(t)
@@ -548,7 +548,7 @@ func TestREQBrokerConfig048_InstallScriptSystemFlag(t *testing.T) {
 }
 
 // TestREQBrokerConfig050_InstallScriptUserSummary checks the summary a
-// user-level install prints and that the printed commands run. The summary is
+// user install prints and that the printed commands run. The summary is
 // produced by service install, so it must be there after a successful install.
 func TestREQBrokerConfig050_InstallScriptUserSummary(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -561,14 +561,14 @@ func TestREQBrokerConfig050_InstallScriptUserSummary(t *testing.T) {
 	archive := prepareInstallArchive(t)
 	startInstallUserManager(t)
 
-	t.Run("REQ-broker-config-050 user-level summary", func(t *testing.T) {
+	t.Run("REQ-broker-config-050 user summary", func(t *testing.T) {
 		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive,
 			"sh", "./install.sh", "--user")
 		if res.ExitCode != 0 {
-			t.Fatalf("user-level install: exit %d\nstdout:\n%s\nstderr:\n%s",
+			t.Fatalf("user install: exit %d\nstdout:\n%s\nstderr:\n%s",
 				res.ExitCode, res.Stdout, res.Stderr)
 		}
-		assertInstallScriptSummary(t, res.Stdout, "user-level", "login", map[string]string{
+		assertInstallScriptSummary(t, res.Stdout, "user service", "login", map[string]string{
 			"binary:":    installUserPrefix,
 			"config:":    installHome + "/.peers/config.yaml (generated)",
 			"run log:":   "journalctl --user -u peers.service",
@@ -584,7 +584,7 @@ func TestREQBrokerConfig050_InstallScriptUserSummary(t *testing.T) {
 }
 
 // TestREQBrokerConfig050_InstallScriptSystemSummary checks the same summary for
-// a system-level install.
+// a system install.
 func TestREQBrokerConfig050_InstallScriptSystemSummary(t *testing.T) {
 	if !syscontainer.InContainer() {
 		stageInstallArchive(t)
@@ -597,14 +597,14 @@ func TestREQBrokerConfig050_InstallScriptSystemSummary(t *testing.T) {
 	removePreinstalledSystemBinary(t)
 	configureInstallSudo(t)
 
-	t.Run("REQ-broker-config-050 system-level summary", func(t *testing.T) {
+	t.Run("REQ-broker-config-050 system summary", func(t *testing.T) {
 		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive,
 			"sh", "./install.sh", "--system")
 		if res.ExitCode != 0 {
-			t.Fatalf("system-level install: exit %d\nstdout:\n%s\nstderr:\n%s",
+			t.Fatalf("system install: exit %d\nstdout:\n%s\nstderr:\n%s",
 				res.ExitCode, res.Stdout, res.Stderr)
 		}
-		assertInstallScriptSummary(t, res.Stdout, "system-level", "boot", map[string]string{
+		assertInstallScriptSummary(t, res.Stdout, "system service", "boot", map[string]string{
 			"binary:":    installSystemPrefix,
 			"config:":    installSystemConfigDir + "/config.yaml (generated)",
 			"run log:":   "journalctl -u peers.service",
@@ -633,8 +633,8 @@ func assertInstallScriptSummary(t *testing.T, output, level, start string, wants
 }
 
 // assertInstallScriptCommandsRun runs the start, stop, restart and uninstall
-// commands exactly as the install script printed them. A user-level install
-// needs its prefix on PATH; a system-level install runs them as root, so the
+// commands exactly as the install script printed them. A user install
+// needs its prefix on PATH; a system install runs them as root, so the
 // printed sudo prefix is dropped.
 func assertInstallScriptCommandsRun(t *testing.T, output, account string, env []string, dir string) {
 	t.Helper()
@@ -718,7 +718,7 @@ func stagedArchiveRel(t *testing.T) string {
 	return filepath.Join(installStagedDir, b.String())
 }
 
-// installUserEnv returns the environment the user-level script and its service
+// installUserEnv returns the environment the user script and its service
 // manager need. The account's user manager is running, so the runtime directory
 // and the session bus path are set the way a login sets them.
 func installUserEnv() []string {
@@ -805,7 +805,7 @@ func installFakeClaude(t *testing.T) {
 }
 
 // removePreinstalledSystemBinary removes the peers binary the image already
-// carries at the system-level default path, so the owner and mode checked after
+// carries at the system default path, so the owner and mode checked after
 // the install are the install's own.
 func removePreinstalledSystemBinary(t *testing.T) {
 	t.Helper()
@@ -819,7 +819,7 @@ func removePreinstalledSystemBinary(t *testing.T) {
 }
 
 // configureInstallSudo grants the ordinary account passwordless sudo, which the
-// system-level scenario needs to run the script the way an administrator does.
+// system scenario needs to run the script the way an administrator does.
 func configureInstallSudo(t *testing.T) {
 	t.Helper()
 
@@ -849,7 +849,7 @@ func startInstallUserManager(t *testing.T) {
 }
 
 // assertInstallScriptRefusesRoot runs the script through sudo with --user and
-// checks that root cannot take the user-level path and that the host stays
+// checks that root cannot take the user path and that the host stays
 // unchanged: no binary, no unit, no MCP registration, no configuration.
 func assertInstallScriptRefusesRoot(t *testing.T, archive string) {
 	t.Helper()
@@ -992,23 +992,23 @@ func assertInstallImageHasNoFish(t *testing.T) {
 	}
 }
 
-// assertUserInstallCompletions checks the completion files a user-level install
+// assertUserInstallCompletions checks the completion files a user install
 // writes. The image has no fish, so the fish completion and its configuration
 // directory must be absent; the zsh completion is deliberately absent, and
 // output, when given, must name the manual step.
 func assertUserInstallCompletions(t *testing.T, output string) {
 	t.Helper()
 	if _, err := os.Stat(installUserBashCompletion); err != nil {
-		t.Errorf("the user-level completion %s is missing: %v", installUserBashCompletion, err)
+		t.Errorf("the user completion %s is missing: %v", installUserBashCompletion, err)
 	}
 	if _, err := os.Stat(installUserFishCompletion); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("the user-level install wrote the fish completion %s although the image has no fish: %v", installUserFishCompletion, err)
+		t.Errorf("the user install wrote the fish completion %s although the image has no fish: %v", installUserFishCompletion, err)
 	}
 	if _, err := os.Stat(filepath.Join(installHome, ".config", "fish")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("the user-level install created the fish configuration directory although the image has no fish: %v", err)
+		t.Errorf("the user install created the fish configuration directory although the image has no fish: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(installHome, ".local", "share", "zsh", "site-functions", "_peers")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("the user-level install wrote the zsh completion: %v", err)
+		t.Errorf("the user install wrote the zsh completion: %v", err)
 	}
 	if output != "" {
 		for _, want := range []string{"zsh completion was not installed", "completion zsh"} {
@@ -1020,7 +1020,7 @@ func assertUserInstallCompletions(t *testing.T, output string) {
 }
 
 // assertSystemInstallCompletionsAndMan checks the completion files and man
-// pages a system-level install writes. The image has no fish, so the fish
+// pages a system install writes. The image has no fish, so the fish
 // completion and its configuration directory must be absent.
 func assertSystemInstallCompletionsAndMan(t *testing.T) {
 	t.Helper()
@@ -1031,33 +1031,33 @@ func assertSystemInstallCompletionsAndMan(t *testing.T) {
 		installSystemUpdateManPage,
 	} {
 		if _, err := os.Stat(path); err != nil {
-			t.Errorf("the system-level installation file %s is missing: %v", path, err)
+			t.Errorf("the system installation file %s is missing: %v", path, err)
 		}
 	}
 	if _, err := os.Stat(installSystemFishCompletion); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("the system-level install wrote the fish completion %s although the image has no fish: %v", installSystemFishCompletion, err)
+		t.Errorf("the system install wrote the fish completion %s although the image has no fish: %v", installSystemFishCompletion, err)
 	}
 	if _, err := os.Stat("/usr/local/share/fish"); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("the system-level install created the fish configuration directory although the image has no fish: %v", err)
+		t.Errorf("the system install created the fish configuration directory although the image has no fish: %v", err)
 	}
 }
 
 // assertUserInstallCompletionsRemoved checks that an uninstall removed the
-// user-level completion files and left no fish configuration directory.
+// user completion files and left no fish configuration directory.
 func assertUserInstallCompletionsRemoved(t *testing.T) {
 	t.Helper()
 	for _, path := range []string{installUserBashCompletion, installUserFishCompletion} {
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("the user-level completion %s still exists: %v", path, err)
+			t.Errorf("the user completion %s still exists: %v", path, err)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(installHome, ".config", "fish")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("the fish configuration directory remains after the user-level uninstall: %v", err)
+		t.Errorf("the fish configuration directory remains after the user uninstall: %v", err)
 	}
 }
 
 // assertSystemInstallCompletionsAndManRemoved checks that an uninstall removed
-// the system-level completion files and man pages and left no fish
+// the system completion files and man pages and left no fish
 // configuration directory.
 func assertSystemInstallCompletionsAndManRemoved(t *testing.T) {
 	t.Helper()
@@ -1069,16 +1069,16 @@ func assertSystemInstallCompletionsAndManRemoved(t *testing.T) {
 		installSystemUpdateManPage,
 	} {
 		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("the system-level installation file %s still exists: %v", path, err)
+			t.Errorf("the system installation file %s still exists: %v", path, err)
 		}
 	}
 	if _, err := os.Stat("/usr/local/share/fish"); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("the fish configuration directory remains after the system-level uninstall: %v", err)
+		t.Errorf("the fish configuration directory remains after the system uninstall: %v", err)
 	}
 }
 
 // assertUserInstall checks the binary, the version output and the running user
-// service after a user-level install.
+// service after a user install.
 func assertUserInstall(t *testing.T) {
 	t.Helper()
 
@@ -1099,7 +1099,7 @@ func assertUserInstall(t *testing.T) {
 }
 
 // assertSystemInstall checks the binary, the version output and the running
-// system service after a system-level install.
+// system service after a system install.
 func assertSystemInstall(t *testing.T) {
 	t.Helper()
 

@@ -12,7 +12,7 @@ To install the latest release with one command:
 curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh
 ```
 
-The script detects the platform and architecture, downloads the matching archive, verifies it against the release's `checksums.txt`, and runs the install script from the archive. That script asks whether to install for every account on the host, or for your account only; pass `--system` or `--user` after `--` to skip the question. A system-level install reruns itself through sudo from the account whose Claude Code should use the system Broker:
+The script detects the platform and architecture, downloads the matching archive, verifies it against the release's `checksums.txt`, and runs the install script from the archive. That script asks whether to install for every account on the host, or for your account only; pass `--system` or `--user` after `--` to skip the question. A system install reruns itself through sudo from the account whose Claude Code should use the system Broker:
 
 ```sh
 curl -fsSL https://github.com/wangzw/peers/releases/latest/download/install.sh | sh -s -- --system
@@ -24,9 +24,9 @@ Piping the script to a shell carries the same trust as downloading the archive a
 
 ### Install from the archive
 
-Extract the archive and run the install script from the extracted directory. The script installs the binary, installs the Broker as a service and starts it, registers the MCP server with Claude Code for your account, and installs shell completions; a system-level install also installs the man pages. A completion or man page that cannot be written only prints a warning and does not fail the installation. The fish completion is installed only when fish is installed.
+Extract the archive and run the install script from the extracted directory. The script installs the binary, installs the Broker as a service and starts it, registers the MCP server with Claude Code for your account, and installs shell completions; a system install also installs the man pages. A completion or man page that cannot be written only prints a warning and does not fail the installation. The fish completion is installed only when fish is installed.
 
-Run it without a level option and it asks whether to install for every account on the host or for your account only. Pass `--system` or `--user` to skip the question; a system-level install reruns itself through sudo from the account whose Claude Code should use the system Broker:
+Run it without a level option and it asks whether to install for every account on the host or for your account only. Pass `--system` or `--user` to skip the question; a system install reruns itself through sudo from the account whose Claude Code should use the system Broker:
 
 ```sh
 sh ./install.sh
@@ -42,7 +42,7 @@ Open a new Claude Code session, because a session that was already open does not
 
 At least one of the two hosts must be able to reach port 17443 on the other. On the host that can be reached, create a one-time pairing key and note the printed key and addresses. On the other host, connect with that key. Pairing is symmetric once it succeeds.
 
-With a user-level Broker:
+With a user Broker:
 
 ```sh
 peers key create
@@ -50,7 +50,7 @@ peers broker connect <address> --key <key>
 peers broker list
 ```
 
-With a system-level Broker, run the same commands with `sudo`:
+With a system Broker, run the same commands with `sudo`:
 
 ```sh
 sudo peers key create
@@ -58,13 +58,13 @@ sudo peers broker connect <address> --key <key>
 sudo peers broker list
 ```
 
-An administrator account that runs no user-level Broker can run them without `sudo`; the command then selects the system-level Broker. An account that also runs a user-level Broker uses `sudo` to reach the system-level Broker.
+An administrator account that runs no user Broker can run them without `sudo`; the command then selects the system Broker. An account that also runs a user Broker uses `sudo` to reach the system Broker.
 
 Give the key and address to the other side through a channel outside this system. The address is written `address:port` or `hostname(address:port)`.
 
-## Administer a system-level Broker without root
+## Administer a system Broker without root
 
-A system-level install creates the `peers` group and gives the configuration file to it. The install script asks whether to add the installing account to the group, or pass `--join-admin-group` to add it without asking; log in again or run `newgrp peers` afterwards. Members of the group can create pairing keys, change the configuration and pair with another Broker without `sudo` when their account runs no user-level Broker; an account that also runs a user-level Broker uses `sudo` so the command reaches the system-level Broker. The group can do what manual editing of the configuration file can do, and nothing more. Installing and uninstalling the service still need root; updating it does not, because the Broker installs the release itself.
+A system install creates the `peers` group and gives the configuration file to it. The install script asks whether to add the installing account to the group, or pass `--join-admin-group` to add it without asking; log in again or run `newgrp peers` afterwards. Members of the group can create pairing keys, change the configuration and pair with another Broker without `sudo` when their account runs no user Broker; an account that also runs a user Broker uses `sudo` so the command reaches the system Broker. The group can do what manual editing of the configuration file can do, and nothing more. Installing and uninstalling the service still need root; updating it does not, because the Broker installs the release itself.
 
 For an existing installation, give the file to the group with `chgrp peers /etc/peers/config.yaml` and `chmod 0660 /etc/peers/config.yaml` as root. Skip giving the file to the group when `broker.listen` uses a port below 1024, because such a Broker refuses to start while another account can write the file.
 
@@ -74,9 +74,9 @@ For an existing installation, give the file to the group with `chgrp peers /etc/
 peers update
 ```
 
-The command asks for confirmation, then downloads, checks and installs the latest official release. When it replaces a user-level binary locally, it leaves the service alone, because the service may have been stopped on purpose, and prints that the new binary takes effect the next time the Broker starts. It checks write permission on the binary's directory first and suggests `sudo` when it is missing.
+The command asks for confirmation, then downloads, checks and installs the latest official release. When it replaces a user binary locally, it leaves the service alone, because the service may have been stopped on purpose, and prints that the new binary takes effect the next time the Broker starts. It checks write permission on the binary's directory first and suggests `sudo` when it is missing.
 
-For a system-level installation, run `peers update` as an account that administers the Broker, without `sudo`, when that account runs no user-level Broker; the command selects the system-level Broker. An account that also runs a user-level Broker uses `sudo peers update`, so root selects the system-level Broker. The Broker replaces its own binary and the service manager restarts it. The account needs write permission on the Broker's configuration file.
+For a system installation, run `peers update` as an account that administers the Broker, without `sudo`, when that account runs no user Broker; the command selects the system Broker. An account that also runs a user Broker uses `sudo peers update`, so root selects the system Broker. The Broker replaces its own binary and the service manager restarts it. The account needs write permission on the Broker's configuration file.
 
 A session can also start the upgrade with the `update_broker` tool. Claude Code asks for confirmation before the call runs, and that confirmation is the last manual check before the upgrade.
 
@@ -92,7 +92,7 @@ peers uninstall
 
 Add `--purge` to remove the configuration, identity, audit log and service logs as well; without it, uninstall asks before deleting them. `--yes` skips every question and keeps the data.
 
-A system-level installation is removed as root:
+A system installation is removed as root:
 
 ```sh
 sudo peers uninstall --yes

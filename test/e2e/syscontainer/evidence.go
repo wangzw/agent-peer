@@ -1,4 +1,4 @@
-// Package syscontainer runs the system-level end-to-end tests inside
+// Package syscontainer runs the system end-to-end tests inside
 // containers. This file carries no e2e build tag so that the pure evidence
 // formatter below and its host-side test compile and run without one; the
 // docker calls that feed it live in evidence_collect.go.

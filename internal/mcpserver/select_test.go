@@ -42,7 +42,7 @@ func wantWaits(t *testing.T, got []time.Duration, want ...time.Duration) {
 }
 
 // REQ-broker-config-026: the removed AGENT_PEER_SOCKET no longer influences
-// selection; the user-level Broker of the account wins.
+// selection; the user Broker of the account wins.
 func TestSelectIgnoresSocketEnvironment(t *testing.T) {
 	envPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, envPath, fakelocal.Handlers{})
@@ -67,7 +67,7 @@ func TestSelectIgnoresSocketEnvironment(t *testing.T) {
 	}
 }
 
-// The user-level Broker wins over the system-level one (design:85).
+// The user Broker wins over the system one (design:85).
 func TestSelectUserBeforeSystem(t *testing.T) {
 	userPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, userPath, fakelocal.Handlers{})
@@ -94,7 +94,7 @@ func TestSelectSystemOnly(t *testing.T) {
 	systemPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, systemPath, fakelocal.Handlers{})
 
-	// The fake server runs as the test account, while a system-level Broker
+	// The fake server runs as the test account, while a system Broker
 	// must run as root. Pretend the peer is root so the rule is exercised on
 	// the real probe.
 	old := peerUID
@@ -117,8 +117,8 @@ func TestSelectSystemOnly(t *testing.T) {
 	}
 }
 
-// A system-level socket the account may not use is not retried, and with no
-// user-level Broker there is nothing to select (REQ-broker-config-027,
+// A system socket the account may not use is not retried, and with no
+// user Broker there is nothing to select (REQ-broker-config-027,
 // REQ-broker-config-038).
 func TestFindSystemDeniedReturnsNoBroker(t *testing.T) {
 	userPath := filepath.Join(t.TempDir(), "user.sock")
@@ -179,12 +179,12 @@ func TestSelectRejectsForeignUserSocket(t *testing.T) {
 	}
 }
 
-// Root may serve the system-level socket but not the user-level one of a
+// Root may serve the system socket but not the user one of a
 // regular account. The real peer check, not a stub probe, sees uid 0 on the
 // account's socket.
 func TestSelectRejectsRootServedUserSocket(t *testing.T) {
 	if os.Geteuid() == 0 {
-		t.Skip("root's own user-level socket is served by root")
+		t.Skip("root's own user socket is served by root")
 	}
 	userPath := fakelocal.SocketPath(t)
 	fakelocal.Start(t, userPath, fakelocal.Handlers{})
@@ -202,15 +202,15 @@ func TestSelectRejectsRootServedUserSocket(t *testing.T) {
 
 	_, err := s.Find(context.Background())
 	if err == nil {
-		t.Fatal("Find accepted a user-level socket served by root")
+		t.Fatal("Find accepted a user socket served by root")
 	}
 	if !strings.Contains(err.Error(), userPath) || !strings.Contains(err.Error(), "uid 0") {
 		t.Fatalf("error = %q, want it to name %s and uid 0", err, userPath)
 	}
 }
 
-// A system-level socket served by a non-root account is unusable, and with no
-// user-level Broker there is nothing to select.
+// A system socket served by a non-root account is unusable, and with no
+// user Broker there is nothing to select.
 func TestFindNonRootSystemSocketFallsThrough(t *testing.T) {
 	userPath := fakelocal.SocketPath(t)
 	systemPath := filepath.Join(t.TempDir(), "system.sock")
@@ -254,8 +254,8 @@ func TestFindNoBroker(t *testing.T) {
 	}
 }
 
-// For root the user-level and system-level sockets are one path, so only one
-// probe runs and the target is treated as user-level.
+// For root the user and system sockets are one path, so only one
+// probe runs and the target is treated as the user socket.
 func TestSelectRootSharedSocketPath(t *testing.T) {
 	same := filepath.Join(t.TempDir(), "broker.sock")
 	probes := 0
@@ -405,7 +405,7 @@ func TestFindAtLevelSelectsOnlyThatLevel(t *testing.T) {
 
 	userTarget, found, err := s.findAtLevel(context.Background(), false)
 	if err != nil || !found {
-		t.Fatalf("findAtLevel(user) = (%+v, %v, %v), want the user-level socket", userTarget, found, err)
+		t.Fatalf("findAtLevel(user) = (%+v, %v, %v), want the user socket", userTarget, found, err)
 	}
 	if userTarget.Kind != kindUser || userTarget.Path != userPath {
 		t.Fatalf("findAtLevel(user) = %+v, want {%s kindUser}", userTarget, userPath)
@@ -413,14 +413,14 @@ func TestFindAtLevelSelectsOnlyThatLevel(t *testing.T) {
 
 	systemTarget, found, err := s.findAtLevel(context.Background(), true)
 	if err != nil || !found {
-		t.Fatalf("findAtLevel(system) = (%+v, %v, %v), want the system-level socket", systemTarget, found, err)
+		t.Fatalf("findAtLevel(system) = (%+v, %v, %v), want the system socket", systemTarget, found, err)
 	}
 	if systemTarget.Kind != kindSystem || systemTarget.Path != systemPath {
 		t.Fatalf("findAtLevel(system) = %+v, want {%s kindSystem}", systemTarget, systemPath)
 	}
 }
 
-// REQ-broker-config-055: --user must not fall through to a running system-level
+// REQ-broker-config-055: --user must not fall through to a running system
 // Broker; otherwise the option would not decide which Broker the command talks
 // to.
 func TestFindAtLevelUserDoesNotFallThrough(t *testing.T) {
@@ -444,14 +444,14 @@ func TestFindAtLevelUserDoesNotFallThrough(t *testing.T) {
 		t.Fatalf("findAtLevel(user): %v", err)
 	}
 	if found {
-		t.Fatalf("findAtLevel(user) = %+v, want no target despite the running system-level Broker", got)
+		t.Fatalf("findAtLevel(user) = %+v, want no target despite the running system Broker", got)
 	}
 }
 
 // TestFindForLevelExplainsAnEmptySelection checks the error text of an empty
-// selection. A named --system level reports the system-level Broker as
-// unavailable; a defaulted level points at --system when only the system-level
-// Broker answers; a named --user level keeps the generic text.
+// selection. A named --system reports the system Broker as
+// unavailable; a defaulted selection points at --system when only the system
+// Broker answers; a named --user keeps the generic text.
 func TestFindForLevelExplainsAnEmptySelection(t *testing.T) {
 	userPath := filepath.Join(t.TempDir(), "user.sock")
 	systemPath := filepath.Join(t.TempDir(), "system.sock")
@@ -466,14 +466,14 @@ func TestFindForLevelExplainsAnEmptySelection(t *testing.T) {
 		want          error
 	}{
 		{
-			name: "named system level", system: true, explicit: true,
+			name: "named system", system: true, explicit: true,
 			userOutcome: probeMissing, systemOutcome: probeMissing,
 			want: errNoSystemBroker,
 		},
 		{
-			// Root's default level is the system level, and root is the
+			// Root's default choice is the system installation, and root is the
 			// administrator, so an empty selection must report the
-			// system-level Broker rather than the account's user-level one.
+			// system Broker rather than the account's user one.
 			name: "root default level", system: true, explicit: false, root: true,
 			userOutcome: probeMissing, systemOutcome: probeMissing,
 			want: errNoSystemBroker,
@@ -484,7 +484,7 @@ func TestFindForLevelExplainsAnEmptySelection(t *testing.T) {
 			want: errNoUserBrokerSystemRunning,
 		},
 		{
-			name: "named user level", system: false, explicit: true,
+			name: "named user", system: false, explicit: true,
 			userOutcome: probeMissing, systemOutcome: probeOK,
 			want: errNoBroker,
 		},
@@ -498,7 +498,7 @@ func TestFindForLevelExplainsAnEmptySelection(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			userSocket := userPath
 			if tc.root {
-				// Root's user-level and system-level sockets share one path.
+				// Root's user and system sockets share one path.
 				userSocket = systemPath
 			}
 			s := &selector{
@@ -544,7 +544,7 @@ func TestFindForLevelReturnsTheSelectedSocket(t *testing.T) {
 	}
 }
 
-// REQ-broker-config-055: --system must not fall through to a running user-level
+// REQ-broker-config-055: --system must not fall through to a running user
 // Broker either.
 func TestFindAtLevelSystemDoesNotFallThrough(t *testing.T) {
 	userPath := filepath.Join(t.TempDir(), "user.sock")
@@ -567,6 +567,6 @@ func TestFindAtLevelSystemDoesNotFallThrough(t *testing.T) {
 		t.Fatalf("findAtLevel(system): %v", err)
 	}
 	if found {
-		t.Fatalf("findAtLevel(system) = %+v, want no target despite the running user-level Broker", got)
+		t.Fatalf("findAtLevel(system) = %+v, want no target despite the running user Broker", got)
 	}
 }

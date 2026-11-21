@@ -58,7 +58,7 @@ func TestServiceControl(t *testing.T) {
 			t.Fatalf("service stop as peer: exit %d\nstdout: %s\nstderr: %s",
 				res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
-		if want := "Broker service stopped (user-level)\n"; res.Stdout != want {
+		if want := "The user Broker service has stopped.\n"; res.Stdout != want {
 			t.Errorf("stdout = %q, want %q", res.Stdout, want)
 		}
 		harness.Eventually(t, 10*time.Second, "the user service to stop", func() (bool, string) {
@@ -69,20 +69,20 @@ func TestServiceControl(t *testing.T) {
 			t.Errorf("the peer Broker still runs after service stop: %v", procs)
 		}
 		if !systemServiceIsActive(t) {
-			t.Error("the system service is not active after stopping the user-level service")
+			t.Error("the system service is not active after stopping the user service")
 		}
 		if pid, ok := systemServiceMainPID(t); !ok || pid != systemBefore {
 			t.Errorf("the system service MainPID = %d (found %v), want the unchanged %d", pid, ok, systemBefore)
 		}
 
-		// Root acts on the system-level service: restart it and leave the
-		// stopped user-level service alone.
+		// Root acts on the system service: restart it and leave the
+		// stopped user service alone.
 		res = syscontainer.RunAs(t, "root", nil, "service", "restart")
 		if res.ExitCode != 0 {
 			t.Fatalf("service restart as root: exit %d\nstdout: %s\nstderr: %s",
 				res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
-		if want := "Broker service restarted (system-level)\n"; res.Stdout != want {
+		if want := "The system Broker service has restarted.\n"; res.Stdout != want {
 			t.Errorf("stdout = %q, want %q", res.Stdout, want)
 		}
 		harness.Eventually(t, 20*time.Second, "the system service to run a new process", func() (bool, string) {
@@ -101,7 +101,7 @@ func TestServiceControl(t *testing.T) {
 			t.Fatalf("service start as peer: exit %d\nstdout: %s\nstderr: %s",
 				res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
-		if want := "Broker service started (user-level)\n"; res.Stdout != want {
+		if want := "The user Broker service has started.\n"; res.Stdout != want {
 			t.Errorf("stdout = %q, want %q", res.Stdout, want)
 		}
 		harness.Eventually(t, 20*time.Second, "the user service to run again", func() (bool, string) {
@@ -111,7 +111,7 @@ func TestServiceControl(t *testing.T) {
 		waitForSocket(t, userSocket)
 	})
 
-	t.Run("a user-level command with only the system service names sudo", func(t *testing.T) {
+	t.Run("a user command with only the system service names sudo", func(t *testing.T) {
 		userEnv := serviceControlReset(t)
 		writeSystemListenConfig(t, "127.0.0.1:"+serviceControlSystemPort)
 		installSystemService(t)
@@ -122,10 +122,10 @@ func TestServiceControl(t *testing.T) {
 
 		res := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "start")
 		if res.ExitCode != 1 {
-			t.Fatalf("service start as peer with only a system-level install: exit %d, want 1\nstdout: %s\nstderr: %s",
+			t.Fatalf("service start as peer with only a system install: exit %d, want 1\nstdout: %s\nstderr: %s",
 				res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
-		for _, want := range []string{"no user-level service is installed", "system-level service is installed", "sudo peers service start --system"} {
+		for _, want := range []string{"no user service is installed", "system service is installed", "sudo peers service start --system"} {
 			if !strings.Contains(res.Stderr, want) {
 				t.Errorf("stderr = %q, want it to contain %q", strings.TrimSpace(res.Stderr), want)
 			}
@@ -140,7 +140,7 @@ func TestServiceControl(t *testing.T) {
 			t.Fatalf("service start as root with nothing installed: exit %d, want 1\nstdout: %s\nstderr: %s",
 				res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
-		for _, want := range []string{"no system-level service is installed", "sudo peers service install --system"} {
+		for _, want := range []string{"no system service is installed", "sudo peers service install --system"} {
 			if !strings.Contains(res.Stderr, want) {
 				t.Errorf("stderr = %q, want it to contain %q", strings.TrimSpace(res.Stderr), want)
 			}
@@ -178,7 +178,7 @@ func TestServiceControl(t *testing.T) {
 			t.Fatalf("service start with the port taken: exit %d, want 3\nstdout: %s\nstderr: %s",
 				res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 		}
-		if want := "Broker service started (user-level)\n"; res.Stdout != want {
+		if want := "The user Broker service has started.\n"; res.Stdout != want {
 			t.Errorf("stdout = %q, want %q", res.Stdout, want)
 		}
 		status := runWithEnv(t, "peer", userEnv, releaseBinary, "service", "status")

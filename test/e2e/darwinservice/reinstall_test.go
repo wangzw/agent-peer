@@ -17,7 +17,7 @@ const (
 )
 
 // TestSystemServiceReinstall covers the user report of 2026-11-20: installing
-// the system-level service while it runs must replace the running Broker, not
+// the system service while it runs must replace the running Broker, not
 // fail while launchd tears the old job down.
 func TestSystemServiceReinstall(t *testing.T) {
 	resetSystemService(t)
@@ -77,8 +77,8 @@ func reinstallRunningService(t *testing.T, domain, name string, args ...string) 
 }
 
 // argsForStatus returns the arguments that run `peers service status` against the
-// level's Broker: as root for the system-level service, as this account for the
-// user-level one.
+// level's Broker: as root for the system service, as this account for the
+// user one.
 func argsForStatus(domain string) []string {
 	if domain == "system" {
 		return []string{"sudo", "-n", installedBinary, "service", "status"}

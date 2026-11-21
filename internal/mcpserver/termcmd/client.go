@@ -293,7 +293,7 @@ type ApplyUpdateError struct {
 func (e *ApplyUpdateError) Error() string { return e.Text }
 
 // IsFailedPrecondition reports whether err is an ApplyUpdate refusal. The
-// update command falls back to replacing a user-level binary only on this
+// update command falls back to replacing a user binary only on this
 // answer, which is how a Broker that cannot apply updates itself declines.
 func IsFailedPrecondition(err error) bool {
 	var e *ApplyUpdateError

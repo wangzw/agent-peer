@@ -250,7 +250,7 @@ func (f *fixture) runWithTTY(t *testing.T, answer string, overrides map[string]s
 	return readFile(t, outPath), readFile(t, errPath), terminal.String(), code
 }
 
-// systemPrefix creates the install directory a system-level test installs into.
+// systemPrefix creates the install directory a system test installs into.
 func (f *fixture) systemPrefix(t *testing.T) string {
 	t.Helper()
 	prefix := filepath.Join(f.base, "sysbin")
@@ -260,7 +260,7 @@ func (f *fixture) systemPrefix(t *testing.T) string {
 	return prefix
 }
 
-// systemInstallEnv returns overrides for a system-level install that passes the
+// systemInstallEnv returns overrides for a system install that passes the
 // directory checks with the fake stat. sudoUser is set only when non-empty, and
 // the fake group listing then contains just that account, so the account is not
 // yet in the admin group.
@@ -279,7 +279,7 @@ func (f *fixture) systemInstallEnv(sudoUser string) map[string]string {
 	return env
 }
 
-// systemInstallArgs returns the arguments for a system-level install that
+// systemInstallArgs returns the arguments for a system install that
 // installs the service and skips MCP registration.
 func systemInstallArgs(prefix string, extra ...string) []string {
 	args := []string{"--system", "--no-mcp", "--prefix", prefix}
@@ -287,7 +287,7 @@ func systemInstallArgs(prefix string, extra ...string) []string {
 }
 
 // pathUnderHome returns an absolute path under the home directory as the
-// script sees it. The user-level prefix keeps the caller's spelling rather
+// script sees it. The user prefix keeps the caller's spelling rather
 // than a resolved physical path, so PATH comparisons and registered command
 // paths match what the user wrote.
 func (f *fixture) pathUnderHome(t *testing.T, elems ...string) string {
@@ -298,7 +298,7 @@ func (f *fixture) pathUnderHome(t *testing.T, elems ...string) string {
 	return filepath.Join(append([]string{f.home}, elems...)...)
 }
 
-// userBinary returns the installed binary path for a user-level prefix, which
+// userBinary returns the installed binary path for a user prefix, which
 // keeps the caller's spelling.
 func (f *fixture) userBinary(dir string) string {
 	return filepath.Join(dir, "peers")
@@ -434,7 +434,7 @@ func TestInstallScriptUserInstall(t *testing.T) {
 		t.Errorf("mcp add calls = %d, want 1 with %s; calls: %q", got, binary, claude)
 	}
 
-	mustContain(t, "stdout", stdout, "peers test-version installed (user-level, starts at login)")
+	mustContain(t, "stdout", stdout, "peers test-version installed (user service, starts at login)")
 	mustContain(t, "stdout", stdout, "MCP:        registered")
 	mustContain(t, "stdout", stdout, "Reopen any Claude Code session")
 	mustContain(t, "stdout", stdout, binary[:strings.LastIndex(binary, "/")]+" is not on PATH")
@@ -470,13 +470,13 @@ func TestInstallScriptUserCompletions(t *testing.T) {
 
 	zsh := f.pathUnderHome(t, ".local", "share", "zsh", "site-functions", "_peers")
 	if _, err := os.Stat(zsh); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("the user-level install wrote the zsh completion %s: %v", zsh, err)
+		t.Errorf("the user install wrote the zsh completion %s: %v", zsh, err)
 	}
 	mustContain(t, "stdout", stdout, "zsh completion was not installed")
 	mustContain(t, "stdout", stdout, "completion zsh")
 
 	if _, err := os.Stat(f.pathUnderHome(t, ".local", "share", "man")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("the user-level install wrote man pages: %v", err)
+		t.Errorf("the user install wrote man pages: %v", err)
 	}
 
 	agent := readLines(t, f.agentLog)
@@ -549,7 +549,7 @@ func TestInstallScriptSystemCompletionsAndManPages(t *testing.T) {
 	mustNotContain(t, "stdout", stdout, "zsh completion was not installed")
 }
 
-// TestInstallScriptSystemSkipsFishWhenFishIsMissing checks that a system-level
+// TestInstallScriptSystemSkipsFishWhenFishIsMissing checks that a system
 // install without fish writes the other completions and the man pages, but
 // neither the fish completion nor its configuration directory.
 func TestInstallScriptSystemSkipsFishWhenFishIsMissing(t *testing.T) {
@@ -825,7 +825,7 @@ func TestInstallScriptReportsServiceFailure(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1", code)
 	}
-	mustContain(t, "stderr", stderr, "installing the user-level service")
+	mustContain(t, "stderr", stderr, "installing the user service")
 }
 
 func TestInstallScriptAcceptsDegradedService(t *testing.T) {
@@ -837,7 +837,7 @@ func TestInstallScriptAcceptsDegradedService(t *testing.T) {
 
 	// service install printed the summary; the script kept going through the
 	// MCP registration and its own summary.
-	mustContain(t, "stdout", stdout, "installed (user-level, starts at login)")
+	mustContain(t, "stdout", stdout, "installed (user service, starts at login)")
 	mustContain(t, "stdout", stdout, "peers test-version installed")
 	mustContain(t, "stdout", stdout, "MCP:        registered")
 	mustContain(t, "stderr", stderr, "Broker: degraded (local only)")
@@ -913,7 +913,7 @@ func TestInstallScriptReportsUpgrade(t *testing.T) {
 }
 
 // hostSystemDefinitionPath is the existence check the script makes for a
-// system-level service on this platform.
+// system service on this platform.
 func hostSystemDefinitionPath() string {
 	if runtime.GOOS == "darwin" {
 		return "/Library/LaunchDaemons/io.github.wangzw.peers.plist"
@@ -923,7 +923,7 @@ func hostSystemDefinitionPath() string {
 
 const (
 	levelInstallPrompt = "Install for every account on this host? [y/N]"
-	levelUpgradePrompt = "Upgrade the system-level installation? [Y/n]"
+	levelUpgradePrompt = "Upgrade the system installation? [Y/n]"
 )
 
 func TestInstallScriptSystemReexecutesThroughSudo(t *testing.T) {
@@ -991,10 +991,10 @@ func TestInstallScriptReportsSudoFailure(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit = %d, want 1\nstderr:\n%s", code, stderr)
 	}
-	mustContain(t, "stderr", stderr, "the system-level installation did not complete")
+	mustContain(t, "stderr", stderr, "the system installation did not complete")
 	mustContain(t, "stderr", stderr, "sudo exited with status 1")
 	// The sudo run has already printed its own error; the outer message must
-	// not tell the caller to retry the same system-level command.
+	// not tell the caller to retry the same system command.
 	mustContain(t, "stderr", stderr, "See the error above")
 	mustContain(t, "stderr", stderr, "--user")
 	mustNotContain(t, "stderr", stderr, "Rerun the installation command with sudo")
@@ -1100,10 +1100,10 @@ func TestInstallScriptLevelPromptInstallsSystemLevel(t *testing.T) {
 			}
 			mustContain(t, "terminal", tty, levelInstallPrompt)
 			if calls := readLines(t, f.sudoLog); len(calls) != 1 || !strings.Contains(calls[0], " --system ") {
-				t.Fatalf("sudo calls = %q, want one system-level re-exec", calls)
+				t.Fatalf("sudo calls = %q, want one system re-exec", calls)
 			}
 			if _, err := os.Stat(f.installedBinary(t, prefix)); err != nil {
-				t.Fatalf("the binary is missing after choosing the system level: %v", err)
+				t.Fatalf("the binary is missing after choosing the system installation: %v", err)
 			}
 		})
 	}
@@ -1130,10 +1130,10 @@ func TestInstallScriptLevelPromptInstallsUserLevel(t *testing.T) {
 			}
 			mustContain(t, "terminal", tty, levelInstallPrompt)
 			if calls := readLines(t, f.sudoLog); len(calls) != 0 {
-				t.Errorf("sudo calls = %q, want none for a user-level install", calls)
+				t.Errorf("sudo calls = %q, want none for a user install", calls)
 			}
 			if _, err := os.Stat(f.userBinary(prefix)); err != nil {
-				t.Fatalf("the user-level binary is missing: %v", err)
+				t.Fatalf("the user binary is missing: %v", err)
 			}
 		})
 	}
@@ -1166,7 +1166,7 @@ func TestInstallScriptLevelPromptUpgrades(t *testing.T) {
 			mustContain(t, "terminal", tty, levelUpgradePrompt)
 			mustNotContain(t, "terminal", tty, levelInstallPrompt)
 			if calls := readLines(t, f.sudoLog); len(calls) != 1 || !strings.Contains(calls[0], " --system ") {
-				t.Fatalf("sudo calls = %q, want one system-level re-exec", calls)
+				t.Fatalf("sudo calls = %q, want one system re-exec", calls)
 			}
 			if _, err := os.Stat(f.installedBinary(t, prefix)); err != nil {
 				t.Fatalf("the binary is missing after the upgrade: %v", err)
@@ -1218,7 +1218,7 @@ func TestInstallScriptRootDoesNotAskForLevel(t *testing.T) {
 	mustNotContain(t, "terminal", tty, levelInstallPrompt)
 	mustNotContain(t, "terminal", tty, levelUpgradePrompt)
 	if _, err := os.Stat(f.installedBinary(t, prefix)); err != nil {
-		t.Fatalf("the system-level binary is missing: %v", err)
+		t.Fatalf("the system binary is missing: %v", err)
 	}
 }
 
@@ -1235,7 +1235,7 @@ func TestInstallScriptExplicitLevelSkipsPrompt(t *testing.T) {
 		mustNotContain(t, "terminal", tty, levelInstallPrompt)
 		mustNotContain(t, "terminal", tty, levelUpgradePrompt)
 		if _, err := os.Stat(f.userBinary(prefix)); err != nil {
-			t.Fatalf("the user-level binary is missing: %v", err)
+			t.Fatalf("the user binary is missing: %v", err)
 		}
 	})
 
@@ -1256,7 +1256,7 @@ func TestInstallScriptExplicitLevelSkipsPrompt(t *testing.T) {
 		mustNotContain(t, "terminal", tty, levelInstallPrompt)
 		mustNotContain(t, "terminal", tty, levelUpgradePrompt)
 		if calls := readLines(t, f.sudoLog); len(calls) != 1 {
-			t.Fatalf("sudo calls = %q, want one system-level re-exec", calls)
+			t.Fatalf("sudo calls = %q, want one system re-exec", calls)
 		}
 	})
 }
@@ -1279,7 +1279,7 @@ func TestInstallScriptWithoutTerminalInstallsUserLevel(t *testing.T) {
 	f := newFixture(t)
 	prefix := filepath.Join(f.base, "userbin")
 	// stdin says yes, but without a terminal the answer must not be read, so
-	// the install stays user-level.
+	// the install stays a user install.
 	stdout, stderr, code := f.runDetached("y\n", map[string]string{"FAKE_ID_UID": "1000"},
 		"--prefix", prefix, "--no-service", "--no-mcp")
 	if code != 0 {
@@ -1291,7 +1291,7 @@ func TestInstallScriptWithoutTerminalInstallsUserLevel(t *testing.T) {
 		t.Errorf("sudo calls = %q, want none without a terminal", calls)
 	}
 	if _, err := os.Stat(f.userBinary(prefix)); err != nil {
-		t.Fatalf("the user-level binary is missing: %v", err)
+		t.Fatalf("the user binary is missing: %v", err)
 	}
 }
 
@@ -1311,7 +1311,7 @@ func TestInstallScriptAdminGroupAcceptedAfterPrompt(t *testing.T) {
 		t.Fatalf("exit = %d, want 0\nstderr:\n%s\nterminal:\n%s", code, stderr, tty)
 	}
 	if calls := readLines(t, f.sudoLog); len(calls) != 1 || !strings.Contains(calls[0], "--admin-group operators") {
-		t.Fatalf("sudo calls = %q, want the admin group to reach the system-level re-exec", calls)
+		t.Fatalf("sudo calls = %q, want the admin group to reach the system re-exec", calls)
 	}
 	mustNotContain(t, "stderr", stderr, "only valid with --system")
 }
@@ -1913,7 +1913,7 @@ completion)
 service)
 	_exit=${FAKE_AGENT_SERVICE_EXIT:-0}
 	if [ "$_exit" = "0" ] || [ "$_exit" = "3" ]; then
-		printf 'peers %s installed (user-level, starts at login)\n' "${FAKE_AGENT_VERSION#peers }"
+		printf 'peers %s installed (user service, starts at login)\n' "${FAKE_AGENT_VERSION#peers }"
 		printf '  binary:     %s\n' "${FAKE_AGENT_BINARY:-/usr/local/bin/peers}"
 		printf '  uninstall:  peers uninstall\n'
 	fi
@@ -2047,7 +2047,7 @@ fi
 # Drop the options the installer passes, then run the command. A login shell
 # command (-lc) is run with sh -c so the test keeps its own PATH; the positional
 # arguments still reach the command the same way. A plain sudo call is the
-# system-level re-exec: it runs the rest of the installation as root, so the
+# system re-exec: it runs the rest of the installation as root, so the
 # fake id reports uid 0 and SUDO_USER names the invoking account.
 privileged=1
 while [ "$#" -gt 0 ]; do

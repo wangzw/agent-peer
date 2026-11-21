@@ -260,7 +260,7 @@ func loopStart(t *testing.T, deps loopDeps) (stop func()) {
 }
 
 func TestRunLoop(t *testing.T) {
-	t.Run("user-level reconnects to the same Broker and registers again", func(t *testing.T) {
+	t.Run("user reconnects to the same Broker and registers again", func(t *testing.T) {
 		// REQ-broker-config-037, REQ-topics-022
 		path := fakelocal.SocketPath(t)
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
@@ -367,7 +367,7 @@ func TestRunLoop(t *testing.T) {
 		stop()
 	})
 
-	t.Run("user-level reconnect never selects a different Broker", func(t *testing.T) {
+	t.Run("user reconnect never selects a different Broker", func(t *testing.T) {
 		// REQ-broker-config-037
 		userPath := fakelocal.SocketPath(t)
 		systemPath := fakelocal.SocketPath(t)
@@ -402,9 +402,9 @@ func TestRunLoop(t *testing.T) {
 		}
 
 		// The second registration is the later event that proves the loop never
-		// fell through to the system-level Broker or selected again.
+		// fell through to the system Broker or selected again.
 		if calls := systemSrv.Calls(); len(calls) != 0 {
-			t.Errorf("the system-level Broker received %d calls, want none: %v", len(calls), calls)
+			t.Errorf("the system Broker received %d calls, want none: %v", len(calls), calls)
 		}
 		if got := selectCalls.Load(); got != 1 {
 			t.Errorf("selection ran %d times, want once at startup", got)
@@ -412,7 +412,7 @@ func TestRunLoop(t *testing.T) {
 		stop()
 	})
 
-	t.Run("system-level Broker is retried, never replaced", func(t *testing.T) {
+	t.Run("system Broker is retried, never replaced", func(t *testing.T) {
 		// design:108
 		path := fakelocal.SocketPath(t)
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{})
@@ -523,7 +523,7 @@ func TestRunLoop(t *testing.T) {
 		stop()
 	})
 
-	t.Run("a user-level Broker whose socket is gone reports no Broker", func(t *testing.T) {
+	t.Run("a user Broker whose socket is gone reports no Broker", func(t *testing.T) {
 		// REQ-broker-config-037: the tool error is the same no-Broker text as a
 		// session that never found one.
 		path := fakelocal.SocketPath(t)
@@ -546,7 +546,7 @@ func TestRunLoop(t *testing.T) {
 		h := &handlers{st: st}
 		_, err := h.preflight("list_agents", callGeneric, false)
 		if err == nil {
-			t.Fatal("preflight returned nil for a gone user-level Broker")
+			t.Fatal("preflight returned nil for a gone user Broker")
 		}
 		for _, want := range []string{"no Broker is available", "ask the administrator", "peers service install", "peers service run"} {
 			if !strings.Contains(err.Error(), want) {
@@ -559,9 +559,9 @@ func TestRunLoop(t *testing.T) {
 		}
 	})
 
-	t.Run("a system-level Broker that fails reports no system Broker", func(t *testing.T) {
-		// REQ-broker-config-037: a session that was using the system-level Broker
-		// must be sent to the administrator, not to a user-level Broker.
+	t.Run("a system Broker that fails reports no system Broker", func(t *testing.T) {
+		// REQ-broker-config-037: a session that was using the system Broker
+		// must be sent to the administrator, not to a user Broker.
 		path := fakelocal.SocketPath(t)
 
 		st := &statusStore{}
@@ -579,7 +579,7 @@ func TestRunLoop(t *testing.T) {
 			t.Fatalf("Detail = %q, want %q", status.Detail, textNoSystemBroker)
 		}
 		if strings.Contains(status.Detail, "peers service install") {
-			t.Fatalf("Detail = %q, must not send the user to a user-level service", status.Detail)
+			t.Fatalf("Detail = %q, must not send the user to a user service", status.Detail)
 		}
 		waits := loopWaitCount(t, clock, 1)
 		if waits[0] != 250*time.Millisecond {
@@ -587,7 +587,7 @@ func TestRunLoop(t *testing.T) {
 		}
 	})
 
-	t.Run("a user-level Broker whose socket refuses connections reports no Broker", func(t *testing.T) {
+	t.Run("a user Broker whose socket refuses connections reports no Broker", func(t *testing.T) {
 		// REQ-broker-config-037: a refused connection means no Broker is
 		// listening, so the tool error must say how to start one. Only a socket
 		// that answers and then fails is reported as unavailable.
@@ -611,7 +611,7 @@ func TestRunLoop(t *testing.T) {
 		h := &handlers{st: st}
 		_, err := h.preflight("list_agents", callGeneric, false)
 		if err == nil {
-			t.Fatal("preflight returned nil for a refused user-level socket")
+			t.Fatal("preflight returned nil for a refused user socket")
 		}
 		for _, want := range []string{"no Broker is available", "peers service install", "peers service run"} {
 			if !strings.Contains(err.Error(), want) {
@@ -693,7 +693,7 @@ func TestRunLoop(t *testing.T) {
 		stop()
 	})
 
-	t.Run("version mismatch of the system-level Broker tells the user to ask the administrator", func(t *testing.T) {
+	t.Run("version mismatch of the system Broker tells the user to ask the administrator", func(t *testing.T) {
 		// REQ-broker-config-016
 		path := fakelocal.SocketPath(t)
 		var brokerVersion atomic.Uint32
@@ -725,7 +725,7 @@ func TestRunLoop(t *testing.T) {
 		clock.autoAdvance()
 		conn := loopNextRegister(t, srv)
 		if waits := clock.durations(); len(waits) == 0 || waits[0] != 250*time.Millisecond {
-			t.Fatalf("waits before reconnecting to the system-level Broker = %v, want the first one to be 250ms", waits)
+			t.Fatalf("waits before reconnecting to the system Broker = %v, want the first one to be 250ms", waits)
 		}
 		if err := conn.Complete("id1", "me@h", false); err != nil {
 			t.Fatalf("sending registration_complete: %v", err)
@@ -799,7 +799,7 @@ func TestRunLoop(t *testing.T) {
 		}
 	})
 
-	t.Run("a Hello failure on a user-level Broker waits before retrying", func(t *testing.T) {
+	t.Run("a Hello failure on a user Broker waits before retrying", func(t *testing.T) {
 		path := fakelocal.SocketPath(t)
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{
 			Hello: func(context.Context, *localpb.HelloRequest) (*localpb.HelloResponse, error) {
@@ -842,7 +842,7 @@ func TestRunLoop(t *testing.T) {
 		loopRetryPaused(t, func() int { return int(registers.Load()) }, "Register", clock)
 	})
 
-	t.Run("a version mismatch on a user-level Broker that disconnects waits before retrying", func(t *testing.T) {
+	t.Run("a version mismatch on a user Broker that disconnects waits before retrying", func(t *testing.T) {
 		path := fakelocal.SocketPath(t)
 		srv := fakelocal.Start(t, path, fakelocal.Handlers{
 			Hello: func(context.Context, *localpb.HelloRequest) (*localpb.HelloResponse, error) {

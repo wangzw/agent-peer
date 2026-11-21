@@ -355,7 +355,7 @@ func TestStatusExplicitSocketUnavailable(t *testing.T) {
 	sb := newSandbox(t)
 	missing := filepath.Join(sb.root, "missing.sock")
 
-	// A user-level Broker that would answer if the command fell back to it.
+	// A user Broker that would answer if the command fell back to it.
 	dir := sb.runtimeDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("create runtime directory: %v", err)
@@ -375,7 +375,7 @@ func TestStatusExplicitSocketUnavailable(t *testing.T) {
 		t.Fatalf("stderr = %q, want it to contain %q", res.stderr, "cannot reach the Broker")
 	}
 	if n := countCalls(fake.Calls(), "Status"); n != 0 {
-		t.Fatalf("the user-level fake served %d Status calls; the command must not fall back to it", n)
+		t.Fatalf("the user fake served %d Status calls; the command must not fall back to it", n)
 	}
 }
 

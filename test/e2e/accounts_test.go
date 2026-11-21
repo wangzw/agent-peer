@@ -17,7 +17,7 @@ import (
 	"github.com/wangzw/peers/test/e2e/node"
 )
 
-// TestOtherAccountRejected covers REQ-broker-config-019: the user-level Broker
+// TestOtherAccountRejected covers REQ-broker-config-019: the user Broker
 // of one account serves no other account, neither through the filesystem nor
 // through the account check, and the other account's session never appears on
 // the Broker. The container has two accounts, peer (the Broker's account) and

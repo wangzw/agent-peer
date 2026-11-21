@@ -22,8 +22,8 @@ const (
 )
 
 // accessChecker decides whether a local caller may make an RPC that needs the
-// given permission on the Broker configuration file. The user-level Broker
-// uses allowAllAccess; the system-level Broker supplies a checker that inspects
+// given permission on the Broker configuration file. The user Broker
+// uses allowAllAccess; the system Broker supplies a checker that inspects
 // the ownership and mode of the file.
 type accessChecker interface {
 	// Check reports whether who may access path with need. An error means the
@@ -31,7 +31,7 @@ type accessChecker interface {
 	Check(ctx context.Context, who Caller, path string, need Access) (bool, error)
 }
 
-// allowAllAccess is the user-level checker. The configuration file belongs to
+// allowAllAccess is the checker for the user Broker. The configuration file belongs to
 // the account, so every local caller is allowed; it never reads the file.
 type allowAllAccess struct{}
 

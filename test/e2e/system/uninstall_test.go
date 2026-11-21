@@ -22,12 +22,12 @@ import (
 
 const (
 	// uninstallSystemCopy is a root-owned copy of the product binary the
-	// system-level tests install. Uninstall removes the binary it installed, so
+	// system tests install. Uninstall removes the binary it installed, so
 	// the image's copy at /usr/local/bin/peers is left for later commands.
 	// It is named peers because uninstall only deletes a binary with that
 	// name.
 	uninstallSystemCopy = "/usr/local/libexec/peers"
-	// uninstallPeerBinary is a peer-owned copy the user-level tests install.
+	// uninstallPeerBinary is a peer-owned copy the user tests install.
 	uninstallPeerBinary = "/home/peer/bin/peers"
 
 	uninstallSystemUnit      = "/etc/systemd/system/peers.service"
@@ -50,7 +50,7 @@ const (
 	// read and removed by both root and the ordinary account.
 	uninstallFakeClaudeState = "/var/lib/peers-uninstall-state"
 	// uninstallSudoersPath grants passwordless sudo to the peer account, which
-	// the non-root system-level scenario needs.
+	// the non-root system scenario needs.
 	uninstallSudoersPath = "/etc/sudoers.d/peers-uninstall"
 	// uninstallPath includes /usr/local/bin, where the fake claude lives.
 	uninstallPath = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
@@ -259,7 +259,7 @@ func uninstallMCPRegistered(t *testing.T) bool {
 	return false
 }
 
-// uninstallUserEnv is the environment a user-level Broker's service and its
+// uninstallUserEnv is the environment a user Broker's service and its
 // commands need.
 func uninstallUserEnv(uid uint32) []string {
 	id := strconv.FormatUint(uint64(uid), 10)
@@ -278,7 +278,7 @@ func startUninstallUserManager(t *testing.T, peerUID uint32) {
 	waitUserManager(t, peerUID)
 }
 
-// installUninstallUserService installs the user-level service with binary and
+// installUninstallUserService installs the user service with binary and
 // waits for its socket.
 func installUninstallUserService(t *testing.T, env []string, binary string) {
 	t.Helper()
@@ -293,7 +293,7 @@ func installUninstallUserService(t *testing.T, env []string, binary string) {
 	})
 }
 
-// installUninstallSystemService installs the system-level service with binary
+// installUninstallSystemService installs the system service with binary
 // and waits for its socket.
 func installUninstallSystemService(t *testing.T, binary string) {
 	t.Helper()
@@ -353,7 +353,7 @@ func configureUninstallSudo(t *testing.T) {
 	}
 }
 
-// TestUninstallREQBrokerConfig051UserLevel covers a user-level installation:
+// TestUninstallREQBrokerConfig051UserLevel covers a user installation:
 // the default uninstall keeps the data, a reinstall keeps the identity, and
 // --purge removes everything without asking.
 func TestUninstallREQBrokerConfig051UserLevel(t *testing.T) {
@@ -362,7 +362,7 @@ func TestUninstallREQBrokerConfig051UserLevel(t *testing.T) {
 		return
 	}
 
-	t.Run("REQ-broker-config-051: a user-level uninstall keeps data by default and --purge removes it", func(t *testing.T) {
+	t.Run("REQ-broker-config-051: a user uninstall keeps data by default and --purge removes it", func(t *testing.T) {
 		peerUID := syscontainer.AccountUID(t, "peer")
 		_, peerGID := uninstallAccountIDs(t, "peer")
 		env := uninstallUserEnv(peerUID)
@@ -439,7 +439,7 @@ func TestUninstallREQBrokerConfig051UserLevel(t *testing.T) {
 	})
 }
 
-// TestUninstallREQBrokerConfig051SystemLevel covers a system-level installation
+// TestUninstallREQBrokerConfig051SystemLevel covers a system installation
 // the same way.
 func TestUninstallREQBrokerConfig051SystemLevel(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -447,7 +447,7 @@ func TestUninstallREQBrokerConfig051SystemLevel(t *testing.T) {
 		return
 	}
 
-	t.Run("REQ-broker-config-051: a system-level uninstall keeps data by default and --purge removes it", func(t *testing.T) {
+	t.Run("REQ-broker-config-051: a system uninstall keeps data by default and --purge removes it", func(t *testing.T) {
 		installUninstallBinary(t, releaseBinary, uninstallSystemCopy, 0, 0)
 		installUninstallFakeClaude(t, "")
 		installUninstallSystemService(t, uninstallSystemCopy)
@@ -622,7 +622,7 @@ func TestUninstallREQBrokerConfig051NoService(t *testing.T) {
 }
 
 // TestUninstallREQBrokerConfig052NonRootSystemOnly covers a non-root account
-// whose host has only the system-level installation: the command must fail and
+// whose host has only the system installation: the command must fail and
 // name the complete sudo command, and that command must then remove the level.
 func TestUninstallREQBrokerConfig052NonRootSystemOnly(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -643,7 +643,7 @@ func TestUninstallREQBrokerConfig052NonRootSystemOnly(t *testing.T) {
 				refused.ExitCode, refused.Stdout, refused.Stderr)
 		}
 		for _, want := range []string{
-			"only a system-level installation is present",
+			"only a system installation is present",
 			"sudo peers uninstall --purge --yes",
 		} {
 			if !strings.Contains(refused.Stdout+refused.Stderr, want) {
@@ -668,7 +668,7 @@ func TestUninstallREQBrokerConfig052NonRootSystemOnly(t *testing.T) {
 		requireMissing(t, releaseBinary)
 		requireMissing(t, uninstallSystemConfigDir)
 		if uninstallGroupExists(t) {
-			t.Error("the admin group still exists after the system-level --purge")
+			t.Error("the admin group still exists after the system --purge")
 		}
 		if uninstallMCPRegistered(t) {
 			t.Error("the peer MCP registration was not removed through sudo")
@@ -677,14 +677,14 @@ func TestUninstallREQBrokerConfig052NonRootSystemOnly(t *testing.T) {
 }
 
 // TestUninstallREQBrokerConfig052TwoLevels checks that a non-root uninstall
-// removes only the user level and names the system-level command.
+// removes only the user installation and names the system command.
 func TestUninstallREQBrokerConfig052TwoLevels(t *testing.T) {
 	if !syscontainer.InContainer() {
 		syscontainer.Run(t, syscontainer.Systemd)
 		return
 	}
 
-	t.Run("REQ-broker-config-052: a non-root uninstall removes only the user level", func(t *testing.T) {
+	t.Run("REQ-broker-config-052: a non-root uninstall removes only the user installation", func(t *testing.T) {
 		peerUID := syscontainer.AccountUID(t, "peer")
 		_, peerGID := uninstallAccountIDs(t, "peer")
 		env := uninstallUserEnv(peerUID)
@@ -704,7 +704,7 @@ func TestUninstallREQBrokerConfig052TwoLevels(t *testing.T) {
 			t.Fatalf("uninstall as peer: exit %d\n%s", res.ExitCode, res.Stdout)
 		}
 		if !strings.Contains(res.Stdout, "sudo peers uninstall") {
-			t.Errorf("output does not name the system-level command:\n%s", res.Stdout)
+			t.Errorf("output does not name the system command:\n%s", res.Stdout)
 		}
 		requireMissing(t, uninstallUserUnit)
 		requireMissing(t, uninstallPeerBinary)
@@ -714,8 +714,8 @@ func TestUninstallREQBrokerConfig052TwoLevels(t *testing.T) {
 	})
 }
 
-// TestUninstallREQBrokerConfig054OtherAccountBroker checks that a system-level
-// uninstall names another account's user-level Broker before it removes the
+// TestUninstallREQBrokerConfig054OtherAccountBroker checks that a system
+// uninstall names another account's user Broker before it removes the
 // shared binary.
 func TestUninstallREQBrokerConfig054OtherAccountBroker(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -723,7 +723,7 @@ func TestUninstallREQBrokerConfig054OtherAccountBroker(t *testing.T) {
 		return
 	}
 
-	t.Run("REQ-broker-config-054: a system-level --purge lists another account's Broker", func(t *testing.T) {
+	t.Run("REQ-broker-config-054: a system --purge lists another account's Broker", func(t *testing.T) {
 		installUninstallBinary(t, releaseBinary, uninstallSystemCopy, 0, 0)
 		installUninstallSystemService(t, uninstallSystemCopy)
 		other := syscontainer.StartUserBroker(t, "other", "--listen", ":17444")
@@ -734,7 +734,7 @@ func TestUninstallREQBrokerConfig054OtherAccountBroker(t *testing.T) {
 				res.ExitCode, res.Stdout, res.Stderr)
 		}
 		for _, want := range []string{
-			"other accounts run a user-level Broker: other",
+			"Other accounts run a user Broker: other.",
 			"will fail to start after " + uninstallSystemCopy + " is removed",
 		} {
 			if !strings.Contains(res.Stdout, want) {

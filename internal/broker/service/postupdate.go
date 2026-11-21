@@ -330,7 +330,7 @@ func launchdHelperLogPath(opts Options) (string, error) {
 	case opts.System:
 		return filepath.Join(systemLogDir, LaunchdHelperLogName), nil
 	case opts.Home == "":
-		return "", errors.New("service: the user level needs a home directory for the post-update log")
+		return "", errors.New("service: the user installation needs a home directory for the post-update log")
 	default:
 		return filepath.Join(opts.Home, "Library", "Logs", "peers", LaunchdHelperLogName), nil
 	}

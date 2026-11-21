@@ -26,7 +26,7 @@ const (
 	permConfigPath = "/etc/peers/config.yaml"
 	// permSocketPath is the system Broker's local socket.
 	permSocketPath = "/run/peers/broker.sock"
-	// permPeerListen is the user-level Broker's listen address in the pairing
+	// permPeerListen is the user Broker's listen address in the pairing
 	// test.
 	permPeerListen = "127.0.0.1:17444"
 )
@@ -166,7 +166,7 @@ func TestREQBrokerConfig021_WriteNeedsConfigWritePermission(t *testing.T) {
 		}
 	}
 
-	// Pair the system Broker with peer's user-level Broker as root first, so a
+	// Pair the system Broker with peer's user Broker as root first, so a
 	// refused unpair from other has a visible pair to preserve.
 	text, isError = root.Call(t, "connect_broker",
 		map[string]any{"address": permPeerListen, "key": permPairingKey(t, peer)})
@@ -345,7 +345,7 @@ func TestREQBrokerConfig010_StatusWithoutReadPermissionShowsOwnAgents(t *testing
 	}
 
 	syscontainer.StartSystemBroker(t, "broker:\n  alias: sys\n")
-	// A user-level Broker gives the system Broker a peer to show in status.
+	// A user Broker gives the system Broker a peer to show in status.
 	peerBroker := syscontainer.StartUserBroker(t, "peer", "--listen", ":17444")
 
 	peer := syscontainer.NewSession(t, "peer", "peeragent",

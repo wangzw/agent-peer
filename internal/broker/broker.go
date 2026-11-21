@@ -147,7 +147,7 @@ func New(deps Deps) (*Broker, error) {
 
 // checkServerOptions rejects Deps.ServerOptions that set transport credentials.
 // New installs the process-credential handshake itself, and grpc.Creds applied
-// later would replace it silently, letting any account connect to a user-level
+// later would replace it silently, letting any account connect to a user
 // Broker.
 func checkServerOptions(base credentials.TransportCredentials, opts []grpc.ServerOption) error {
 	if len(opts) == 0 {

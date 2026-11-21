@@ -135,7 +135,7 @@ func socketPathFromAddress(address string) string {
 }
 
 // statusPeerAllowed reports whether uid may answer the status probe on the
-// socket at path. A system-level socket is served by root; a user-level one by
+// socket at path. A system socket is served by root; a user one by
 // this account.
 func statusPeerAllowed(path string, uid uint32) bool {
 	if isSystemSocket(path) {
@@ -152,7 +152,7 @@ func statusPeerWant(path string) string {
 	return fmt.Sprintf("this account (%d)", os.Geteuid())
 }
 
-// isSystemSocket reports whether path is the local socket a system-level
+// isSystemSocket reports whether path is the local socket a system
 // Broker binds on either supported platform.
 func isSystemSocket(path string) bool {
 	path = filepath.Clean(path)

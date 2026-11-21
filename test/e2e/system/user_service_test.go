@@ -51,7 +51,7 @@ type brokerEntry struct {
 }
 
 // TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink installs the
-// user-level service with the real subcommand, simulates a login by restarting
+// user service with the real subcommand, simulates a login by restarting
 // the account's user manager, and checks that the Broker and its paired link
 // come back without any session being started. The positive control restarts
 // the same manager before installing and finds no Broker.
@@ -89,9 +89,9 @@ func TestREQBrokerConfig015_UserServiceStartsAtLoginAndRestoresLink(t *testing.T
 		return true, ""
 	})
 
-	// Install the user-level service as peer through the product's subcommand.
+	// Install the user service as peer through the product's subcommand.
 	// The interface is "service install [--system]": omitting --system is what
-	// selects the user-level unit, and there is no separate --user flag.
+	// selects the user unit, and there is no separate --user flag.
 	install := runWithEnv(t, "peer", userEnv, "peers", "service", "install")
 	if install.ExitCode != 0 {
 		t.Fatalf("peers service install as peer: exit %d\nstdout: %s\nstderr: %s",

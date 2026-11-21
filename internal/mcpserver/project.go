@@ -99,7 +99,7 @@ func findProjectConfigLogged(dir string, log *slog.Logger) (cfg projectConfig, f
 }
 
 // ownsProjectPath reports whether uid may own a project configuration file or
-// the directory that holds it. Root is accepted because a system-level checkout
+// the directory that holds it. Root is accepted because a system checkout
 // is often root-owned.
 func ownsProjectPath(uid uint32) bool {
 	return uid == uint32(os.Geteuid()) || uid == 0

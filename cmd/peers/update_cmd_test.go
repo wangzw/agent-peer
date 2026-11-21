@@ -31,7 +31,7 @@ func (c *countingTransport) RoundTrip(*http.Request) (*http.Response, error) {
 
 // updateTestEnv installs the operating-system seams around a temporary target
 // binary and restores them when the test ends. The defaults describe an
-// ordinary account: non-root, with a writable user-level installation.
+// ordinary account: non-root, with a writable user installation.
 type updateTestEnv struct {
 	target    string
 	transport *countingTransport
@@ -87,7 +87,7 @@ func assertBinaryUnchanged(t *testing.T, path string) {
 	}
 }
 
-// userLevelRefusal is the answer a user-level Broker gives when it cannot
+// userLevelRefusal is the answer a user Broker gives when it cannot
 // apply an update itself.
 var userLevelRefusal = errUserLevelUpdateUnsupported
 
@@ -222,7 +222,7 @@ func TestUpdateFailsBeforeAnyDownloadWithoutWritePermission(t *testing.T) {
 		t.Fatalf("network requests = %d, want none before the permission check passes", env.transport.calls)
 	}
 	errOut := stderr.String()
-	hint := "run \"sudo peers update\" to update a system-level installation\n"
+	hint := "run \"sudo peers update\" to update a system installation\n"
 	if !strings.HasPrefix(errOut, "peers update: cannot write to ") {
 		t.Fatalf("stderr = %q, want the error line first", errOut)
 	}
@@ -336,7 +336,7 @@ func TestUpdateRootUsesApplyUpdate(t *testing.T) {
 		t.Fatalf("broker apply calls = %d, want 1", stub.brokerApplyCalls)
 	}
 	if len(stub.applyCalls) != 0 {
-		t.Fatalf("local apply calls = %d, want none for a system-level update", len(stub.applyCalls))
+		t.Fatalf("local apply calls = %d, want none for a system update", len(stub.applyCalls))
 	}
 	if !strings.Contains(stdout.String(), "peers 0.1.2 is installed.") {
 		t.Fatalf("stdout = %q, want the installed version", stdout.String())
@@ -478,7 +478,7 @@ func TestUpdateRestartTimeoutNamesTheUserLevelLog(t *testing.T) {
 	}
 	err := stderr.String()
 	if !strings.Contains(err, "check the service log with journalctl --user -u peers.service") {
-		t.Fatalf("stderr = %q, want the user-level service log location", err)
+		t.Fatalf("stderr = %q, want the user service log location", err)
 	}
 }
 

@@ -47,10 +47,10 @@ const (
 // "service run" tree. A current-tree build stamped with 0.4.0 would share the
 // new tree and pass even if the cross-version rewrite were broken.
 //
-// The system-level half installs 0.4.0 directly through its own
+// The system half installs 0.4.0 directly through its own
 // "service install --system", updates it from the fake GitHub API, and checks
 // that the unit, the binary and the running Broker all moved to the new
-// release. The user-level half does the same for an account's user service in
+// release. The user half does the same for an account's user service in
 // the same test.
 func TestREQUpdate009_UpdatesARealV040InstallToTheNewCommandTree(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -67,7 +67,7 @@ func TestREQUpdate009_UpdatesARealV040InstallToTheNewCommandTree(t *testing.T) {
 		Checksums:   updateReadStaged(t, realReleaseNewChecksumsArtifact),
 	})
 
-	// System level.
+	// System installation.
 	realReleaseInstallSystemService(t, fake)
 	beforeUnit := postUpdateReadFile(t, postUpdateUnitPath)
 	realReleaseAssertUnit(t, "the installed system unit", beforeUnit, selfUpdateBinary, realReleaseOldSystemCommand)
@@ -97,7 +97,7 @@ func TestREQUpdate009_UpdatesARealV040InstallToTheNewCommandTree(t *testing.T) {
 	realReleaseRequireStatus(t, installAccount, nil, "--system")
 	selfUpdateWaitAuditEventFor(t, installAccount, realReleaseOldVersion, realReleaseNewVersion)
 
-	// User level. The system binary now belongs to the new release, so the
+	// User installation. The system binary now belongs to the new release, so the
 	// update command selects the account's user Broker and that Broker is still
 	// the 0.4.0 build.
 	userTarget, userEnv := selfUpdateSetupUserServiceFrom(t, installAccount, realReleaseOldArtifact)
@@ -115,11 +115,11 @@ func TestREQUpdate009_UpdatesARealV040InstallToTheNewCommandTree(t *testing.T) {
 	res = syscontainer.RunAs(t, installAccount, selfUpdateAPIEnv(fake), "update", "--yes")
 	combined = res.Stdout + res.Stderr
 	if res.ExitCode != 0 {
-		t.Fatalf("peers update --yes as %s for its user-level Broker exited %d\nstdout:\n%s\nstderr:\n%s",
+		t.Fatalf("peers update --yes as %s for its user Broker exited %d\nstdout:\n%s\nstderr:\n%s",
 			installAccount, res.ExitCode, res.Stdout, res.Stderr)
 	}
 	if !strings.Contains(combined, realReleaseNewVersion) {
-		t.Fatalf("the user-level update output does not name version %s:\n%s", realReleaseNewVersion, combined)
+		t.Fatalf("the user update output does not name version %s:\n%s", realReleaseNewVersion, combined)
 	}
 
 	afterUserUnit := postUpdateReadFile(t, userUnitPath)
@@ -182,7 +182,7 @@ func realReleaseBuildTag(t *testing.T, tag, version string) string {
 }
 
 // realReleaseInstallSystemService installs the staged 0.4.0 binary as the
-// system-level service through its own "service install --system", grants the
+// system service through its own "service install --system", grants the
 // install account write access through the administration group, and points the
 // service at the fake API. It also verifies that the service runs the old
 // release.

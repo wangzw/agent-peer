@@ -478,7 +478,7 @@ func configGID(t *testing.T, opts Options, path string) int {
 // adminGroupRecord is where an installation records the group it created.
 const adminGroupRecord = "/var/lib/peers/admin-group"
 
-// purgeGroupOptions prepares a system-level purge whose configuration file is
+// purgeGroupOptions prepares a system purge whose configuration file is
 // owned by group "peers".
 func purgeGroupOptions(t *testing.T) (Options, int) {
 	t.Helper()

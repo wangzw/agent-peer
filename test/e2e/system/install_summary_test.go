@@ -15,7 +15,7 @@ import (
 const systemAuditPath = "/var/log/peers/audit.log"
 
 // TestREQBrokerConfig050_SystemServiceInstallPrintsSummary covers the summary
-// a system-level installation prints: the level, the binary, the configuration
+// a system installation prints: the level, the binary, the configuration
 // file and the log locations, the commands that control the service and the
 // uninstall command. The paths it prints must exist on the host. A second
 // installation over the kept configuration says (kept) instead of (generated).
@@ -39,7 +39,7 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 		t.Fatalf("service install --system: exit %d\nstdout: %s\nstderr: %s",
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
-	assertInstallSummary(t, res.Stdout, "system-level", "boot", true, map[string]string{
+	assertInstallSummary(t, res.Stdout, "system service", "boot", true, map[string]string{
 		"binary:":    releaseBinary,
 		"config:":    systemConfigPath + " (generated)",
 		"run log:":   "journalctl -u peers.service",
@@ -66,7 +66,7 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 		t.Fatalf("reinstalling service --system: exit %d\nstdout: %s\nstderr: %s",
 			again.ExitCode, strings.TrimSpace(again.Stdout), strings.TrimSpace(again.Stderr))
 	}
-	assertInstallSummary(t, again.Stdout, "system-level", "boot", true, map[string]string{
+	assertInstallSummary(t, again.Stdout, "system service", "boot", true, map[string]string{
 		"config:": systemConfigPath + " (kept)",
 	})
 
@@ -93,7 +93,7 @@ func TestREQBrokerConfig050_SystemServiceInstallPrintsSummary(t *testing.T) {
 }
 
 // TestREQBrokerConfig050_UserServiceInstallPrintsSummary covers the same
-// summary for a user-level installation: no sudo prefix, starts at login, the
+// summary for a user installation: no sudo prefix, starts at login, the
 // user's configuration file and log commands.
 func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -123,7 +123,7 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 		t.Fatalf("service install as peer: exit %d\nstdout: %s\nstderr: %s",
 			res.ExitCode, strings.TrimSpace(res.Stdout), strings.TrimSpace(res.Stderr))
 	}
-	assertInstallSummary(t, res.Stdout, "user-level", "login", true, map[string]string{
+	assertInstallSummary(t, res.Stdout, "user service", "login", true, map[string]string{
 		"binary:":    releaseBinary,
 		"config:":    configPath + " (generated)",
 		"run log:":   "journalctl --user -u peers.service",
@@ -149,7 +149,7 @@ func TestREQBrokerConfig050_UserServiceInstallPrintsSummary(t *testing.T) {
 		t.Fatalf("reinstalling the user service: exit %d\nstdout: %s\nstderr: %s",
 			again.ExitCode, strings.TrimSpace(again.Stdout), strings.TrimSpace(again.Stderr))
 	}
-	assertInstallSummary(t, again.Stdout, "user-level", "login", true, map[string]string{
+	assertInstallSummary(t, again.Stdout, "user service", "login", true, map[string]string{
 		"config:": configPath + " (kept)",
 	})
 
@@ -215,7 +215,7 @@ func TestREQBrokerConfig064_ReinstallReportsDegradedAuditLog(t *testing.T) {
 	}
 
 	// The summary is printed as usual, and the service is still installed.
-	assertInstallSummary(t, res.Stdout, "system-level", "boot", true, map[string]string{
+	assertInstallSummary(t, res.Stdout, "system service", "boot", true, map[string]string{
 		"binary:":    releaseBinary,
 		"config:":    systemConfigPath + " (kept)",
 		"audit log:": systemAuditPath,
@@ -306,7 +306,7 @@ func assertInstallSummary(t *testing.T, stdout, level, start string, requireFirs
 }
 
 // printedCommandArgs splits a command from the install summary into the
-// arguments that follow its binary name. It drops the sudo prefix a system-level
+// arguments that follow its binary name. It drops the sudo prefix a system
 // summary prints, because the caller runs the command as root directly.
 func printedCommandArgs(t *testing.T, command string) []string {
 	t.Helper()

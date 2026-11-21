@@ -277,7 +277,7 @@ printf 'ran\n' > '%s'
 `, version, content, unitPath, marker, tail))
 }
 
-// unitGuardFixture points the unit restore at a temporary user level: the
+// unitGuardFixture points the unit restore at a temporary user installation: the
 // account home and the user configuration directory live under one temporary
 // directory, and a stand-in systemctl records the commands a restore runs. It
 // returns the unit path that level's rewrite targets and a function that reads

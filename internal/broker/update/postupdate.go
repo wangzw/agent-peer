@@ -146,7 +146,7 @@ func RunPostUpdate(ctx context.Context, o PostUpdateOptions) error {
 	var stderr bytes.Buffer
 	cmd := exec.CommandContext(runCtx, o.Binary, "internal", "post-update", "--level", o.Level, "--pid", strconv.Itoa(os.Getpid()))
 	// The step runs the service manager commands itself, so it inherits this
-	// process's environment: a user-level Broker carries the session bus and
+	// process's environment: a user Broker carries the session bus and
 	// runtime directory those commands need. Its working directory is "/" so a
 	// system service does not depend on a directory that may be removed.
 	cmd.Dir = "/"

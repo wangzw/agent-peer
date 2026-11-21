@@ -12,7 +12,7 @@ import (
 //
 // The runtime directory does not depend on any environment variable. The
 // account is taken by effective uid, matching the path table in
-// design-config.md: the system-level Broker runs as root, every other account
+// design-config.md: the system Broker runs as root, every other account
 // gets its own directory under /tmp.
 var runtimeDir = func(euid int) string {
 	if euid == 0 {
@@ -36,7 +36,7 @@ func userSocketPath(euid int) string {
 	return filepath.Join(runtimeDir(euid), "broker.sock")
 }
 
-// systemSocketPath is the local socket of the system-level Broker, which runs as root.
+// systemSocketPath is the local socket of the system Broker, which runs as root.
 func systemSocketPath() string {
 	return filepath.Join(runtimeDir(0), "broker.sock")
 }

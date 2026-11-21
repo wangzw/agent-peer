@@ -186,7 +186,7 @@ func TestCallerFromPeerCred(t *testing.T) {
 	}
 }
 
-// REQ-broker-config-019: a user-level Broker rejects connections from other
+// REQ-broker-config-019: a user Broker rejects connections from other
 // accounts during the handshake, before any RPC handler runs.
 func TestUserBrokerRejectsOtherAccount(t *testing.T) {
 	if os.Geteuid() == 4242 {

@@ -89,7 +89,7 @@ func TestLoadStoresHashOfTheBytesItParsed(t *testing.T) {
 
 // TestWriteConfigFileCreatesParentDirWithDeploymentMode covers the case where
 // the config directory disappeared after Load: creating it must use the mode
-// the deployment mode requires, not a user-level 0700 in system mode.
+// the deployment mode requires, not a user-mode 0700 in system mode.
 func TestWriteConfigFileCreatesParentDirWithDeploymentMode(t *testing.T) {
 	old := syscall.Umask(0o022)
 	t.Cleanup(func() { syscall.Umask(old) })

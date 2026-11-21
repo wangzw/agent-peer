@@ -2,7 +2,7 @@
 # Install peers from an extracted release archive.
 #
 # The archive keeps this script next to the peers binary. The script
-# installs that binary, starts the Broker as a user-level or system-level
+# installs that binary, starts the Broker as a user or system
 # service, and registers the MCP server for the account that runs it. It never
 # downloads anything, so it works on a host without network access.
 #
@@ -18,12 +18,12 @@
 #   --user          install for the account that runs the script. The account
 #                   must not be root.
 #   --prefix <dir>  install the binary in <dir> instead of the default:
-#                   $HOME/.local/bin for a user-level install and
-#                   /usr/local/bin for a system-level install.
+#                   $HOME/.local/bin for a user install and
+#                   /usr/local/bin for a system install.
 #   --no-service    do not install the Broker service.
 #   --no-mcp        do not register the MCP server with Claude Code.
 #   --admin-group <name>
-#                   manage the system-level Broker through <name> instead of
+#                   manage the system Broker through <name> instead of
 #                   the default peers group; passed to
 #                   "service install --system".
 #   --join-admin-group
@@ -35,13 +35,13 @@
 #   -h, --help      print this usage and exit.
 #
 # Without --system or --user the script chooses the level itself. Root installs
-# at the system level without asking. An account without a controlling terminal
-# gets a user-level install without waiting for input. An account with a
-# controlling terminal is asked whether to install at the system level, and is
-# asked whether to upgrade the existing system-level installation when the host
+# for every account without asking. An account without a controlling terminal
+# gets a user install without waiting for input. An account with a
+# controlling terminal is asked whether to install for every account, and is
+# asked whether to upgrade the existing system installation when the host
 # already has one; answering no to the upgrade leaves the host unchanged.
 #
-# A system-level install asks, on the controlling terminal, whether to add the
+# A system install asks, on the controlling terminal, whether to add the
 # account that ran sudo to the admin group, so that account can manage the
 # Broker without sudo after logging in again. The answer defaults to no. The
 # prompt is skipped when the answer cannot be read, and when the account is
@@ -101,12 +101,12 @@ Install peers from the extracted release archive.
   --user          install for the account that runs the script; the account
                   must not be root
   --prefix <dir>  install the binary in <dir> instead of $HOME/.local/bin
-                  for a user-level install or /usr/local/bin for a
-                  system-level install
+                  for a user install or /usr/local/bin for a
+                  system install
   --no-service    do not install the Broker service
   --no-mcp        do not register the MCP server with Claude Code
   --admin-group <name>
-                  manage the system-level Broker through <name> instead of
+                  manage the system Broker through <name> instead of
                   the default peers group; passed to
                   "service install --system"
   --join-admin-group
@@ -247,11 +247,11 @@ if ! _os=$(uname -s); then
 	fail "determining the operating system"
 fi
 
-# Choose the install level. An explicit option wins. Root installs at the
-# system level without asking. An account with a controlling terminal is asked
-# whether to install at the system level, and whether to upgrade the
-# system-level installation when the host already has one. An account without a
-# terminal gets a user-level install without waiting for input.
+# Choose the install level. An explicit option wins. Root installs for every
+# account without asking. An account with a controlling terminal is asked
+# whether to install for every account, and whether to upgrade the
+# system installation when the host already has one. An account without a
+# terminal gets a user install without waiting for input.
 if [ "$system_set" -eq 1 ]; then
 	system=1
 elif [ "$user_set" -eq 1 ]; then
@@ -269,7 +269,7 @@ elif true 2>/dev/null </dev/tty; then
 		_existing_system=1
 	fi
 	if [ "$_existing_system" -eq 1 ]; then
-		_prompt='Upgrade the system-level installation? [Y/n] '
+		_prompt='Upgrade the system installation? [Y/n] '
 		_default=1
 	else
 		_prompt='Install for every account on this host? [y/N] '
@@ -287,7 +287,7 @@ elif true 2>/dev/null </dev/tty; then
 	else
 		system=0
 		if [ "$_existing_system" -eq 1 ]; then
-			printf 'install.sh: the system-level installation was left unchanged; rerun with --user to install for this account instead.\n'
+			printf 'install.sh: the system installation was left unchanged; rerun with --user to install for this account instead.\n'
 			exit 0
 		fi
 	fi
@@ -295,14 +295,14 @@ else
 	system=0
 fi
 
-# A root account that asked for a user-level install is told to drop --user
-# rather than silently installing at the system level instead.
+# A root account that asked for a user install is told to drop --user
+# rather than silently installing for every account instead.
 if [ "$system" -eq 0 ] && [ "$_current_uid" -eq 0 ]; then
-	fail "a user-level install must not run as root; drop --user to install at the system level"
+	fail "a user install must not run as root; drop --user to install for every account"
 fi
 
-# The admin group belongs to a system-level install. Reject the options on a
-# user-level install rather than silently doing nothing. The level is known
+# The admin group belongs to a system install. Reject the options on a
+# user install rather than silently doing nothing. The level is known
 # only now: an account without --system may have chosen it at the prompt.
 if [ "$system" -eq 0 ]; then
 	if [ "$admin_group_set" -eq 1 ]; then
@@ -321,8 +321,8 @@ if [ ! -f "$archive_binary" ]; then
 	fail "no peers binary next to $0; extract the whole release archive and run sh ./install.sh from it"
 fi
 
-# A system-level install needs root. Recheck the same script under sudo with the
-# options the caller gave, so a system-level choice made at the prompt and an
+# A system install needs root. Recheck the same script under sudo with the
+# options the caller gave, so a system choice made at the prompt and an
 # explicit --system take the same path.
 if [ "$system" -eq 1 ] && [ "$_current_uid" -ne 0 ]; then
 	set -- --system
@@ -345,15 +345,15 @@ if [ "$system" -eq 1 ] && [ "$_current_uid" -ne 0 ]; then
 		set -- "$@" --no-admin-group
 	fi
 	if ! command -v sudo >/dev/null 2>&1; then
-		fail "a system-level install needs sudo, which was not found; install sudo, or pass --user for a user-level install"
+		fail "a system install needs sudo, which was not found; install sudo, or pass --user for a user install"
 	fi
 	_sudo_status=0
 	sudo sh "$script_dir/install.sh" "$@" || _sudo_status=$?
 	case $_sudo_status in
 		0|3) exit "$_sudo_status" ;;
 	esac
-	printf 'install.sh: the system-level installation did not complete: sudo exited with status %d.\n' "$_sudo_status" >&2
-	printf 'See the error above; rerun with --user for a user-level install.\n' >&2
+	printf 'install.sh: the system installation did not complete: sudo exited with status %d.\n' "$_sudo_status" >&2
+	printf 'See the error above; rerun with --user for a user install.\n' >&2
 	exit "$_sudo_status"
 fi
 
@@ -363,7 +363,7 @@ if [ "$system" -eq 1 ]; then
 	fi
 	case $prefix in
 		/*) ;;
-		*) fail "a system-level --prefix must be an absolute path" ;;
+		*) fail "a --prefix for the system installation must be an absolute path" ;;
 	esac
 else
 	if [ -z "$prefix" ]; then
@@ -377,12 +377,12 @@ else
 	fi
 fi
 
-# A system-level Broker runs as root, so the binary and every directory above
+# A system Broker runs as root, so the binary and every directory above
 # it must be owned by root and not writable by group or others. Otherwise an
 # ordinary account could replace the binary and take over the service.
 if [ "$system" -eq 1 ]; then
 	if [ ! -d "$prefix" ]; then
-		fail "the system-level install directory $prefix does not exist; create it first (for example with 'sudo mkdir -p $prefix') or pass --prefix"
+		fail "the system install directory $prefix does not exist; create it first (for example with 'sudo mkdir -p $prefix') or pass --prefix"
 	fi
 	if ! prefix=$(CDPATH='' cd -P "$prefix" && pwd); then
 		fail "resolving the install directory $prefix"
@@ -404,24 +404,24 @@ if [ "$system" -eq 1 ]; then
 			fi
 		fi
 		if [ "$_uid" != "0" ]; then
-			fail "system-level install: $_dir is not owned by root; pass --prefix with a root-owned directory such as /usr/local/bin"
+			fail "system install: $_dir is not owned by root; pass --prefix with a root-owned directory such as /usr/local/bin"
 		fi
 		case $_mode in
 			[0-7][0-7][0-7]|[0-7][0-7][0-7][0-7]) ;;
-			*) fail "system-level install: unexpected mode '$_mode' for $_dir" ;;
+			*) fail "system install: unexpected mode '$_mode' for $_dir" ;;
 		esac
 		# The last three octal digits are the permission bits. A leading zero
 		# makes the shell read them as octal, so 022 selects group write and
 		# other write.
 		_last=${_mode#"${_mode%???}"}
 		if [ $((0$_last & 022)) -ne 0 ]; then
-			fail "system-level install: $_dir is writable by group or others; pass --prefix with a directory such as /usr/local/bin"
+			fail "system install: $_dir is writable by group or others; pass --prefix with a directory such as /usr/local/bin"
 		fi
 		# Every directory above the binary must also be searchable by others.
 		# Otherwise the service, which may run with a reduced set of
 		# supplementary groups, cannot traverse the path to the binary.
 		if [ $((0$_last & 001)) -eq 0 ]; then
-			fail "system-level install: $_dir is not searchable by others; pass --prefix with a directory that others can enter, such as /usr/local/bin"
+			fail "system install: $_dir is not searchable by others; pass --prefix with a directory that others can enter, such as /usr/local/bin"
 		fi
 	}
 
@@ -487,10 +487,10 @@ fi
 # finishes the remaining steps and exits with 3 at the end.
 _service_status=0
 _service_degraded=0
-_service_level="user-level"
+_service_level="user"
 if [ "$install_service" -eq 1 ]; then
 	if [ "$system" -eq 1 ]; then
-		_service_level="system-level"
+		_service_level="system"
 		if [ "$admin_group_set" -eq 1 ]; then
 			"$prefix/peers" service install --system --admin-group "$admin_group" || _service_status=$?
 		else
@@ -506,16 +506,16 @@ if [ "$install_service" -eq 1 ]; then
 	esac
 fi
 
-# 4. Install the shell completions, and at the system level the man pages. The
+# 4. Install the shell completions, and for the system installation the man pages. The
 # completion scripts come from the installed binary, so they always match it.
 # This runs after the service so that a completion or man page that cannot be
 # written does not fail an otherwise complete installation: each failure is a
-# warning and the script keeps its exit status. A user-level install skips the
-# zsh completion, because a user-level file only becomes active after the
+# warning and the script keeps its exit status. A user install skips the
+# zsh completion, because a user file only becomes active after the
 # account adds it to fpath; the caller is told how. The fish completion is
 # installed only when fish itself is installed. New files and directories are
 # group- and world-readable regardless of root's umask. DESTDIR prefixes the
-# system-level share directory, for staged installs and tests; production
+# system share directory, for staged installs and tests; production
 # leaves it unset.
 umask 022
 _share=${DESTDIR:-}/usr/local/share
@@ -584,7 +584,7 @@ else
 	printf 'install.sh: zsh completion was not installed; enable it with: %s completion zsh > ~/.zfunc/_peers (create ~/.zfunc and add it to fpath).\n' "$prefix/peers"
 fi
 
-# 5. The system-level service creates the admin group. Put the account that ran
+# 5. The system service creates the admin group. Put the account that ran
 # sudo into it, so that account can manage the Broker without sudo after
 # logging in again. The answer comes from the controlling terminal, never from
 # stdin: when the script is piped into sh, stdin is the script itself. A
@@ -641,7 +641,7 @@ if [ "$system" -eq 1 ] && [ "$install_service" -eq 1 ] && [ "$no_admin_group" -e
 	fi
 fi
 
-# 6. Register the MCP server with Claude Code. A system-level install registers
+# 6. Register the MCP server with Claude Code. A system install registers
 # it for the account that ran sudo; running the script directly as root leaves
 # no account to register for, so it prints the command instead.
 _mcp_state="skipped (--no-mcp)"
@@ -721,7 +721,7 @@ if [ "$install_mcp" -eq 1 ]; then
 	fi
 fi
 
-# 7. A user-level prefix is often outside PATH. Say so instead of leaving the
+# 7. A user prefix is often outside PATH. Say so instead of leaving the
 # caller with "peers: command not found" in the next terminal.
 if [ "$system" -eq 0 ]; then
 	case ":${PATH:-}:" in

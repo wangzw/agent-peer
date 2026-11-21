@@ -176,8 +176,8 @@ func TestReloadLowPortAdoptedWhenFileRootOnly(t *testing.T) {
 	}
 }
 
-// TestReloadLowPortUserModeUnaffected covers the user-level Broker: the rule
-// belongs to the system deployment, so a user-level reload adopts the value
+// TestReloadLowPortUserModeUnaffected covers the user Broker: the rule
+// belongs to the system deployment, so a user reload adopts the value
 // without consulting the file permission rule.
 func TestReloadLowPortUserModeUnaffected(t *testing.T) {
 	c, path := newWatchCore(t, "broker:\n  listen: 127.0.0.1:7777\n", false, nil)
@@ -189,7 +189,7 @@ func TestReloadLowPortUserModeUnaffected(t *testing.T) {
 	c.rescanOnce()
 
 	if got := c.values["broker.listen"].String; got != "127.0.0.1:80" {
-		t.Fatalf("broker.listen = %q after a user-level reload, want 127.0.0.1:80", got)
+		t.Fatalf("broker.listen = %q after a user reload, want 127.0.0.1:80", got)
 	}
 }
 

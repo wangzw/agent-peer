@@ -93,7 +93,7 @@ type Options struct {
 	XDGConfigHome    string                                                                  // XDG_CONFIG_HOME
 	TempDir          string                                                                  // os.TempDir()
 	Root             string                                                                  // filesystem prefix for tests; empty in production
-	AdminGroup       string                                                                  // group that administers a system-level Broker; empty uses DefaultAdminGroup
+	AdminGroup       string                                                                  // group that administers a system Broker; empty uses DefaultAdminGroup
 	LookPath         func(file string) (string, error)                                       // exec.LookPath
 	Run              func(name string, args ...string) ([]byte, error)                       // run a command, returning combined output
 	GroupGID         func(name string) (gid int, exists bool, err error)                     // group id lookup; nil queries the platform through Run
@@ -120,7 +120,7 @@ type Result struct {
 	UnitPath   string // written or removed unit file or plist
 	ConfigPath string // configuration file for the install's level
 	ConfigNew  bool   // this run created the configuration file
-	AdminGroup string // system-level: group delegated administration; empty for the user level
+	AdminGroup string // system: group delegated administration; empty for the user installation
 	// AdminGroupCreated reports that this run created the administration
 	// group, as opposed to reusing one that already existed.
 	AdminGroupCreated bool
@@ -143,9 +143,9 @@ func DefaultOptions(system bool) (Options, error) {
 }
 
 // PostUpdateOptions fills the Options PostUpdate needs for the level a process
-// of this host runs at. The system level needs no home directory, so a system
+// of this host runs at. The system installation needs no home directory, so a system
 // service whose environment has no HOME can still rewrite its definition; the
-// user level reads the account home.
+// user installation reads the account home.
 func PostUpdateOptions(system bool) (Options, error) {
 	home := ""
 	if !system {
@@ -159,7 +159,7 @@ func PostUpdateOptions(system bool) (Options, error) {
 }
 
 // defaultOptions builds the default Options for a level and an account home.
-// home is empty at the system level, whose paths never use it.
+// home is empty for the system installation, whose paths never use it.
 func defaultOptions(system bool, home string) (Options, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -234,7 +234,7 @@ func Install(opts Options) (Result, error) {
 		return res, errors.New("service install --system must run as root")
 	}
 	if !opts.System && opts.EUID == 0 {
-		return res, errors.New("service install without --system must not run as root; the user-level unit belongs to one account")
+		return res, errors.New("service install without --system must not run as root; the user unit belongs to one account")
 	}
 	if !filepath.IsAbs(opts.Exe) {
 		return res, fmt.Errorf("service: executable %q is not an absolute path", opts.Exe)
@@ -444,9 +444,9 @@ func checkExistingBroker(opts Options, domain string) error {
 	if managed && servicePID == brokerPID {
 		return nil
 	}
-	level := "user-level Broker for this account"
+	level := "user Broker for this account"
 	if opts.System {
-		level = "system-level Broker"
+		level = "system Broker"
 	}
 	return fmt.Errorf("service: a %s is already answering on %s and was not started by the peers service (service pid %d, socket peer pid %d); stop it before installing", level, path, servicePID, brokerPID)
 }
@@ -712,7 +712,7 @@ func serviceMainPID(opts Options, domain string) (int, bool) {
 	return 0, false
 }
 
-// launchdDomain picks the launchd domain for a user-level service. launchd
+// launchdDomain picks the launchd domain for a user service. launchd
 // exposes gui/<uid> only to an account with a graphical login session. Probe
 // 44498306091 showed that user/<uid> accepts print but rejects bootstrap with
 // exit 5, so installing there would leave a loaded-looking, stopped service;
@@ -725,7 +725,7 @@ func launchdDomain(opts Options) (string, error) {
 	if launchctlDomainExists(opts, gui) {
 		return gui, nil
 	}
-	return "", fmt.Errorf("service: launchd has no %s domain for uid %d; install the user-level service from a graphical login session, or use --system on a host without one", gui, opts.UID)
+	return "", fmt.Errorf("service: launchd has no %s domain for uid %d; install the user service from a graphical login session, or use --system on a host without one", gui, opts.UID)
 }
 
 // launchctlDomainExists reports whether launchd knows the domain.
@@ -955,7 +955,7 @@ func statusHint(opts Options) string {
 	return "check it with `peers service status`"
 }
 
-// privileged prefixes cmd with sudo when the command belongs to a system-level
+// privileged prefixes cmd with sudo when the command belongs to a system
 // service.
 func privileged(opts Options, cmd string) string {
 	if opts.System {
@@ -1325,10 +1325,10 @@ func auditLogPath(opts Options) string {
 // createConfig creates the configuration file for the install's level if it is
 // absent and reports what happened in res. The file is created exclusively, so
 // an existing file is never modified: its content, group and permissions stay
-// as they are. The system-level file belongs to root and to the administration
-// group, mode 0660; the user-level file belongs to the installing account, mode
+// as they are. The system file belongs to root and to the administration
+// group, mode 0660; the user file belongs to the installing account, mode
 // 0600. The content is the template the config package generates for the level.
-// adminGID is the administration group for the system level and ignored
+// adminGID is the administration group for the system installation and ignored
 // otherwise.
 func createConfig(opts Options, res *Result, adminGID int) error {
 	fileMode := fs.FileMode(0o600)
@@ -1349,7 +1349,7 @@ func createConfigWith(opts Options, res *Result, adminGID int, fileMode fs.FileM
 
 	dirMode := fs.FileMode(0o755)
 	if !opts.System {
-		// The user-level file lives in the account's data directory, which the
+		// The user file lives in the account's data directory, which the
 		// config package keeps private to the account.
 		dirMode = 0o700
 	}

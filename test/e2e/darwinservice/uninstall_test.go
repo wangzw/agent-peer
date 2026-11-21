@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-// The user-level uninstall tests install a copy of the product that the test
+// The user uninstall tests install a copy of the product that the test
 // account owns, because uninstall removes the binary the service started and
 // leaves a binary owned by another account in place.
 const uninstallPromptBound = 10 * time.Second
@@ -40,7 +40,7 @@ func (b *pollBuffer) String() string {
 	return b.b.String()
 }
 
-// uninstallUserPlist is the user-level launch agent's path.
+// uninstallUserPlist is the user launch agent's path.
 func uninstallUserPlist() string {
 	return filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", serviceLabel+".plist")
 }
@@ -178,14 +178,14 @@ func assertPeerMCPNotRegistered(t *testing.T) {
 	}
 }
 
-// TestUninstallREQBrokerConfig051UserLevel installs the user-level service,
+// TestUninstallREQBrokerConfig051UserLevel installs the user service,
 // uninstalls it keeping the data, installs it again and purges everything. The
 // launchd job must be gone after each uninstall.
 func TestUninstallREQBrokerConfig051UserLevel(t *testing.T) {
 	resetUserService(t)
 	t.Cleanup(func() { resetUserService(t) })
 
-	t.Run("REQ-broker-config-051: a user-level uninstall keeps data by default and --purge removes it", func(t *testing.T) {
+	t.Run("REQ-broker-config-051: a user uninstall keeps data by default and --purge removes it", func(t *testing.T) {
 		domain := userDomain(t)
 		binary := copyUninstallBinary(t)
 

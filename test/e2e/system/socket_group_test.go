@@ -44,7 +44,7 @@ const (
 // TestREQBrokerConfig027_GroupRestrictsUse checks that the group and mode of
 // the system Broker's local socket decide which accounts may use it. peer is
 // in peers-users and other is not, so other's session reports that no
-// Broker is available until the user starts other's own user-level Broker; it
+// Broker is available until the user starts other's own user Broker; it
 // never registers with the system Broker.
 func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 	if !syscontainer.InContainer() {
@@ -61,7 +61,7 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 
 	// other may not use the system socket and starts no Broker of its own, so
 	// its session first reports that no Broker is available. The user then
-	// starts other's user-level Broker on the port its configuration names.
+	// starts other's user Broker on the port its configuration names.
 	sgWriteOtherConfig(t)
 
 	a := syscontainer.NewSession(t, "peer", "alpha")
@@ -107,7 +107,7 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 		return res.ExitCode == 0 && strings.Contains(res.Stdout, "alpha@")
 	})
 
-	// other registered with its own user-level Broker, so the system Broker
+	// other registered with its own user Broker, so the system Broker
 	// must never list its agent. Registration has just completed, so one
 	// second is ample for a leaked registration to appear.
 	harness.Consistently(t, time.Second, "the system Broker never lists other's agent", func() (bool, string) {
@@ -118,7 +118,7 @@ func TestREQBrokerConfig027_GroupRestrictsUse(t *testing.T) {
 		return !strings.Contains(res.Stdout, "charlie"), res.Stdout
 	})
 
-	syscontainer.WaitFor(t, "other's user-level Broker process", func() bool {
+	syscontainer.WaitFor(t, "other's user Broker process", func() bool {
 		return sgHasUserBroker(sgOtherUID)
 	})
 	for _, proc := range syscontainer.Pids("peers", "service", "run", "--system") {
@@ -283,7 +283,7 @@ func sgWriteSystemConfig(t *testing.T, yaml string) {
 }
 
 // sgWriteOtherConfig gives other a configuration file that makes its
-// user-level Broker listen on 17444.
+// user Broker listen on 17444.
 func sgWriteOtherConfig(t *testing.T) {
 	t.Helper()
 	dir := "/home/other/.peers"

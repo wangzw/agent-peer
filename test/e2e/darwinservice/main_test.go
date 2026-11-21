@@ -23,8 +23,8 @@ import (
 
 const (
 	// installedBinary is the root-owned copy of the product the tests run.
-	// The system-level installation refuses binaries outside a root-owned
-	// directory, and a user-level installation accepts the same copy.
+	// The system installation refuses binaries outside a root-owned
+	// directory, and a user installation accepts the same copy.
 	installedBinary = "/usr/local/libexec/peers-test"
 	// e2eBinary is a root-owned copy of this test binary. The multi-group test
 	// runs a role as another account, which can execute this copy but may not
@@ -32,7 +32,7 @@ const (
 	e2eBinary = "/usr/local/libexec/peers-e2e"
 	// serviceLabel is the launchd label of both service levels.
 	serviceLabel = "io.github.wangzw.peers"
-	// daemonPlist is where the system-level installation writes its plist.
+	// daemonPlist is where the system installation writes its plist.
 	daemonPlist = "/Library/LaunchDaemons/" + serviceLabel + ".plist"
 	// systemSocketPath is the system Broker's local socket.
 	systemSocketPath = "/var/run/peers/broker.sock"
@@ -148,7 +148,7 @@ func runSystemUpdateStatusRole() int {
 }
 
 // buildAndInstallBinary builds cmd/peers as the current user and installs
-// it into the root-owned directory the system-level test needs.
+// it into the root-owned directory the system test needs.
 func buildAndInstallBinary() error {
 	root, err := repoRoot()
 	if err != nil {

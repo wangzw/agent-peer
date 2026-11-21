@@ -219,8 +219,8 @@ e2e:
 	exit $$status
 
 # The macOS service end-to-end tests exercise launchd on the host, so they run
-# on macOS only and use the real launchctl and sudo. The system-level and
-# user-level tests run serially because both use the same launchd label.
+# on macOS only and use the real launchctl and sudo. The system and
+# user tests run serially because both use the same launchd label.
 e2e-darwin:
 	@if [ "$$(go env GOOS)" != darwin ]; then \
 		echo "e2e-darwin: requires macOS (go env GOOS is $$(go env GOOS))" >&2; \

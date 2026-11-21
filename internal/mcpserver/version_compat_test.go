@@ -143,10 +143,10 @@ func TestMismatchDoesNotRegisterOrSwitch(t *testing.T) {
 		}
 	}
 
-	versionAssertNoRegister(t, userSrv, "the user-level Broker")
-	versionAssertNoRegister(t, systemSrv, "the system-level Broker")
+	versionAssertNoRegister(t, userSrv, "the user Broker")
+	versionAssertNoRegister(t, systemSrv, "the system Broker")
 	if got := systemHellos.Load(); got != 0 {
-		t.Errorf("the system-level Broker received %d Hello calls; a mismatch must not switch to it", got)
+		t.Errorf("the system Broker received %d Hello calls; a mismatch must not switch to it", got)
 	}
 	if h.finished() {
 		t.Fatalf("Run returned after a version mismatch: %v", h.errValue())
@@ -173,7 +173,7 @@ func TestMismatchBrokerOlder(t *testing.T) {
 	if !strings.HasSuffix(text, " (code: version_mismatch)") {
 		t.Errorf("list_agents error = %q, want the version_mismatch code suffix", text)
 	}
-	versionAssertNoRegister(t, srv, "the user-level Broker")
+	versionAssertNoRegister(t, srv, "the user Broker")
 }
 
 // REQ-broker-config-016

@@ -184,7 +184,7 @@ func TestApplyUpdateApplyFailure(t *testing.T) {
 	}
 }
 
-// TestApplyUpdateSucceeds covers a user-level Broker running under a service
+// TestApplyUpdateSucceeds covers a user Broker running under a service
 // manager: it installs the release, answers restarting, writes update_applied,
 // and starts the normal shutdown only after the grace period.
 func TestApplyUpdateSucceeds(t *testing.T) {
@@ -511,7 +511,7 @@ func TestRunningUnderServiceManager(t *testing.T) {
 
 // TestRunningUnderServiceManagerAsksTheBrokersLevel checks that the query goes
 // to the service manager of the Broker's own level: the user unit for a
-// user-level Broker and the system unit for a system-level one.
+// user Broker and the system unit for a system installation.
 func TestRunningUnderServiceManagerAsksTheBrokersLevel(t *testing.T) {
 	for _, system := range []bool{false, true} {
 		t.Run(fmt.Sprintf("system=%v", system), func(t *testing.T) {

@@ -72,7 +72,7 @@ const (
 	// config set must name this path.
 	termAdminSystemConfig = "/etc/peers/config.yaml"
 
-	// termAdminPeerListen is host B's user-level Broker listen address. It must
+	// termAdminPeerListen is host B's user Broker listen address. It must
 	// not collide with host A's system Broker default :17443.
 	termAdminPeerListen = ":17444"
 
@@ -105,7 +105,7 @@ const (
 var e2ePairOptions = syscontainer.PairOptions{SharedDir: syscontainer.PairSharedMount}
 
 // TestREQBrokerConfig039_TerminalAdminCommands runs the REQ-broker-config-039
-// acceptance on a system-level Broker: a session without write permission is
+// acceptance on a system Broker: a session without write permission is
 // refused a pairing key, root creates the key and reads and changes a
 // configuration item in the terminal, a second host is paired from its own
 // terminal as peer, both terminals list it connected, and the audit log records
@@ -113,7 +113,7 @@ var e2ePairOptions = syscontainer.PairOptions{SharedDir: syscontainer.PairShared
 //
 // The test runs on two containers that are separate hosts on one internal
 // network. Host A runs the system Broker and accepts the pairing. Host B runs
-// its own user-level Broker and dials host A using only the address and key
+// its own user Broker and dials host A using only the address and key
 // host A printed. The two sides meet in the shared directory and keep their
 // Brokers alive until the other side has finished; a failure on either side is
 // recorded there so the other side fails instead of running out its wait.
@@ -253,7 +253,7 @@ func termAdminHostA(t *testing.T) {
 	syscontainer.PairWrite(t, termAdminDoneFile, []byte("done\n"))
 }
 
-// termAdminHostB runs the dialing side: host B's own user-level Broker and the
+// termAdminHostB runs the dialing side: host B's own user Broker and the
 // terminal command that pairs it with host A.
 func termAdminHostB(t *testing.T) {
 	defer syscontainer.PairGuard(t)()

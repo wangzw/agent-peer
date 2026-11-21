@@ -17,7 +17,7 @@ import (
 // filled Deps.CardIssuer and the link exists in the Assembly.
 type configWiring struct {
 	// checker decides access to the configuration file. nil: asm.Access, and
-	// when that is nil too, the user-level allowAllAccess{} (only allowed when
+	// when that is nil too, the user-mode allowAllAccess{} (only allowed when
 	// the run is not the system form).
 	checker accessChecker
 }

@@ -95,7 +95,7 @@ type deps struct {
 
 	// The three commands below connect to the level the command selected, not
 	// to the Broker of the calling account: their system argument names the
-	// system-level socket when true and the user-level one when false, and
+	// system socket when true and the user one when false, and
 	// explicit says whether a level option named it.
 	runStatus    func(ctx context.Context, system, explicit bool, stdout io.Writer) error
 	runAudit     func(ctx context.Context, system, explicit bool, stdout io.Writer, limit uint32) error
@@ -114,8 +114,8 @@ type deps struct {
 	peerNames           func(ctx context.Context) ([]string, error)
 
 	// Update command. The command asks the selected Broker to install the
-	// newest release itself. When that Broker is this account's user-level
-	// Broker and declines, the command replaces the user-level binary locally.
+	// newest release itself. When that Broker is this account's
+	// own and declines, the command replaces the user binary locally.
 	updateAPIBase        func() string
 	updateLatest         func(ctx context.Context, client *http.Client, api string) (update.Release, error)
 	updateNewer          func(current, candidate string) bool
@@ -139,7 +139,7 @@ type brokerUpdateResult struct {
 	ToVersion   string
 	Restarting  bool
 	// UserLevel reports whether the Broker that answered runs as this
-	// account's user-level service. A timeout names the log of that level.
+	// account's user service. A timeout names that Broker's log.
 	UserLevel bool
 }
 

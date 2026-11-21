@@ -106,11 +106,11 @@ func TestServiceControlMapsVerbAndLevel(t *testing.T) {
 			if len(calls) != 1 || calls[0] != tc.command {
 				t.Errorf("operations called = %v, want [%s]", calls, tc.command)
 			}
-			level := "user-level"
+			level := "user"
 			if tc.wantSys {
-				level = "system-level"
+				level = "system"
 			}
-			if want := fmt.Sprintf("Broker service %s (%s)\n", tc.wantPast, level); stdout.String() != want {
+			if want := fmt.Sprintf("The %s Broker service has %s.\n", level, tc.wantPast); stdout.String() != want {
 				t.Errorf("stdout = %q, want %q", stdout.String(), want)
 			}
 			if stderr.Len() != 0 {
@@ -188,9 +188,9 @@ func TestServiceControlHelp(t *testing.T) {
 }
 
 func TestServiceControlNotInstalled(t *testing.T) {
-	notInstalled := fmt.Errorf("%w (user-level)", service.ErrNotInstalled)
+	notInstalled := fmt.Errorf("%w (user service)", service.ErrNotInstalled)
 
-	t.Run("user-level only", func(t *testing.T) {
+	t.Run("only the user service is installed", func(t *testing.T) {
 		var systems []bool
 		setControlSeams(t, controlSeams{
 			options: func(system bool) (service.Options, error) {
@@ -210,7 +210,7 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		if stdout.Len() != 0 {
 			t.Errorf("stdout = %q, want empty", stdout.String())
 		}
-		want := "peers service start: no user-level service is installed; install it with `peers service install`\n"
+		want := "peers service start: no user service is installed; install it with `peers service install`\n"
 		if stderr.String() != want {
 			t.Errorf("stderr = %q, want %q", stderr.String(), want)
 		}
@@ -219,7 +219,7 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		}
 	})
 
-	t.Run("only the system-level service is installed", func(t *testing.T) {
+	t.Run("only the system service is installed", func(t *testing.T) {
 		setControlSeams(t, controlSeams{
 			options: func(system bool) (service.Options, error) {
 				return service.Options{System: system}, nil
@@ -234,13 +234,13 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		if got := a.run(context.Background(), []string{"service", "start"}); got != exitFailure {
 			t.Fatalf("run(service start) = %d, want %d", got, exitFailure)
 		}
-		want := "peers service start: no user-level service is installed; the system-level service is installed, run `sudo peers service start --system`\n"
+		want := "peers service start: no user service is installed; the system service is installed, run `sudo peers service start --system`\n"
 		if stderr.String() != want {
 			t.Errorf("stderr = %q, want %q", stderr.String(), want)
 		}
 	})
 
-	t.Run("root at the system level", func(t *testing.T) {
+	t.Run("root on the system installation", func(t *testing.T) {
 		var systems []bool
 		setControlSeams(t, controlSeams{
 			options: func(system bool) (service.Options, error) {
@@ -248,10 +248,10 @@ func TestServiceControlNotInstalled(t *testing.T) {
 				return service.Options{System: system}, nil
 			},
 			start: func(service.Options) (service.Result, error) {
-				return service.Result{}, fmt.Errorf("%w (system-level)", service.ErrNotInstalled)
+				return service.Result{}, fmt.Errorf("%w (system service)", service.ErrNotInstalled)
 			},
 			installed: func(service.Options) (bool, error) {
-				t.Fatal("the system-level installed check ran for root")
+				t.Fatal("the system installed check ran for root")
 				return false, nil
 			},
 		})
@@ -264,7 +264,7 @@ func TestServiceControlNotInstalled(t *testing.T) {
 		if len(systems) != 1 || systems[0] != true {
 			t.Errorf("options systems = %v, want [true]", systems)
 		}
-		for _, want := range []string{"no system-level service is installed", "sudo peers service install --system"} {
+		for _, want := range []string{"no system service is installed", "sudo peers service install --system"} {
 			if !strings.Contains(stderr.String(), want) {
 				t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
 			}
@@ -300,7 +300,7 @@ func TestServiceControlDegraded(t *testing.T) {
 			if got := a.run(context.Background(), []string{"service", "start"}); got != exitServiceDegraded {
 				t.Fatalf("run(service start) = %d, want %d", got, exitServiceDegraded)
 			}
-			if want := "Broker service started (user-level)\n"; stdout.String() != want {
+			if want := "The user Broker service has started.\n"; stdout.String() != want {
 				t.Errorf("stdout = %q, want %q", stdout.String(), want)
 			}
 			want := fmt.Sprintf("Broker: degraded (%s): %s\nFix: %s\n", tc.want, state.Reason, state.Fix)

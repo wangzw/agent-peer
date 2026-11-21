@@ -56,10 +56,10 @@ const fallbackAlias = "broker"
 // and the account name. The listen address, the listen port and the advertised
 // address play no part.
 //
-// A system-level alias is the first label of the hostname. A user-level alias
+// A system alias is the first label of the hostname. A user alias
 // is that label, a dot and the account name. Characters outside the alias
 // character set are replaced by '-'. An empty hostname uses fallbackAlias for
-// the hostname part, and a user-level alias still appends the account. An
+// the hostname part, and a user alias still appends the account. An
 // empty account name leaves the alias at the hostname part; the caller
 // substitutes the uid when the account lookup fails.
 //

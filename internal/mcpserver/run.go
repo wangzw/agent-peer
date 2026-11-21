@@ -32,7 +32,7 @@ type Options struct {
 	readOrigin   originReader
 	after        func(time.Duration) <-chan time.Time
 	// probe replaces the loop's raw socket probe; nil means probeSocket. The
-	// loop uses it to tell a user-level Broker whose socket is gone from one
+	// loop uses it to tell a user Broker whose socket is gone from one
 	// whose socket still answers.
 	probe func(context.Context, string) probeResult
 	// updateStatus replaces the Broker query made by the update hint; nil means

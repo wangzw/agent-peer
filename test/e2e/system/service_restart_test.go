@@ -24,7 +24,7 @@ const serviceRestartBound = 3 * time.Second
 
 // TestSystemServiceStartsAndRestarts starts the installed system service,
 // kills the Broker with SIGKILL, and checks that systemd starts a new process
-// with a different non-zero MainPID. This is the system-level counterpart of
+// with a different non-zero MainPID. This is the system counterpart of
 // the user unit's restart check: a service manager, not a session, owns the
 // Broker's lifetime.
 func TestSystemServiceStartsAndRestarts(t *testing.T) {

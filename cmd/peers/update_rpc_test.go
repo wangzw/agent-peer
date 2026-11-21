@@ -40,7 +40,7 @@ func fixedEUID(euid int) func() int {
 	return func() int { return euid }
 }
 
-// An ordinary account with no user-level Broker has the system-level Broker
+// An ordinary account with no user Broker has the system Broker
 // selected, and the update is applied through it.
 func TestApplyUpdateThroughBrokerUsesSystemBrokerWithoutUserBroker(t *testing.T) {
 	newUpdateTestEnv(t) // euid 1000
@@ -57,15 +57,15 @@ func TestApplyUpdateThroughBrokerUsesSystemBrokerWithoutUserBroker(t *testing.T)
 		t.Fatalf("result = %+v, want 0.1.1 -> 0.1.2 restarting", got)
 	}
 	if n := wireMethodCalls(srv, "ApplyUpdate"); n != 1 {
-		t.Fatalf("ApplyUpdate calls = %d, want 1 on the system-level Broker", n)
+		t.Fatalf("ApplyUpdate calls = %d, want 1 on the system Broker", n)
 	}
 	if got.UserLevel {
-		t.Error("UserLevel = true for the system-level Broker, want false")
+		t.Error("UserLevel = true for the system Broker, want false")
 	}
 }
 
-// The user-level Broker that applies the update is this account's own, so the
-// command marks the result user-level and a timeout names the user's log.
+// The user Broker that applies the update is this account's own, so the
+// command marks the result as a user update and a timeout names the user's log.
 func TestApplyUpdateThroughBrokerMarksTheUserLevel(t *testing.T) {
 	newUpdateTestEnv(t) // euid 1000
 	path, _ := startApplyUpdateBroker(t, func(h *fakelocal.Handlers) {
@@ -78,11 +78,11 @@ func TestApplyUpdateThroughBrokerMarksTheUserLevel(t *testing.T) {
 		t.Fatalf("applyUpdateThroughBroker: %v", err)
 	}
 	if !got.UserLevel {
-		t.Error("UserLevel = false for this account's user-level Broker, want true")
+		t.Error("UserLevel = false for this account's user Broker, want true")
 	}
 }
 
-// An ordinary account with its own user-level Broker selected falls back to a
+// An ordinary account with its own user Broker selected falls back to a
 // local replacement when that Broker declines the update.
 func TestApplyUpdateThroughBrokerFallsBackForUserBroker(t *testing.T) {
 	newUpdateTestEnv(t) // euid 1000
@@ -93,12 +93,12 @@ func TestApplyUpdateThroughBrokerFallsBackForUserBroker(t *testing.T) {
 
 	_, err := applyUpdateThroughBroker(t.Context(), fixedEUID(1000))
 	if !errors.Is(err, errUserLevelUpdateUnsupported) {
-		t.Fatalf("applyUpdateThroughBroker error = %v, want the user-level fallback", err)
+		t.Fatalf("applyUpdateThroughBroker error = %v, want the user fallback", err)
 	}
 }
 
 // Root has one socket for both levels, and an update there belongs to the
-// system-level Broker: a refusal is an error, never a local replacement.
+// system Broker: a refusal is an error, never a local replacement.
 func TestApplyUpdateThroughBrokerRootUsesSystemBroker(t *testing.T) {
 	newUpdateTestEnv(t)
 	path, _ := startApplyUpdateBroker(t, func(h *fakelocal.Handlers) {

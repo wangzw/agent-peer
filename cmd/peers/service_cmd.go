@@ -50,7 +50,7 @@ func (a *app) serviceCommand() *cobra.Command {
 
 // serviceInstallCommand builds "service install". install enables the service
 // and starts it immediately. The level comes from --system/--user or the
-// executing account; --admin-group is accepted only at the system level.
+// executing account; --admin-group is accepted only with --system.
 func (a *app) serviceInstallCommand() *cobra.Command {
 	var (
 		adminGroup string
@@ -95,7 +95,7 @@ func (a *app) serviceInstallCommand() *cobra.Command {
 		},
 	}
 	level = addLevelFlags(cmd)
-	cmd.Flags().StringVar(&adminGroup, "admin-group", service.DefaultAdminGroup, "group that administers a system-level Broker")
+	cmd.Flags().StringVar(&adminGroup, "admin-group", service.DefaultAdminGroup, "group that administers a system Broker")
 	return cmd
 }
 
@@ -179,21 +179,21 @@ func (a *app) serviceControlCommand(name, short string) *cobra.Command {
 }
 
 // serviceNotInstalledError explains that the command's level has no service. A
-// non-root account that only has the system-level install is pointed at the
+// non-root account that only has the system install is pointed at the
 // sudo form of the same command instead of installing anything.
 func (a *app) serviceNotInstalledError(command string, system bool) error {
 	if !system && a.deps.euid() != 0 {
 		systemOpts, err := defaultOptionsFn(true)
 		if err == nil {
 			if installed, instErr := installedFn(systemOpts); instErr == nil && installed {
-				return fmt.Errorf("no user-level service is installed; the system-level service is installed, run `sudo peers service %s --system`", command)
+				return fmt.Errorf("no user service is installed; the system service is installed, run `sudo peers service %s --system`", command)
 			}
 		}
 	}
 
-	level, install := "user-level", "peers service install"
+	level, install := "user", "peers service install"
 	if system {
-		level, install = "system-level", "sudo peers service install --system"
+		level, install = "system", "sudo peers service install --system"
 	}
 	return fmt.Errorf("no %s service is installed; install it with `%s`", level, install)
 }
@@ -201,21 +201,21 @@ func (a *app) serviceNotInstalledError(command string, system bool) error {
 // printServiceAction reports the one-line result of a successful command.
 func (a *app) printServiceAction(command string, system bool) {
 	past := map[string]string{"start": "started", "stop": "stopped", "restart": "restarted"}[command]
-	level := "user-level"
+	level := "user service"
 	if system {
-		level = "system-level"
+		level = "system service"
 	}
 	_, _ = fmt.Fprintf(a.stdout, "Broker service %s (%s)\n", past, level)
 }
 
 // printInstalled reports a successful installation: the level, the files it
 // uses, the commands that control it and how to remove it. system selects the
-// level's wording and the sudo prefix. A kept system-level configuration adds
+// level's wording and the sudo prefix. A kept system configuration adds
 // the command that hands it to the administration group.
 func (a *app) printInstalled(result service.Result, system bool) {
-	level, start, sudo := "user-level", "login", ""
+	level, start, sudo := "user service", "login", ""
 	if system {
-		level, start, sudo = "system-level", "boot", "sudo "
+		level, start, sudo = "system service", "boot", "sudo "
 	}
 	_, _ = fmt.Fprintf(a.stdout, "peers %s installed (%s, starts at %s)\n", a.version, level, start)
 	_, _ = fmt.Fprintf(a.stdout, "  %-12s%s\n", "binary:", result.Binary)

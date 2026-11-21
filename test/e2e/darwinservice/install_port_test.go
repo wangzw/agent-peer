@@ -13,7 +13,7 @@ import (
 
 // TestUserServiceInstallRefusesAnOccupiedListenPort covers the field report on
 // macOS: when another process already holds the address in broker.listen, a
-// user-level service install must stop before launchd loads anything and say
+// user service install must stop before launchd loads anything and say
 // which address, which configuration file and which key are at fault.
 func TestUserServiceInstallRefusesAnOccupiedListenPort(t *testing.T) {
 	resetUserService(t)

@@ -22,7 +22,7 @@ const uninstallDataPrompt = "Also remove configuration, identity, audit and serv
 
 // uninstallSystemPrompt asks before re-running the command through sudo. It is
 // written to standard error, like every other confirmation question.
-const uninstallSystemPrompt = "Remove the system-level installation through sudo? [y/N] "
+const uninstallSystemPrompt = "Remove the system installation through sudo? [y/N] "
 
 // The test seams replace the installation steps so the command can be checked
 // without touching the system.
@@ -126,7 +126,7 @@ func runMCPCommand(name string, args ...string) ([]byte, error) {
 }
 
 // uninstallCmd implements "peers uninstall [--purge] [--yes]". It removes the
-// installation of the account that runs it, or the system-level installation
+// installation of the account that runs it, or the system installation
 // when run as root, and optionally the configuration, identity and logs.
 func (a *app) uninstallCmd(ctx context.Context, purge, yes bool) error {
 	userOpts, err := uninstallOptionsFn(false)
@@ -148,8 +148,8 @@ func (a *app) uninstallCmd(ctx context.Context, purge, yes bool) error {
 	return a.uninstallAsAccount(ctx, userOpts, systemOpts, purge, yes)
 }
 
-// uninstallAsRoot removes the system-level installation. Root has no
-// user-level installation of its own.
+// uninstallAsRoot removes the system installation. Root has no
+// user installation of its own.
 func (a *app) uninstallAsRoot(ctx context.Context, opts service.Options, purge, yes bool) error {
 	noServiceBinary := ""
 	installed, err := uninstallInstalledFn(opts)
@@ -183,8 +183,8 @@ func (a *app) uninstallAsRoot(ctx context.Context, opts service.Options, purge, 
 	return a.uninstallLevel(ctx, opts, true, purge, yes, noServiceBinary)
 }
 
-// uninstallAsAccount removes this account's user-level installation. When only
-// a system-level installation exists, --yes re-runs the command through sudo;
+// uninstallAsAccount removes this account's installation. When only
+// a system installation exists, --yes re-runs the command through sudo;
 // with a terminal the account is asked first; without either the command
 // reports the complete sudo command and fails.
 func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts service.Options, purge, yes bool) error {
@@ -208,7 +208,7 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 			return err
 		}
 		if uninstallSystemInstalledCheck(systemOpts) {
-			_, _ = fmt.Fprintf(a.stdout, "A system-level installation is still present; run: %s\n", sudoUninstallCommand(purge))
+			_, _ = fmt.Fprintf(a.stdout, "A system installation is still present; run: %s\n", sudoUninstallCommand(purge))
 		}
 		return nil
 	}
@@ -222,7 +222,7 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 		return nil
 	}
 
-	// Only a system-level installation is present. --yes skips the question
+	// Only a system installation is present. --yes skips the question
 	// and re-runs the command through sudo. An account with a terminal is
 	// asked first; without a terminal and without --yes the command reports
 	// the complete sudo command and exits with failure.
@@ -232,7 +232,7 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 	if isTerminal(a.stdin) {
 		confirmed, err := a.confirm(uninstallSystemPrompt, false)
 		if err != nil {
-			return uninstallError("confirm the system-level uninstall", err)
+			return uninstallError("confirm the system uninstall", err)
 		}
 		if confirmed {
 			// The answer only approves the sudo rerun. It is not a
@@ -243,7 +243,7 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 		_, _ = fmt.Fprintf(a.stdout, "Run: %s\n", sudoUninstallCommand(purge))
 		return nil
 	}
-	return fmt.Errorf("only a system-level installation is present; run: %s", sudoUninstallCommand(purge))
+	return fmt.Errorf("only a system installation is present; run: %s", sudoUninstallCommand(purge))
 }
 
 // sudoUninstall re-runs this command as root. --yes is forwarded only when the
@@ -287,7 +287,7 @@ func runSudoUninstall(ctx context.Context, exe string, args []string, stdin io.R
 	return err
 }
 
-// sudoUninstallCommand is the complete command that removes the system-level
+// sudoUninstallCommand is the complete command that removes the system
 // installation without asking. It is quoted into the error so the caller can
 // rerun it as it is.
 func sudoUninstallCommand(purge bool) string {
@@ -416,7 +416,7 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 			return uninstallError("list other accounts' Brokers", err)
 		}
 		if len(accounts) > 0 {
-			_, _ = fmt.Fprintf(a.stdout, "other accounts run a user-level Broker: %s\n", strings.Join(accounts, ", "))
+			_, _ = fmt.Fprintf(a.stdout, "other accounts run a user Broker: %s\n", strings.Join(accounts, ", "))
 			if binary != "" {
 				_, _ = fmt.Fprintf(a.stdout, "their Broker will fail to start after %s is removed\n", binary)
 			} else {
@@ -438,7 +438,7 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 }
 
 // removeInstallationFiles deletes the shell completion files the install
-// script created for the level, and the system-level man pages. A completion
+// script created for the level, and the system man pages. A completion
 // file is removed only when its content carries the marker cobra generates for
 // this program; anything else at that path is kept and reported. A directory
 // with an installation file's name is never removed. Files that are already
@@ -536,7 +536,7 @@ func (a *app) removeInstallationFile(path string) error {
 }
 
 // completionFiles lists the shell completion files the install script writes
-// for one level. The user level never writes the zsh completion, so neither
+// for one level. The user installation never writes the zsh completion, so neither
 // uninstall case touches it.
 func completionFiles(opts service.Options, system bool) []string {
 	if system {
@@ -552,9 +552,9 @@ func completionFiles(opts service.Options, system bool) []string {
 	}
 }
 
-// removeServiceBinary removes the binary the service started. A user-level
+// removeServiceBinary removes the binary the service started. A user
 // uninstall leaves a binary that belongs to another account alone, such as a
-// shared system-level binary. The path must also prove it is this
+// shared system binary. The path must also prove it is this
 // installation's peers binary.
 func (a *app) removeServiceBinary(opts service.Options, system bool, binary string) error {
 	path := rootedPath(opts, binary)

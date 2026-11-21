@@ -12,7 +12,7 @@ import (
 // TestNewRejectsServerOptionsCreds is REQ-broker-config-019 for the option
 // path: New installs the process-credential handshake as the server's
 // credentials, and a later grpc.Creds in Deps.ServerOptions would replace it
-// silently, letting any account connect to a user-level Broker. New must refuse
+// silently, letting any account connect to a user Broker. New must refuse
 // such an option instead of accepting it.
 func TestNewRejectsServerOptionsCreds(t *testing.T) {
 	for name, opt := range map[string]grpc.ServerOption{
