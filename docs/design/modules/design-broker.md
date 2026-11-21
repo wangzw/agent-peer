@@ -617,6 +617,8 @@ Sessions that are already open keep the old MCP server until they are reopened; 
 
 `ApplyUpdate` 调用新二进制的上限为 `postUpdateTimeout`（30 秒，具名常量），覆盖第一段的重写与重新读取。上限可以在调用时替换（`update.PostUpdateOptions.Timeout`），测试据此在不带期限的上下文里验证它确实生效。
 
+跨版本的重写路径由 Linux 的系统级端到端测试 `TestREQUpdate009_UpdatesARealV040InstallToTheNewCommandTree` 覆盖：它从 `v0.4.0` 标签构建旧二进制，分别安装系统级与用户级服务，再自更新到当前代码树构建的新版本，检查主单元改写成 `service run` 形式、二进制与运行中的 Broker 都换成新版本。macOS 不做跨版本的端到端测试：这条路径需要真实的旧版本 launchd 守护进程与 launchd 环境，而 `test/e2e/darwinservice` 的 `TestREQUpdate007_LaunchDaemonReplacedByApplyUpdate` 覆盖同一段 plist 重写与辅助进程重载，跨版本的子命令与选项契约由上文的规则保证。
+
 ### 委托升级
 
 Broker 处理 `ApplyUpdate`：
