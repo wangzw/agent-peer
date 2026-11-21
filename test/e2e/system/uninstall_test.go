@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -521,17 +522,17 @@ func TestUninstallREQBrokerConfig051SystemLevel(t *testing.T) {
 	})
 }
 
-// TestUninstallREQBrokerConfig051UnrecordedGroup simulates a v0.2.0
-// installation: the default group exists and owns the configuration file, but
-// the data directory has no record of the group. A --purge must still remove
-// it.
+// TestUninstallREQBrokerConfig051UnrecordedGroup simulates an installation
+// whose data directory has no record of the admin group. Nothing proves this
+// project created the group, so a --purge must keep it, say why, and print the
+// manual removal command.
 func TestUninstallREQBrokerConfig051UnrecordedGroup(t *testing.T) {
 	if !syscontainer.InContainer() {
 		syscontainer.Run(t, syscontainer.Systemd)
 		return
 	}
 
-	t.Run("REQ-broker-config-051: --purge removes an unrecorded peers group", func(t *testing.T) {
+	t.Run("REQ-broker-config-051: --purge keeps an unrecorded peers group", func(t *testing.T) {
 		installUninstallBinary(t, releaseBinary, uninstallSystemCopy, 0, 0)
 		installUninstallSystemService(t, uninstallSystemCopy)
 		if !uninstallGroupExists(t) {
@@ -547,8 +548,20 @@ func TestUninstallREQBrokerConfig051UnrecordedGroup(t *testing.T) {
 			t.Fatalf("uninstall --purge as root: exit %d\nstdout: %s\nstderr: %s",
 				res.ExitCode, res.Stdout, res.Stderr)
 		}
-		if uninstallGroupExists(t) {
-			t.Error("the unrecorded peers group still exists after --purge")
+		if !uninstallGroupExists(t) {
+			t.Error("the unrecorded peers group was removed after --purge")
+		}
+		deleteCommand := "groupdel " + systemAdminGroup
+		if runtime.GOOS == "darwin" {
+			deleteCommand = "dseditgroup -o delete " + systemAdminGroup
+		}
+		for _, want := range []string{
+			"kept group " + systemAdminGroup + ": the installation did not record creating it",
+			"remove it manually with: " + deleteCommand,
+		} {
+			if !strings.Contains(res.Stdout, want) {
+				t.Errorf("output does not contain %q:\n%s", want, res.Stdout)
+			}
 		}
 		requireMissing(t, uninstallSystemUnit)
 		requireMissing(t, uninstallSystemCopy)

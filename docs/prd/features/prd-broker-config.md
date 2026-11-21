@@ -441,17 +441,17 @@ Broker 监听特定地址且未配置对外地址时，对外地址列表必须�
 
 ### REQ-broker-config-053
 
-卸载必须询问 `Also remove configuration, identity, audit and service logs? [y/N]`，只有回答 y 时才删除这些数据，系统级安装同时删除管理组；不带 `--purge` 的卸载在其他情况下不得删除它们。
+卸载必须询问 `Also remove configuration, identity, audit and service logs? [y/N]`，只有回答 y 时才删除这些数据，系统级安装同时删除其安装记录能够证明由本项目创建的管理组；没有安装记录时保留管理组，并输出保留原因与手动删除命令。不带 `--purge` 的卸载在其他情况下不得删除它们。
 
-- **验收**：在系统级安装的主机上卸载，对这句询问直接回车：配置文件、身份与对端表、审计日志都在，管理组仍存在；重新安装后，Broker 的指纹与卸载前相同，原有对端仍是对端。另一台主机上回答 y：这些数据与管理组都不存在。无法询问时按不删除处理。
+- **验收**：在系统级安装的主机上卸载，对这句询问直接回车：配置文件、身份与对端表、审计日志都在，管理组仍存在；重新安装后，Broker 的指纹与卸载前相同，原有对端仍是对端。另一台主机上回答 y：这些数据都不存在；有安装记录时管理组也不存在，没有记录时管理组保留并输出保留原因与手动删除命令。无法询问时按不删除处理。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/uninstall_test.go` 的 `TestUninstallREQBrokerConfig051UserLevel`、`TestUninstallREQBrokerConfig051SystemLevel`（保留数据与管理组的断言）
 
 ### REQ-broker-config-054
 
-`peers uninstall --purge` 必须不经数据询问删除 `REQ-broker-config-051` 与 `REQ-broker-config-053` 所列的全部内容；删除后这些路径下都没有本系统的文件或目录，服务定义、二进制、MCP 注册与管理组都不存在。
+`peers uninstall --purge` 必须不经数据询问删除 `REQ-broker-config-051` 与 `REQ-broker-config-053` 所列的全部内容；删除后这些路径下都没有本系统的文件或目录，服务定义、二进制与 MCP 注册都不存在；管理组只在安装记录证明由本项目创建时删除，没有记录时保留并输出保留原因与手动删除命令。
 
-- **验收**：在分别完成用户级与系统级安装、配对过一个对端、产生过审计记录的主机上执行 `peers uninstall --purge`：命令不询问数据去留；之后配置文件与配置目录、数据目录、审计日志、运行时目录都不存在，`getent group peers`（macOS 上 `dscl . -read /Groups/peers`）报告不存在，服务管理器中查不到 peers 服务，`claude mcp get peer` 报告未注册。
+- **验收**：在分别完成用户级与系统级安装、配对过一个对端、产生过审计记录的主机上执行 `peers uninstall --purge`：命令不询问数据去留；之后配置文件与配置目录、数据目录、审计日志、运行时目录都不存在，服务管理器中查不到 peers 服务，`claude mcp get peer` 报告未注册；有安装记录时 `getent group peers`（macOS 上 `dscl . -read /Groups/peers`）报告不存在，没有记录时管理组保留并输出保留原因与手动删除命令。
 - **状态**：已实现
 - **端到端测试**：`test/e2e/system/uninstall_test.go` 的 `TestUninstallREQBrokerConfig051UserLevel`、`TestUninstallREQBrokerConfig051SystemLevel`、`TestUninstallREQBrokerConfig051UnrecordedGroup`、`TestUninstallREQBrokerConfig054OtherAccountBroker`
 

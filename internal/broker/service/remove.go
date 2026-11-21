@@ -199,8 +199,8 @@ func RemoveRuntimeDir(opts Options) ([]string, error) {
 // level, the systemd drop-in directory, and at the system level the admin group
 // when the installation recorded that it created the group. removed lists the
 // paths removed, "group <name>" for a deleted group, and "kept group <name>:
-// <reason>" or "kept group with gid <id>: <reason>" for a group that was left
-// in place.
+// <reason>" for a group that was left in place. A group that does not exist is
+// skipped.
 func PurgeData(opts Options) (removed []string, err error) {
 	switch opts.GOOS {
 	case "linux", "darwin":
@@ -216,14 +216,13 @@ func PurgeData(opts Options) (removed []string, err error) {
 	// the loop below.
 	record := ""
 	current := ""
-	configGID := -1
 	configExists := false
 	if opts.System {
 		record, err = readAdminGroupRecord(opts)
 		if err != nil {
 			return nil, err
 		}
-		current, configGID, configExists, err = currentAdminGroupName(opts)
+		current, _, configExists, err = currentAdminGroupName(opts)
 		if err != nil {
 			return nil, err
 		}
@@ -250,7 +249,7 @@ func PurgeData(opts Options) (removed []string, err error) {
 	}
 
 	if opts.System {
-		deletedName, kept, err := purgeAdminGroup(opts, record, current, configGID, configExists)
+		deletedName, kept, err := purgeAdminGroup(opts, record, current, configExists)
 		if err != nil {
 			return removed, err
 		}
@@ -367,22 +366,27 @@ func currentAdminGroupName(opts Options) (name string, gid int, exists bool, err
 // recorded creating it, the record matches the group that currently owns the
 // configuration file, and the group is neither the root group nor any
 // enumerated account's primary group. Otherwise it returns a kept message with
-// a manual command.
-func purgeAdminGroup(opts Options, record, current string, configGID int, configExists bool) (deletedName, kept string, err error) {
+// a manual command. A group that is not in the group database is skipped.
+func purgeAdminGroup(opts Options, record, current string, configExists bool) (deletedName, kept string, err error) {
 	if record == "" {
 		// Without a record the group may be a system or user group, even when
-		// its name matches the default, so it is always kept.
-		if configExists && current == "" {
-			// The file's group id is known but has no name in the group
-			// database, so falling back to the default name would point the
-			// command at a group that may not be the file's owner. Report the
-			// id and look the name up by id when the command runs.
-			return "", keptGroupMessageByGID(opts, configGID,
-				"the installation did not record creating it, and the group database does not name the group that owns the configuration file"), nil
+		// its name matches the default, so it is kept when it exists. There is
+		// nothing to keep when the group database does not have it.
+		name := DefaultAdminGroup
+		if configExists {
+			if current == "" {
+				// The configuration file's group id has no name in the group
+				// database, so that group does not exist.
+				return "", "", nil
+			}
+			name = current
 		}
-		name := current
-		if name == "" {
-			name = DefaultAdminGroup
+		_, exists, err := lookupGroup(opts, name)
+		if err != nil {
+			return "", "", err
+		}
+		if !exists {
+			return "", "", nil
 		}
 		return "", keptGroupMessage(opts, name, "the installation did not record creating it"), nil
 	}
@@ -437,24 +441,6 @@ func adminGroupDeleteCommand(opts Options, name string) string {
 		return "dseditgroup -o delete " + name
 	}
 	return "groupdel " + name
-}
-
-// keptGroupMessageByGID describes a group that was left in place when only its
-// group id is known, and how to remove it by hand. The command looks the name up
-// by id, so it never falls back to a name the group database did not confirm.
-func keptGroupMessageByGID(opts Options, gid int, reason string) string {
-	return fmt.Sprintf("kept group with gid %d: %s; remove it manually with: %s",
-		gid, reason, adminGroupDeleteCommandByGID(opts, gid))
-}
-
-// adminGroupDeleteCommandByGID returns the platform's group deletion command
-// with the group name resolved from gid at run time.
-func adminGroupDeleteCommandByGID(opts Options, gid int) string {
-	id := strconv.Itoa(gid)
-	if opts.GOOS == "darwin" {
-		return `dseditgroup -o delete "$(dscl . -list /Groups PrimaryGroupID | awk '$2==` + id + ` {print $1}')"`
-	}
-	return `groupdel "$(getent group ` + id + ` | cut -d: -f1)"`
 }
 
 // primaryGroupOfAnyAccount reports whether gid is the primary group of an

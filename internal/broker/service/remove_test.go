@@ -2,9 +2,7 @@ package service
 
 import (
 	"errors"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -520,8 +518,8 @@ func groupKept(removed []string, name string) bool {
 }
 
 // TestPurgeDataKeepsGroupWithoutInstallRecord covers group names the
-// configuration file of an installation that recorded none may belong to. Only
-// the default group is removed without a record; every other name is kept.
+// configuration file of an installation that recorded none may belong to.
+// Without a record every name is kept, including the default group.
 func TestPurgeDataKeepsGroupWithoutInstallRecord(t *testing.T) {
 	for _, name := range []string{"root", "wheel", "staff", "sudo", "broker-ops"} {
 		t.Run(name, func(t *testing.T) {
@@ -543,73 +541,49 @@ func TestPurgeDataKeepsGroupWithoutInstallRecord(t *testing.T) {
 	}
 }
 
-// TestPurgeDataReportsAnUnresolvableConfigGroupByGID covers an installation
-// whose configuration file belongs to a gid the group database does not name. Falling back to the default group name would point the manual
-// removal command at a group that is not the file's owner, so the message names
-// the gid and the command resolves the name from it at run time.
-func TestPurgeDataReportsAnUnresolvableConfigGroupByGID(t *testing.T) {
-	opts, gid := purgeGroupOptions(t)
-	id := strconv.Itoa(gid)
-	var cmds []string
-	opts.Run = func(command string, args ...string) ([]byte, error) {
-		cmds = append(cmds, strings.Join(append([]string{command}, args...), " "))
-		if command == "getent" && slices.Equal(args, []string{"group", id}) {
-			return nil, exitError(t, 2)
-		}
-		return nil, nil
+// TestPurgeDataSkipsAnUnrecordedAbsentGroup covers installations with no
+// admin-group record whose group is not in the group database: the group named
+// by the configuration file's gid, and the default group when no configuration
+// file is left. There is no group to keep, so purge reports nothing about it.
+func TestPurgeDataSkipsAnUnrecordedAbsentGroup(t *testing.T) {
+	cases := []struct {
+		name       string
+		withConfig bool
+	}{
+		{name: "configuration file's group", withConfig: true},
+		{name: "default group"},
 	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := baseOptions(t)
+			opts.System = true
+			opts.EUID = 0
+			opts.GroupGID = nil
+			if tc.withConfig {
+				writeFileUnder(t, opts.Root, "/etc/peers/config.yaml", "broker: {}\n")
+			}
+			var cmds []string
+			opts.Run = func(command string, args ...string) ([]byte, error) {
+				cmds = append(cmds, strings.Join(append([]string{command}, args...), " "))
+				if command == "getent" && len(args) == 2 && args[0] == "group" {
+					return nil, exitError(t, 2)
+				}
+				return nil, nil
+			}
 
-	removed, err := PurgeData(opts)
-	if err != nil {
-		t.Fatalf("PurgeData: %v", err)
-	}
-	want := fmt.Sprintf("kept group with gid %s:", id)
-	var kept string
-	for _, entry := range removed {
-		if strings.HasPrefix(entry, want) {
-			kept = entry
-		}
-	}
-	if kept == "" {
-		t.Fatalf("removed = %q, want a kept-group message naming gid %s", removed, id)
-	}
-	if strings.Contains(kept, "groupdel "+DefaultAdminGroup) {
-		t.Errorf("message = %q, want no command for the unconfirmed default group name", kept)
-	}
-	const marker = "remove it manually with: "
-	at := strings.Index(kept, marker)
-	if at < 0 {
-		t.Fatalf("message = %q, want a manual removal command", kept)
-	}
-	command := kept[at+len(marker):]
-	if !strings.Contains(command, "getent group "+id) {
-		t.Errorf("command = %q, want a lookup by gid %s", command, id)
-	}
-
-	// The command must work with only the gid: the stub getent resolves the
-	// name and the stub groupdel reports the name it received.
-	dir := t.TempDir()
-	writeScript(t, dir, "getent",
-		"#!/bin/sh\nif [ \"$1\" = group ] && [ \"$2\" = \""+id+"\" ]; then echo \"ops:x:"+id+":\"; fi\n")
-	writeScript(t, dir, "groupdel", "#!/bin/sh\necho \"$1\"\n")
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
-	out, err := exec.Command("sh", "-c", command).CombinedOutput()
-	if err != nil {
-		t.Fatalf("manual command failed: %v\n%s", err, out)
-	}
-	if got := strings.TrimSpace(string(out)); got != "ops" {
-		t.Errorf("manual command deleted group %q, want the group named by gid %s", got, id)
-	}
-	if slices.Contains(cmds, "groupdel "+DefaultAdminGroup) {
-		t.Errorf("commands = %q, want no group deletion", cmds)
-	}
-}
-
-// writeScript writes an executable script under dir.
-func writeScript(t *testing.T, dir, name, body string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o755); err != nil {
-		t.Fatal(err)
+			removed, err := PurgeData(opts)
+			if err != nil {
+				t.Fatalf("PurgeData: %v", err)
+			}
+			for _, entry := range removed {
+				if strings.HasPrefix(entry, "kept group") {
+					t.Errorf("removed = %q, want no kept-group message for an absent group", removed)
+				}
+			}
+			if slices.Contains(cmds, "groupdel "+DefaultAdminGroup) {
+				t.Errorf("commands = %q, want no group deletion", cmds)
+			}
+		})
 	}
 }
 
@@ -627,6 +601,15 @@ func TestPurgeDataKeepsUnrecordedDefaultGroup(t *testing.T) {
 	}
 	if !groupKept(removed, DefaultAdminGroup) {
 		t.Errorf("removed = %q, want a kept-group message naming %s", removed, DefaultAdminGroup)
+	}
+	var kept string
+	for _, entry := range removed {
+		if strings.HasPrefix(entry, "kept group "+DefaultAdminGroup+":") {
+			kept = entry
+		}
+	}
+	if !strings.Contains(kept, "did not record creating it") {
+		t.Errorf("kept = %q, want the reason that the installation did not record creating the group", kept)
 	}
 }
 
