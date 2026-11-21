@@ -75,10 +75,26 @@ const (
 	installUserUnitPath    = installHome + "/.config/systemd/user/peers.service"
 	installSystemUnitPath  = "/etc/systemd/system/peers.service"
 
+	// The shell completion and man page paths the install script writes.
+	installUserBashCompletion   = installHome + "/.local/share/bash-completion/completions/peers"
+	installUserFishCompletion   = installHome + "/.config/fish/completions/peers.fish"
+	installSystemBashCompletion = "/usr/local/share/bash-completion/completions/peers"
+	installSystemZshCompletion  = "/usr/local/share/zsh/site-functions/_peers"
+	installSystemFishCompletion = "/usr/local/share/fish/vendor_completions.d/peers.fish"
+	installSystemManPage        = "/usr/local/share/man/man1/peers.1"
+	installSystemUpdateManPage  = "/usr/local/share/man/man1/peers-update.1"
+
 	// installLevelPrompt and installUpgradePrompt are the questions the script
 	// asks on the controlling terminal.
 	installLevelPrompt   = "Install for every account on this host? [y/N]"
 	installUpgradePrompt = "Upgrade the system-level installation? [Y/n]"
+)
+
+// installManPage and installUpdateManPage stand in for the man pages a release
+// archive carries under man/.
+const (
+	installManPage       = ".TH PEERS 1\n.SH NAME\npeers - test stub\n"
+	installUpdateManPage = ".TH PEERS-UPDATE 1\n.SH NAME\npeers-update - test stub\n"
 )
 
 // installArchiveReadme stands in for the user-facing README a release archive
@@ -141,8 +157,9 @@ func TestREQBrokerConfig041_UserInstallScript(t *testing.T) {
 	startInstallUserManager(t)
 
 	t.Run("REQ-broker-config-041 user install", func(t *testing.T) {
-		runInstallScriptAs(t, installAccount, installUserEnv(), archive, "sh", "./install.sh")
+		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive, "sh", "./install.sh")
 		assertUserInstall(t)
+		assertUserInstallCompletions(t, res.Stdout+res.Stderr)
 		assertInstallMCPAdd(t, 1, installUserPrefix, installUID, installHome)
 		assertInstallMCPGet(t, 1, installUID, installHome)
 	})
@@ -150,6 +167,7 @@ func TestREQBrokerConfig041_UserInstallScript(t *testing.T) {
 	t.Run("REQ-broker-config-041 second user install is idempotent", func(t *testing.T) {
 		runInstallScriptAs(t, installAccount, installUserEnv(), archive, "sh", "./install.sh")
 		assertUserInstall(t)
+		assertUserInstallCompletions(t, "")
 		assertInstallMCPAdd(t, 1, installUserPrefix, installUID, installHome)
 		assertInstallMCPGet(t, 2, installUID, installHome)
 	})
@@ -179,6 +197,7 @@ func TestREQBrokerConfig041_SystemInstallScript(t *testing.T) {
 	t.Run("REQ-broker-config-041 system install", func(t *testing.T) {
 		runSystemInstallScript(t, archive)
 		assertSystemInstall(t)
+		assertSystemInstallCompletionsAndMan(t)
 		assertInstallMCPAdd(t, 1, installSystemPrefix, installUID, installHome)
 		assertInstallMCPGet(t, 1, installUID, installHome)
 	})
@@ -186,8 +205,55 @@ func TestREQBrokerConfig041_SystemInstallScript(t *testing.T) {
 	t.Run("REQ-broker-config-041 second system install is idempotent", func(t *testing.T) {
 		runSystemInstallScript(t, archive)
 		assertSystemInstall(t)
+		assertSystemInstallCompletionsAndMan(t)
 		assertInstallMCPAdd(t, 1, installSystemPrefix, installUID, installHome)
 		assertInstallMCPGet(t, 2, installUID, installHome)
+	})
+}
+
+// TestREQBrokerConfig041_InstallScriptFilesRemovedByUninstall installs through
+// the script at both levels and checks that uninstall removes the completion
+// files it wrote, and the system-level man pages with them.
+func TestREQBrokerConfig041_InstallScriptFilesRemovedByUninstall(t *testing.T) {
+	if !syscontainer.InContainer() {
+		stageInstallArchive(t)
+		syscontainer.Run(t, syscontainer.Systemd)
+		return
+	}
+
+	installFakeClaude(t)
+	archive := prepareInstallArchive(t)
+	startInstallUserManager(t)
+
+	t.Run("REQ-broker-config-041 user-level files are removed", func(t *testing.T) {
+		res := runInstallScriptAs(t, installAccount, installUserEnv(), archive, "sh", "./install.sh", "--user")
+		if res.ExitCode != 0 {
+			t.Fatalf("user-level install: exit %d\nstdout:\n%s\nstderr:\n%s",
+				res.ExitCode, res.Stdout, res.Stderr)
+		}
+		assertUserInstallCompletions(t, res.Stdout+res.Stderr)
+
+		env := append(installUserEnv(), "PATH="+installHome+"/.local/bin:"+installPath)
+		res = runInstallScriptAs(t, installAccount, env, "/", installUserPrefix, "uninstall", "--yes")
+		if res.ExitCode != 0 {
+			t.Fatalf("user-level uninstall: exit %d\nstdout:\n%s\nstderr:\n%s",
+				res.ExitCode, res.Stdout, res.Stderr)
+		}
+		assertUserInstallCompletionsRemoved(t)
+	})
+
+	t.Run("REQ-broker-config-041 system-level files are removed", func(t *testing.T) {
+		removePreinstalledSystemBinary(t)
+		configureInstallSudo(t)
+		runSystemInstallScript(t, archive)
+		assertSystemInstallCompletionsAndMan(t)
+
+		res := runInstallScriptAs(t, "root", nil, "/", installSystemPrefix, "uninstall", "--purge", "--yes")
+		if res.ExitCode != 0 {
+			t.Fatalf("system-level uninstall: exit %d\nstdout:\n%s\nstderr:\n%s",
+				res.ExitCode, res.Stdout, res.Stderr)
+		}
+		assertSystemInstallCompletionsAndManRemoved(t)
 	})
 }
 
@@ -571,6 +637,11 @@ func assertInstallScriptCommandsRun(t *testing.T, output, account string, env []
 	t.Helper()
 	for _, label := range []string{"start:", "stop:", "restart:", "uninstall:"} {
 		args := printedCommandArgs(t, summaryValue(t, output, label))
+		// The summary prints "peers uninstall" for a person at a terminal. The
+		// test runs without one, so it passes --yes to skip the data question.
+		if label == "uninstall:" {
+			args = append(args, "--yes")
+		}
 		res := runInstallScriptAs(t, account, env, dir, "peers", args...)
 		if res.ExitCode != 0 {
 			t.Errorf("peers %s from the summary: exit %d\nstdout:\n%s\nstderr:\n%s",
@@ -607,6 +678,8 @@ func stageInstallArchive(t *testing.T) {
 		syscontainer.StageArtifact(t, filepath.Join(rel, file.name), data, file.mode)
 	}
 	syscontainer.StageArtifact(t, filepath.Join(rel, "README.md"), []byte(installArchiveReadme), 0o644)
+	syscontainer.StageArtifact(t, filepath.Join(rel, "man", "peers.1"), []byte(installManPage), 0o644)
+	syscontainer.StageArtifact(t, filepath.Join(rel, "man", "peers-update.1"), []byte(installUpdateManPage), 0o644)
 }
 
 // readRepositoryFile reads a file at rel from the repository root and fails the
@@ -677,6 +750,8 @@ func prepareInstallArchive(t *testing.T) string {
 		{filepath.Join(staged, "install.sh"), "install.sh", 0o755},
 		{filepath.Join(staged, "LICENSE"), "LICENSE", 0o644},
 		{filepath.Join(staged, "README.md"), "README.md", 0o644},
+		{filepath.Join(staged, "man", "peers.1"), filepath.Join("man", "peers.1"), 0o644},
+		{filepath.Join(staged, "man", "peers-update.1"), filepath.Join("man", "peers-update.1"), 0o644},
 	}
 	for _, file := range files {
 		if err := copyInstallFile(file.source, filepath.Join(installArchiveDir, file.name), file.mode); err != nil {
@@ -688,6 +763,9 @@ func prepareInstallArchive(t *testing.T) string {
 
 // copyInstallFile copies src to dst with mode.
 func copyInstallFile(src, dst string, mode os.FileMode) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return fmt.Errorf("creating %s: %w", filepath.Dir(dst), err)
+	}
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", src, err)
@@ -898,6 +976,73 @@ func runInstallScriptWithTerminal(t *testing.T, account string, env []string, di
 // installShellQuote returns a single-quoted shell word.
 func installShellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+// assertUserInstallCompletions checks the completion files a user-level install
+// writes. The zsh completion is deliberately absent, and output, when given,
+// must name the manual step.
+func assertUserInstallCompletions(t *testing.T, output string) {
+	t.Helper()
+	for _, path := range []string{installUserBashCompletion, installUserFishCompletion} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("the user-level completion %s is missing: %v", path, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(installHome, ".local", "share", "zsh", "site-functions", "_peers")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the user-level install wrote the zsh completion: %v", err)
+	}
+	if output != "" {
+		for _, want := range []string{"zsh completion was not installed", "completion zsh"} {
+			if !strings.Contains(output, want) {
+				t.Errorf("output does not contain %q:\n%s", want, output)
+			}
+		}
+	}
+}
+
+// assertSystemInstallCompletionsAndMan checks the completion files and man
+// pages a system-level install writes.
+func assertSystemInstallCompletionsAndMan(t *testing.T) {
+	t.Helper()
+	for _, path := range []string{
+		installSystemBashCompletion,
+		installSystemZshCompletion,
+		installSystemFishCompletion,
+		installSystemManPage,
+		installSystemUpdateManPage,
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("the system-level installation file %s is missing: %v", path, err)
+		}
+	}
+}
+
+// assertUserInstallCompletionsRemoved checks that an uninstall removed the
+// user-level completion files.
+func assertUserInstallCompletionsRemoved(t *testing.T) {
+	t.Helper()
+	for _, path := range []string{installUserBashCompletion, installUserFishCompletion} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the user-level completion %s still exists: %v", path, err)
+		}
+	}
+}
+
+// assertSystemInstallCompletionsAndManRemoved checks that an uninstall removed
+// the system-level completion files and man pages.
+func assertSystemInstallCompletionsAndManRemoved(t *testing.T) {
+	t.Helper()
+	for _, path := range []string{
+		installSystemBashCompletion,
+		installSystemZshCompletion,
+		installSystemFishCompletion,
+		installSystemManPage,
+		installSystemUpdateManPage,
+	} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the system-level installation file %s still exists: %v", path, err)
+		}
+	}
 }
 
 // assertUserInstall checks the binary, the version output and the running user

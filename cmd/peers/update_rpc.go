@@ -29,7 +29,7 @@ var updateUserSocketPath = mcpserver.UserSocketPath
 // newer and refuses a downgrade. When the selected Broker is this account's
 // user-level Broker and refuses with failed_precondition, the command falls
 // back to a local replacement.
-func applyUpdateThroughBroker(ctx context.Context) (brokerUpdateResult, error) {
+func applyUpdateThroughBroker(ctx context.Context, euid func() int) (brokerUpdateResult, error) {
 	var selectedPath string
 	selectBroker := termcmd.Selector(func(ctx context.Context) (string, termcmd.Dialer, error) {
 		path, dial, err := findBroker(ctx)
@@ -44,7 +44,7 @@ func applyUpdateThroughBroker(ctx context.Context) (brokerUpdateResult, error) {
 		var answered *termcmd.ApplyUpdateError
 		switch {
 		case errors.As(err, &answered):
-			if updateEUID() != 0 && selectedPath != "" && selectedPath == updateUserSocketPath() && termcmd.IsFailedPrecondition(err) {
+			if euid() != 0 && selectedPath != "" && selectedPath == updateUserSocketPath() && termcmd.IsFailedPrecondition(err) {
 				return brokerUpdateResult{}, errUserLevelUpdateUnsupported
 			}
 			return brokerUpdateResult{}, err

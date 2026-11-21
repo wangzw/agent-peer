@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -50,21 +49,17 @@ func newUpdateTestEnv(t *testing.T) *updateTestEnv {
 	previous := struct {
 		executable   func() (string, error)
 		evalSymlinks func(string) (string, error)
-		euid         func() int
 		newClient    func() *http.Client
-		isTerminal   func(io.Reader) bool
 		goos, goarch string
 		restartBound time.Duration
 		pollDelay    time.Duration
 	}{
-		updateExecutable, updateEvalSymlinks, updateEUID, updateNewClient,
-		updateIsTerminal, updateGOOS, updateGOARCH, updateRestartWait, updateStatusPollDelay,
+		updateExecutable, updateEvalSymlinks, updateNewClient,
+		updateGOOS, updateGOARCH, updateRestartWait, updateStatusPollDelay,
 	}
 	updateExecutable = func() (string, error) { return target, nil }
 	updateEvalSymlinks = func(path string) (string, error) { return path, nil }
-	updateEUID = func() int { return 1000 }
 	updateNewClient = func() *http.Client { return &http.Client{Transport: env.transport} }
-	updateIsTerminal = func(io.Reader) bool { return true }
 	updateGOOS = "linux"
 	updateGOARCH = "amd64"
 	updateRestartWait = time.Second
@@ -72,15 +67,26 @@ func newUpdateTestEnv(t *testing.T) *updateTestEnv {
 	t.Cleanup(func() {
 		updateExecutable = previous.executable
 		updateEvalSymlinks = previous.evalSymlinks
-		updateEUID = previous.euid
 		updateNewClient = previous.newClient
-		updateIsTerminal = previous.isTerminal
 		updateGOOS = previous.goos
 		updateGOARCH = previous.goarch
 		updateRestartWait = previous.restartBound
 		updateStatusPollDelay = previous.pollDelay
 	})
 	return env
+}
+
+// decliningStdin opens /dev/null, which is a character device. confirm treats
+// it as a terminal, prints its prompt and then reads an empty answer, so the
+// real confirmation code takes the decline path without a pseudo-terminal.
+func decliningStdin(t *testing.T) *os.File {
+	t.Helper()
+	f, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatalf("opening %s: %v", os.DevNull, err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	return f
 }
 
 func assertBinaryUnchanged(t *testing.T, path string) {
@@ -128,7 +134,6 @@ func TestUpdateRejectsNonReleaseBuilds(t *testing.T) {
 
 func TestUpdateRefusesNonTerminalInputWithoutYes(t *testing.T) {
 	env := newUpdateTestEnv(t)
-	updateIsTerminal = func(io.Reader) bool { return false }
 
 	a, _, stderr, stub := newDispatchApp("0.1.1")
 	a.stdin = strings.NewReader("y\n")
@@ -151,10 +156,13 @@ func TestUpdateRefusesNonTerminalInputWithoutYes(t *testing.T) {
 func TestUpdateUserDeclines(t *testing.T) {
 	env := newUpdateTestEnv(t)
 	a, stdout, stderr, stub := newDispatchApp("0.1.1")
-	a.stdin = strings.NewReader("n\n")
+	a.stdin = decliningStdin(t)
 
 	if got := a.run(context.Background(), []string{"update"}); got != exitOK {
 		t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "[y/N]") {
+		t.Fatalf("stderr = %q, want the confirmation question", stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "Update canceled; nothing was changed.") {
 		t.Fatalf("stdout = %q, want the cancellation line", stdout.String())
@@ -241,10 +249,9 @@ func TestUpdateFallsBackToLocalForAUserBroker(t *testing.T) {
 	}
 	a, stdout, stderr, _ := newDispatchApp("0.1.1")
 	a.deps = stub.deps()
-	a.stdin = strings.NewReader("yes\n")
 
-	if got := a.run(context.Background(), []string{"update"}); got != exitOK {
-		t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+	if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
+		t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
 	}
 	if stub.brokerApplyCalls != 1 {
 		t.Fatalf("broker apply calls = %d, want 1 before the fallback", stub.brokerApplyCalls)
@@ -263,8 +270,8 @@ func TestUpdateFallsBackToLocalForAUserBroker(t *testing.T) {
 		t.Fatalf("ApplyOptions API = %q, client = %v, want the wired API and client", got.API, got.Client)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "[y/N]") {
-		t.Fatalf("stdout = %q, want the confirmation question", out)
+	if strings.Contains(stderr.String(), "[y/N]") {
+		t.Fatalf("stderr = %q, want no question with --yes", stderr.String())
 	}
 	if !strings.Contains(out, designLocalHint+"\n") {
 		t.Fatalf("stdout = %q, want the design local hint verbatim", out)
@@ -281,7 +288,7 @@ func TestUpdateYesSkipsTheQuestion(t *testing.T) {
 		latestRelease:   update.Release{Version: "0.1.2"},
 		newerResult:     true,
 	}
-	a, stdout, stderr, _ := newDispatchApp("0.1.1")
+	a, _, stderr, _ := newDispatchApp("0.1.1")
 	a.deps = stub.deps()
 	a.stdin = strings.NewReader("")
 
@@ -291,14 +298,13 @@ func TestUpdateYesSkipsTheQuestion(t *testing.T) {
 	if len(stub.applyCalls) != 1 {
 		t.Fatalf("apply calls = %d, want 1", len(stub.applyCalls))
 	}
-	if strings.Contains(stdout.String(), "[y/N]") {
-		t.Fatalf("stdout = %q, want no question with --yes", stdout.String())
+	if strings.Contains(stderr.String(), "[y/N]") {
+		t.Fatalf("stderr = %q, want no question with --yes", stderr.String())
 	}
 }
 
 func TestUpdateRootUsesApplyUpdate(t *testing.T) {
 	env := newUpdateTestEnv(t)
-	updateEUID = func() int { return 0 }
 	stub := &stubDeps{
 		brokerUpdate: brokerUpdateResult{FromVersion: "0.1.1", ToVersion: "0.1.2"},
 	}
@@ -351,15 +357,19 @@ func TestUpdateAsksBeforeTheBrokerCall(t *testing.T) {
 	t.Run("declined", func(t *testing.T) {
 		env := newUpdateTestEnv(t)
 		a, stdout, stderr, stub := newDispatchApp("0.1.1")
-		a.stdin = strings.NewReader("n\n")
+		a.stdin = decliningStdin(t)
 		if got := a.run(context.Background(), []string{"update"}); got != exitOK {
 			t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
 		}
 		if stub.brokerApplyCalls != 0 {
 			t.Fatalf("broker apply calls = %d, want none after a refusal", stub.brokerApplyCalls)
 		}
-		if !strings.Contains(stdout.String(), "Update canceled") {
-			t.Fatalf("stdout = %q, want the cancellation line", stdout.String())
+		out := stdout.String()
+		if !strings.Contains(stderr.String(), "[y/N]") {
+			t.Fatalf("stderr = %q, want the question", stderr.String())
+		}
+		if !strings.Contains(out, "Update canceled") {
+			t.Fatalf("stdout = %q, want the cancellation line", out)
 		}
 		assertBinaryUnchanged(t, env.target)
 	})
@@ -369,17 +379,16 @@ func TestUpdateAsksBeforeTheBrokerCall(t *testing.T) {
 		stub := &stubDeps{
 			brokerUpdate: brokerUpdateResult{FromVersion: "0.1.1", ToVersion: "0.1.2"},
 		}
-		a, stdout, stderr, _ := newDispatchApp("0.1.1")
+		a, _, stderr, _ := newDispatchApp("0.1.1")
 		a.deps = stub.deps()
-		a.stdin = strings.NewReader("y\n")
-		if got := a.run(context.Background(), []string{"update"}); got != exitOK {
-			t.Fatalf("run(update) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
+		if got := a.run(context.Background(), []string{"update", "--yes"}); got != exitOK {
+			t.Fatalf("run(update --yes) = %d, want %d (stderr %q)", got, exitOK, stderr.String())
 		}
 		if stub.brokerApplyCalls != 1 {
 			t.Fatalf("broker apply calls = %d, want 1", stub.brokerApplyCalls)
 		}
-		if !strings.Contains(stdout.String(), "[y/N]") {
-			t.Fatalf("stdout = %q, want the question", stdout.String())
+		if strings.Contains(stderr.String(), "[y/N]") {
+			t.Fatalf("stderr = %q, want no question with --yes", stderr.String())
 		}
 	})
 }
@@ -619,18 +628,28 @@ func TestUpdateQueriesTheLatestReleaseEndpoint(t *testing.T) {
 }
 
 func TestUpdateUsageErrors(t *testing.T) {
-	cases := [][]string{
-		{"update", "extra"},
-		{"update", "--bogus"},
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"update", "extra"}, `unexpected argument "extra"`},
+		{[]string{"update", "--bogus"}, "unknown flag: --bogus"},
 	}
-	for _, args := range cases {
-		t.Run(strings.Join(args, " "), func(t *testing.T) {
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			a, stdout, stderr, stub := newDispatchApp("0.1.1")
-			if got := a.run(context.Background(), args); got != exitUsage {
-				t.Fatalf("run(%q) = %d, want %d", args, got, exitUsage)
+			if got := a.run(context.Background(), tc.args); got != exitUsage {
+				t.Fatalf("run(%q) = %d, want %d", tc.args, got, exitUsage)
 			}
-			if !strings.HasPrefix(stderr.String(), updateUsage) {
-				t.Fatalf("stderr = %q, want the update usage first", stderr.String())
+			errOut := stderr.String()
+			if !strings.Contains(errOut, "peers update: "+tc.want) {
+				t.Fatalf("stderr = %q, want the command path and %q", errOut, tc.want)
+			}
+			if !strings.Contains(errOut, "Run 'peers update --help' for usage.") {
+				t.Fatalf("stderr = %q, want the help hint", errOut)
+			}
+			if strings.Contains(errOut, "Usage:") {
+				t.Fatalf("stderr = %q, want no full usage block", errOut)
 			}
 			if stdout.Len() != 0 {
 				t.Fatalf("stdout = %q, want empty", stdout.String())
@@ -647,8 +666,11 @@ func TestUpdateHelpPrintsUsage(t *testing.T) {
 	if got := a.run(context.Background(), []string{"update", "--help"}); got != exitOK {
 		t.Fatalf("run(update --help) = %d, want %d", got, exitOK)
 	}
-	if stdout.String() != updateUsage {
-		t.Fatalf("stdout = %q, want %q", stdout.String(), updateUsage)
+	out := stdout.String()
+	for _, want := range []string{"Usage:", "peers update [flags]", "--yes", "--help"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout = %q, want it to contain %q", out, want)
+		}
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want empty", stderr.String())

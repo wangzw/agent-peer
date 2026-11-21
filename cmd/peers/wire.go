@@ -35,7 +35,7 @@ var findBroker termcmd.Selector = mcpserver.FindBrokerWithDial
 // realDeps connects the command line to the real Broker and MCP server entry
 // points. It is called once by main before any subcommand runs.
 func realDeps(version string) deps {
-	return deps{
+	d := deps{
 		euid: os.Geteuid,
 		runBroker: func(ctx context.Context, o brokerOptions) error {
 			local, link := protocolOverrides()
@@ -89,13 +89,16 @@ func realDeps(version string) deps {
 			return termcmd.PeerNames(ctx, findBroker)
 		},
 
-		updateAPIBase:        update.APIBase,
-		updateLatest:         update.Latest,
-		updateNewer:          update.Newer,
-		updateApply:          update.Apply,
-		applyUpdateViaBroker: applyUpdateThroughBroker,
-		brokerUpdateStatus:   fetchBrokerUpdateStatus,
+		updateAPIBase:      update.APIBase,
+		updateLatest:       update.Latest,
+		updateNewer:        update.Newer,
+		updateApply:        update.Apply,
+		brokerUpdateStatus: fetchBrokerUpdateStatus,
 	}
+	d.applyUpdateViaBroker = func(ctx context.Context) (brokerUpdateResult, error) {
+		return applyUpdateThroughBroker(ctx, d.euid)
+	}
+	return d
 }
 
 // classifyBrokerErr maps a Broker startup error to the exit-code family it

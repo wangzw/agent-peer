@@ -410,7 +410,7 @@ func TestUninstallREQBrokerConfig051UserLevel(t *testing.T) {
 			t.Error("the Broker identity changed across uninstall and reinstall")
 		}
 
-		res = runWithEnv(t, "peer", env, uninstallPeerBinary, "uninstall", "--purge")
+		res = runWithEnv(t, "peer", env, uninstallPeerBinary, "uninstall", "--purge", "--yes")
 		if res.ExitCode != 0 {
 			t.Fatalf("uninstall --purge as peer: exit %d\nstdout: %s\nstderr: %s",
 				res.ExitCode, res.Stdout, res.Stderr)
@@ -489,7 +489,7 @@ func TestUninstallREQBrokerConfig051SystemLevel(t *testing.T) {
 			t.Error("the Broker identity changed across uninstall and reinstall")
 		}
 
-		res = runWithEnv(t, "root", nil, uninstallSystemCopy, "uninstall", "--purge")
+		res = runWithEnv(t, "root", nil, uninstallSystemCopy, "uninstall", "--purge", "--yes")
 		if res.ExitCode != 0 {
 			t.Fatalf("uninstall --purge as root: exit %d\nstdout: %s\nstderr: %s",
 				res.ExitCode, res.Stdout, res.Stderr)
@@ -543,7 +543,7 @@ func TestUninstallREQBrokerConfig051UnrecordedGroup(t *testing.T) {
 			t.Fatalf("removing the group record %s: %v", record, err)
 		}
 
-		res := runWithEnv(t, "root", nil, uninstallSystemCopy, "uninstall", "--purge")
+		res := runWithEnv(t, "root", nil, uninstallSystemCopy, "uninstall", "--purge", "--yes")
 		if res.ExitCode != 0 {
 			t.Fatalf("uninstall --purge as root: exit %d\nstdout: %s\nstderr: %s",
 				res.ExitCode, res.Stdout, res.Stderr)
@@ -621,29 +621,34 @@ func TestUninstallREQBrokerConfig051NoService(t *testing.T) {
 	})
 }
 
-// TestUninstallREQBrokerConfig052NonRootSystemOnly covers the sudo question.
+// TestUninstallREQBrokerConfig052NonRootSystemOnly covers a non-root account
+// whose host has only the system-level installation: the command must fail and
+// name the complete sudo command, and that command must then remove the level.
 func TestUninstallREQBrokerConfig052NonRootSystemOnly(t *testing.T) {
 	if !syscontainer.InContainer() {
 		syscontainer.Run(t, syscontainer.Systemd)
 		return
 	}
 
-	t.Run("REQ-broker-config-052: a refused sudo question changes nothing and a yes uninstalls the system level", func(t *testing.T) {
+	t.Run("REQ-broker-config-052: a non-root account is refused and the printed sudo command succeeds", func(t *testing.T) {
 		// The service is installed from the binary the peer will run, so the
 		// uninstall can prove it starts the same file before removing it.
 		installUninstallFakeClaude(t, releaseBinary)
 		configureUninstallSudo(t)
 		installUninstallSystemService(t, releaseBinary)
 
-		refused := runWithAnswer(t, "peer", nil, "n\n", releaseBinary, "uninstall", "--purge")
-		if refused.ExitCode != 0 {
-			t.Fatalf("refused uninstall: exit %d\n%s", refused.ExitCode, refused.Stdout)
+		refused := runInstallScriptAs(t, "peer", nil, "/", releaseBinary, "uninstall", "--purge")
+		if refused.ExitCode != 1 {
+			t.Fatalf("refused uninstall: exit %d, want 1\nstdout:\n%s\nstderr:\n%s",
+				refused.ExitCode, refused.Stdout, refused.Stderr)
 		}
-		if !strings.Contains(refused.Stdout, "Uninstall the system-level installation (requires sudo)? [y/N]") {
-			t.Errorf("output does not contain the sudo question:\n%s", refused.Stdout)
-		}
-		if !strings.Contains(refused.Stdout, "sudo peers uninstall") {
-			t.Errorf("output does not give the sudo command:\n%s", refused.Stdout)
+		for _, want := range []string{
+			"only a system-level installation is present",
+			"sudo peers uninstall --purge --yes",
+		} {
+			if !strings.Contains(refused.Stdout+refused.Stderr, want) {
+				t.Errorf("output does not contain %q:\n%s\n%s", want, refused.Stdout, refused.Stderr)
+			}
 		}
 		requirePresent(t, uninstallSystemUnit)
 		requirePresent(t, releaseBinary)
@@ -652,12 +657,12 @@ func TestUninstallREQBrokerConfig052NonRootSystemOnly(t *testing.T) {
 			t.Error("a refused uninstall removed the MCP registration")
 		}
 
-		accepted := runWithAnswer(t, "peer", nil, "y\n", releaseBinary, "uninstall", "--purge")
+		// The complete command from the error message, as an administrator
+		// would paste it.
+		accepted := runInstallScriptAs(t, "peer", nil, "/", "sudo", "-n", releaseBinary, "uninstall", "--purge", "--yes")
 		if accepted.ExitCode != 0 {
-			t.Fatalf("accepted uninstall: exit %d\n%s", accepted.ExitCode, accepted.Stdout)
-		}
-		if strings.Count(accepted.Stdout, "[y/N]") != 1 {
-			t.Errorf("the output has more than one question:\n%s", accepted.Stdout)
+			t.Fatalf("sudo uninstall: exit %d\nstdout:\n%s\nstderr:\n%s",
+				accepted.ExitCode, accepted.Stdout, accepted.Stderr)
 		}
 		requireMissing(t, uninstallSystemUnit)
 		requireMissing(t, releaseBinary)
@@ -723,7 +728,7 @@ func TestUninstallREQBrokerConfig054OtherAccountBroker(t *testing.T) {
 		installUninstallSystemService(t, uninstallSystemCopy)
 		other := syscontainer.StartUserBroker(t, "other", "--listen", ":17444")
 
-		res := runWithEnv(t, "root", nil, uninstallSystemCopy, "uninstall", "--purge")
+		res := runWithEnv(t, "root", nil, uninstallSystemCopy, "uninstall", "--purge", "--yes")
 		if res.ExitCode != 0 {
 			t.Fatalf("uninstall --purge as root: exit %d\nstdout: %s\nstderr: %s",
 				res.ExitCode, res.Stdout, res.Stderr)

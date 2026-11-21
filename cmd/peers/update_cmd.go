@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,11 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/wangzw/peers/internal/broker/service"
 	"github.com/wangzw/peers/internal/broker/update"
 )
-
-const updateUsage = "usage: peers update [--yes]\n"
 
 // updateLocalTakesEffectHint follows a local replacement. The command does not
 // restart anything, because the service may have been stopped on purpose.
@@ -46,60 +44,53 @@ var updateStatusPollDelay = 250 * time.Millisecond
 var (
 	updateExecutable   = os.Executable
 	updateEvalSymlinks = filepath.EvalSymlinks
-	updateEUID         = os.Geteuid
 	updateNewClient    = func() *http.Client { return &http.Client{Transport: http.DefaultTransport} }
-	updateIsTerminal   = isTerminal
 	updateGOOS         = runtime.GOOS
 	updateGOARCH       = runtime.GOARCH
 )
 
-func init() {
-	subcommands["update"] = (*app).updateCmd
+// newUpdateCommand builds "peers update [--yes]".
+func newUpdateCommand(a *app) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "update",
+		Short:   "Install the newest release of peers",
+		GroupID: groupInstall,
+		Args:    noArgs,
+	}
+	yes := addYesFlag(cmd)
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return a.updateCmd(cmd.Context(), *yes)
+	}
+	return cmd
+}
+
+// noArgs rejects positional arguments as a usage error. The framework turns the
+// error's exit code into 2 and prints the command path and help hint.
+func noArgs(_ *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return usageErrorf("unexpected argument %q", args[0])
+	}
+	return nil
 }
 
 // updateCmd implements "peers update [--yes]". It asks the selected
 // Broker to install the newest release and restart itself. A user-level Broker
 // that declines (it cannot replace and restart itself) leaves the command to
 // replace that account's binary in place.
-func (a *app) updateCmd(ctx context.Context, args []string) int {
-	fs := flag.NewFlagSet("update", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	yes := fs.Bool("yes", false, "update without asking")
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			_, _ = fmt.Fprint(a.stdout, updateUsage)
-			return exitOK
-		}
-		_, _ = fmt.Fprint(a.stderr, updateUsage)
-		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
-		return exitUsage
-	}
-	if fs.NArg() > 0 {
-		_, _ = fmt.Fprint(a.stderr, updateUsage)
-		_, _ = fmt.Fprintf(a.stderr, "peers update: unexpected argument %q\n", fs.Arg(0))
-		return exitUsage
-	}
-
+func (a *app) updateCmd(ctx context.Context, yes bool) error {
 	current := strings.TrimPrefix(a.version, "v")
 	if !update.IsReleaseVersion(current) {
-		_, _ = fmt.Fprintf(a.stderr, "peers update: version %q is not a release build; only release builds can update themselves\n", a.version)
-		return exitFailure
+		return fmt.Errorf("version %q is not a release build; only release builds can update themselves", a.version)
 	}
 
-	if !*yes {
-		if !updateIsTerminal(a.stdin) {
-			_, _ = fmt.Fprintln(a.stderr, `peers update: standard input is not a terminal; run "peers update --yes" to update without asking`)
-			return exitFailure
-		}
-		_, _ = fmt.Fprintf(a.stdout, "peers %s is installed. Update to the latest release? [y/N] ", current)
-		answer, err := readAnswer(a.stdin)
+	if !yes {
+		confirmed, err := a.confirm(fmt.Sprintf("peers %s is installed. Update to the latest release? [y/N] ", current), false)
 		if err != nil {
-			_, _ = fmt.Fprintf(a.stderr, "peers update: reading the answer: %v\n", err)
-			return exitFailure
+			return err
 		}
-		if !isYes(answer) {
+		if !confirmed {
 			_, _ = fmt.Fprintln(a.stdout, "Update canceled; nothing was changed.")
-			return exitOK
+			return nil
 		}
 	}
 
@@ -108,8 +99,7 @@ func (a *app) updateCmd(ctx context.Context, args []string) int {
 		if errors.Is(err, errUserLevelUpdateUnsupported) || errors.Is(err, errNoRunningBroker) {
 			return a.updateLocal(ctx, current)
 		}
-		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
-		return exitFailure
+		return err
 	}
 	return a.reportBrokerUpdate(ctx, result)
 }
@@ -118,28 +108,24 @@ func (a *app) updateCmd(ctx context.Context, args []string) int {
 // nothing: a Broker restarting itself does that through its service manager,
 // and an installed service may have been stopped on purpose. The user has
 // already confirmed the update.
-func (a *app) updateLocal(ctx context.Context, current string) int {
+func (a *app) updateLocal(ctx context.Context, current string) error {
 	target, err := updateTarget()
 	if err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
-		return exitFailure
+		return err
 	}
 	if err := checkTargetDirWritable(filepath.Dir(target)); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
-		_, _ = fmt.Fprintln(a.stderr, `peers update: run "sudo peers update" to update a system-level installation`)
-		return exitFailure
+		return fmt.Errorf("%w; run \"sudo peers update\" to update a system-level installation", err)
 	}
 
 	api := a.deps.updateAPIBase()
 	client := updateNewClient()
 	release, err := a.deps.updateLatest(ctx, client, api)
 	if err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
-		return exitFailure
+		return err
 	}
 	if !a.deps.updateNewer(current, release.Version) {
 		_, _ = fmt.Fprintf(a.stdout, "peers %s is up to date\n", current)
-		return exitOK
+		return nil
 	}
 
 	_, _ = fmt.Fprintf(a.stdout, "peers %s is installed; version %s is available.\n", current, release.Version)
@@ -155,37 +141,35 @@ func (a *app) updateLocal(ctx context.Context, current string) int {
 		GOOS:    updateGOOS,
 		GOARCH:  updateGOARCH,
 	}); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
-		return exitFailure
+		return err
 	}
 	_, _ = fmt.Fprintln(a.stdout, updateLocalTakesEffectHint)
-	return exitOK
+	return nil
 }
 
 // reportBrokerUpdate handles a successful ApplyUpdate answer. When the Broker
 // restarts, the command waits until the new Broker answers with the new
 // version, because the request is only complete once that process is running.
-func (a *app) reportBrokerUpdate(ctx context.Context, result brokerUpdateResult) int {
+func (a *app) reportBrokerUpdate(ctx context.Context, result brokerUpdateResult) error {
 	from := strings.TrimPrefix(result.FromVersion, "v")
 	to := strings.TrimPrefix(result.ToVersion, "v")
 	if to == "" {
 		_, _ = fmt.Fprintf(a.stdout, "peers %s is up to date\n", from)
-		return exitOK
+		return nil
 	}
 	if !result.Restarting {
 		_, _ = fmt.Fprintf(a.stdout, "peers %s is installed.\n", to)
 		_, _ = fmt.Fprintln(a.stdout, updateSessionHint)
-		return exitOK
+		return nil
 	}
 
 	_, _ = fmt.Fprintf(a.stdout, "The Broker is restarting to version %s.\n", to)
 	if err := a.waitForBrokerVersion(ctx, to, result.UserLevel); err != nil {
-		_, _ = fmt.Fprintf(a.stderr, "peers update: %v\n", err)
-		return exitFailure
+		return err
 	}
 	_, _ = fmt.Fprintf(a.stdout, "The Broker is running peers %s.\n", to)
 	_, _ = fmt.Fprintln(a.stdout, updateSessionHint)
-	return exitOK
+	return nil
 }
 
 // waitForBrokerVersion polls UpdateStatus until the restarted Broker reports

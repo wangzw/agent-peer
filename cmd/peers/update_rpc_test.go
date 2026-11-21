@@ -34,6 +34,12 @@ func withUserSocketPath(t *testing.T, path string) {
 	t.Cleanup(func() { updateUserSocketPath = previous })
 }
 
+// fixedEUID returns an euid function for the tests, replacing the account the
+// test process runs as.
+func fixedEUID(euid int) func() int {
+	return func() int { return euid }
+}
+
 // An ordinary account with no user-level Broker has the system-level Broker
 // selected, and the update is applied through it.
 func TestApplyUpdateThroughBrokerUsesSystemBrokerWithoutUserBroker(t *testing.T) {
@@ -43,7 +49,7 @@ func TestApplyUpdateThroughBrokerUsesSystemBrokerWithoutUserBroker(t *testing.T)
 	})
 	withUserSocketPath(t, path+".user")
 
-	got, err := applyUpdateThroughBroker(t.Context())
+	got, err := applyUpdateThroughBroker(t.Context(), fixedEUID(1000))
 	if err != nil {
 		t.Fatalf("applyUpdateThroughBroker: %v", err)
 	}
@@ -67,7 +73,7 @@ func TestApplyUpdateThroughBrokerMarksTheUserLevel(t *testing.T) {
 	})
 	withUserSocketPath(t, path)
 
-	got, err := applyUpdateThroughBroker(t.Context())
+	got, err := applyUpdateThroughBroker(t.Context(), fixedEUID(1000))
 	if err != nil {
 		t.Fatalf("applyUpdateThroughBroker: %v", err)
 	}
@@ -85,7 +91,7 @@ func TestApplyUpdateThroughBrokerFallsBackForUserBroker(t *testing.T) {
 	})
 	withUserSocketPath(t, path)
 
-	_, err := applyUpdateThroughBroker(t.Context())
+	_, err := applyUpdateThroughBroker(t.Context(), fixedEUID(1000))
 	if !errors.Is(err, errUserLevelUpdateUnsupported) {
 		t.Fatalf("applyUpdateThroughBroker error = %v, want the user-level fallback", err)
 	}
@@ -95,13 +101,12 @@ func TestApplyUpdateThroughBrokerFallsBackForUserBroker(t *testing.T) {
 // system-level Broker: a refusal is an error, never a local replacement.
 func TestApplyUpdateThroughBrokerRootUsesSystemBroker(t *testing.T) {
 	newUpdateTestEnv(t)
-	updateEUID = func() int { return 0 }
 	path, _ := startApplyUpdateBroker(t, func(h *fakelocal.Handlers) {
 		h.ApplyUpdate = fakelocal.ApplyUpdateFailure(codes.FailedPrecondition, "the Broker is not managed by a service manager")
 	})
 	withUserSocketPath(t, path)
 
-	_, err := applyUpdateThroughBroker(t.Context())
+	_, err := applyUpdateThroughBroker(t.Context(), fixedEUID(0))
 	if err == nil {
 		t.Fatal("applyUpdateThroughBroker returned no error, want the refusal")
 	}
@@ -122,7 +127,7 @@ func TestApplyUpdateThroughBrokerReportsOtherErrors(t *testing.T) {
 	})
 	withUserSocketPath(t, path)
 
-	_, err := applyUpdateThroughBroker(t.Context())
+	_, err := applyUpdateThroughBroker(t.Context(), fixedEUID(1000))
 	if err == nil {
 		t.Fatal("applyUpdateThroughBroker returned no error, want the permission failure")
 	}
@@ -144,7 +149,7 @@ func TestApplyUpdateThroughBrokerWithoutRunningBroker(t *testing.T) {
 	}
 	t.Cleanup(func() { findBroker = previous })
 
-	_, err := applyUpdateThroughBroker(t.Context())
+	_, err := applyUpdateThroughBroker(t.Context(), fixedEUID(1000))
 	if !errors.Is(err, errNoRunningBroker) {
 		t.Fatalf("applyUpdateThroughBroker error = %v, want the no-running-Broker fallback", err)
 	}

@@ -235,7 +235,7 @@ func TestUninstallREQBrokerConfig051UserLevel(t *testing.T) {
 		}
 		waitUninstallSocket(t)
 
-		purged := run(t, binary, "uninstall", "--purge")
+		purged := run(t, binary, "uninstall", "--purge", "--yes")
 		if purged.exitCode != 0 {
 			t.Fatalf("uninstall --purge: exit %d\nstdout: %s\nstderr: %s", purged.exitCode, purged.stdout, purged.stderr)
 		}

@@ -474,13 +474,66 @@ case $_version_output in
 	*) fail "unexpected output from $prefix/peers --version: $_version_output" ;;
 esac
 
+# 3. Install the shell completions, and at the system level the man pages. The
+# completion scripts come from the installed binary, so they always match it.
+# A user-level install skips the zsh completion, because a user-level file only
+# becomes active after the account adds it to fpath; the caller is told how.
+# DESTDIR prefixes the system-level share directory, for staged installs and
+# tests; production leaves it unset.
+if [ "$system" -eq 1 ]; then
+	_share=${DESTDIR:-}/usr/local/share
+	_completion_bash_dir=$_share/bash-completion/completions
+	_completion_zsh_dir=$_share/zsh/site-functions
+	_completion_fish_dir=$_share/fish/vendor_completions.d
+	_man_dir=$_share/man/man1
+else
+	if [ -z "${HOME:-}" ]; then
+		fail "HOME is not set; cannot install the shell completions"
+	fi
+	_completion_bash_dir=$HOME/.local/share/bash-completion/completions
+	_completion_fish_dir=$HOME/.config/fish/completions
+fi
+
+if ! mkdir -p "$_completion_bash_dir"; then
+	fail "creating the bash completion directory $_completion_bash_dir"
+fi
+if ! "$prefix/peers" completion bash > "$_completion_bash_dir/peers"; then
+	fail "writing the bash completion to $_completion_bash_dir/peers"
+fi
+if ! mkdir -p "$_completion_fish_dir"; then
+	fail "creating the fish completion directory $_completion_fish_dir"
+fi
+if ! "$prefix/peers" completion fish > "$_completion_fish_dir/peers.fish"; then
+	fail "writing the fish completion to $_completion_fish_dir/peers.fish"
+fi
+
+if [ "$system" -eq 1 ]; then
+	if ! mkdir -p "$_completion_zsh_dir"; then
+		fail "creating the zsh completion directory $_completion_zsh_dir"
+	fi
+	if ! "$prefix/peers" completion zsh > "$_completion_zsh_dir/_peers"; then
+		fail "writing the zsh completion to $_completion_zsh_dir/_peers"
+	fi
+	if ! mkdir -p "$_man_dir"; then
+		fail "creating the man directory $_man_dir"
+	fi
+	for _page in "$script_dir"/man/*.1; do
+		[ -e "$_page" ] || continue
+		if ! install -o root -g 0 -m 0644 "$_page" "$_man_dir/"; then
+			fail "installing the man page ${_page##*/}"
+		fi
+	done
+else
+	printf 'install.sh: zsh completion was not installed; enable it with: %s completion zsh > ~/.zfunc/_peers (create ~/.zfunc and add it to fpath).\n' "$prefix/peers"
+fi
+
 # Report the upgrade before the service prints its summary; the service does
 # not know what was installed before.
 if [ -n "$_previous_version" ]; then
 	printf 'upgraded from %s\n' "$_previous_version"
 fi
 
-# 3. Install the service. service install is repeatable: an existing service is
+# 4. Install the service. service install is repeatable: an existing service is
 # restarted with the new binary, so the script does not check first. Exit status
 # 3 means the service is installed and running, but the Broker runs degraded;
 # service install has already printed the summary and the reason, so the script
@@ -506,7 +559,7 @@ if [ "$install_service" -eq 1 ]; then
 	esac
 fi
 
-# 4. The system-level service creates the admin group. Put the account that ran
+# 5. The system-level service creates the admin group. Put the account that ran
 # sudo into it, so that account can manage the Broker without sudo after
 # logging in again. The answer comes from the controlling terminal, never from
 # stdin: when the script is piped into sh, stdin is the script itself. A
@@ -563,7 +616,7 @@ if [ "$system" -eq 1 ] && [ "$install_service" -eq 1 ] && [ "$no_admin_group" -e
 	fi
 fi
 
-# 5. Register the MCP server with Claude Code. A system-level install registers
+# 6. Register the MCP server with Claude Code. A system-level install registers
 # it for the account that ran sudo; running the script directly as root leaves
 # no account to register for, so it prints the command instead.
 _mcp_state="skipped (--no-mcp)"
@@ -643,7 +696,7 @@ if [ "$install_mcp" -eq 1 ]; then
 	fi
 fi
 
-# 6. A user-level prefix is often outside PATH. Say so instead of leaving the
+# 7. A user-level prefix is often outside PATH. Say so instead of leaving the
 # caller with "peers: command not found" in the next terminal.
 if [ "$system" -eq 0 ]; then
 	case ":${PATH:-}:" in
@@ -652,7 +705,7 @@ if [ "$system" -eq 0 ]; then
 	esac
 fi
 
-# 7. Summarize what the script alone knows. service install printed the binary,
+# 8. Summarize what the script alone knows. service install printed the binary,
 # version, configuration, logs and service commands. Without a service, the
 # script reports the binary it placed.
 if [ "$install_service" -eq 0 ]; then

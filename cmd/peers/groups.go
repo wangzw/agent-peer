@@ -24,4 +24,6 @@ func addServiceCommands(root *cobra.Command, a *app) {
 }
 
 // addInstallationCommands adds the update and uninstall commands.
-func addInstallationCommands(root *cobra.Command, a *app) {}
+func addInstallationCommands(root *cobra.Command, a *app) {
+	root.AddCommand(newUpdateCommand(a), newUninstallCommand(a))
+}

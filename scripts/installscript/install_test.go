@@ -34,6 +34,7 @@ type fixture struct {
 
 	archive string
 	script  string
+	destdir string
 
 	agentLog     string
 	pathAgentLog string
@@ -57,6 +58,7 @@ func newFixture(t *testing.T) *fixture {
 		home:         filepath.Join(base, "home"),
 		fakes:        filepath.Join(base, "fakebin"),
 		archive:      filepath.Join(base, "archive"),
+		destdir:      filepath.Join(base, "destdir"),
 		agentLog:     filepath.Join(base, "agent.log"),
 		pathAgentLog: filepath.Join(base, "path-agent.log"),
 		claudeLog:    filepath.Join(base, "claude.log"),
@@ -109,6 +111,7 @@ func (f *fixture) environ(overrides map[string]string) []string {
 		"HOME":                    f.home,
 		"PATH":                    f.fakes + string(os.PathListSeparator) + systemPath,
 		"LC_ALL":                  "C",
+		"DESTDIR":                 f.destdir,
 		"FAKE_AGENT_LOG":          f.agentLog,
 		"FAKE_AGENT_VERSION":      "peers test-version",
 		"FAKE_AGENT_SERVICE_EXIT": "0",
@@ -440,6 +443,112 @@ func TestInstallScriptUserInstall(t *testing.T) {
 	if calls := readLines(t, f.pathAgentLog); len(calls) != 0 {
 		t.Errorf("install.sh called peers from PATH: %q", calls)
 	}
+}
+
+func TestInstallScriptUserCompletions(t *testing.T) {
+	f := newFixture(t)
+	stdout, stderr, code := f.run(nil, "--no-service", "--no-mcp")
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	bash := f.pathUnderHome(t, ".local", "share", "bash-completion", "completions", "peers")
+	fish := f.pathUnderHome(t, ".config", "fish", "completions", "peers.fish")
+	for _, path := range []string{bash, fish} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("the completion file %s is missing: %v", path, err)
+		}
+	}
+	mustContain(t, "bash completion", readFile(t, bash), "# bash completion")
+	mustContain(t, "fish completion", readFile(t, fish), "# fish completion")
+
+	zsh := f.pathUnderHome(t, ".local", "share", "zsh", "site-functions", "_peers")
+	if _, err := os.Stat(zsh); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the user-level install wrote the zsh completion %s: %v", zsh, err)
+	}
+	mustContain(t, "stdout", stdout, "zsh completion was not installed")
+	mustContain(t, "stdout", stdout, "completion zsh")
+
+	if _, err := os.Stat(f.pathUnderHome(t, ".local", "share", "man")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the user-level install wrote man pages: %v", err)
+	}
+
+	agent := readLines(t, f.agentLog)
+	for _, want := range []string{"completion bash", "completion fish"} {
+		if got := countLines(agent, want); got != 1 {
+			t.Errorf("%q calls = %d, want 1; calls: %q", want, got, agent)
+		}
+	}
+	if got := countLines(agent, "completion zsh"); got != 0 {
+		t.Errorf("completion zsh calls = %d, want none; calls: %q", got, agent)
+	}
+}
+
+func TestInstallScriptSystemCompletionsAndManPages(t *testing.T) {
+	f := newFixture(t)
+	writeArchiveManPages(t, f)
+	prefix := f.systemPrefix(t)
+	env := f.systemInstallEnv("")
+	stdout, stderr, code := f.run(env, systemInstallArgs(prefix, "--no-service")...)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+
+	for _, path := range []string{
+		f.systemShare(t, "bash-completion", "completions", "peers"),
+		f.systemShare(t, "zsh", "site-functions", "_peers"),
+		f.systemShare(t, "fish", "vendor_completions.d", "peers.fish"),
+		f.systemShare(t, "man", "man1", "peers.1"),
+		f.systemShare(t, "man", "man1", "peers-update.1"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("the installed file %s is missing: %v", path, err)
+		}
+	}
+	mustContain(t, "zsh completion", readFile(t, f.systemShare(t, "zsh", "site-functions", "_peers")), "# zsh completion")
+	mustContain(t, "man page", readFile(t, f.systemShare(t, "man", "man1", "peers.1")), ".TH PEERS")
+
+	agent := readLines(t, f.agentLog)
+	for _, want := range []string{"completion bash", "completion zsh", "completion fish"} {
+		if got := countLines(agent, want); got != 1 {
+			t.Errorf("%q calls = %d, want 1; calls: %q", want, got, agent)
+		}
+	}
+	mustNotContain(t, "stdout", stdout, "zsh completion was not installed")
+}
+
+func TestInstallScriptReportsCompletionFailure(t *testing.T) {
+	f := newFixture(t)
+	_, stderr, code := f.run(map[string]string{"FAKE_AGENT_COMPLETION_EXIT": "1"})
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1\nstderr:\n%s", code, stderr)
+	}
+	mustContain(t, "stderr", stderr, "writing the bash completion")
+	if got := countLines(readLines(t, f.agentLog), "service install"); got != 0 {
+		t.Errorf("service install calls = %d, want none after a completion failure", got)
+	}
+}
+
+// writeArchiveManPages adds the man pages a release archive carries to the
+// fixture's archive directory.
+func writeArchiveManPages(t *testing.T, f *fixture) {
+	t.Helper()
+	dir := filepath.Join(f.archive, "man")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("creating %s: %v", dir, err)
+	}
+	for _, name := range []string{"peers.1", "peers-update.1"} {
+		content := ".TH " + strings.ToUpper(strings.TrimSuffix(name, ".1")) + " 1\n"
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("writing %s: %v", name, err)
+		}
+	}
+}
+
+// systemShare returns a path under the staged system share directory.
+func (f *fixture) systemShare(t *testing.T, elems ...string) string {
+	t.Helper()
+	return filepath.Join(append([]string{f.destdir, "usr", "local", "share"}, elems...)...)
 }
 
 func TestInstallScriptUserInstallRejectsRoot(t *testing.T) {
@@ -1701,6 +1810,12 @@ printf '%s\n' "$*" >> "$FAKE_AGENT_LOG"
 case $1 in
 --version)
 	printf '%s\n' "$FAKE_AGENT_VERSION"
+	;;
+completion)
+	if [ "${FAKE_AGENT_COMPLETION_EXIT:-0}" != "0" ]; then
+		exit "$FAKE_AGENT_COMPLETION_EXIT"
+	fi
+	printf '# %s completion\n' "$2"
 	;;
 service)
 	_exit=${FAKE_AGENT_SERVICE_EXIT:-0}

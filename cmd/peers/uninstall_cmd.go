@@ -1,32 +1,25 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 
+	"github.com/spf13/cobra"
 	"github.com/wangzw/peers/internal/broker/service"
 )
 
-const uninstallUsage = "usage: peers uninstall [--purge]\n"
+// uninstallDataPrompt asks whether to delete the configuration, identity and
+// logs. --purge skips it and deletes them; --yes skips it and keeps them.
+const uninstallDataPrompt = "Also remove configuration, identity, audit and service logs? [y/N] "
 
-// The prompts are written to the controlling terminal, never to standard
-// input or output.
-const (
-	uninstallDataPrompt   = "Also remove configuration, identity, audit and service logs? [y/N] "
-	uninstallSystemPrompt = "Uninstall the system-level installation (requires sudo)? [y/N] "
-)
-
-// The test seams replace the terminal, sudo, the account and the installation
-// steps so the command can be checked without touching the system.
+// The test seams replace the installation steps so the command can be checked
+// without touching the system.
 var (
 	uninstallOptionsFn            = service.DefaultOptions
 	uninstallInstalledFn          = service.Installed
@@ -39,11 +32,7 @@ var (
 	uninstallMCPLookupFn          = defaultLookupPeerMCP
 	uninstallExecutableFn         = os.Executable
 	uninstallEvalSymlinksFn       = filepath.EvalSymlinks
-	uninstallGeteuidFn            = os.Geteuid
 	uninstallGetenvFn             = os.Getenv
-	uninstallLookPathFn           = exec.LookPath
-	uninstallAskFn                = askOnTTY
-	uninstallSudoFn               = runSudo
 	uninstallFileOwnerFn          = fileOwner
 	uninstallRemoveFileFn         = os.Remove
 	uninstallSystemInstalledCheck = func(opts service.Options) bool {
@@ -52,8 +41,20 @@ var (
 	}
 )
 
-func init() {
-	subcommands["uninstall"] = (*app).uninstallCmd
+// newUninstallCommand builds "peers uninstall [--purge] [--yes]".
+func newUninstallCommand(a *app) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "uninstall",
+		Short:   "Remove the peers installation",
+		GroupID: groupInstall,
+		Args:    noArgs,
+	}
+	purge := cmd.Flags().Bool("purge", false, "also remove configuration, identity, audit and service logs")
+	yes := addYesFlag(cmd)
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return a.uninstallCmd(cmd.Context(), *purge, *yes)
+	}
+	return cmd
 }
 
 // mcpPeerCommand reports whether the peer MCP registration runs the binary at
@@ -117,50 +118,36 @@ func runMCPCommand(name string, args ...string) ([]byte, error) {
 	return exec.Command(name, args...).CombinedOutput()
 }
 
-// uninstallCmd implements "peers uninstall [--purge]". It removes the
+// uninstallCmd implements "peers uninstall [--purge] [--yes]". It removes the
 // installation of the account that runs it, or the system-level installation
 // when run as root, and optionally the configuration, identity and logs.
-func (a *app) uninstallCmd(ctx context.Context, args []string) int {
-	fs := flag.NewFlagSet("uninstall", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	purge := fs.Bool("purge", false, "also remove configuration, identity and logs")
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			_, _ = fmt.Fprint(a.stdout, uninstallUsage)
-			return exitOK
-		}
-		return a.uninstallUsageError(err.Error())
-	}
-	if fs.NArg() > 0 {
-		return a.uninstallUsageError(fmt.Sprintf("unexpected argument %q", fs.Arg(0)))
-	}
-
+func (a *app) uninstallCmd(ctx context.Context, purge, yes bool) error {
 	userOpts, err := uninstallOptionsFn(false)
 	if err != nil {
-		return a.uninstallFail("determine the options", err)
+		return uninstallError("determine the options", err)
 	}
 	if !filepath.IsAbs(userOpts.Home) {
-		return a.uninstallFail("determine the options",
+		return uninstallError("determine the options",
 			fmt.Errorf("the home directory %q is not an absolute path", userOpts.Home))
 	}
 	systemOpts, err := uninstallOptionsFn(true)
 	if err != nil {
-		return a.uninstallFail("determine the options", err)
+		return uninstallError("determine the options", err)
 	}
 
-	if uninstallGeteuidFn() == 0 {
-		return a.uninstallAsRoot(ctx, systemOpts, *purge)
+	if a.deps.euid() == 0 {
+		return a.uninstallAsRoot(ctx, systemOpts, purge, yes)
 	}
-	return a.uninstallAsAccount(ctx, userOpts, systemOpts, *purge)
+	return a.uninstallAsAccount(ctx, userOpts, systemOpts, purge, yes)
 }
 
 // uninstallAsRoot removes the system-level installation. Root has no
 // user-level installation of its own.
-func (a *app) uninstallAsRoot(ctx context.Context, opts service.Options, purge bool) int {
+func (a *app) uninstallAsRoot(ctx context.Context, opts service.Options, purge, yes bool) error {
 	noServiceBinary := ""
 	installed, err := uninstallInstalledFn(opts)
 	if err != nil {
-		return a.uninstallFail("inspect the installation", err)
+		return uninstallError("inspect the installation", err)
 	}
 	if !installed {
 		// An installation that used --no-service left only the MCP
@@ -168,7 +155,7 @@ func (a *app) uninstallAsRoot(ctx context.Context, opts service.Options, purge b
 		// checked, since either may be the account the install belonged to.
 		exe, err := uninstallExecutableFn()
 		if err != nil {
-			return a.uninstallFail("locate the executable", err)
+			return uninstallError("locate the executable", err)
 		}
 		accounts := []string{""}
 		if user := uninstallGetenvFn("SUDO_USER"); user != "" && user != "root" {
@@ -184,24 +171,24 @@ func (a *app) uninstallAsRoot(ctx context.Context, opts service.Options, purge b
 	}
 	if !installed {
 		_, _ = fmt.Fprintln(a.stdout, "peers is not installed")
-		return exitOK
+		return nil
 	}
-	return a.uninstallLevel(ctx, opts, true, purge, noServiceBinary)
+	return a.uninstallLevel(ctx, opts, true, purge, yes, noServiceBinary)
 }
 
 // uninstallAsAccount removes this account's user-level installation. When only
-// a system-level installation exists, it asks whether to run the uninstall
-// through sudo.
-func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts service.Options, purge bool) int {
+// a system-level installation exists, it reports the command that removes it
+// instead of running sudo, so the caller can read it and rerun it verbatim.
+func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts service.Options, purge, yes bool) error {
 	noServiceBinary := ""
 	installed, err := uninstallInstalledFn(userOpts)
 	if err != nil {
-		return a.uninstallFail("inspect the installation", err)
+		return uninstallError("inspect the installation", err)
 	}
 	if !installed {
 		exe, err := uninstallExecutableFn()
 		if err != nil {
-			return a.uninstallFail("locate the executable", err)
+			return uninstallError("locate the executable", err)
 		}
 		if binary, ok := installationBinary(userOpts, "", exe); ok {
 			noServiceBinary = binary
@@ -209,52 +196,42 @@ func (a *app) uninstallAsAccount(ctx context.Context, userOpts, systemOpts servi
 		}
 	}
 	if installed {
-		code := a.uninstallLevel(ctx, userOpts, false, purge, noServiceBinary)
-		if code != exitOK {
-			return code
+		if err := a.uninstallLevel(ctx, userOpts, false, purge, yes, noServiceBinary); err != nil {
+			return err
 		}
 		if uninstallSystemInstalledCheck(systemOpts) {
-			_, _ = fmt.Fprintf(a.stdout, "A system-level installation is still present; run: sudo peers uninstall%s\n", flagSuffix(purge))
+			_, _ = fmt.Fprintf(a.stdout, "A system-level installation is still present; run: %s\n", sudoUninstallCommand(purge))
 		}
-		return exitOK
+		return nil
 	}
 
 	systemInstalled, err := uninstallInstalledFn(systemOpts)
 	if err != nil {
-		return a.uninstallFail("inspect the installation", err)
+		return uninstallError("inspect the installation", err)
 	}
 	if !systemInstalled {
 		_, _ = fmt.Fprintln(a.stdout, "peers is not installed")
-		return exitOK
+		return nil
 	}
 
-	yes, asked := uninstallAskFn(uninstallSystemPrompt)
-	if !asked || !yes {
-		_, _ = fmt.Fprintf(a.stdout, "Run: sudo peers uninstall%s\n", flagSuffix(purge))
-		return exitOK
-	}
-	if _, err := uninstallLookPathFn("sudo"); err != nil {
-		return a.uninstallFail("run sudo", fmt.Errorf("sudo was not found: %w", err))
-	}
-	exe, err := uninstallExecutableFn()
-	if err != nil {
-		return a.uninstallFail("locate the executable", err)
-	}
-	sudoArgs := []string{"uninstall"}
+	return fmt.Errorf("only a system-level installation is present; run: %s", sudoUninstallCommand(purge))
+}
+
+// sudoUninstallCommand is the complete command that removes the system-level
+// installation without asking. It is quoted into the error so the caller can
+// rerun it as it is.
+func sudoUninstallCommand(purge bool) string {
+	command := "sudo peers uninstall"
 	if purge {
-		sudoArgs = append(sudoArgs, "--purge")
+		command += " --purge"
 	}
-	code, err := uninstallSudoFn(ctx, exe, sudoArgs, a.stdin, a.stdout, a.stderr)
-	if err != nil {
-		return a.uninstallFail("run sudo", err)
-	}
-	return code
+	return command + " --yes"
 }
 
 // uninstallLevel performs the steps for one level. binary is set only when the
 // level has no service definition and the executable itself is the
 // installation.
-func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, purge bool, binary string) int {
+func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, purge, yes bool, binary string) error {
 	account := ""
 	if system {
 		account = uninstallGetenvFn("SUDO_USER")
@@ -263,10 +240,27 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 		}
 	}
 
+	// Confirmation comes after the level is known but before anything is
+	// read or removed. --purge does not ask, and --yes skips the question
+	// without deleting the data. Without a terminal, confirm reports
+	// errNeedsYes and the command exits with failure before touching
+	// anything.
+	purgeData := purge
+	if !purgeData && !yes {
+		confirmed, err := a.confirm(uninstallDataPrompt, false)
+		if err != nil {
+			if errors.Is(err, errNeedsYes) {
+				return err
+			}
+			return uninstallError("confirm the data removal", err)
+		}
+		purgeData = confirmed
+	}
+
 	if binary == "" {
 		path, ok, err := uninstallServiceBinaryFn(opts)
 		if err != nil {
-			return a.uninstallFail("read the service definition", err)
+			return uninstallError("read the service definition", err)
 		}
 		if ok {
 			binary = path
@@ -277,7 +271,7 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 			// other copy is left alone.
 			exe, err := uninstallExecutableFn()
 			if err != nil {
-				return a.uninstallFail("locate the executable", err)
+				return uninstallError("locate the executable", err)
 			}
 			if candidate, ok := installationBinary(opts, account, exe); ok {
 				binary = candidate
@@ -288,16 +282,9 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 		}
 	}
 
-	purgeData := purge
-	if !purgeData {
-		if yes, asked := uninstallAskFn(uninstallDataPrompt); asked && yes {
-			purgeData = true
-		}
-	}
-
 	result, err := uninstallServiceFn(opts)
 	if err != nil {
-		return a.uninstallFail("stop and remove the service", err)
+		return uninstallError("stop and remove the service", err)
 	}
 	if result.Removed {
 		_, _ = fmt.Fprintf(a.stdout, "stopped and removed the service %s\n", result.UnitPath)
@@ -312,14 +299,18 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 	} else {
 		outcome, err := uninstallMCPFn(account, binary)
 		if err != nil {
-			return a.uninstallFail("remove the MCP registration", err)
+			return uninstallError("remove the MCP registration", err)
 		}
 		_, _ = fmt.Fprintln(a.stdout, outcome)
 	}
 
+	if err := a.removeInstallationFiles(opts, system); err != nil {
+		return uninstallError("remove the shell completions and man pages", err)
+	}
+
 	removedDirs, err := uninstallRemoveRuntimeDirFn(opts)
 	if err != nil {
-		return a.uninstallFail("remove the runtime directory", err)
+		return uninstallError("remove the runtime directory", err)
 	}
 	if len(removedDirs) == 0 {
 		_, _ = fmt.Fprintln(a.stdout, "the runtime directory was already gone")
@@ -338,7 +329,7 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 			_, _ = fmt.Fprintf(a.stdout, "removed %s\n", entry)
 		}
 		if purgeErr != nil {
-			return a.uninstallFail("remove the data", purgeErr)
+			return uninstallError("remove the data", purgeErr)
 		}
 		if len(removed) == 0 {
 			_, _ = fmt.Fprintln(a.stdout, "no configuration, data or logs were present")
@@ -350,7 +341,7 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 	if system {
 		accounts, err := uninstallOtherAccountsFn(opts)
 		if err != nil {
-			return a.uninstallFail("list other accounts' Brokers", err)
+			return uninstallError("list other accounts' Brokers", err)
 		}
 		if len(accounts) > 0 {
 			_, _ = fmt.Fprintf(a.stdout, "other accounts run a user-level Broker: %s\n", strings.Join(accounts, ", "))
@@ -364,14 +355,57 @@ func (a *app) uninstallLevel(ctx context.Context, opts service.Options, system, 
 
 	if binary != "" {
 		if err := a.removeServiceBinary(opts, system, binary); err != nil {
-			return a.uninstallFail("remove the binary", err)
+			return uninstallError("remove the binary", err)
 		}
 	}
 
 	if system {
 		_, _ = fmt.Fprintln(a.stdout, "each account that registered the peer MCP server must remove it with: claude mcp remove -s user peer")
 	}
-	return exitOK
+	return nil
+}
+
+// removeInstallationFiles deletes the shell completion files the install
+// script created for the level, and the system-level man pages. Files that are
+// already gone are not an error; every removed path is reported.
+func (a *app) removeInstallationFiles(opts service.Options, system bool) error {
+	paths := completionFiles(opts, system)
+	if system {
+		pattern := filepath.Join(rootedPath(opts, "/usr/local/share/man/man1"), "peers*.1")
+		pages, err := filepath.Glob(pattern)
+		if err != nil {
+			return fmt.Errorf("list %s: %w", pattern, err)
+		}
+		paths = append(paths, pages...)
+	}
+	for _, path := range paths {
+		err := os.Remove(path)
+		switch {
+		case err == nil:
+			_, _ = fmt.Fprintf(a.stdout, "removed %s\n", path)
+		case errors.Is(err, os.ErrNotExist):
+		default:
+			return fmt.Errorf("remove %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+// completionFiles lists the shell completion files the install script writes
+// for one level. The user level never writes the zsh completion, so neither
+// uninstall case touches it.
+func completionFiles(opts service.Options, system bool) []string {
+	if system {
+		return []string{
+			rootedPath(opts, "/usr/local/share/bash-completion/completions/peers"),
+			rootedPath(opts, "/usr/local/share/zsh/site-functions/_peers"),
+			rootedPath(opts, "/usr/local/share/fish/vendor_completions.d/peers.fish"),
+		}
+	}
+	return []string{
+		rootedPath(opts, filepath.Join(opts.Home, ".local", "share", "bash-completion", "completions", "peers")),
+		rootedPath(opts, filepath.Join(opts.Home, ".config", "fish", "completions", "peers.fish")),
+	}
 }
 
 // removeServiceBinary removes the binary the service started. A user-level
@@ -477,52 +511,6 @@ func resolvePath(path string) string {
 	return path
 }
 
-// askOnTTY writes prompt to the controlling terminal and reads one answer.
-// ok is false when the terminal cannot be opened or read.
-func askOnTTY(prompt string) (yes, ok bool) {
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil {
-		return false, false
-	}
-	defer func() { _ = tty.Close() }()
-
-	if _, err := io.WriteString(tty, prompt); err != nil {
-		return false, false
-	}
-	line, err := bufio.NewReader(tty).ReadString('\n')
-	if err != nil && line == "" {
-		return false, false
-	}
-	return yesAnswer(line), true
-}
-
-// yesAnswer reports whether answer is y or yes, ignoring case and surrounding
-// space. Every other answer is no.
-func yesAnswer(answer string) bool {
-	switch strings.ToLower(strings.TrimSpace(answer)) {
-	case "y", "yes":
-		return true
-	}
-	return false
-}
-
-// runSudo re-runs this command as root and returns the child's exit code.
-func runSudo(ctx context.Context, exe string, args []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
-	cmd := exec.CommandContext(ctx, "sudo", append([]string{exe}, args...)...)
-	cmd.Stdin = stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	err := cmd.Run()
-	if err == nil {
-		return exitOK, nil
-	}
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return exitErr.ExitCode(), nil
-	}
-	return exitFailure, err
-}
-
 // fileOwner returns the owner of path without following a symbolic link.
 func fileOwner(path string) (uint32, error) {
 	info, err := os.Lstat(path)
@@ -536,24 +524,9 @@ func fileOwner(path string) (uint32, error) {
 	return st.Uid, nil
 }
 
-// uninstallUsageError reports a usage error found before the operation starts.
-func (a *app) uninstallUsageError(reason string) int {
-	_, _ = fmt.Fprint(a.stderr, uninstallUsage)
-	_, _ = fmt.Fprintf(a.stderr, "peers uninstall: %s\n", reason)
-	return exitUsage
-}
-
-// uninstallFail reports the step that failed. The step functions name the path
-// and the cause, so the command adds only the step name.
-func (a *app) uninstallFail(step string, err error) int {
-	_, _ = fmt.Fprintf(a.stderr, "peers uninstall: %s: %v\n", step, err)
-	return exitFailure
-}
-
-// flagSuffix returns the flags for a hint that repeats this invocation.
-func flagSuffix(purge bool) string {
-	if purge {
-		return " --purge"
-	}
-	return ""
+// uninstallError names the step that failed. The step functions name the path
+// and the cause, so the command adds only the step name; the framework prints
+// the command path and exit code.
+func uninstallError(step string, err error) error {
+	return fmt.Errorf("%s: %w", step, err)
 }
